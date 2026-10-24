@@ -20,11 +20,14 @@ blocking enabled during setup; account billing was not changed. Re-check it befo
 activating new workflows. Free minutes are shared with other private repositories.
 Quota exhaustion is a blocker, not permission to buy minutes or switch runners.
 
-CI uses only standard Linux runners, a 10-minute timeout, no scheduled full scans,
+CI is configured for standard Linux runners, a 10-minute timeout, no scheduled full scans,
 no Actions dependency cache, and no uploaded artifacts. Superseded PR runs cancel.
 Repository artifact/log retention is seven days. If adding artifacts later, set
 `retention-days: 7` explicitly and avoid sensitive content. Add Actions to the
-allowlist only after reviewing and SHA-pinning them.
+allowlist only after reviewing and SHA-pinning them. GitHub also permits owner-owned
+Actions under its selected-Actions policy; retain code review of all workflow changes.
+The bootstrap run was blocked by the account spending limit before a runner started;
+see setup evidence. Do not treat local checks as a successful hosted CI run.
 
 GitHub's included limits can change: consult
 [Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
