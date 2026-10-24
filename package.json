@@ -1,0 +1,25 @@
+{
+  "name": "nestscout-repository-tooling",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Repository checks only; application stack has not been selected.",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "identity": "node scripts/verify-repository.mjs",
+    "tools:install": "node scripts/install-tools.mjs",
+    "lint:markdown": "markdownlint-cli2",
+    "lint:yaml": "node scripts/check-yaml.mjs",
+    "lint:workflows": "node scripts/check-tools.mjs workflows",
+    "check:reserved": "node scripts/check-reserved-files.mjs",
+    "scan:secrets": "node scripts/check-tools.mjs secrets",
+    "check": "npm run check:reserved && npm run lint:markdown && npm run lint:yaml && npm run lint:workflows && npm run scan:secrets",
+    "verify:negative": "node scripts/verify-negative.mjs"
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "0.24.0",
+    "yaml": "2.9.1"
+  },
+  "overrides": {
+    "katex": "0.18.2"
+  }
+}

@@ -1,0 +1,17 @@
+node_modules/
+.cache/
+coverage/
+dist/
+build/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+*.bundle
+*.log
+.DS_Store
+Thumbs.db

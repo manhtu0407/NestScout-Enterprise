@@ -1,0 +1,21 @@
+name: Task
+description: Plan repository, maintenance, research, or implementation work.
+title: '[Task] '
+labels: ['type:task']
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome and scope
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria and evidence
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and risks

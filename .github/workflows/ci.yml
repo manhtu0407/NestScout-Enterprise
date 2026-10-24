@@ -1,0 +1,49 @@
+name: Repository CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-checks:
+    name: Repository checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Install locked repository tooling
+        run: npm ci --ignore-scripts
+      - name: Install checksum-verified tools
+        run: npm run tools:install
+      - name: Check documentation, YAML, workflows, and secrets
+        run: npm run check
+      - name: Confirm checks reject invalid fixtures
+        run: npm run verify:negative
+      - name: Verify optional hooks on Linux
+        run: |
+          test -x .githooks/pre-commit
+          test -x .githooks/pre-push
+          git -c core.hooksPath=.githooks hook run pre-commit
+      - name: Write check summary
+        if: always()
+        env:
+          CHECK_STATUS: ${{ job.status }}
+        run: |
+          printf '## Repository checks\nStatus: %s\n\nApplication tests/build: WAITING FOR STACK.\n' "$CHECK_STATUS" >> "$GITHUB_STEP_SUMMARY"
+          printf 'GitHub Free private: these checks do not enforce branch protection.\n' >> "$GITHUB_STEP_SUMMARY"
