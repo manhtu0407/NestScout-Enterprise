@@ -174,8 +174,10 @@ hooks and successful workflows alone do not prove server-side enforcement.
   The current workflow runs on pull requests and pushes to `main`; recheck as it
   evolves. Autonomous development uses feature branches without open PRs; any push
   that would trigger hosted CI requires explicit owner authorization.
-  Do not create PRs, bypass CI, change workflow triggers, or insert `[skip ci]` to
-  circumvent checks. Required local validation and applicable Git hooks remain
+  Do not create or update PRs without explicit owner authorization.
+  Never bypass CI or security checks. Do not modify workflow
+  triggers or insert [skip ci] to circumvent required checks.
+  Required local validation and applicable Git hooks remain
   mandatory; local checks are distinct from hosted CI. If blocked, identify the root
   cause and report the exact failure; never bypass failing checks or disable
   safeguards.
