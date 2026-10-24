@@ -20,11 +20,20 @@ how to do work; they do not create another AI policy or grant additional authori
   Previously authorized work does not become a violation of a later task boundary.
 - Ordinary file additions, modifications, and deletions may proceed within approved
   task scope; approval never grants permission to delete unrelated resources.
-  Commit, push, and PR actions require task authority. Merge, release, deployment,
-  production/data mutations, published-history rewrites, access changes, visibility,
-  credentials, billing, and destructive operations on external resources,
-  infrastructure, protected assets, or unrelated work need explicit authorization
-  for the target and operation. Never infer it from examples or successful checks.
+- Once the owner authorizes an implementation task, agents have standing permission
+  to create and manage task-specific feature branches, stage only task-related files,
+  create focused commits, push to authorized feature branches subject to the CI rules
+  below, fetch and inspect remote changes, and run necessary local tests, validation,
+  and security checks. No repeated approval is needed within approved task scope;
+  explicit task-specific restrictions always take precedence.
+- Explicit owner authorization for the target and operation is required to create
+  or update PRs, manually trigger or rerun hosted CI, push to an open-PR branch when
+  that push would trigger hosted CI, merge PRs, push directly to protected or default
+  branches, force-push or rewrite published history, release or deploy, modify
+  production resources/data, credentials, permissions, billing, repository settings,
+  or visibility, or perform destructive operations on external resources,
+  infrastructure, protected assets, or unrelated work. Successful tests or commits
+  never grant permission to merge or deploy.
 
 Supporting documents have distinct roles:
 
@@ -76,8 +85,8 @@ import architecture, commands, credentials, or conventions from another reposito
    directories, or modules. Stack/product architecture choices belong to the owner.
 5. Implement authorized changes only; explain needed scope extensions while
    completing independent in-scope work. Do not weaken assertions, suppress errors,
-   disable scanners, or add exclusions just to obtain green checks. Verify the
-   combined state, inspect the full diff, and avoid unrelated cleanup/refactoring.
+   disable scanners, or add exclusions just to obtain green checks. Avoid unrelated
+   cleanup/refactoring.
 
 When an approved application exists, follow its actual compiler, state, rendering,
 and navigation patterns. Do not conceal defects with weaker types or unsafe
@@ -88,6 +97,35 @@ and recovery analysis. Stateful/financial operations need concurrency, duplicate
 retry, ordering, and reconciliation checks where applicable. Runtime agents need
 per-role tool access, approvals, audit, behavior tests, and limits. These are
 conditional requirements, not claims that such modules exist.
+
+### Implementation Quality Contract
+
+- **Behavior and contracts:** Preserve behavior, interfaces, and system invariants
+  outside the approved scope. Before changing shared functionality, inspect affected
+  callers, consumers, and integration boundaries; verify them for regressions and
+  unintended side effects.
+- **Simplicity:** Choose the simplest maintainable solution to the verified problem.
+  Avoid speculative abstractions, unnecessary wrappers, duplicate implementations,
+  and premature architecture. Do not trade correctness or clarity for fewer lines.
+- **File responsibility:** Give each new source file a clear responsibility and
+  location consistent with existing naming conventions and module boundaries.
+  Add files or directories only when the implementation needs them; keep
+  restructuring within approved scope.
+- **Failure transparency:** No empty catches, fabricated success, silent error
+  suppression, or fallbacks that conceal failure. Preserve meaningful error context
+  without exposing secrets; handle relevant failure paths without unnecessary
+  defensive complexity.
+- **Runtime safety:** Where applicable, address concurrency, races, cleanup,
+  idempotency, retries, and lifecycle safety. Match safeguards to credible failure
+  scenarios and actual risk; avoid protections unrelated to the task.
+- **Tests and artifacts:** Keep disposable investigation scripts, logs, debug output,
+  scratch files, and caches out of committed source. Retain meaningful regression
+  tests and sanitized fixtures within approved scope; never weaken or remove tests
+  merely to obtain passing results.
+- **Acceptance:** Verify the combined final state against acceptance criteria and
+  inspect the full diff for affected consumers, behavior changes, unnecessary edits,
+  and weakened guarantees. Report unresolved limitations with the evidence required
+  under Verification and evidence; do not claim unsupported success.
 
 ## Verification and evidence
 
@@ -123,16 +161,27 @@ hooks and successful workflows alone do not prove server-side enforcement.
   indentation, no trailing whitespace. Keep code/dependency changes focused.
 - Do not add unsolicited author/AI credits, narration comments, or TODO/NOTES/PLAN/
   report files. Preserve legal notices and comments explaining useful invariants
-  or non-obvious reasons. Maintainable tests and sanitized fixtures are valid
-  deliverables; scratch files, logs, debug output, and caches are not.
+  or non-obvious reasons.
 - Preserve unrelated modified, staged, and untracked work, authenticated sessions,
   and processes. Recheck before writes. Do not reset, clean, overwrite, delete,
   force-push, or rewrite another person's work/shared history by inference.
-- Compare against current `main`; preserve approved work. Use focused Issue-linked
-  branches when authorized. Do not execute switch/pull examples over pending work.
+- Compare against current `main`; preserve approved work. Use focused feature
+  branches and link applicable Issues. Do not execute switch/pull examples over
+  pending work.
   Concurrent agents need separate task/worktree ownership and coordination on
   shared interfaces; never overwrite a competing writer.
-- When publication is authorized, stage an exact allow-list and inspect the index.
+- Before pushing, inspect actual GitHub Actions triggers and open PRs for the branch.
+  The current workflow runs on pull requests and pushes to `main`; recheck as it
+  evolves. Autonomous development uses feature branches without open PRs; any push
+  that would trigger hosted CI requires explicit owner authorization.
+  Do not create or update PRs without explicit owner authorization.
+  Never bypass CI or security checks. Do not modify workflow
+  triggers or insert [skip ci] to circumvent required checks.
+  Required local validation and applicable Git hooks remain
+  mandatory; local checks are distinct from hosted CI. If blocked, identify the root
+  cause and report the exact failure; never bypass failing checks or disable
+  safeguards.
+- Before committing or pushing, stage an exact allow-list and inspect the index.
   Review the latest combined diff and checks. Self-review is not independent human
   approval; the owner decides merge. Report commit/push separately from merge and
   delivery/deployment.
