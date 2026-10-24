@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "supabase_enterprise_readonly": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=axpdymbusiwxfzurfclg&read_only=true&features=database,debugging,docs"
+    }
+  }
+}

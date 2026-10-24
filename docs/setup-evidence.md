@@ -156,3 +156,117 @@ on [setup PR #3](https://github.com/manhtu0407/NestScout-Enterprise/pull/3).
 - Application build/test/deployment/monitoring/data recovery: WAITING FOR STACK.
 - Initial private eligibility was BLOCKED BY FREE PLAN. After the authorized public
   transition, reevaluate native features separately; no mandatory merge rules were added.
+
+## Supabase agent setup 2026-10-24
+
+Verdict: **PARTIALLY_READY**. Evidence applies to baseline
+`935824e4c07ea7de7012a8f1b0d1b72517f41a44` plus the Supabase setup changes on
+`chore/supabase-agent-local-setup`, Windows x64, Node 24.19.0, npm 11.17.0,
+Supabase CLI 2.122.0, Docker 29.9.2 / local named-pipe context `desktop-linux`.
+The task cloned the existing GitHub repository into the previously empty workspace;
+its initial working tree was clean. Root policy and original README are unchanged.
+
+### Hosted discovery
+
+- PASS: GitHub connector and `npm run identity` verified repository ID `1432052547`,
+  owner `manhtu0407`, public, default `main`, exact HTTPS fetch/push origins.
+- PASS: Supabase connector project/org metadata and authenticated dashboard agree:
+  `axpdymbusiwxfzurfclg`, Seoul `ap-northeast-2`, Free, Nano/t4g.nano, healthy,
+  Postgres `17.11.0.003`. Integration names the exact target repository.
+- OBSERVED: zero hosted migrations, zero public relations, zero Storage buckets,
+  no public/Storage policies, no Edge Functions. Catalogs show `rls_auto_enable`
+  returning `event_trigger`, `SECURITY DEFINER`, `search_path=pg_catalog`, with
+  PUBLIC/anon/authenticated EXECUTE grants, and an `ensure_rls` event trigger.
+  Local public schema is empty. Platform-object parity remains NOT VERIFIED.
+- OBSERVED: email Auth enabled, email confirmation/signup enabled; anonymous and
+  manual linking disabled; listed social/phone providers disabled, no custom
+  providers. No provider settings, secrets or customer records were accessed/changed.
+- Security Advisor: two WARN findings for anonymous/authenticated EXECUTE on
+  `rls_auto_enable`. Exploitability of this event-trigger-returning function was
+  not established; no production fix was applied. Review
+  [anonymous EXECUTE guidance](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable)
+  and [authenticated EXECUTE guidance](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable).
+  Performance Advisor returned no findings. This does not prove application security.
+- Logs queries: NOT RUN to avoid additional scan usage; dashboard health and
+  small catalog queries only. Exposed Data API schema settings beyond observed
+  public objects/grants remain NOT VERIFIED.
+
+### Free usage alert
+
+Dashboard cycle **25 Sep–25 Oct 2026**. Organization totals showed Log Ingestion
+**4.39 GB / 1 GB** (3.39 GB over) and Log Query **690.37 GB / 100 GB**
+(590.37 GB over). Other observed totals were below allowance: egress 1.98/5 GB,
+Storage average 0.06/1 GB, 18/50,000 MAU, 169,065/500,000 function invocations,
+215/2,000,000 realtime messages, peak connections 8/200.
+
+Project filter for NestScout-Enterprise showed ingestion approximately **0.001 GB**,
+query **0 GB**, DB **24.88 MB**, no reported egress/MAU/Storage/function usage.
+These aggregate observations do not attribute the organization excess to this
+project. Dashboard labels the log metrics UPCOMING; official
+[ingest](https://supabase.com/docs/guides/platform/manage-your-usage/logs-ingest)
+and [query](https://supabase.com/docs/guides/platform/manage-your-usage/logs-query)
+docs confirm the grace period through the start of 2027. No billing/restriction
+impact from these two metrics was observed. Usage may lag; reassess after cycle
+reset. Lowest-cost response: avoid polling/broad scans, narrow time/source/columns,
+and investigate logging sources only within the approved project scope.
+
+### Local verification
+
+| Command/check | Result and limit |
+| --- | --- |
+| `npm ci --ignore-scripts`, pinned installs | PASS; no lifecycle scripts; npm audit reported 0 vulnerabilities |
+| `npm run tools:install` | PASS; existing actionlint/gitleaks SHA-256 verification preserved |
+| `npm run check` | PASS; reserved files, Markdown, YAML, workflows, staged/history/working-file secret scans |
+| `npm run verify:negative` | PASS; existing invalid fixtures and staged-secret regression rejected |
+| `npm run verify:supabase` | PASS; local target, container/bind, Docker endpoint, diagnostics and MCP configuration cases |
+| `npm run db:types`, `npm run db:types:check` | PASS; generated from verified local DB; byte-equivalent normalized regeneration |
+| `npm run typecheck:db` | PASS; generated artifact only; product typecheck NOT IMPLEMENTED |
+| `npm run db:test` | PASS; 4 pgTAP metadata checks on actual empty public schema |
+| `npm run db:lint` | PASS; no public function/type issues locally |
+| `npm run db:status` | PASS; reports verified DB-only target and MCP NOT AVAILABLE |
+| `npm run db:start`, `db:reset`, `db:drift` | BLOCKED by actual loopback probe before credentialed CLI startup/recreation |
+| Local migration replay from reset | BLOCKED; startup initialized an empty schema, not a reset replay proof |
+| Customer/Worker/Admin/payment/Kael RLS scenarios | NOT IMPLEMENTED; no owning schema/endpoints; no invented business fixtures |
+| Full-stack/local MCP handshake | BLOCKED; full stack stopped after public binding was observed |
+
+The initial CLI start initialized its disposable schema but published all host
+interfaces despite the documented network option. Task containers and the shadow
+attempt were stopped; an inert Docker probe independently reproduced the runtime
+issue. A temporary DB-only container reused this task's initialized volume with
+explicit loopback publishing for the successful SQL/types checks. No other stack
+or global Docker setting was changed. Generated types are the only schema artifact;
+there are no fabricated application migrations or seed data.
+After verification, `npm run db:stop` passed and Docker listed no task-owned
+containers. The disposable DB volume was retained; unrelated stacks were untouched.
+
+### Agent capabilities and publication gates
+
+| Client | Verified capability | Remaining gap |
+| --- | --- | --- |
+| This Codex session | Supabase/GitHub connectors authenticated; harmless project/catalog queries demonstrated; official Supabase skill entrypoints read | Connector is broad, not enforced read-only/project-scoped |
+| Standalone Codex CLI 0.163.0-alpha.10.2 | MCP inventory inspected; project config prepared | Project config not loaded in untrusted checkout; OAuth/tools/query NOT RUN |
+| Claude Code | Project `.mcp.json` prepared; no global config changed | Executable NOT AVAILABLE in inspected paths; skills/auth/discovery/query NOT RUN |
+| Local MCP | Disabled config candidate; no tokens | No running API/MCP; handshake NOT RUN |
+
+Hosted MCP endpoint returned HTTP 401 without credentials, proving reachability
+only. No OAuth grant or personal access token was created. Existing plugin skills
+were reused rather than copied; see provenance in the development guide.
+
+Repository workflow runs on `pull_request` and pushes to `main`; no workflow was
+edited or dispatched. No open PR references the setup branch. Repo webhooks,
+deployment records and environments were empty; CodeQL default setup is not
+configured; Pages endpoint returned 404. Supabase production deployment is OFF,
+automatic branching OFF/disabled, branch limit 0, working directory `.`.
+
+**PUSH BLOCKED:** repository Installed GitHub Apps also lists Expo, Vercel, Claude,
+Sentry, Supabase and ChatGPT Codex Connector. Expo/Vercel external build/deployment
+bindings and push-trigger settings were not verified. Empty GitHub deployment
+records do not prove they cannot run. No push or PR was attempted. All changes are
+committed locally; the final delivery gives the commit SHA. No hosted CI, merge,
+deploy, billing, security-control change or production write was performed.
+
+P1: safe full-stack replay remains blocked; external push automation cannot be
+ruled out; main branch protection is absent (API 404), rulesets empty.
+P2: dedicated per-client MCP authentication/trust and hosted platform-object
+reconciliation remain open; advisor EXECUTE warnings need focused review.
+No P0 incident was established. Remediation proposals are not completed fixes.

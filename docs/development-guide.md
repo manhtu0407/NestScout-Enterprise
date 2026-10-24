@@ -46,6 +46,10 @@ history plus tracked/unignored working files. Keep local secrets in ignored file
 
 ## Work and delivery
 
+Supabase local tooling and agent connection setup are documented in
+[Supabase development](supabase-development.md). This does not select a product
+application stack or authorize hosted operations.
+
 1. Create an Issue with acceptance criteria; prioritize it in the private
    [NestScout Delivery project](https://github.com/users/manhtu0407/projects/3).
 2. Create a short branch, implement the scoped change, and run the checks.

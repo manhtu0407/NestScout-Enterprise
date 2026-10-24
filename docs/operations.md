@@ -117,3 +117,35 @@ Keep credentials in appropriate secret stores; use OIDC only where the selected
 provider supports it. Preview/deployment, smoke tests, monitoring/alerts, data backup,
 migrations, recovery objectives, and rollback require a concrete service design.
 No current repository check proves application readiness or native-device behavior.
+
+## Supabase Pro readiness
+
+Preparation only; no upgrade, billing, branch, addon or production change is
+authorized by this checklist. See [Supabase development](supabase-development.md)
+and the dated [setup evidence](setup-evidence.md#supabase-agent-setup-2026-10-24).
+
+- Review organization-wide usage and billing cycle, including other projects.
+  Pro starts at $25/month with $10 compute credits; extra projects, compute,
+  overages and preview branches can increase the total. Agree a monthly ceiling,
+  owner and alert thresholds before upgrading; validate the current
+  [pricing calculator](https://supabase.com/pricing) and
+  [branching charges](https://supabase.com/docs/guides/platform/manage-your-usage/branching).
+- Resolve the local replay/network blocker and reconcile hosted platform objects
+  before using migrations for a release. Review advisor findings and actual RLS,
+  Auth, Storage, payment and role tests once those features exist.
+- Define database recovery objectives, protected backup retention/destination and
+  a disposable restore drill. Database backups do not cover Storage object bytes;
+  arrange separate object protection. No production dump or restore was performed.
+- Use separately scoped deployment credentials in approved secret stores. Keep
+  developer MCP read-only/project-scoped, interactive approvals, and runtime Kael
+  permissions separate. Verify MFA, network/TLS settings and incident access.
+- Inspect GitHub/Supabase/Expo/Vercel integrations again before publication. Keep
+  production auto-deployment off if deployment requires separate owner approval;
+  propose reviewed manual CD rather than changing integration settings silently.
+- Establish health/error/cost alerts, synthetic smoke checks, release/rollback
+  ownership and schema roll-forward/restore procedures. Do not equate a Git revert
+  with safe data rollback. Use on-demand preview branches only after approving
+  their compute, retention and cleanup costs.
+- Reduce unnecessary log generation and broad/repeated log scans locally first.
+  The inspected log quotas are upcoming with a grace period through early 2027;
+  recheck enforcement and prices before committing a future budget.

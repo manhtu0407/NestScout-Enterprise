@@ -1,0 +1,60 @@
+# Disposable development stack; hosted project settings are never applied here.
+project_id = "nestscout-enterprise-agent-local"
+
+[api]
+enabled = true
+port = 59321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 59322
+shadow_port = 59320
+major_version = 17
+health_timeout = "2m"
+
+[db.pooler]
+enabled = false
+port = 59329
+
+[db.migrations]
+enabled = true
+schema_paths = []
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[studio]
+enabled = true
+port = 59323
+api_url = "http://127.0.0.1"
+
+[local_smtp]
+enabled = false
+port = 59324
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = []
+enable_signup = false
+enable_anonymous_sign_ins = false
+enable_refresh_token_rotation = true
+minimum_password_length = 8
+
+[storage]
+enabled = false
+
+[realtime]
+enabled = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false
+
+[experimental.pgdelta]
+enabled = false
