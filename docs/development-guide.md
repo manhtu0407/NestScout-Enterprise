@@ -55,7 +55,7 @@ history plus tracked/unignored working files. Keep local secrets in ignored file
 
 See [CONTRIBUTING](../CONTRIBUTING.md), [security reporting](../SECURITY.md),
 [operations and recovery](operations.md),
-[AI working guide](ai-working-guide.md),
+[root engineering policy](../AGENTS.md),
 [workflow coverage](workflow-coverage.md), and
 [setup evidence](setup-evidence.md).
 
