@@ -20,11 +20,20 @@ how to do work; they do not create another AI policy or grant additional authori
   Previously authorized work does not become a violation of a later task boundary.
 - Ordinary file additions, modifications, and deletions may proceed within approved
   task scope; approval never grants permission to delete unrelated resources.
-  Commit, push, and PR actions require task authority. Merge, release, deployment,
-  production/data mutations, published-history rewrites, access changes, visibility,
-  credentials, billing, and destructive operations on external resources,
-  infrastructure, protected assets, or unrelated work need explicit authorization
-  for the target and operation. Never infer it from examples or successful checks.
+- Once the owner authorizes an implementation task, agents have standing permission
+  to create and manage task-specific feature branches, stage only task-related files,
+  create focused commits, push to authorized feature branches subject to the CI rules
+  below, fetch and inspect remote changes, and run necessary local tests, validation,
+  and security checks. No repeated approval is needed within approved task scope;
+  explicit task-specific restrictions always take precedence.
+- Explicit owner authorization for the target and operation is required to create
+  or update PRs, manually trigger or rerun hosted CI, push to an open-PR branch when
+  that push would trigger hosted CI, merge PRs, push directly to protected or default
+  branches, force-push or rewrite published history, release or deploy, modify
+  production resources/data, credentials, permissions, billing, repository settings,
+  or visibility, or perform destructive operations on external resources,
+  infrastructure, protected assets, or unrelated work. Successful tests or commits
+  never grant permission to merge or deploy.
 
 Supporting documents have distinct roles:
 
@@ -156,11 +165,21 @@ hooks and successful workflows alone do not prove server-side enforcement.
 - Preserve unrelated modified, staged, and untracked work, authenticated sessions,
   and processes. Recheck before writes. Do not reset, clean, overwrite, delete,
   force-push, or rewrite another person's work/shared history by inference.
-- Compare against current `main`; preserve approved work. Use focused Issue-linked
-  branches when authorized. Do not execute switch/pull examples over pending work.
+- Compare against current `main`; preserve approved work. Use focused feature
+  branches and link applicable Issues. Do not execute switch/pull examples over
+  pending work.
   Concurrent agents need separate task/worktree ownership and coordination on
   shared interfaces; never overwrite a competing writer.
-- When publication is authorized, stage an exact allow-list and inspect the index.
+- Before pushing, inspect actual GitHub Actions triggers and open PRs for the branch.
+  The current workflow runs on pull requests and pushes to `main`; recheck as it
+  evolves. Autonomous development uses feature branches without open PRs; any push
+  that would trigger hosted CI requires explicit owner authorization.
+  Do not create PRs, bypass CI, change workflow triggers, or insert `[skip ci]` to
+  circumvent checks. Required local validation and applicable Git hooks remain
+  mandatory; local checks are distinct from hosted CI. If blocked, identify the root
+  cause and report the exact failure; never bypass failing checks or disable
+  safeguards.
+- Before committing or pushing, stage an exact allow-list and inspect the index.
   Review the latest combined diff and checks. Self-review is not independent human
   approval; the owner decides merge. Report commit/push separately from merge and
   delivery/deployment.
