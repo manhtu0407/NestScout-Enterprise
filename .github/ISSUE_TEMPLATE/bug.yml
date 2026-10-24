@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible defect without credentials or sensitive logs.
+title: '[Bug] '
+labels: ['type:bug']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and impact
+      description: What failed, and who is affected?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction and environment
+      description: Steps, expected/actual behavior, version or commit, OS/runtime.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria and verification
+      description: How will we confirm the fix? Include sanitized evidence only.
+    validations:
+      required: true

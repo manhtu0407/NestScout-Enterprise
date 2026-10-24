@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose an outcome with scope and acceptance criteria.
+title: '[Feature] '
+labels: ['type:feature']
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: User problem and desired outcome
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and constraints
+      description: Include what is out of scope and compatibility requirements.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria and verification
+    validations:
+      required: true
