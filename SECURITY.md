@@ -2,7 +2,7 @@
 
 ## Report privately
 
-This is a private, pre-application repository with no released supported versions.
+This is a public, pre-application repository with no released supported versions.
 Report a suspected vulnerability directly to the owner `manhtu0407` through the
 existing private communication channel used for this project. If no private channel
 exists, ask the owner for one without including exploit details or credentials.
@@ -31,8 +31,9 @@ must be redacted. No credentials or recovery codes belong in Git backups or Issu
 - Gitleaks checks history and tracked/unignored working files; optional local hooks.
 - Dependabot alerts and updates when manifests/configuration are on `main`.
 - Dependencies installed from the lockfile with lifecycle scripts disabled for tooling.
-- Private Free repo: no enforced branch protection, native secret scanning/push
-  protection, or native Code scanning dashboard. CI cannot stop an authorized direct push.
+- Public Free repo: branch protection and additional native security features are
+  eligible. Their active state must be checked separately; no new ruleset or CodeQL
+  configuration was added during the visibility change. CI alone does not stop a direct push.
 
 Account 2FA and recovery must be managed by the owner. Never ask an agent to store
 passwords, OTPs, passkeys, or recovery codes. Review account sessions, applications,

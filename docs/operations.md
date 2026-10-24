@@ -16,9 +16,11 @@ No scheduled maintenance agent or paid automation is installed.
 ## Cost controls
 
 The owner's existing account-wide Actions budget was observed at $0 with usage
-blocking enabled during setup; account billing was not changed. Re-check it before
-activating new workflows. Free minutes are shared with other private repositories.
-Quota exhaustion is a blocker, not permission to buy minutes or switch runners.
+blocking enabled during setup; account billing was not changed. The owner subsequently
+approved making this repository public so standard GitHub-hosted runners can run
+without consuming private-repository minutes. Larger runners remain paid and are
+not configured. The planning Project stays private. Re-check billing before adding
+other metered services; a limit is not permission to buy usage or switch runners.
 
 CI is configured for standard Linux runners, a 10-minute timeout, no scheduled full scans,
 no Actions dependency cache, and no uploaded artifacts. Superseded PR runs cancel.
@@ -26,8 +28,9 @@ Repository artifact/log retention is seven days. If adding artifacts later, set
 `retention-days: 7` explicitly and avoid sensitive content. Add Actions to the
 allowlist only after reviewing and SHA-pinning them. GitHub also permits owner-owned
 Actions under its selected-Actions policy; retain code review of all workflow changes.
-The bootstrap run was blocked by the account spending limit before a runner started;
-see setup evidence. Do not treat local checks as a successful hosted CI run.
+The initial private bootstrap run was blocked by the account spending limit before
+a runner started. The owner-approved public transition and rerun evidence are recorded
+in setup evidence. Do not treat local checks as a successful hosted CI run.
 
 GitHub's included limits can change: consult
 [Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).

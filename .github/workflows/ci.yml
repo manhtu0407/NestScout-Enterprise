@@ -46,4 +46,4 @@ jobs:
           CHECK_STATUS: ${{ job.status }}
         run: |
           printf '## Repository checks\nStatus: %s\n\nApplication tests/build: WAITING FOR STACK.\n' "$CHECK_STATUS" >> "$GITHUB_STEP_SUMMARY"
-          printf 'GitHub Free private: these checks do not enforce branch protection.\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Status checks alone do not enforce branch protection; repository rules must be configured separately.\n' >> "$GITHUB_STEP_SUMMARY"

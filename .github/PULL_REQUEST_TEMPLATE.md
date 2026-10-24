@@ -25,4 +25,5 @@ For repository settings, record before/after values and how to restore them.
 
 - [ ] Owner reviewed the latest diff and check results before deciding to merge.
 
-GitHub Free private does not enforce this checklist or required status checks.
+This checklist alone does not enforce review or status checks; branch rules must be
+configured separately. Public repository visibility does not enable those rules automatically.

@@ -11,7 +11,8 @@ for (const direction of [[], ['--push']]) {
 }
 const repo = JSON.parse(run('gh', ['api', `repos/${expected}`]));
 const user = JSON.parse(run('gh', ['api', 'user']));
-if (repo.id !== 1432052547 || repo.full_name !== expected || repo.private !== true || repo.default_branch !== 'main') {
+// The owner explicitly approved making this exact repository public on 2026-10-24.
+if (repo.id !== 1432052547 || repo.full_name !== expected || repo.private !== false || repo.default_branch !== 'main') {
   throw new Error('Repository identity, visibility, or default branch changed; investigate before writing.');
 }
 if (user.login !== 'manhtu0407' || !repo.permissions?.admin) throw new Error('Unexpected account or missing admin permission.');
