@@ -2,7 +2,7 @@
 
 Persistency on the tenth times...!
 
-Private, new NestScout project. This repository currently contains development
+Public, new NestScout repository. The Delivery Project remains private. This repository contains development
 workflow and security tooling; the application stack has not been selected.
 
 ## Repository identity
@@ -10,7 +10,7 @@ workflow and security tooling; the application stack has not been selected.
 - Owner/repository: `manhtu0407/NestScout-Enterprise`
 - GitHub repository ID: `1432052547`
 - Default branch: `main`
-- Visibility and plan: private, GitHub Free
+- Visibility and plan: public, GitHub Free (explicitly approved by the owner)
 
 Run `npm run identity` before remote writes. It verifies both origin URLs,
 repository ID, visibility, default branch, authenticated account, and admin access.
@@ -61,15 +61,16 @@ See [CONTRIBUTING](../CONTRIBUTING.md), [security reporting](../SECURITY.md),
 
 ## GitHub Free limits
 
-CI can fail, but this private Free repository cannot enforce protected branches,
-required PR reviews, or required status checks. Maintainers can still push/merge.
-Do not describe the workflow as a mandatory server-side gate.
+Public repositories can use standard GitHub-hosted runners without consuming private
+repository minutes. Branch protection and required status checks are now eligible
+under GitHub Free, but are not configured by the visibility-change task. Checks alone
+do not enforce a server-side merge gate. Auto-merge remains off.
 
-Native private Code scanning, Secret Protection, merge queues, and private artifact
-attestations are not enabled. Gitleaks CI detects secrets after upload; it is not
-native GitHub push protection. No paid services or AI API jobs are configured.
+Public visibility changes eligibility for native security features and attestations;
+do not infer their activation from this change. Gitleaks CI detects secrets after
+upload and is not native GitHub push protection. No paid services or AI API jobs
+are configured. The management Project remains private.
 
 ## Ownership
 
-This private repository has no open-source license. Do not publish or redistribute
-its contents without the owner's permission.
+No open-source license has been selected. The owner will decide licensing separately.

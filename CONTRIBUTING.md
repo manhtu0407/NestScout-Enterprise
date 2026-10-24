@@ -66,6 +66,7 @@ handles collaboration concerns privately via the contact route in SECURITY.
 
 ## Free-plan boundary
 
-PR review and green checks are our operating procedure. GitHub Free does not enforce
-them for this private repo. Local hooks are optional and bypassable. No approval
-claim, CODEOWNERS file, or bot is a substitute for actual branch protection.
+PR review and green checks are our operating procedure. This repository is now public
+by explicit owner approval; branch protection is eligible but has not been configured.
+Local hooks are optional and bypassable. No approval claim, ownership file, or bot
+is a substitute for actual branch protection. The planning Project stays private.

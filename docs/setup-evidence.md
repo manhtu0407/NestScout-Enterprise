@@ -1,5 +1,32 @@
 # GitHub foundation setup evidence
 
+## Current state after owner-approved public transition — 2026-10-24
+
+The owner explicitly confirmed making `manhtu0407/NestScout-Enterprise` public to
+run standard hosted CI. Repository ID remains `1432052547`; the management Project
+stays private. The identity guard now requires public visibility for this exact repo.
+Billing, ownership, original README, and the no-new-AGENTS restriction are unchanged.
+
+The owner merged bootstrap PR #3 at 2026-10-24 10:56:26 UTC as
+`2f89c3fdca58c93557aefd0dabc798dc8988336c`; the agent did not perform that merge.
+Issue Forms now visibly offer Bug report, Feature request and Task on GitHub.
+Dependabot opened its first Actions update PRs after default-branch activation.
+The public-alignment follow-up is isolated in PR #7 and remains for owner review.
+
+PASS: [run 40087426696, attempt 2](https://github.com/manhtu0407/NestScout-Enterprise/actions/runs/40087426696/attempts/2)
+completed on hosted Linux, including all repository checks, negative fixtures, and
+fresh-checkout executable-hook validation. The initial account-limit blocker is
+resolved for this public repository's standard runner. Final-head checks are linked
+from PR #3. This does not claim application tests/builds exist.
+
+Public branch protection/native security features have different eligibility from
+the initial private setup. No ruleset or CodeQL configuration was added by this
+visibility task. API currently reports native secret scanning and push protection
+disabled; Gitleaks remains the implemented scanner. Existing billing limits remain.
+
+The remaining sections record the initial private setup and its historical blockers;
+the public-transition evidence above supersedes their current-state restrictions.
+
 ## Identity and baseline — 2026-10-24
 
 - Repository: `manhtu0407/NestScout-Enterprise`, ID `1432052547`, private, default `main`.
@@ -54,7 +81,7 @@ workflows are off; Actions components are not accessible from other repositories
   Exact Windows/Linux x64 hashes are recorded in `scripts/tools.json`.
 - Local hooks enabled only for this checkout using `core.hooksPath=.githooks`.
 
-## GitHub Actions: BLOCKED BY ACCOUNT LIMIT
+## Initial private GitHub Actions: BLOCKED BY ACCOUNT LIMIT (historical)
 
 The [initial PR run](https://github.com/manhtu0407/NestScout-Enterprise/actions/runs/40086896998)
 failed before any step or runner started. GitHub's check annotation says:
@@ -63,8 +90,8 @@ failed before any step or runner started. GitHub's check annotation says:
 
 This is the provider's generic billing/spending-limit message, not proof of failed
 payment specifically. The existing $0 Actions budget remains unchanged. Do not raise
-it, buy minutes, or move to paid runners. Live Linux workflow/hook execution remains
-UNVERIFIED until the account has usable included capacity. Local checks are not a
+it, buy minutes, or move to paid runners. At that point Linux workflow/hook execution
+was UNVERIFIED. Public-transition evidence above now confirms Linux execution. Local checks are not a
 substitute for this missing runner evidence. The final head's check state is visible
 on [setup PR #3](https://github.com/manhtu0407/NestScout-Enterprise/pull/3).
 
@@ -113,5 +140,5 @@ on [setup PR #3](https://github.com/manhtu0407/NestScout-Enterprise/pull/3).
   The owner must configure authentication and retain recovery credentials privately;
   no password, passkey, OTP, or recovery-code changes were attempted.
 - Application build/test/deployment/monitoring/data recovery: WAITING FOR STACK.
-- GitHub Free private branch protection/native Code scanning/Secret Protection:
-  BLOCKED BY FREE PLAN. No claim of mandatory server-side enforcement is made.
+- Initial private eligibility was BLOCKED BY FREE PLAN. After the authorized public
+  transition, reevaluate native features separately; no mandatory merge rules were added.

@@ -7,7 +7,7 @@ without the owner's separate explicit permission. Preserve the original README.
 Target only `manhtu0407/NestScout-Enterprise` (repository ID `1432052547`).
 Verify identity before writes and work on a feature branch with a linked Issue/PR.
 
-This is a private GitHub Free project with repository tooling only, no selected
+This is a public GitHub Free repository with repository tooling only, no selected
 application stack. Do not invent build/test results or assume paid GitHub features.
 Use Node 24, `npm ci --ignore-scripts`, `npm run tools:install`, `npm run check`,
 and `npm run verify:negative` for repository checks.
