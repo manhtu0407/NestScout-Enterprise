@@ -18,15 +18,15 @@ documentation uses custom descriptive filenames. The original README is unchange
 | --- | --- | --- |
 | Repo identity and authentication | `npm run identity`, explicit repo arguments; CLI and connector evidence | PASS |
 | Local setup and conventions | Development guide, editor/line-ending rules, ignored secret/build files | PASS |
-| Intake and acceptance criteria | Bug/feature/task Issue Forms in setup PR | WAITING FOR MERGE |
+| Intake and acceptance criteria | Bug/feature/task Issue Forms visibly available after owner merged bootstrap PR | PASS |
 | Planning and prioritization | Private Delivery Project, Status/Priority/Size used on Issues | PASS |
 | Development branches/commits | CONTRIBUTING and optional local hooks | PASS |
-| PR review and merge procedure | PR template, squash preference, owner reviews exact commit | PASS; template waits for merge |
+| PR review and merge procedure | Template on main, squash preference, owner reviews exact commit | PASS |
 | Mandatory PR/check enforcement | Now eligible after public transition; no ruleset configured | NOT CONFIGURED |
 | Documentation/YAML/workflow checks | Markdownlint, YAML parser, actionlint; real negative fixtures | PASS local and hosted Linux CI after public transition |
 | Secret detection | Redacted index/history/working-file scans; staged regression | PASS local and hosted Linux CI after public transition |
 | Pre-push rejection of secrets | Optional local hooks only; bypassable | PASS locally; no native enforcement |
-| Dependency updates | Actions and repository npm tooling; application ecosystems added later | WAITING FOR MERGE |
+| Dependency updates | Dependabot active after bootstrap merge; initial Actions update PRs observed | PASS; application ecosystems wait for stack |
 | Native Code scanning/Secret Protection | Public eligibility changed; active state needs separate verification | NOT CONFIGURED BY THIS TASK |
 | Application lint/type/unit/build/e2e | Add when stack and first executable code are approved | WAITING FOR STACK |
 | Environment onboarding | Sanitized names/example plus secret-store setup when stack exists | WAITING FOR STACK |

@@ -7,6 +7,12 @@ run standard hosted CI. Repository ID remains `1432052547`; the management Proje
 stays private. The identity guard now requires public visibility for this exact repo.
 Billing, ownership, original README, and the no-new-AGENTS restriction are unchanged.
 
+The owner merged bootstrap PR #3 at 2026-10-24 10:56:26 UTC as
+`2f89c3fdca58c93557aefd0dabc798dc8988336c`; the agent did not perform that merge.
+Issue Forms now visibly offer Bug report, Feature request and Task on GitHub.
+Dependabot opened its first Actions update PRs after default-branch activation.
+The public-alignment follow-up is isolated in PR #7 and remains for owner review.
+
 PASS: [run 40087426696, attempt 2](https://github.com/manhtu0407/NestScout-Enterprise/actions/runs/40087426696/attempts/2)
 completed on hosted Linux, including all repository checks, negative fixtures, and
 fresh-checkout executable-hook validation. The initial account-limit blocker is
