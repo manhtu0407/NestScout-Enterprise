@@ -76,8 +76,8 @@ import architecture, commands, credentials, or conventions from another reposito
    directories, or modules. Stack/product architecture choices belong to the owner.
 5. Implement authorized changes only; explain needed scope extensions while
    completing independent in-scope work. Do not weaken assertions, suppress errors,
-   disable scanners, or add exclusions just to obtain green checks. Verify the
-   combined state, inspect the full diff, and avoid unrelated cleanup/refactoring.
+   disable scanners, or add exclusions just to obtain green checks. Avoid unrelated
+   cleanup/refactoring.
 
 When an approved application exists, follow its actual compiler, state, rendering,
 and navigation patterns. Do not conceal defects with weaker types or unsafe
@@ -88,6 +88,35 @@ and recovery analysis. Stateful/financial operations need concurrency, duplicate
 retry, ordering, and reconciliation checks where applicable. Runtime agents need
 per-role tool access, approvals, audit, behavior tests, and limits. These are
 conditional requirements, not claims that such modules exist.
+
+### Implementation Quality Contract
+
+- **Behavior and contracts:** Preserve behavior, interfaces, and system invariants
+  outside the approved scope. Before changing shared functionality, inspect affected
+  callers, consumers, and integration boundaries; verify them for regressions and
+  unintended side effects.
+- **Simplicity:** Choose the simplest maintainable solution to the verified problem.
+  Avoid speculative abstractions, unnecessary wrappers, duplicate implementations,
+  and premature architecture. Do not trade correctness or clarity for fewer lines.
+- **File responsibility:** Give each new source file a clear responsibility and
+  location consistent with existing naming conventions and module boundaries.
+  Add files or directories only when the implementation needs them; keep
+  restructuring within approved scope.
+- **Failure transparency:** No empty catches, fabricated success, silent error
+  suppression, or fallbacks that conceal failure. Preserve meaningful error context
+  without exposing secrets; handle relevant failure paths without unnecessary
+  defensive complexity.
+- **Runtime safety:** Where applicable, address concurrency, races, cleanup,
+  idempotency, retries, and lifecycle safety. Match safeguards to credible failure
+  scenarios and actual risk; avoid protections unrelated to the task.
+- **Tests and artifacts:** Keep disposable investigation scripts, logs, debug output,
+  scratch files, and caches out of committed source. Retain meaningful regression
+  tests and sanitized fixtures within approved scope; never weaken or remove tests
+  merely to obtain passing results.
+- **Acceptance:** Verify the combined final state against acceptance criteria and
+  inspect the full diff for affected consumers, behavior changes, unnecessary edits,
+  and weakened guarantees. Report unresolved limitations with the evidence required
+  under Verification and evidence; do not claim unsupported success.
 
 ## Verification and evidence
 
@@ -123,8 +152,7 @@ hooks and successful workflows alone do not prove server-side enforcement.
   indentation, no trailing whitespace. Keep code/dependency changes focused.
 - Do not add unsolicited author/AI credits, narration comments, or TODO/NOTES/PLAN/
   report files. Preserve legal notices and comments explaining useful invariants
-  or non-obvious reasons. Maintainable tests and sanitized fixtures are valid
-  deliverables; scratch files, logs, debug output, and caches are not.
+  or non-obvious reasons.
 - Preserve unrelated modified, staged, and untracked work, authenticated sessions,
   and processes. Recheck before writes. Do not reset, clean, overwrite, delete,
   force-push, or rewrite another person's work/shared history by inference.
