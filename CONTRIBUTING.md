@@ -14,8 +14,8 @@ Assign work when starting; Ready requires testable acceptance criteria.
 ## Develop a change
 
 Run the setup commands in the [development guide](docs/development-guide.md).
-Do not assume an application stack. Creating or modifying `AGENTS.md` or `README.md`
-(case-insensitive) requires the owner's separate explicit permission.
+The root [AGENTS.md](AGENTS.md) is the sole repository-wide engineering policy for
+Codex and Claude Code. This document provides human contribution procedures.
 Never commit environment secrets, signing files, build output, or dependency folders.
 When a stack is selected, add a sanitized `.env.example` containing names and dummy
 values only, plus actual setup/build/test commands and supported runtime versions.

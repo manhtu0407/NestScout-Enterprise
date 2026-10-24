@@ -1,5 +1,19 @@
 # GitHub foundation setup evidence
 
+## Supersession note — 2026-10-24
+
+This file preserves historical observations, not current agent instructions or
+standing authorization. The root [AGENTS.md](../AGENTS.md) is the sole repository-wide
+engineering policy for Codex and Claude Code. References below to the former custom
+AI guide, Copilot instructions, reserved-name restrictions, and pending merges
+describe earlier states; the original evidence is retained unchanged.
+
+The owner reviewed and merged PR #3 (`2f89c3f`) and PR #7 (`3df31aa`). Commits
+`24f0301` and `9e5b1fe` were explicitly authorized for review. The current
+consolidation starts from `9e5b1fe` and supersedes the old AI instruction sources;
+those approved actions are not governance violations. Current checks and runtime
+compatibility require fresh evidence for the consolidation revision.
+
 ## Current state after owner-approved public transition — 2026-10-24
 
 The owner explicitly confirmed making `manhtu0407/NestScout-Enterprise` public to
