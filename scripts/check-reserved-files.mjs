@@ -10,7 +10,8 @@ export function checkReservedFiles(repository = root) {
   for (const file of new Set(files)) {
     if (file === 'AGENTS.md') continue;
     const name = path.posix.basename(file);
-    if (/^(agents|claude)(?:\.[^.]+)*\.md$/i.test(name)
+    // Match known instruction basenames, not arbitrary dotted technical filenames.
+    if (/^(agents(?:\.override)?|claude(?:\.local)?)\.md$/i.test(name)
       || /^(docs\/ai-working-guide\.md|\.github\/copilot-instructions\.md)$/i.test(file)
       || /^(\.claude\/rules|\.github\/instructions)\//i.test(file)) {
       throw new Error(`Competing agent instruction file: ${file}`);

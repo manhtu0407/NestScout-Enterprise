@@ -42,7 +42,19 @@ try {
     for (const file of ['.agents/skills/example/SKILL.md', '.claude/skills/example/SKILL.md', 'docs/architecture.md', 'packages/example/README.md', 'docs/readme.md']) write(file);
     git(['add', '.']);
   });
+  for (const file of ['docs/claude.architecture.md', 'docs/agents.design.md']) {
+    for (const state of ['untracked', 'staged', 'tracked']) {
+      reservedCase(`accept ${state} technical documentation ${file}`, ({ git, write }) => {
+        write(file);
+        if (state !== 'untracked') git(['add', file]);
+        if (state === 'tracked') git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'technical documentation fixture']);
+      });
+    }
+  }
   for (const file of ['nested/AGENTS.md', 'AGENTS.override.md', 'CLAUDE.md', 'nested/claude.local.md', 'nested/aGeNtS.Md', 'aGeNtS.OVERRIDE.MD', 'cLaUdE.MD', '.github/copilot-instructions.md', 'docs/ai-working-guide.md', '.claude/rules/policy.md', '.GITHUB/INSTRUCTIONS/policy.instructions.md']) {
+    reservedCase(`reject untracked ${file}`, ({ write }) => write(file), /Competing agent instruction file/);
+  }
+  for (const file of ['CLAUDE.local.md', '.claude/CLAUDE.md', 'nested/AgEnTs.OvErRiDe.Md']) {
     reservedCase(`reject untracked ${file}`, ({ write }) => write(file), /Competing agent instruction file/);
   }
   reservedCase('reject staged variant absent from working tree', ({ repository, git, write }) => {
