@@ -160,7 +160,8 @@ on [setup PR #3](https://github.com/manhtu0407/NestScout-Enterprise/pull/3).
 ## Supabase agent setup 2026-10-24
 
 Verdict: **PARTIALLY_READY**. Evidence applies to baseline
-`935824e4c07ea7de7012a8f1b0d1b72517f41a44` plus the Supabase setup changes on
+`935824e4c07ea7de7012a8f1b0d1b72517f41a44`, setup commit
+`4c5f00b5816f49617e42ce30414a1e5c7a00e5d9`, and the managed-stack follow-up on
 `chore/supabase-agent-local-setup`, Windows x64, Node 24.19.0, npm 11.17.0,
 Supabase CLI 2.122.0, Docker 29.9.2 / local named-pipe context `desktop-linux`.
 The task cloned the existing GitHub repository into the previously empty workspace;
@@ -223,34 +224,59 @@ and investigate logging sources only within the approved project scope.
 | `npm run typecheck:db` | PASS; generated artifact only; product typecheck NOT IMPLEMENTED |
 | `npm run db:test` | PASS; 4 pgTAP metadata checks on actual empty public schema |
 | `npm run db:lint` | PASS; no public function/type issues locally |
-| `npm run db:status` | PASS; reports verified DB-only target and MCP NOT AVAILABLE |
-| `npm run db:start`, `db:reset`, `db:drift` | BLOCKED by actual loopback probe before credentialed CLI startup/recreation |
-| Local migration replay from reset | BLOCKED; startup initialized an empty schema, not a reset replay proof |
+| `npm run db:status` | PASS; reports verified worktree/branch stack and actual loopback endpoints without credentials |
+| `npm run db:start`, `db:reset`, `db:history`, `db:drift` | PASS on managed Docker stack; reset/replay, empty migration history and strict pg-delta drift |
+| Local migration replay from reset | PASS for the actual empty migration directory; not application schema coverage |
 | Customer/Worker/Admin/payment/Kael RLS scenarios | NOT IMPLEMENTED; no owning schema/endpoints; no invented business fixtures |
-| Full-stack/local MCP handshake | BLOCKED; full stack stopped after public binding was observed |
+| Local MCP handshake/catalog query | PASS; SDK discovered six allowed tools; catalog query returned zero public tables |
+| `npm run db:mcp:test` | PASS; real stdio/HTTP catalog query and denied migration-tool request |
 
-The initial CLI start initialized its disposable schema but published all host
-interfaces despite the documented network option. Task containers and the shadow
-attempt were stopped; an inert Docker probe independently reproduced the runtime
-issue. A temporary DB-only container reused this task's initialized volume with
-explicit loopback publishing for the successful SQL/types checks. No other stack
-or global Docker setting was changed. Generated types are the only schema artifact;
-there are no fabricated application migrations or seed data.
-After verification, `npm run db:stop` passed and Docker listed no task-owned
-containers. The disposable DB volume was retained; unrelated stacks were untouched.
+The initial legacy runtime published all interfaces despite Docker's documented
+network option. Those task containers were stopped, and an inert probe reproduced
+the problem. The follow-up proved the experimental managed stack on a separate
+disposable scratch root: explicit `127.0.0.1` bindings, distinct identity/endpoints,
+and targeted destroy. Its generated local credentials were accidentally included
+in a diagnostic output; the scratch stack was destroyed to invalidate them. No
+hosted credential was involved. The final wrapper withholds raw credential-bearing
+status/start JSON and reports only selected identity/endpoints.
+
+The verified task stack ID is
+`ebb98b437806fcbf5befd634aa49e3c47385672ad6aad011030a0a889b1e0cf2`, root
+`C:/Users/Phan Manh Tu/Documents/ChatGPT/NestScout`, branch
+`refs/heads/chore/supabase-agent-local-setup`. Observed dynamic ports were DB
+28148, API/MCP 23033, Studio 26249, pgmeta 31244. Docker inspection confirmed
+loopback-only publishing for every running task service. Both `db:start` resume
+and a second reset/test/lint/drift/type-consistency sequence passed. The lock
+rejects concurrent CLI/MCP operations and releases after asynchronous failure.
+`npm run db:mcp:test` then passed against the real stack, including a rejected
+migration-tool call. `npm run db:stop` passed, retaining local data for later use.
+
+The managed backend rejected migra; the wrapper uses its supported pg-delta engine
+with strict coverage. CLI and service-image digests are pinned. Experimental
+compatibility risk remains; this is not a stable-runtime guarantee. Docker Desktop
+was started when it was found stopped; no global Docker setting or unrelated stack
+was changed. No application migrations or seed data were fabricated.
 
 ### Agent capabilities and publication gates
 
 | Client | Verified capability | Remaining gap |
 | --- | --- | --- |
 | This Codex session | Supabase/GitHub connectors authenticated; harmless project/catalog queries demonstrated; official Supabase skill entrypoints read | Connector is broad, not enforced read-only/project-scoped |
-| Standalone Codex CLI 0.163.0-alpha.10.2 | MCP inventory inspected; project config prepared | Project config not loaded in untrusted checkout; OAuth/tools/query NOT RUN |
-| Claude Code | Project `.mcp.json` prepared; no global config changed | Executable NOT AVAILABLE in inspected paths; skills/auth/discovery/query NOT RUN |
-| Local MCP | Disabled config candidate; no tokens | No running API/MCP; handshake NOT RUN |
+| Standalone Codex CLI 0.163.0-alpha.10.2 | Exact checkout trusted; narrow OAuth; six-tool discovery and hosted/local `list_migrations` returned empty lists through app-server | Fresh model policy/approval behavior NOT RUN |
+| Claude Code 2.1.310 | Official signed Windows executable installed; hosted/local native `mcp get` Connected; narrow OAuth accepted | Claude model sign-in, model-driven query and skill/policy behavior NOT RUN |
+| Claude OAuth transport | SDK used only the matching endpoint/client credential in memory; hosted `list_migrations` and `list_tables(public)` returned empty lists | This is independent auth/transport proof, not a model-driven Claude query |
+| Local MCP | Shared stdio bridge; six-tool allowlist, verified dynamic endpoint, no redirects, identity checks and serialized operations | Start the local stack before connecting; experimental backend |
 
-Hosted MCP endpoint returned HTTP 401 without credentials, proving reachability
-only. No OAuth grant or personal access token was created. Existing plugin skills
-were reused rather than copied; see provenance in the development guide.
+The owner explicitly approved Database READ and Analytics READ for both clients.
+Codex's scoped login succeeded. Claude's first consent listed eight read groups
+despite its requested scopes; it was cancelled. Explicit narrow client registration,
+native fixed-client configuration, clearing the old cached registration and another
+login produced a consent with only the approved two groups. Claude authenticated
+successfully. Its local per-project override retains the identical hosted URL;
+client configuration/credentials remain outside Git. The local approval file names
+only these two servers and keeps tool prompts. Tracked Claude permissions also deny
+`query_logs`, migration/deploy and key retrieval. No PAT was created. Existing Codex
+plugin skills were reused rather than duplicated; Claude skill behavior is unverified.
 
 Repository workflow runs on `pull_request` and pushes to `main`; no workflow was
 edited or dispatched. No open PR references the setup branch. Repo webhooks,
@@ -258,15 +284,40 @@ deployment records and environments were empty; CodeQL default setup is not
 configured; Pages endpoint returned 404. Supabase production deployment is OFF,
 automatic branching OFF/disabled, branch limit 0, working directory `.`.
 
-**PUSH BLOCKED:** repository Installed GitHub Apps also lists Expo, Vercel, Claude,
-Sentry, Supabase and ChatGPT Codex Connector. Expo/Vercel external build/deployment
-bindings and push-trigger settings were not verified. Empty GitHub deployment
-records do not prove they cannot run. No push or PR was attempted. All changes are
-committed locally; the final delivery gives the commit SHA. No hosted CI, merge,
-deploy, billing, security-control change or production write was performed.
+The initial push blocker was investigated through authenticated external dashboards.
+Vercel account `manh-tus-projects` listed four existing projects: two had no Git
+repository, and the two Fable projects referenced other repositories. The uncertain
+Fable project's Git settings explicitly named `manhtu0407/Fable-Thread-`, not
+NestScout-Enterprise. No NestScout Vercel hosting was created. Expo account `tshine`
+listed one existing `home-services` project; GitHub settings offered
+`manhtu0407/NestScout-Enterprise` with a Connect button, proving it was unbound.
+No connection, build, deployment or unrelated setting was changed.
 
-P1: safe full-stack replay remains blocked; external push automation cannot be
-ruled out; main branch protection is absent (API 404), rulesets empty.
-P2: dedicated per-client MCP authentication/trust and hosted platform-object
-reconciliation remain open; advisor EXECUTE warnings need focused review.
-No P0 incident was established. Remediation proposals are not completed fixes.
+Feature-push gate: PASS for this branch without an open PR, with the inspected
+workflow triggers, no repo webhooks and Supabase production deployment/automatic
+branching OFF. No trigger was disabled or bypassed. The final delivery records
+the committed SHA and push verification. PR creation, hosted CI, merge, deployment,
+billing and production schema changes remain NOT RUN.
+
+P1: main branch protection is absent (API 404), rulesets empty; successful local
+checks do not provide server-side enforcement. Hosted platform-object parity is
+incomplete and must be resolved before a production migration release.
+P2: experimental runtime compatibility; two advisor EXECUTE warnings need focused
+review; fresh Claude model/skill/policy behavior remains unverified. No P0 incident
+was established. Recommendations are not completed production fixes.
+
+### Changed files in the complete setup
+
+- Agent configuration: `.codex/config.toml`, `.mcp.json`, `.claude/settings.json`.
+- Tooling: `package.json`, `package-lock.json`, `scripts/supabase-local.mjs`,
+  `scripts/supabase-local.test.mjs`, `scripts/supabase-mcp.mjs`,
+  `scripts/supabase-mcp.integration.test.mjs`.
+- Local schema/configuration: `supabase/config.toml`, `supabase/supabase.lock`,
+  `supabase/.gitignore`, `supabase/database.types.ts`, `supabase/migrations/.gitkeep`,
+  `supabase/seed.sql`, `supabase/tests/database/security.test.sql`.
+- Documentation/hygiene: `.gitignore`, `docs/development-guide.md`,
+  `docs/supabase-development.md`, `docs/operations.md`, `docs/setup-evidence.md`.
+
+Root `AGENTS.md`, reserved original `README.md` and hosted workflow files are
+unchanged. Machine trust, OAuth credentials and Claude local approvals are not Git
+artifacts. No paid plan, production release or Vercel hosting was provisioned.

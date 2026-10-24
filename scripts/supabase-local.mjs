@@ -9,34 +9,51 @@ import { root } from './tool-path.mjs';
 export function validateLocalConfig(config, linked) {
   assert.equal(linked, false, 'Unlink this checkout before using the disposable local workflow.');
   assert.match(config.project_id, /^nestscout-enterprise-[a-z0-9-]+$/);
-  const ports = [config.api.port, config.db.port, config.db.shadow_port, config.studio.port];
-  assert.ok(ports.every(port => Number.isInteger(port) && port > 1024 && port < 65536));
-  assert.equal(new Set(ports).size, ports.length, 'Local ports must be distinct.');
   assert.equal(config.db.major_version, 17);
   assert.equal(config.db.migrations.enabled, true);
   assert.deepEqual(config.db.migrations.schema_paths, [], 'Migrations are the schema source.');
-  assert.equal(config.experimental?.stack, undefined, 'Experimental stack isolation is not verified.');
+  assert.equal(config.experimental?.stack, true, 'Use the verified managed stack runtime.');
+  for (const section of [config.api, config.db, config.studio, config.db.pooler, config.local_smtp]) {
+    assert.equal(section?.port, undefined, 'Managed stacks allocate isolated loopback ports.');
+  }
+  assert.equal(config.db.shadow_port, undefined);
   return config.project_id;
 }
 
-export function validateContainer(container, project, port) {
-  assert.equal(container.Config.Labels['com.supabase.cli.project'], project);
-  assert.equal(container.State.Running, true, 'Local DB is not running.');
-  const bindings = container.NetworkSettings.Ports['5432/tcp'];
-  assert.ok(bindings?.length, 'Local DB port must be published on loopback.');
-  assert.ok(bindings.every(binding => binding.HostIp === '127.0.0.1' && Number(binding.HostPort) === port));
-}
-
 export function validateDockerEndpoint(endpoint) {
-  assert.match(endpoint, /^(unix:\/\/\/|npipe:\/\/)/, 'Only a local Docker socket/pipe is allowed.');
+  assert.match(endpoint, /^(unix:\/\/\/[^\s]+|npipe:\/\/\/\/\.\/pipe\/[^\s]+)$/, 'Only a local Docker socket/pipe is allowed.');
 }
 
-export function validateLocalStatus(status, port) {
-  const api = new URL(status.API_URL ?? status.api?.url);
-  assert.equal(api.hostname, '127.0.0.1');
-  assert.equal(api.port, String(port));
-  assert.equal(api.protocol, 'http:');
-  return new URL('/mcp', api).href;
+export function validateLocalStatus(status, expectedRoot, branch, running = true) {
+  assert.match(status.identity?.id ?? '', /^[a-f0-9]{64}$/);
+  assert.equal(status.identity.project_root, expectedRoot, 'Another worktree owns this stack.');
+  assert.equal(status.identity.branch_context, branch, 'Another branch owns this stack.');
+  if (!running) return;
+  assert.equal(status.runtime, 'docker');
+  assert.equal(status.owner, 'reachable', 'Local stack owner is unavailable.');
+  assert.equal(status.lifecycle, 'running', 'Start the local stack first.');
+  assert.ok(status.endpoints?.['database.sql'], 'Missing local DB endpoint.');
+  for (const endpoint of Object.values(status.endpoints)) {
+    const url = new URL(endpoint.url);
+    assert.equal(endpoint.address, '127.0.0.1');
+    assert.equal(url.hostname, '127.0.0.1');
+    assert.ok(['tcp:', 'http:'].includes(url.protocol));
+    assert.equal(url.username + url.password, '', 'Status endpoints must not contain credentials.');
+    assert.ok(Number.isInteger(endpoint.port) && endpoint.port > 1024 && endpoint.port < 65536);
+    assert.equal(url.port, String(endpoint.port));
+  }
+  const api = status.endpoints['rest.http'];
+  assert.ok(api && api.protocol === 'http', 'Missing local API endpoint.');
+  return new URL('/mcp', api.url).href;
+}
+
+export function validateContainer(container, stackId) {
+  assert.equal(container.Config.Labels['com.supabase.stack'], stackId);
+  assert.equal(container.State.Running, true);
+  for (const bindings of Object.values(container.NetworkSettings.Ports)) {
+    assert.ok(!bindings || bindings.every(binding => binding.HostIp === '127.0.0.1'),
+      'Local service published a non-loopback port.');
+  }
 }
 
 export function redactDiagnostic(value) {
@@ -46,15 +63,13 @@ export function redactDiagnostic(value) {
     .replace(/\bsb_(?:secret|publishable)_[A-Za-z0-9_-]+\b/g, '[REDACTED]');
 }
 
-function main(action) {
+export function localRuntime() {
   const config = parse(readFileSync(path.join(root, 'supabase/config.toml'), 'utf8'));
-  const project = validateLocalConfig(config, existsSync(path.join(root, 'supabase/.temp/project-ref')));
-  const containerName = `supabase_db_${project}`;
-  const cache = path.join(root, '.cache');
-  mkdirSync(cache, { recursive: true });
-  const lock = path.join(cache, 'supabase-local.lock');
-  const ownerFile = path.join(cache, 'supabase-local-owner.json');
-  const typesFile = path.join(root, 'supabase/database.types.ts');
+  validateLocalConfig(config, existsSync(path.join(root, 'supabase/.temp/project-ref')));
+  // CLI dotenv files can override the selected runtime, ports, and database target.
+  for (const name of ['.env', '.env.local', 'supabase/.env']) {
+    assert.equal(existsSync(path.join(root, name)), false, `Remove target overrides from ${name} before local operations.`);
+  }
   const environment = { ...process.env, DO_NOT_TRACK: '1' };
   for (const name of Object.keys(environment)) {
     if (/^(PG|SUPABASE_|DATABASE_URL$|OPENAI_API_KEY$)/.test(name)) delete environment[name];
@@ -63,124 +78,91 @@ function main(action) {
     cwd: root, env: environment, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  validateDockerEndpoint(environment.DOCKER_HOST
-    || run('docker', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}']).trim());
+  if (environment.DOCKER_HOST) validateDockerEndpoint(environment.DOCKER_HOST);
+  validateDockerEndpoint(run('docker', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}']).trim());
+  const branch = run('git', ['symbolic-ref', 'HEAD']).trim();
   const cli = args => run(process.execPath, [path.join(root, 'node_modules/supabase/dist/supabase.js'),
-    '--workdir', root, '--agent', 'no', ...(args[0] === 'gen' ? [] : ['--network-id', project]), ...args]);
-  const verifyDefaultBinding = () => {
-    // Probe an inert container before CLI start/reset can publish a credentialed DB.
-    const id = run('docker', ['run', '--detach', '--network', project,
-      '--label', `com.supabase.cli.project=${project}`, '--publish', `${config.db.shadow_port}:1`,
-      '--entrypoint', 'sleep', 'public.ecr.aws/supabase/postgres:17.11.0.006', '60']).trim();
-    try {
-      const probe = JSON.parse(run('docker', ['inspect', id]))[0];
-      const bindings = probe.NetworkSettings.Ports['1/tcp'];
-      assert.ok(bindings?.length && bindings.every(binding => binding.HostIp === '127.0.0.1'),
-        'BLOCKED: Docker ignores loopback network defaults. CLI start/reset would publish credentials on all interfaces. Use a runtime honoring host_binding_ipv4; do not relax this check.');
-    } finally {
-      run('docker', ['rm', '--force', id]);
-    }
-  };
-  const inspect = () => JSON.parse(run('docker', ['inspect', containerName]))[0];
+    '--workdir', root, '--agent', 'no', ...args]);
+  const status = () => JSON.parse(cli(['stack', 'status', '--output-format', 'json']));
   const verify = () => {
-    const owner = JSON.parse(readFileSync(ownerFile, 'utf8'));
-    const container = inspect();
-    assert.equal(owner.root, realpathSync(root), 'Another worktree owns this DB.');
-    assert.equal(owner.containerId, container.Id, 'DB was recreated outside this workflow; verify ownership.');
-    validateContainer(container, project, config.db.port);
-    return container;
+    const current = status();
+    const mcp = validateLocalStatus(current, realpathSync(root), branch);
+    const ids = run('docker', ['ps', '--filter', `label=com.supabase.stack=${current.identity.id}`, '--format', '{{.ID}}']).trim();
+    assert.ok(ids, 'Missing local containers.');
+    const containers = JSON.parse(run('docker', ['inspect', ...ids.split(/\s+/)]));
+    for (const container of containers) validateContainer(container, current.identity.id);
+    assert.ok(containers.some(container => container.Config.Labels['com.supabase.service'] === 'database'));
+    return { id: current.identity.id, branch, mcp, endpoints: current.endpoints };
   };
-  const actions = ['start', 'status', 'reset', 'test', 'types', 'check-types', 'lint', 'drift', 'stop'];
+  return { cli, status, verify, branch };
+}
+
+export async function withLocalLock(operation) {
+  const cache = path.join(root, '.cache');
+  mkdirSync(cache, { recursive: true });
+  const lock = path.join(cache, 'supabase-local.lock');
+  closeSync(openSync(lock, 'wx'));
+  try { return await operation(); } finally { unlinkSync(lock); }
+}
+
+async function main(action) {
+  const actions = ['start', 'status', 'reset', 'test', 'types', 'check-types', 'lint', 'drift', 'history', 'stop'];
   assert.ok(actions.includes(action), `Use one of: ${actions.join(', ')}`);
-  const descriptor = openSync(lock, 'wx');
-  closeSync(descriptor);
-  try {
+  const runtime = localRuntime();
+  await withLocalLock(() => {
     if (action === 'start') {
-      const existing = run('docker', ['ps', '-a', '--filter', `name=^/${containerName}$`, '--format', '{{.ID}}']).trim();
-      if (existing) verify();
-      const networks = run('docker', ['network', 'ls', '--filter', `name=^${project}$`, '--format', '{{.Name}}']).trim();
-      if (!networks) run('docker', ['network', 'create', '--driver', 'bridge', '--opt', 'com.docker.network.bridge.host_binding_ipv4=127.0.0.1', project]);
-      const network = JSON.parse(run('docker', ['network', 'inspect', project]))[0];
-      assert.equal(network.Driver, 'bridge');
-      assert.equal(network.Options['com.docker.network.bridge.host_binding_ipv4'], '127.0.0.1');
-      verifyDefaultBinding();
-      try {
-        cli(['start', '--exclude', 'realtime,storage-api,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor']);
-        const container = inspect();
-        validateContainer(container, project, config.db.port);
-        const ids = run('docker', ['ps', '--filter', `label=com.supabase.cli.project=${project}`, '--format', '{{.ID}}']).trim().split(/\s+/);
-        for (const service of JSON.parse(run('docker', ['inspect', ...ids]))) {
-          for (const bindings of Object.values(service.NetworkSettings.Ports)) {
-            assert.ok(!bindings || bindings.every(binding => binding.HostIp === '127.0.0.1'), 'Local service published a non-loopback port.');
-          }
-        }
-        writeFileSync(ownerFile, JSON.stringify({ root: realpathSync(root), containerId: container.Id }));
-      } catch (error) {
-        try {
-          cli(['stop', '--project-id', project]);
-        } catch (cleanupError) {
-          throw new Error(`Local startup failed; targeted cleanup also failed (exit ${cleanupError.status}). Inspect this project's containers before retrying.`, { cause: error });
-        }
-        if (existsSync(ownerFile)) unlinkSync(ownerFile);
-        throw error;
-      }
-      console.log(`PASS: started isolated local project ${project}.`);
-    } else {
-      verify();
-      if (action === 'status') {
-        const status = JSON.parse(cli(['status', '-o', 'json']));
-        if (status.API_URL || status.api?.url) {
-          const mcp = validateLocalStatus(status, config.api.port);
-          console.log(JSON.stringify({ project, api: new URL('/', mcp).href, mcp, dbPort: config.db.port }));
-        } else {
-          console.log(JSON.stringify({ project, dbPort: config.db.port, mcp: 'NOT AVAILABLE (database only)' }));
-        }
-      } else if (action === 'reset') {
-        verifyDefaultBinding();
-        cli(['db', 'reset', '--local', '--yes']);
-        const container = inspect();
-        validateContainer(container, project, config.db.port);
-        writeFileSync(ownerFile, JSON.stringify({ root: realpathSync(root), containerId: container.Id }));
-        console.log('PASS: disposable LOCAL database reset and migrations replayed.');
-      } else if (action === 'types' || action === 'check-types') {
-        const generated = cli(['gen', 'types', 'typescript', '--local', '--schema', 'public'])
-          .replaceAll('\r\n', '\n').replace(/[\t ]+$/gm, '');
-        assert.match(generated, /export type Database\s*=/);
-        if (action === 'check-types') assert.equal(generated, readFileSync(typesFile, 'utf8'), 'Regenerate local database types.');
-        else {
-          const temporary = path.join(cache, 'database.types.ts');
-          writeFileSync(temporary, generated);
-          renameSync(temporary, typesFile);
-        }
-        console.log(`PASS: local database types ${action === 'types' ? 'generated' : 'match'}.`);
-      } else if (action === 'stop') {
-        cli(['stop', '--project-id', project]);
-        unlinkSync(ownerFile);
-        console.log(`PASS: stopped only ${project}; local volumes retained.`);
-      } else {
-        if (action === 'drift') verifyDefaultBinding();
-        const args = {
-          test: ['test', 'db', '--local'],
-          lint: ['db', 'lint', '--local', '--schema', 'public', '--fail-on', 'warning'],
-          drift: ['db', 'diff', '--local', '--schema', 'public', '--use-migra'],
-        }[action];
-        const result = cli(args);
-        console.log(result.trim());
-        if (action === 'drift') assert.equal(result.trim(), '', 'Local schema drift detected.');
-      }
+      const before = runtime.status();
+      validateLocalStatus(before, realpathSync(root), runtime.branch, false);
+      runtime.cli(['stack', 'start', '--runtime', 'docker', '--preparation', 'on-demand', '--frozen',
+        '--exclude', 'realtime,storage,functions,mail,analytics,pooler', '--output-format', 'json']);
+      assert.equal(runtime.verify().id, before.identity.id);
+      console.log('PASS: current worktree/branch stack started; all Docker ports bind to loopback.');
+      return;
     }
-  } finally {
-    unlinkSync(lock);
-  }
+    const before = runtime.verify();
+    if (action === 'status') {
+      // Never log CLI status.env: it contains local passwords and API keys.
+      console.log(JSON.stringify(before));
+    } else if (action === 'types' || action === 'check-types') {
+      const generated = runtime.cli(['gen', 'types', 'typescript', '--local', '--schema', 'public'])
+        .replaceAll('\r\n', '\n').replace(/[\t ]+$/gm, '');
+      assert.match(generated, /export type Database\s*=/);
+      const typesFile = path.join(root, 'supabase/database.types.ts');
+      if (action === 'check-types') assert.equal(generated, readFileSync(typesFile, 'utf8'), 'Regenerate local database types.');
+      else {
+        const temporary = path.join(root, '.cache/database.types.ts');
+        writeFileSync(temporary, generated);
+        renameSync(temporary, typesFile);
+      }
+      console.log(`PASS: local database types ${action === 'types' ? 'generated' : 'match'}.`);
+    } else if (action === 'stop') {
+      runtime.cli(['stack', 'stop', '--stack-id', before.id, '--output-format', 'json']);
+      console.log('PASS: stopped only this worktree/branch stack; local data retained.');
+      return;
+    } else {
+      const args = {
+        reset: ['db', 'reset', '--local', '--yes'],
+        test: ['test', 'db', '--local'],
+        lint: ['db', 'lint', '--local', '--schema', 'public', '--fail-on', 'warning'],
+        drift: ['db', 'diff', '--local', '--schema', 'public', '--use-pg-delta', '--strict-coverage'],
+        history: ['migration', 'list', '--local'],
+      }[action];
+      const result = runtime.cli(args);
+      console.log(redactDiagnostic(result.trim()));
+      if (action === 'drift') assert.equal(result.trim(), '', 'Local schema drift detected.');
+      console.log(`PASS: local ${action}.`);
+    }
+    assert.equal(runtime.verify().id, before.id, 'Stack identity changed during operation.');
+  });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     assert.equal(process.argv.length, 3, 'Additional flags and target overrides are forbidden.');
-    main(process.argv[2]);
+    await main(process.argv[2]);
   } catch (error) {
     console.error(error.status === undefined ? error.message
-      : `Local command failed (exit ${error.status}): ${redactDiagnostic(error.stderr || error.stdout)}`);
+      : `Local command failed (exit ${error.status}): ${redactDiagnostic(error.stderr || 'Inspect CLI/runtime readiness; raw credential-bearing output withheld.')}`);
     process.exitCode = 1;
   }
 }

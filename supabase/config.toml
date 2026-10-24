@@ -1,22 +1,18 @@
-# Disposable development stack; hosted project settings are never applied here.
+# Local Docker stack: dynamic loopback endpoints; never a hosted target.
 project_id = "nestscout-enterprise-agent-local"
 
 [api]
 enabled = true
-port = 59321
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
 [db]
-port = 59322
-shadow_port = 59320
 major_version = 17
 health_timeout = "2m"
 
 [db.pooler]
 enabled = false
-port = 59329
 
 [db.migrations]
 enabled = true
@@ -28,12 +24,10 @@ sql_paths = ["./seed.sql"]
 
 [studio]
 enabled = true
-port = 59323
 api_url = "http://127.0.0.1"
 
 [local_smtp]
 enabled = false
-port = 59324
 
 [auth]
 enabled = true
@@ -55,6 +49,9 @@ enabled = false
 
 [analytics]
 enabled = false
+
+[experimental]
+stack = true
 
 [experimental.pgdelta]
 enabled = false

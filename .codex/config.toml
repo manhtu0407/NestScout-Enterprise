@@ -4,7 +4,7 @@ enabled_tools = ["list_tables", "list_extensions", "list_migrations", "execute_s
 default_tools_approval_mode = "prompt"
 
 [mcp_servers.supabase_enterprise_local]
-enabled = false
-url = "http://127.0.0.1:59321/mcp"
+command = "node"
+args = ["scripts/supabase-mcp.mjs"]
 enabled_tools = ["list_tables", "list_extensions", "list_migrations", "execute_sql", "get_advisors", "search_docs"]
 default_tools_approval_mode = "prompt"

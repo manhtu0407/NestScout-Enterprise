@@ -130,7 +130,7 @@ and the dated [setup evidence](setup-evidence.md#supabase-agent-setup-2026-10-24
   owner and alert thresholds before upgrading; validate the current
   [pricing calculator](https://supabase.com/pricing) and
   [branching charges](https://supabase.com/docs/guides/platform/manage-your-usage/branching).
-- Resolve the local replay/network blocker and reconcile hosted platform objects
+- Preserve the verified managed-stack loopback checks and reconcile hosted platform objects
   before using migrations for a release. Review advisor findings and actual RLS,
   Auth, Storage, payment and role tests once those features exist.
 - Define database recovery objectives, protected backup retention/destination and
@@ -139,7 +139,9 @@ and the dated [setup evidence](setup-evidence.md#supabase-agent-setup-2026-10-24
 - Use separately scoped deployment credentials in approved secret stores. Keep
   developer MCP read-only/project-scoped, interactive approvals, and runtime Kael
   permissions separate. Verify MFA, network/TLS settings and incident access.
-- Inspect GitHub/Supabase/Expo/Vercel integrations again before publication. Keep
+- Inspect GitHub/Supabase/Expo integrations again before publication. The owner
+  selected native App development without Vercel hosting; no Vercel project is
+  bound to this repository in the inspected account. Keep
   production auto-deployment off if deployment requires separate owner approval;
   propose reviewed manual CD rather than changing integration settings silently.
 - Establish health/error/cost alerts, synthetic smoke checks, release/rollback

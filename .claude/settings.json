@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "ask": ["mcp__supabase_enterprise_readonly__*", "mcp__supabase_enterprise_local__*"],
+    "deny": [
+      "mcp__supabase_enterprise_readonly__query_logs",
+      "mcp__supabase_enterprise_readonly__apply_migration",
+      "mcp__supabase_enterprise_readonly__deploy_edge_function",
+      "mcp__supabase_enterprise_readonly__get_publishable_keys"
+    ]
+  }
+}
