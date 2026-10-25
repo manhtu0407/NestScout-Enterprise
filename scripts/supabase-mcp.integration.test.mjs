@@ -21,6 +21,12 @@ test('real local MCP exposes diagnostics, queries catalogs and rejects migration
     await assert.rejects(client.callTool({ name: 'apply_migration', arguments: {
       name: 'denied_metadata_probe', query: 'select 1;',
     } }), /outside the local allowlist/);
+    const synthetic = '__audit_' + 'sensitive_identifier';
+    const failure = await client.callTool({ name: 'execute_sql', arguments: {
+      query: `select * from public.${synthetic}`,
+    } }).then(result => ({ result }), error => ({ error }));
+    assert.ok(failure.error || failure.result?.isError, 'Invalid SQL must propagate failure.');
+    assert.ok(!JSON.stringify(failure.error?.message ?? failure.result).includes(synthetic), 'Upstream SQL error detail must not leak through MCP.');
   } finally {
     await client.close();
   }

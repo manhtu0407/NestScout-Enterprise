@@ -1,5 +1,8 @@
 # GitHub foundation setup evidence
 
+Latest Supabase results: [hardening verification, 2026-10-25](#supabase-hardening-verification-2026-10-25).
+Earlier dated test counts and agent limitations below are historical observations.
+
 ## Supersession note — 2026-10-24
 
 This file preserves historical observations, not current agent instructions or
@@ -321,3 +324,162 @@ was established. Recommendations are not completed production fixes.
 Root `AGENTS.md`, reserved original `README.md` and hosted workflow files are
 unchanged. Machine trust, OAuth credentials and Claude local approvals are not Git
 artifacts. No paid plan, production release or Vercel hosting was provisioned.
+
+## Supabase hardening verification 2026-10-25
+
+Verdict: **ACCEPT WITH CONDITIONS** for continued local development. This is not
+approval for a PR, hosted CI, merge or Production deployment. The independent
+audit started at `3d0af495b6fcb0855c78606ef207ce0c60baae0f`, with a clean working
+tree on `chore/supabase-agent-local-setup`; current main was
+`935824e4c07ea7de7012a8f1b0d1b72517f41a44`. Git root, single worktree, HTTPS
+fetch/push origins, public repository ID `1432052547` and authenticated owner were
+verified. No other agent or unexpected modifications were observed. Results below
+cover that HEAD plus this hardening diff; the delivery commit identifies the diff.
+Root AGENTS, original README, workflow, dependencies and service pins are unchanged.
+
+### Fixes and verified boundaries
+
+- Local guards now reject both CLI link formats and dotenv variants before every
+  CLI invocation, scrub ambient target/Git overrides case-insensitively, normalize
+  Docker selector casing, verify the real Git root, and reject host networking or
+  missing inspectable database bindings. The existing deterministic stack design
+  and CLI 2.122.0/image digests are retained.
+- Diagnostics allowlist stable error/exit codes and endpoint fields instead of
+  forwarding arbitrary subprocess/upstream errors. Successful CLI text still has
+  credential redaction. MCP failures stay failures, with upstream error bodies
+  withheld. Synthetic negative cases cover URL, bearer, JSON/env/query secrets and
+  unexpected response fields without printing test secrets.
+- Async locks record PID/start time and a unique lease; replaced/stale locks are
+  preserved for investigation. Tests use isolated temporary directories and cover
+  overlap, failure and abrupt process exit. No automatic stale-lock deletion was
+  introduced. Stop verifies owner state and actual task containers; repeat stop
+  succeeds without touching another stack or deleting data.
+- The shared pgTAP catalog query catches column-only view grants, client-readable
+  materialized/foreign relations, RPC versus hook EXECUTE paths and unreviewed
+  definer search paths. Transactional real catalog fixtures demonstrate negative
+  cases and repaired positive cases, then roll back. No product tables or migrations
+  were added. This is metadata coverage, not business-role authorization proof.
+- Existing development/operations guides explain Windows reinstall ordering,
+  migration reconciliation, future role tests, exact owner-only ACL remediation,
+  solo-maintainer branch protection and a minimal proposed Linux database CI job.
+
+### Hosted catalog and reconciliation
+
+Read-only connector/native metadata queries and the dashboard agree on project
+`axpdymbusiwxfzurfclg`, Seoul `ap-northeast-2`, Free, healthy, PostgreSQL
+`17.11.0.003`. Hosted migrations, public relations and ordinary public RPCs remain
+zero. Local database image `17.11.0.006` agrees on major/minor, not platform patch.
+Empty local reset/history/drift/types establish reproducible **application**
+migration consistency; they do not compare complete hosted platform catalogs.
+
+`public.rls_auto_enable()` is PL/pgSQL, returns `event_trigger`, SECURITY DEFINER,
+owner `postgres`, `search_path=pg_catalog`, without extension membership. PUBLIC,
+anon, authenticated, service_role and postgres have EXECUTE. The enabled
+`ensure_rls` ddl_command_end trigger binds it to CREATE TABLE, CREATE TABLE AS and
+SELECT INTO. The inspected body resolves table names through catalog OIDs, quotes
+identifiers and catches/logs ALTER failures. Client roles have no CREATE on public.
+
+The definition matches the official
+[Studio template at 7e866ef](https://github.com/supabase/supabase/blob/7e866ef83e89e35cdda45a6c98abd069d5fa1b2f/apps/studio/components/interfaces/Database/Triggers/EventTriggersList/EventTriggers.constants.ts).
+[Project creation source](https://github.com/supabase/supabase/blob/7e866ef83e89e35cdda45a6c98abd069d5fa1b2f/apps/studio/components/interfaces/ProjectCreation/ProjectCreationForm.tsx)
+offers it through an optional flag, default false. This establishes template
+provenance, not the actual installing actor. Ask the project creator which creation
+option/editor operation installed it; do not call it an automatically maintained
+extension or import it into migrations without an explicit ownership decision.
+
+Fresh usage UI still shows cycle 25 Sep–25 Oct: organization log ingestion
+4.393/1 GB and log query 690.373/100 GB, both UPCOMING with the documented early
+2027 grace period. The project-only filter shows about 0.002 GB ingestion, zero
+log query and 24.88 MB database size. Other organization quotas are below allowance;
+the UI reports no current Free quota excess. This does not attribute other projects'
+usage to NestScout. No log scans, upgrades, paid branches or billing changes were
+performed; aggregates may lag the cycle reset.
+
+Both anonymous/authenticated Security Advisor warnings remain; Performance Advisor
+returned none. PostgreSQL 17's
+[PL/pgSQL compiler](https://github.com/postgres/postgres/blob/REL_17_STABLE/src/pl/plpgsql/src/pl_comp.c)
+rejects ordinary calls of event-trigger-returning PL/pgSQL functions with 0A000
+before executing their body. The
+[event trigger contract](https://www.postgresql.org/docs/17/event-trigger-definition.html)
+requires trigger context; normal [PostgREST RPC](https://docs.postgrest.org/en/stable/references/api/functions.html)
+does not supply it. Thus a directly executable privileged body is not established
+by these warnings. Exact hosted HTTP/schema-cache behavior is **NOT RUN**: the
+function was never invoked. Excess EXECUTE remains an ACL-hardening finding.
+The old local hook exclusion missed that hygiene issue; tests now report hooks
+separately. A local PASS still cannot clear hosted warnings.
+
+Dashboard Data API exposes public and graphql_public, reports one exposed function,
+no tables, and automatic new-table exposure enabled. These settings were only read.
+Future migrations must explicitly enable RLS and review grants; the optional hook
+can log a failure without preventing table creation. Avoid its names and rely on
+reviewed migrations, not automatic RLS. The minimal proposed ACL change, verification,
+compatibility checks and exact-ACL recovery are in
+[owner actions](operations.md#supabase-hardening-owner-actions); none was executed.
+
+### Fresh verification matrix
+
+Windows x64, Node 24.19.0, npm 11.17.0, Docker 29.9.2, local desktop-linux pipe,
+CLI 2.122.0 and MCP SDK 1.32.2. Commands ran sequentially against the verified
+worktree/branch stack `ebb98b437806fcbf5befd634aa49e3c47385672ad6aad011030a0a889b1e0cf2`.
+All published service bindings were 127.0.0.1; no hosted reset was attempted.
+
+| Command/check | Fresh outcome |
+| --- | --- |
+| `npm run identity` | PASS; exact repository, owner and branch |
+| `npm ci --ignore-scripts` | PASS after stopping this task stack; initial EPERM was its open supabase.exe on Windows, not bypassed |
+| `npm audit --audit-level=low`, `npm run tools:install` | PASS; zero reported vulnerabilities, actionlint/gitleaks checksums verified |
+| `npm run db:start`, `npm run db:status` | PASS; pinned Docker stack and isolated loopback endpoints |
+| `npm run db:reset`, `npm run db:history` | PASS; empty migration replay/history |
+| `npm run db:test` | PASS; 13 actual pgTAP assertions including transactional negative/positive fixtures |
+| `npm run db:mcp:test` | PASS; real stdio/HTTP session, six tools, catalog query, denied migration tool and sanitized SQL failure |
+| `npm run db:lint`, `npm run db:drift` | PASS; local public lint and strict pg-delta drift |
+| `npm run db:types`, `npm run db:types:check`, `npm run typecheck:db` | PASS; normalized generated artifact unchanged |
+| `npm run check`, `npm run verify:negative` | PASS; 10 wrapper/config tests, repository checks and invalid/staged-secret fixtures |
+| `npm run db:stop` twice | PASS; no task containers running, data retained |
+| Product role/isolation tests | NOT RUN; owning application modules are not implemented |
+| Hosted Linux Docker job | NOT RUN; proposed, not added/dispatched |
+| Production mutations | NOT RUN; metadata inspection only |
+
+### Agent states, independently observed
+
+| Gate | Codex 0.163.0-alpha.11.2 | Claude Code 2.1.310 |
+| --- | --- | --- |
+| CONFIGURED | Project-scoped read-only hosted endpoint; exact six tools; prompt approvals; local bridge | Same endpoint/scopes; local per-project override; ask and explicit deny rules |
+| AUTHENTICATED | ChatGPT model login and existing hosted OAuth | Hosted OAuth works; model auth reports loggedIn=false |
+| TRANSPORT VERIFIED | Fresh native app-server and interactive metadata responses | Fresh native `mcp get` Connected for both; OAuth SDK metadata responses |
+| TOOL DISCOVERY VERIFIED | Six allowed tools on each native server | Seven upstream hosted tools observed by SDK; query_logs denied by native config, not filtered by SDK |
+| MODEL BEHAVIOR VERIFIED | Fresh read-only interactive session returned hosted migrations=[] and local tables=[] | BLOCKED: no model authentication |
+| POLICY COMPLIANCE VERIFIED | Root policy/target/reserved files recalled; existing edits preserved; hypothetical Production write refused | BLOCKED: version/default ancestor inspection alone is not runtime proof |
+| Supabase skill discovery/use | Fresh interactive session found and read the existing installed plugin entrypoint | BLOCKED: no authenticated model session |
+
+Codex noninteractive `exec` initially refused both MCP calls because prompt approval
+was unavailable under policy never. Interactive `--no-daemon --sandbox read-only
+--ask-for-approval on-request` then displayed and received a separate one-time
+approval for each authorized metadata read; persistent configuration was unchanged.
+The bundled CLI's default interactive background-server mode lacked a complete local
+package, so its documented no-daemon mode was used. This mode's installed-plugin
+skill discovery succeeded; isolated app-server skill inventory alone was empty.
+Unrelated pre-existing global MCP/hook warnings were observed, not repaired or
+treated as Supabase failures. These representative checks do not prove arbitrary
+future model compliance. Claude native denial behavior remains untested by a model;
+the SDK probe is only OAuth/transport evidence, not permission-runner evidence.
+
+### Governance and release decisions
+
+Fresh GitHub inspection: main protection absent, rulesets zero, one human admin,
+no setup-branch PR, only unrelated Dependabot PRs. Workflow still triggers PRs and
+pushes to main only, with existing pins/read permissions; repository webhooks zero.
+Supabase production deployment OFF, automatic branching disabled/OFF, branch limit
+zero. Expo offers this repo with Connect (unbound); inspected Vercel projects are
+unbound or point to Fable repositories. No NestScout Vercel hosting was introduced.
+Recheck these gates immediately before the authorized feature push and verify its
+remote SHA and absence of Actions runs/checks/deployments afterward.
+
+P1: main has no server-side protection. P2: hosted hook excess EXECUTE, experimental
+runtime and unverified Linux Docker compatibility, and incomplete Claude model
+verification. P3: exact hook installer remains unknown; global client warnings need
+separate scoped investigation if they affect development. No P0 exploit was
+established. Local development can continue; the diff is ready for owner PR review.
+Hosted CI needs explicit authorization. Merge requires successful approved checks
+and governance; Production release needs a separate application/security/release
+decision. No PR, hosted CI, merge, deployment or settings change was performed.

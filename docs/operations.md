@@ -151,3 +151,71 @@ and the dated [setup evidence](setup-evidence.md#supabase-agent-setup-2026-10-24
 - Reduce unnecessary log generation and broad/repeated log scans locally first.
   The inspected log quotas are upcoming with a grace period through early 2027;
   recheck enforcement and prices before committing a future budget.
+
+## Supabase hardening owner actions
+
+These are recommendations, not executed settings or Production changes. The
+2026-10-25 inspection found one human collaborator (the owner), unprotected
+`main`, and no rulesets. For this public Free repository, create **one** classic
+branch protection rule at Settings → Branches → Add rule, pattern `main`:
+
+1. Require a pull request before merging; keep required approving reviews at
+   **zero/off** while there is only one maintainer. Do not require CODEOWNERS or
+   last-push approval that the owner cannot independently satisfy.
+2. Require status checks, select `Repository checks` from GitHub Actions, and
+   require branches to be up to date. Enable conversation resolution.
+3. Enable “Do not allow bypassing the above settings,” including administrators;
+   leave force pushes and branch deletion disallowed. Use manual owner review and
+   merge authorization; zero required reviews does not mean automatic approval.
+4. Verify the saved rule with read-only API/UI inspection. Do not test enforcement
+   by pushing to `main`. Add a required database job only after its approved first
+   successful run; requiring an absent check would block every merge.
+
+Current CI already runs offline wrapper/configuration/image-pin regressions through
+`npm run check`, plus dependency/tool integrity and negative tests. It does not
+prove Docker integration on Linux. Minimum proposed addition, after review: one
+`Supabase local verification` job using standard `ubuntu-24.04`, Node 24, the
+existing SHA-pinned checkout/setup Actions, `contents: read`, 20-minute timeout,
+locked dependencies, no hosted credentials, and these sequential commands:
+
+```sh
+npm ci --ignore-scripts
+npm run db:start
+npm run db:status
+npm run db:reset
+npm run db:history
+npm run db:test
+npm run db:mcp:test
+npm run db:lint
+npm run db:drift
+npm run db:types:check
+npm run typecheck:db
+```
+
+Give cleanup its own `if: always()` step running `npm run db:stop`. Keep the
+current PR/main triggers, concurrency controls and existing job. Standard public
+Linux runners have 4 CPUs, 16 GB RAM and 14 GB SSD and are free under current
+[GitHub runner terms](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+The reduced, lazy stack is a plausible fit, but cold image download/disk usage and
+Windows/Linux behavior must be measured in that approved run. Do not use paid
+larger runners, native fallback or hosted Supabase credentials to make it pass.
+No workflow was added or dispatched during this audit.
+
+For the hosted `public.rls_auto_enable()` ACL finding, the minimal proposed change
+is to retain the definition, owner and event trigger while revoking client access:
+
+```sql
+begin;
+revoke execute on function public.rls_auto_enable() from public, anon, authenticated;
+commit;
+```
+
+**Do not execute without explicit Production approval.** First retain its current
+definition, owner, trigger binding and ACL metadata privately and confirm the
+installing mechanism with the project creator. Confirm the effective privileges
+and Advisor results afterward, without invoking the hosted function. Keep owner
+and `service_role` grants; validate hook behavior with disposable local/staging
+DDL only. If necessary, restore the exact prior ACL: the inspected snapshot had
+EXECUTE granted to PUBLIC, anon and authenticated. No function/trigger drop or
+SECURITY INVOKER conversion is proposed. This reduces excess privileges; it does
+not imply that the original event-trigger function was an exploitable RPC.

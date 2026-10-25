@@ -1,113 +1,167 @@
-import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, openSync, closeSync, readFileSync, writeFileSync, renameSync, unlinkSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, closeSync, readFileSync, writeFileSync, renameSync, unlinkSync, realpathSync, readdirSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'smol-toml';
 import { root } from './tool-path.mjs';
 
+class LocalGuardError extends Error {}
+
+export function requireLocal(condition, message) {
+  if (!condition) throw new LocalGuardError(message);
+}
+
+export function safeDiagnostic(error) {
+  if (error instanceof LocalGuardError) return error.message;
+  const code = ['EEXIST', 'ENOENT', 'EACCES', 'EPERM', 'ETIMEDOUT', 'ECONNREFUSED', 'ERR_ASSERTION'].includes(error?.code) ? error.code : 'UPSTREAM_ERROR';
+  const status = Number.isInteger(error?.status) ? `; exit ${error.status}` : '';
+  return `Local operation failed (${code}${status}); credential-bearing subprocess/upstream detail withheld.`;
+}
+
 export function validateLocalConfig(config, linked) {
-  assert.equal(linked, false, 'Unlink this checkout before using the disposable local workflow.');
-  assert.match(config.project_id, /^nestscout-enterprise-[a-z0-9-]+$/);
-  assert.equal(config.db.major_version, 17);
-  assert.equal(config.db.migrations.enabled, true);
-  assert.deepEqual(config.db.migrations.schema_paths, [], 'Migrations are the schema source.');
-  assert.equal(config.experimental?.stack, true, 'Use the verified managed stack runtime.');
+  requireLocal(!linked, 'Unlink this checkout before using the disposable local workflow.');
+  requireLocal(/^nestscout-enterprise-[a-z0-9-]+$/.test(config.project_id), 'Invalid disposable project ID.');
+  requireLocal(config.db.major_version === 17, 'The verified database major version is 17.');
+  requireLocal(config.db.migrations.enabled === true && config.db.migrations.schema_paths?.length === 0, 'Migrations are the schema source.');
+  requireLocal(config.experimental?.stack === true, 'Use the verified managed stack runtime.');
+  requireLocal(JSON.stringify(config.api.schemas) === JSON.stringify(['public', 'graphql_public']), 'Review SQL security coverage before changing exposed schemas.');
   for (const section of [config.api, config.db, config.studio, config.db.pooler, config.local_smtp]) {
-    assert.equal(section?.port, undefined, 'Managed stacks allocate isolated loopback ports.');
+    requireLocal(section?.port === undefined, 'Managed stacks allocate isolated loopback ports.');
   }
-  assert.equal(config.db.shadow_port, undefined);
+  requireLocal(config.db.shadow_port === undefined, 'Managed stacks allocate isolated shadow ports.');
   return config.project_id;
 }
 
 export function validateDockerEndpoint(endpoint) {
-  assert.match(endpoint, /^(unix:\/\/\/[^\s]+|npipe:\/\/\/\/\.\/pipe\/[^\s]+)$/, 'Only a local Docker socket/pipe is allowed.');
+  requireLocal(/^(unix:\/\/\/[^\s]+|npipe:\/\/\/\/\.\/pipe\/[^\s]+)$/.test(endpoint), 'Only a local Docker socket/pipe is allowed.');
 }
 
 export function validateLocalStatus(status, expectedRoot, branch, running = true) {
-  assert.match(status.identity?.id ?? '', /^[a-f0-9]{64}$/);
-  assert.equal(status.identity.project_root, expectedRoot, 'Another worktree owns this stack.');
-  assert.equal(status.identity.branch_context, branch, 'Another branch owns this stack.');
+  requireLocal(/^[a-f0-9]{64}$/.test(status.identity?.id ?? ''), 'Invalid stack identity.');
+  requireLocal(status.identity.project_root === expectedRoot, 'Another worktree owns this stack.');
+  requireLocal(status.identity.branch_context === branch, 'Another branch owns this stack.');
   if (!running) return;
-  assert.equal(status.runtime, 'docker');
-  assert.equal(status.owner, 'reachable', 'Local stack owner is unavailable.');
-  assert.equal(status.lifecycle, 'running', 'Start the local stack first.');
-  assert.ok(status.endpoints?.['database.sql'], 'Missing local DB endpoint.');
+  requireLocal(status.runtime === 'docker', 'Only the verified Docker runtime is allowed.');
+  requireLocal(status.owner === 'reachable', 'Local stack owner is unavailable.');
+  requireLocal(status.lifecycle === 'running', 'Start the local stack first.');
+  requireLocal(status.endpoints?.['database.sql'], 'Missing local DB endpoint.');
   for (const endpoint of Object.values(status.endpoints)) {
     const url = new URL(endpoint.url);
-    assert.equal(endpoint.address, '127.0.0.1');
-    assert.equal(url.hostname, '127.0.0.1');
-    assert.ok(['tcp:', 'http:'].includes(url.protocol));
-    assert.equal(url.username + url.password, '', 'Status endpoints must not contain credentials.');
-    assert.ok(Number.isInteger(endpoint.port) && endpoint.port > 1024 && endpoint.port < 65536);
-    assert.equal(url.port, String(endpoint.port));
+    requireLocal(endpoint.address === '127.0.0.1' && url.hostname === '127.0.0.1', 'Only loopback endpoints are allowed.');
+    requireLocal(['tcp:', 'http:'].includes(url.protocol), 'Unexpected local endpoint protocol.');
+    requireLocal(!url.username && !url.password && !url.search && !url.hash && url.pathname === (url.protocol === 'tcp:' ? '' : '/'), 'Status endpoints must not contain credentials or URL overrides.');
+    requireLocal(Number.isInteger(endpoint.port) && endpoint.port > 1024 && endpoint.port < 65536 && url.port === String(endpoint.port), 'Invalid local endpoint port.');
   }
   const api = status.endpoints['rest.http'];
-  assert.ok(api && api.protocol === 'http', 'Missing local API endpoint.');
+  requireLocal(api && api.protocol === 'http', 'Missing local API endpoint.');
   return new URL('/mcp', api.url).href;
 }
 
 export function validateContainer(container, stackId) {
-  assert.equal(container.Config.Labels['com.supabase.stack'], stackId);
-  assert.equal(container.State.Running, true);
+  requireLocal(container.Config.Labels['com.supabase.stack'] === stackId, 'Container belongs to another stack.');
+  requireLocal(container.State.Running === true, 'Local container is not running.');
+  requireLocal(container.HostConfig?.NetworkMode && container.HostConfig.NetworkMode !== 'host', 'Host networking is outside the isolated stack contract.');
+  if (container.Config.Labels['com.supabase.service'] === 'database') {
+    requireLocal(container.NetworkSettings.Ports['5432/tcp']?.length, 'The database must publish an inspectable loopback binding.');
+  }
   for (const bindings of Object.values(container.NetworkSettings.Ports)) {
-    assert.ok(!bindings || bindings.every(binding => binding.HostIp === '127.0.0.1'),
+    requireLocal(!bindings || bindings.every(binding => binding.HostIp === '127.0.0.1'),
       'Local service published a non-loopback port.');
   }
 }
 
 export function redactDiagnostic(value) {
   return String(value)
-    .replace(/(postgres(?:ql)?:\/\/)[^\s@]+@/gi, '$1[REDACTED]@')
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, '$1[REDACTED]@')
+    .replace(/\bBearer\s+[^\s"',;}]+/gi, 'Bearer [REDACTED]')
+    .replace(/((?:["']?)(?:[a-z_]*(?:password|passwd|token|secret|api_key|apikey|authorization|service_role_key|publishable_key))["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&}]+)/gi, '$1[REDACTED]')
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED]')
     .replace(/\bsb_(?:secret|publishable)_[A-Za-z0-9_-]+\b/g, '[REDACTED]');
+}
+
+export function validateLocalFiles(directory) {
+  for (const name of ['supabase/.temp/project-ref', 'supabase/.link.json']) {
+    requireLocal(!existsSync(path.join(directory, name)), 'Unlink this checkout before local operations.');
+  }
+  for (const folder of [directory, path.join(directory, 'supabase')]) {
+    requireLocal(!readdirSync(folder).some(name => /^\.env(?:\.|$)/i.test(name) && name !== '.env.example'), 'Remove local dotenv target overrides before local operations.');
+  }
+}
+
+export function localEnvironment(source) {
+  return Object.fromEntries(Object.entries({ ...source, DO_NOT_TRACK: '1' }).filter(([name]) =>
+    !/^(PG|SUPABASE_|DATABASE_URL$|OPENAI_API_KEY$|GIT_(?:DIR$|WORK_TREE$|COMMON_DIR$|INDEX_FILE$|CONFIG))/i.test(name))
+    .map(([name, value]) => [/^DOCKER_/i.test(name) ? name.toUpperCase() : name, value]));
+}
+
+export function safeEndpoints(endpoints) {
+  const allowed = ['database.sql', 'rest.http', 'auth.http', 'studio.http', 'pgmeta.http'];
+  return Object.fromEntries(Object.entries(endpoints).filter(([name]) => allowed.includes(name)).map(([name, value]) => [name, {
+    protocol: value.protocol, address: value.address, port: value.port, url: value.url,
+  }]));
 }
 
 export function localRuntime() {
   const config = parse(readFileSync(path.join(root, 'supabase/config.toml'), 'utf8'));
   validateLocalConfig(config, existsSync(path.join(root, 'supabase/.temp/project-ref')));
-  // CLI dotenv files can override the selected runtime, ports, and database target.
-  for (const name of ['.env', '.env.local', 'supabase/.env']) {
-    assert.equal(existsSync(path.join(root, name)), false, `Remove target overrides from ${name} before local operations.`);
-  }
-  const environment = { ...process.env, DO_NOT_TRACK: '1' };
-  for (const name of Object.keys(environment)) {
-    if (/^(PG|SUPABASE_|DATABASE_URL$|OPENAI_API_KEY$)/.test(name)) delete environment[name];
-  }
+  validateLocalFiles(root);
+  const environment = localEnvironment(process.env);
   const run = (command, args) => execFileSync(command, args, {
     cwd: root, env: environment, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (environment.DOCKER_HOST) validateDockerEndpoint(environment.DOCKER_HOST);
   validateDockerEndpoint(run('docker', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}']).trim());
+  requireLocal(realpathSync(run('git', ['rev-parse', '--show-toplevel']).trim()) === realpathSync(root), 'Git root does not match this checkout.');
   const branch = run('git', ['symbolic-ref', 'HEAD']).trim();
-  const cli = args => run(process.execPath, [path.join(root, 'node_modules/supabase/dist/supabase.js'),
-    '--workdir', root, '--agent', 'no', ...args]);
+  const cli = args => {
+    validateLocalFiles(root);
+    return run(process.execPath, [path.join(root, 'node_modules/supabase/dist/supabase.js'), '--workdir', root, '--agent', 'no', ...args]);
+  };
   const status = () => JSON.parse(cli(['stack', 'status', '--output-format', 'json']));
   const verify = () => {
     const current = status();
     const mcp = validateLocalStatus(current, realpathSync(root), branch);
     const ids = run('docker', ['ps', '--filter', `label=com.supabase.stack=${current.identity.id}`, '--format', '{{.ID}}']).trim();
-    assert.ok(ids, 'Missing local containers.');
+    requireLocal(ids, 'Missing local containers.');
     const containers = JSON.parse(run('docker', ['inspect', ...ids.split(/\s+/)]));
     for (const container of containers) validateContainer(container, current.identity.id);
-    assert.ok(containers.some(container => container.Config.Labels['com.supabase.service'] === 'database'));
-    return { id: current.identity.id, branch, mcp, endpoints: current.endpoints };
+    requireLocal(containers.some(container => container.Config.Labels['com.supabase.service'] === 'database'), 'Missing local database container.');
+    return { id: current.identity.id, branch, mcp, endpoints: safeEndpoints(current.endpoints) };
   };
-  return { cli, status, verify, branch };
+  const stop = () => {
+    const current = status();
+    validateLocalStatus(current, realpathSync(root), branch, false);
+    requireLocal(current.runtime === 'docker', 'Only an existing local Docker stack can be stopped.');
+    cli(['stack', 'stop', '--stack-id', current.identity.id, '--output-format', 'json']);
+    const remaining = run('docker', ['ps', '--filter', `label=com.supabase.stack=${current.identity.id}`, '--format', '{{.ID}}']).trim();
+    requireLocal(!remaining, 'Local stack containers remain running after stop.');
+    const stopped = status();
+    validateLocalStatus(stopped, realpathSync(root), branch, false);
+    requireLocal(stopped.identity.id === current.identity.id && stopped.lifecycle !== 'running', 'Local owner still reports a running stack after stop.');
+  };
+  return { cli, status, verify, branch, stop };
 }
 
-export async function withLocalLock(operation) {
-  const cache = path.join(root, '.cache');
+export async function withLocalLock(operation, directory = root) {
+  const cache = path.join(directory, '.cache');
   mkdirSync(cache, { recursive: true });
   const lock = path.join(cache, 'supabase-local.lock');
-  closeSync(openSync(lock, 'wx'));
-  try { return await operation(); } finally { unlinkSync(lock); }
+  const lease = randomUUID();
+  const descriptor = openSync(lock, 'wx', 0o600);
+  try {
+    writeFileSync(descriptor, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString(), lease }));
+  } finally { closeSync(descriptor); }
+  try { return await operation(); } finally {
+    requireLocal(JSON.parse(readFileSync(lock, 'utf8')).lease === lease, 'Local lock ownership changed; inspect active processes before cleanup.');
+    unlinkSync(lock);
+  }
 }
 
 async function main(action) {
   const actions = ['start', 'status', 'reset', 'test', 'types', 'check-types', 'lint', 'drift', 'history', 'stop'];
-  assert.ok(actions.includes(action), `Use one of: ${actions.join(', ')}`);
+  requireLocal(actions.includes(action), `Use one of: ${actions.join(', ')}`);
   const runtime = localRuntime();
   await withLocalLock(() => {
     if (action === 'start') {
@@ -115,8 +169,13 @@ async function main(action) {
       validateLocalStatus(before, realpathSync(root), runtime.branch, false);
       runtime.cli(['stack', 'start', '--runtime', 'docker', '--preparation', 'on-demand', '--frozen',
         '--exclude', 'realtime,storage,functions,mail,analytics,pooler', '--output-format', 'json']);
-      assert.equal(runtime.verify().id, before.identity.id);
+      requireLocal(runtime.verify().id === before.identity.id, 'Stack identity changed during startup.');
       console.log('PASS: current worktree/branch stack started; all Docker ports bind to loopback.');
+      return;
+    }
+    if (action === 'stop') {
+      runtime.stop();
+      console.log('PASS: stopped only this worktree/branch stack; no task containers running; local data retained.');
       return;
     }
     const before = runtime.verify();
@@ -126,19 +185,15 @@ async function main(action) {
     } else if (action === 'types' || action === 'check-types') {
       const generated = runtime.cli(['gen', 'types', 'typescript', '--local', '--schema', 'public'])
         .replaceAll('\r\n', '\n').replace(/[\t ]+$/gm, '');
-      assert.match(generated, /export type Database\s*=/);
+      requireLocal(/export type Database\s*=/.test(generated), 'Invalid generated database types.');
       const typesFile = path.join(root, 'supabase/database.types.ts');
-      if (action === 'check-types') assert.equal(generated, readFileSync(typesFile, 'utf8'), 'Regenerate local database types.');
+      if (action === 'check-types') requireLocal(generated === readFileSync(typesFile, 'utf8'), 'Regenerate local database types.');
       else {
         const temporary = path.join(root, '.cache/database.types.ts');
         writeFileSync(temporary, generated);
         renameSync(temporary, typesFile);
       }
       console.log(`PASS: local database types ${action === 'types' ? 'generated' : 'match'}.`);
-    } else if (action === 'stop') {
-      runtime.cli(['stack', 'stop', '--stack-id', before.id, '--output-format', 'json']);
-      console.log('PASS: stopped only this worktree/branch stack; local data retained.');
-      return;
     } else {
       const args = {
         reset: ['db', 'reset', '--local', '--yes'],
@@ -149,20 +204,19 @@ async function main(action) {
       }[action];
       const result = runtime.cli(args);
       console.log(redactDiagnostic(result.trim()));
-      if (action === 'drift') assert.equal(result.trim(), '', 'Local schema drift detected.');
+      if (action === 'drift') requireLocal(result.trim() === '', 'Local schema drift detected.');
       console.log(`PASS: local ${action}.`);
     }
-    assert.equal(runtime.verify().id, before.id, 'Stack identity changed during operation.');
+    requireLocal(runtime.verify().id === before.id, 'Stack identity changed during operation.');
   });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    assert.equal(process.argv.length, 3, 'Additional flags and target overrides are forbidden.');
+    requireLocal(process.argv.length === 3, 'Additional flags and target overrides are forbidden.');
     await main(process.argv[2]);
   } catch (error) {
-    console.error(error.status === undefined ? error.message
-      : `Local command failed (exit ${error.status}): ${redactDiagnostic(error.stderr || 'Inspect CLI/runtime readiness; raw credential-bearing output withheld.')}`);
+    console.error(safeDiagnostic(error));
     process.exitCode = 1;
   }
 }

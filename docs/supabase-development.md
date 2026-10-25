@@ -9,6 +9,11 @@ payments, product roles or Kael runtime. Do not import another project's schema.
 
 Use Node 24 and an installed, running local Docker engine:
 
+On Windows, stop an existing task stack with `npm run db:stop` before reinstalling
+dependencies. Its owner process holds the pinned CLI executable open; `npm ci`
+cannot replace that file while the stack runs. Do not elevate npm or kill unrelated
+processes to bypass the lock. A new checkout without a running stack can install directly.
+
 ```sh
 npm ci --ignore-scripts
 npm run tools:install
@@ -56,17 +61,29 @@ coverage. Additional flags, linked checkouts, remote Docker endpoints and local
 dotenv target overrides are rejected; ambient Postgres/Supabase overrides are
 removed. A checkout lock rejects overlapping CLI commands and asynchronous MCP requests.
 After interruption, verify the owning process has exited before removing a stale
-`.cache/supabase-local.lock`. Stop retains this stack's data. Never log raw CLI
+`.cache/supabase-local.lock`. Its PID/start time identify the operation; stale
+leases are never automatically reaped, and release preserves a replaced lease.
+Stop checks both the owner state and running task containers and retains data.
+Never log raw CLI
 status/start JSON: its `env` field contains local passwords and API keys. The
 wrapper outputs only selected identity and endpoint fields.
+Environment filtering is case-insensitive on Windows; both CLI link formats and
+dotenv variants in the root/Supabase folder are rejected before every CLI call.
+Unknown error messages/stdout/stderr are withheld, retaining stable error/exit
+codes. MCP errors use the same boundary; synthetic error regression checks do not
+print their payloads. HTTP errors and SQL errors must remain failures.
 
 ## Schema and verification limits
 
 `supabase/migrations/` is the sole application schema source; no SQL migrations
 were invented. Hosted history and public relations are empty. Hosted metadata
 also contains `public.rls_auto_enable()` and `ensure_rls`, absent locally. Their
-platform ownership/source remains a reconciliation gap, so empty local drift
-does **not** establish complete hosted parity. No remote repair, DDL or data
+definitions match Studio's optional Auto enable RLS template, are owned by
+`postgres`, and are not extension members. The installing actor/mechanism is still
+unverified; do not label them automatically maintained platform objects. Empty
+drift establishes only local application migration consistency, **not** complete
+hosted catalog parity. PostgreSQL major versions agree (17); local image release
+17.11.0.006 and hosted 17.11.0.003 differ. No remote repair, DDL or data
 export was performed. Generate future migration names with the pinned CLI.
 
 `supabase/seed.sql` contains no data. Add synthetic fixtures alongside real product
@@ -74,11 +91,23 @@ migrations. `supabase/database.types.ts` is the single generated artifact, from
 local `public`, normalized to LF without trailing whitespace. There is no app
 client to consume it yet. `typecheck:db` checks that artifact only.
 
-The four pgTAP checks inspect actual public RLS, view security, privileged RPC
-access and function search paths. Eight wrapper tests exercise target rejection,
-identity/binding validation, remote Docker rejection, asynchronous locking,
-redaction and client configuration. Empty-schema success does not prove Customer
+pgTAP inspects actual public RLS, table/column view grants, readable snapshots,
+SECURITY DEFINER EXECUTE (ordinary RPC and hooks separately), and reviewed function
+search paths. Transactional fixtures prove rejection and acceptance after local
+repairs and then roll back. Hook ACL hygiene is not a claim that event-trigger
+functions can execute through RPC. These checks do not replace SQL/source review
+of definer functions. Exposing additional application schemas requires updating
+the configuration guard and corresponding database checks; `graphql_public` is
+the existing platform GraphQL schema, outside the application type artifact.
+Wrapper tests cover target/environment isolation, locks, diagnostic disclosure,
+image pinning and both client configurations. Empty-schema success does not prove Customer
 A/B, Worker, Admin, payment or Kael isolation: those features are NOT IMPLEMENTED.
+Future application migrations must enable RLS explicitly and supply the feature's
+actual role/grant/policy tests; do not rely on the optional hosted event trigger.
+Do not reuse its names, drop it, or baseline its ownership implicitly. Any decision
+to manage that hook through migrations needs owner-approved reconciliation first.
+Future role tests should authenticate synthetic users under the real API/SQL roles,
+exercise allowed and denied row/state transitions, then roll back their fixtures.
 
 ## Codex and Claude Code
 
@@ -102,6 +131,12 @@ OAuth is stored by the client outside Git. Actual Codex app-server discovery and
 `list_migrations` succeeded for both hosted and local connections without a model
 run. The active desktop connector was separately tested; its broader account
 permissions do not transfer to these dedicated endpoints.
+The subsequent fresh interactive Codex session also read the existing Supabase
+plugin skill, preserved root policy boundaries, and returned hosted migrations
+and local public tables after two separate one-time approval prompts. Noninteractive
+`exec` correctly blocked those prompts under approval policy never. See the
+[hardening evidence](setup-evidence.md#supabase-hardening-verification-2026-10-25)
+for the tested runtime mode and limits; do not disable prompts to make it pass.
 
 Claude Code `2.1.310` was installed from Anthropic's official source with valid
 Authenticode signature. On this Windows machine it is at
@@ -126,7 +161,10 @@ claude --settings .claude/settings.local.json mcp get supabase_enterprise_local
 Both returned Connected. A metadata-only SDK probe using only this Claude client's
 OAuth credential returned empty migration/table lists; credentials stayed in
 process memory. This is transport/auth evidence, not a Claude model-driven query.
-Claude model sign-in and fresh model behavior/policy-loading tests remain NOT RUN.
+Claude model sign-in and fresh model behavior/policy-loading tests remain BLOCKED.
+Current Claude documentation supports direct AGENTS.md loading from 2.1.277;
+installed 2.1.310 meets that version threshold and no ancestor policy shadows the
+root here, but file presence/default settings do not prove a session loaded it.
 Do not add policy mirrors or loaders to resolve that gap.
 
 Both clients launch `scripts/supabase-mcp.mjs` for local MCP. It uses the official

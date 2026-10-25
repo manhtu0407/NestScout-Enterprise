@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, unlinkSync, existsSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'smol-toml';
-import { validateLocalConfig, validateContainer, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock } from './supabase-local.mjs';
-import { localTools } from './supabase-mcp.mjs';
+import { validateLocalConfig, validateContainer, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock, validateLocalFiles, localEnvironment, safeDiagnostic, safeEndpoints } from './supabase-local.mjs';
+import { localTools, safeToolResult } from './supabase-mcp.mjs';
 
 const config = parse(readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8'));
 const stackId = 'a'.repeat(64);
@@ -35,16 +37,20 @@ test('accept isolated config and reject linked, legacy, static-port and declarat
   assert.throws(() => validateLocalConfig({ ...config, db: { ...config.db, port: 54322 } }, false));
   assert.throws(() => validateLocalConfig({ ...config, experimental: { stack: false } }, false));
   assert.throws(() => validateLocalConfig({ ...config, db: { ...config.db, migrations: { enabled: true, schema_paths: ['schemas/*.sql'] } } }, false));
+  assert.throws(() => validateLocalConfig({ ...config, api: { ...config.api, schemas: [...config.api.schemas, 'unreviewed'] } }, false));
 });
 
 test('reject wrong container identity, stopped services and public Docker bindings', () => {
   const container = {
-    Config: { Labels: { 'com.supabase.stack': stackId } }, State: { Running: true },
+    Config: { Labels: { 'com.supabase.stack': stackId, 'com.supabase.service': 'database' } }, State: { Running: true },
+    HostConfig: { NetworkMode: 'fixture-bridge' },
     NetworkSettings: { Ports: { '5432/tcp': [{ HostIp: '127.0.0.1', HostPort: '25003' }] } },
   };
   assert.doesNotThrow(() => validateContainer(container, stackId));
   assert.throws(() => validateContainer(container, 'b'.repeat(64)));
   assert.throws(() => validateContainer({ ...container, State: { Running: false } }, stackId));
+  assert.throws(() => validateContainer({ ...container, HostConfig: { NetworkMode: 'host' }, NetworkSettings: { Ports: {} } }, stackId));
+  assert.throws(() => validateContainer({ ...container, NetworkSettings: { Ports: {} } }, stackId));
   for (const HostIp of ['0.0.0.0', '::']) {
     container.NetworkSettings.Ports['5432/tcp'][0].HostIp = HostIp;
     assert.throws(() => validateContainer(container, stackId));
@@ -59,7 +65,7 @@ test('derive local MCP only from a running, matching worktree/branch stack', () 
     { identity: { ...status.identity, branch_context: 'refs/heads/main' } }]) {
     assert.throws(() => validate({ ...status, ...patch }));
   }
-  for (const url of ['https://example.supabase.co', 'http://user:dummy@127.0.0.1:25002', 'http://127.0.0.1:54321']) {
+  for (const url of ['https://example.supabase.co', 'http://user:dummy@127.0.0.1:25002', 'http://127.0.0.1:54321', 'http://127.0.0.1:25002/?access_token=synthetic', 'http://127.0.0.1:25002/override']) {
     assert.throws(() => validate({ ...status, endpoints: { ...status.endpoints, 'rest.http': { ...status.endpoints['rest.http'], url } } }));
   }
 });
@@ -73,17 +79,67 @@ test('reject remote Docker daemons', () => {
 });
 
 test('lock remains held across asynchronous MCP calls and releases after failure', async () => {
-  await assert.rejects(withLocalLock(async () => {
-    await Promise.resolve();
-    await assert.rejects(withLocalLock(() => {}), /EEXIST/);
-    throw new Error('synthetic failure');
-  }), /synthetic failure/);
-  assert.equal(await withLocalLock(() => 'released'), 'released');
+  const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-lock-test-'));
+  try {
+    await assert.rejects(withLocalLock(async () => {
+      await Promise.resolve();
+      assert.equal(JSON.parse(readFileSync(path.join(directory, '.cache/supabase-local.lock'))).pid, process.pid);
+      await assert.rejects(withLocalLock(() => {}, directory), /EEXIST/);
+      throw new Error('synthetic failure');
+    }, directory), /synthetic failure/);
+    assert.equal(await withLocalLock(() => 'released', directory), 'released');
+    const lock = path.join(directory, '.cache/supabase-local.lock');
+    await assert.rejects(withLocalLock(() => writeFileSync(lock, JSON.stringify({ lease: 'replacement' })), directory), /ownership changed/);
+    assert.equal(JSON.parse(readFileSync(lock)).lease, 'replacement');
+    unlinkSync(lock);
+    const module = new URL('./supabase-local.mjs', import.meta.url).href;
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `import { withLocalLock } from ${JSON.stringify(module)}; await withLocalLock(() => process.exit(0), ${JSON.stringify(directory)});`]);
+    assert.equal(child.status, 0);
+    assert.ok(existsSync(lock));
+    await assert.rejects(withLocalLock(() => {}, directory), /EEXIST/);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('reject every dotenv/link override and scrub case-insensitive ambient target selection', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-target-test-'));
+  mkdirSync(path.join(directory, 'supabase/.temp'), { recursive: true });
+  try {
+    writeFileSync(path.join(directory, '.env.example'), '');
+    validateLocalFiles(directory);
+    for (const name of ['.env', '.env.development.local', 'supabase/.env.local', 'supabase/.temp/project-ref', 'supabase/.link.json']) {
+      const file = path.join(directory, name);
+      writeFileSync(file, 'synthetic override');
+      assert.throws(() => validateLocalFiles(directory));
+      unlinkSync(file);
+    }
+    assert.deepEqual(localEnvironment({ PATH: 'fixture', supabase_access_token: 'synthetic', PgPaSsWoRd: 'synthetic', database_url: 'synthetic', GIT_WORK_TREE: 'other', GIT_CONFIG_COUNT: '1' }), { PATH: 'fixture', DO_NOT_TRACK: '1' });
+    const docker = localEnvironment({ docker_host: 'tcp://example.invalid:2376', docker_context: 'fixture' });
+    assert.equal(docker.DOCKER_CONTEXT, 'fixture');
+    assert.throws(() => validateDockerEndpoint(docker.DOCKER_HOST));
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
 test('retain diagnostic context without connection credentials', () => {
   assert.equal(redactDiagnostic('failed postgres://fixture:dummy@127.0.0.1/db'), 'failed postgres://[REDACTED]@127.0.0.1/db');
   assert.equal(redactDiagnostic('network not found'), 'network not found');
+  const secret = ['synthetic', 'private', 'value'].join('-');
+  for (const value of [`https://fixture:${secret}@127.0.0.1`, `Authorization: Bearer ${secret}`, `PGPASSWORD=${secret}`, JSON.stringify({ access_token: secret, client_secret: secret }), `http://127.0.0.1/?refresh_token=${secret}`]) {
+    assert.ok(!redactDiagnostic(value).includes(secret));
+  }
+  assert.ok(!safeDiagnostic({ message: secret, code: secret, stdout: secret, stderr: secret }).includes(secret));
+  assert.match(safeDiagnostic({ code: 'ENOENT', status: 1, message: secret }), /ENOENT; exit 1/);
+  assert.ok(!JSON.stringify(safeToolResult({ isError: true, content: [{ type: 'text', text: secret }], credential: secret })).includes(secret));
+  const projected = safeEndpoints({ ...status.endpoints, 'private.value': secret });
+  assert.equal(projected['private.value'], undefined);
+  assert.deepEqual(Object.keys(safeEndpoints({ 'rest.http': { ...status.endpoints['rest.http'], password: secret } })['rest.http']), ['protocol', 'address', 'port', 'url']);
+});
+
+test('service lock retains official image digests and the configured Postgres major', () => {
+  const lock = JSON.parse(readFileSync(new URL('../supabase/supabase.lock', import.meta.url)));
+  assert.equal(lock.lockfileVersion, 1);
+  assert.equal(lock.services.database.majorVersion, config.db.major_version);
+  for (const service of Object.values(lock.services)) assert.match(service.resolved.image, /^ghcr\.io\/supabase\/cli\/[^\s]+@sha256:[a-f0-9]{64}$/);
 });
 
 test('both clients retain identical project-scoped read-only MCP and safe local bridge', () => {
@@ -108,6 +164,7 @@ test('both clients retain identical project-scoped read-only MCP and safe local 
   const local = codex.mcp_servers.supabase_enterprise_local;
   assert.equal(local.command, 'node');
   assert.deepEqual(local.args, ['scripts/supabase-mcp.mjs']);
+  assert.deepEqual(local.enabled_tools, localTools);
   assert.equal(local.default_tools_approval_mode, 'prompt');
   assert.deepEqual(claude.mcpServers.supabase_enterprise_local.args, local.args);
 });
