@@ -97,7 +97,6 @@ Retain only sanitized evidence while it is needed. For cleanup, resolve and veri
 the exact owned temporary root, reject symlink/junction replacement, and remove
 only that root. Never sweep the temp directory or another task's worktrees.
 
-
 ## V2 independent runtime evaluation protocol
 
 Deterministic regression checks verify repository guard behavior; they are not
