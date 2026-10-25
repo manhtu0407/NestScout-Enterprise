@@ -1,11 +1,25 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync, lstatSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync, lstatSync, chmodSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { root } from './tool-path.mjs';
 import { gitEnvironment } from './git-environment.mjs';
+import { git as repositoryGit, repositoryFiles, checkHookIndex } from './repository-files.mjs';
+
+test('aggregate verification retains Foundation, hygiene and existing checks', () => {
+  const { scripts } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const checks = scripts.check.split(' && ');
+  for (const name of ['check:reserved', 'check:hygiene', 'check:metadata', 'lint:markdown',
+    'lint:yaml', 'lint:workflows', 'scan:secrets', 'verify:supabase', 'typecheck:db', 'verify:foundation']) {
+    assert.ok(checks.includes(`npm run ${name}`), `Aggregate dropped ${name}.`);
+  }
+  assert.equal(scripts['verify:foundation'], 'node --test scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs');
+  assert.equal(scripts['agents:evaluate'], 'node scripts/agent-evaluation.mjs');
+  assert.equal(scripts['verify:negative'], 'node scripts/verify-negative.mjs && node --test scripts/check-hygiene.test.mjs');
+});
 
 test('hook-inherited Git selectors cannot redirect fixture or recovery operations into a donor repository', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-hook-environment-'));
@@ -30,6 +44,9 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
     };
     assert.ok(!Object.keys(gitEnvironment({ ...poisoned, git_namespace: 'other' })).some(name => /^git_/i.test(name)));
     delete poisoned.NODE_TEST_CONTEXT;
+    assert.equal(realpathSync.native(execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: root, env: poisoned, encoding: 'utf8', stdio: 'pipe',
+    }).trim()), realpathSync.native(repository), 'An unisolated Git subprocess must be redirected to the donor.');
     const result = spawnSync(process.execPath, ['--test', 'scripts/backup.test.mjs', 'scripts/agent-evaluation.test.mjs'], {
       cwd: root, env: poisoned, encoding: 'utf8', timeout: 60000,
     });
@@ -37,6 +54,69 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.match(result.stdout, /tests 4/);
     assert.deepEqual(snapshot(), before, 'Donor HEAD, refs, index, config or unrelated work changed.');
+
+    const linked = path.join(directory, 'linked');
+    git(['worktree', 'add', '--quiet', '-b', 'codex/isolation-fixture', linked]);
+    writeFileSync(path.join(linked, 'keep.txt'), 'linked index content\n');
+    repositoryGit(linked, ['add', '--', 'keep.txt'], { env: poisoned });
+    writeFileSync(path.join(linked, 'keep.txt'), 'linked working content\n');
+    assert.equal(repositoryGit(linked, ['branch', '--show-current'], { env: poisoned }).trim(), 'codex/isolation-fixture');
+    assert.deepEqual(repositoryGit(linked, ['show', ':keep.txt'], { env: poisoned, encoding: null }), Buffer.from('linked index content\n'));
+    const linkedIndex = repositoryGit(linked, ['rev-parse', '--path-format=absolute', '--git-path', 'index']).trim();
+    assert.doesNotThrow(() => checkHookIndex(linked, {}));
+    assert.doesNotThrow(() => checkHookIndex(linked, { GIT_INDEX_FILE: linkedIndex }));
+    assert.throws(() => checkHookIndex(linked, { GIT_INDEX_FILE: linkedIndex + '.alternate' }), /Alternate Git indexes/);
+    const cleanEnvironment = { ...process.env };
+    try {
+      Object.assign(process.env, poisoned);
+      const files = repositoryFiles(linked).filter(file => file.file === 'keep.txt');
+      assert.deepEqual(files.map(file => [file.state, file.content.toString()]), [
+        ['index', 'linked index content\n'], ['working', 'linked working content\n'],
+      ]);
+    } finally {
+      for (const name of Object.keys(process.env)) if (!(name in cleanEnvironment)) delete process.env[name];
+      Object.assign(process.env, cleanEnvironment);
+    }
+    const hooks = path.join(directory, 'hooks');
+    mkdirSync(hooks);
+    const probe = path.join(directory, 'verify-index.mjs');
+    writeFileSync(probe, `import { checkHookIndex } from ${JSON.stringify(pathToFileURL(path.join(root, 'scripts/repository-files.mjs')).href)};\ncheckHookIndex(process.cwd());\n`);
+    writeFileSync(path.join(hooks, 'pre-commit'), `#!/bin/sh\nexec "${process.execPath.replaceAll('\\', '/')}" "${probe.replaceAll('\\', '/')}"\n`);
+    chmodSync(path.join(hooks, 'pre-commit'), 0o755);
+    const hookCommit = ['-c', `core.hooksPath=${hooks}`, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet'];
+    repositoryGit(linked, [...hookCommit, '-m', 'chore: ordinary staged fixture']);
+    const linkedHead = repositoryGit(linked, ['rev-parse', 'HEAD']);
+    const linkedStaging = repositoryGit(linked, ['ls-files', '--stage']);
+    for (const mode of ['--only', '--include']) {
+      assert.throws(() => repositoryGit(linked, [...hookCommit, mode, '-m', 'chore: alternate index fixture', '--', 'keep.txt']),
+        error => error.status === 1 && String(error.stderr).includes('Alternate Git indexes'));
+      assert.equal(repositoryGit(linked, ['rev-parse', 'HEAD']), linkedHead);
+      assert.equal(repositoryGit(linked, ['ls-files', '--stage']), linkedStaging);
+      assert.equal(readFileSync(path.join(linked, 'keep.txt'), 'utf8'), 'linked working content\n');
+    }
+    const withLinked = snapshot();
+    assert.equal(withLinked.head, before.head);
+    assert.equal(withLinked.index, before.index);
+    assert.equal(withLinked.content, before.content);
+    assert.equal(withLinked.config, before.config);
+    assert.equal(withLinked.status, before.status);
+
+    for (const args of [
+      ['--test', 'scripts/check-hygiene.test.mjs'],
+      ['scripts/verify-negative.mjs'],
+      ['scripts/check-reserved-files.mjs'],
+      ['scripts/check-hygiene.mjs'],
+      ['scripts/check-metadata.mjs'],
+      ['scripts/check-yaml.mjs'],
+      ['scripts/check-tools.mjs', 'workflows'],
+      ['scripts/check-tools.mjs', 'secrets'],
+    ]) {
+      const child = spawnSync(process.execPath, args, { cwd: root, env: poisoned, encoding: 'utf8', timeout: 120000 });
+      assert.ifError(child.error);
+      assert.equal(child.status, 0, `${args.join(' ')}\n${child.stdout}${child.stderr}`);
+      if (args[0] === '--test') assert.match(child.stdout, /tests 46\b/);
+      assert.deepEqual(snapshot(), withLinked, 'Poisoned hygiene checks or fixtures changed the donor repository.');
+    }
   } finally {
     assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
     assert.ok(!lstatSync(directory).isSymbolicLink());

@@ -2,6 +2,7 @@ name: Repository CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
     branches: [main]
 
@@ -31,15 +32,20 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Install checksum-verified tools
         run: npm run tools:install
-      - name: Check documentation, YAML, workflows, and secrets
+      - name: Check hygiene, metadata, documentation, workflows, and secrets
         run: npm run check
       - name: Confirm checks reject invalid fixtures
         run: npm run verify:negative
       - name: Verify optional hooks on Linux
         run: |
           test -x .githooks/pre-commit
+          test -x .githooks/commit-msg
           test -x .githooks/pre-push
           git -c core.hooksPath=.githooks hook run pre-commit
+          message=$(mktemp)
+          trap 'rm -f "$message"' EXIT
+          printf 'chore: verify commit hook\n' > "$message"
+          git -c core.hooksPath=.githooks hook run commit-msg -- "$message"
       - name: Write check summary
         if: always()
         env:

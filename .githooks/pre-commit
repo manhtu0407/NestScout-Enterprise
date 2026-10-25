@@ -1,3 +1,6 @@
 #!/bin/sh
 set -eu
+npm run check:reserved
+npm run check:hygiene -- --hook
+npm run check:metadata
 npm run scan:secrets

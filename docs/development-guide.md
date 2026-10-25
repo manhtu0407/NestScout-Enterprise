@@ -44,8 +44,73 @@ Optional local hooks (affect only this checkout):
 git config --local core.hooksPath .githooks
 ```
 
-Hooks can be bypassed and are not server-side protection. Secret checks cover Git
-history plus tracked/unignored working files. Keep local secrets in ignored files.
+Hooks can be bypassed and are not server-side protection. Pre-commit checks reserved
+files, hygiene, existing commit metadata and secrets; commit-msg validates the proposed
+message; pre-push verifies identity, the actual pushed ref, metadata and aggregate
+checks. Secret checks retain staged-blob, history and working-file scans. Keep local
+secrets in ignored files. `npm run verify:negative` includes deterministic positive
+and negative hygiene/metadata fixtures in isolated temporary Git repositories.
+
+`npm run check` also runs `verify:foundation`, retaining backup/restore and agent
+evaluation harness regression tests. Its Git environment integration test runs the
+hygiene suites and checker entry points with poisoned `GIT_*` selectors and verifies
+that the donor repository is unchanged. Git subprocesses use the shared Foundation
+environment scrubber, including linked-worktree and staged secret checks.
+Hooks reject alternate indexes (including `git commit --only`/`--include`) so they
+cannot silently inspect a different index from the proposed commit. Stage the intended
+files and use an ordinary commit. Direct checks use the checkout's default index;
+custom `GIT_INDEX_FILE` workflows need a separately reviewed inspection contract.
+
+## Attribution settings and runtime limits
+
+`.claude/settings.json` sets `attribution.commit` and `attribution.pr` to empty
+strings and `attribution.sessionUrl` to `false`, preserving permissions and MCP.
+These are [supported Claude Code settings](https://code.claude.com/docs/en/settings-reference#attribution).
+The guard also accepts `attribution: false`, supported since 2.1.281; the committed
+object form remains compatible with versions that support the individual fields.
+Claude Code 2.1.310's read-only doctor accepted the project settings on Windows;
+the local installation was not signed in, so model-driven commit/PR attribution
+and policy discovery were NOT RUN. No PR was created to test attribution.
+
+Installed Codex CLI 0.163.0-alpha.11.2 rejects `commit_attribution` as an unknown
+project configuration field with `app-server --strict-config`. Automatic attribution
+disablement is BLOCKED for this runtime; the incompatible key is not committed.
+Existing `.codex/config.toml` MCP configuration is preserved. Older runtime advice
+about this key is not proof of support in the installed version. Recheck the
+[official configuration reference](https://developers.openai.com/codex/config-reference/)
+and strict runtime parsing before adding a supported replacement. If a compatible
+runtime uses that key, the hygiene checker permits only an empty value. Repository
+metadata guards reject known AI signature forms independently of runtime settings.
+Strict `config/read` without the incompatible key confirmed the project configuration
+layer loads; the effective configuration exposed no Git/attribution keys.
+Project/user/managed/CLI precedence and arbitrary model behavior require separate
+runtime verification; file presence and schema acceptance do not prove effective
+loading or complete behavioral compliance. No Git author identity is changed.
+
+The implementation adapts project-local consistency and technical comment guidance
+from [VS Code](https://github.com/microsoft/vscode/wiki/Coding-Guidelines) and
+[Google](https://google.github.io/styleguide/jsguide.html), shared upload/commit
+validation and full-scope fixtures from
+[Chromium presubmits](https://www.chromium.org/developers/how-tos/depottools/presubmit-scripts/),
+and the separation between checks and enforced merge gates from
+[GitHub rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
+It retains NestScout's ESM, kebab names, two-space indentation and current modules.
+Comments explaining security, races, compatibility, legal constraints or contracts
+remain legitimate; their usefulness is a human review decision.
+
+The hygiene reader uses Git batch reads for unique index blobs, checks working files
+separately, and reuses content inspection only when bytes for the same path are equal.
+Manifest hashes and path/configuration presence checks still run for both states.
+TypeScript syntax inspection uses the pinned TypeScript 7 native API in a virtual
+filesystem with no emit, imports or standard libraries resolved; every client closes
+in `finally`. Its API is explicitly unstable, so dependency updates must retain the
+TypeScript comment/string/JSX regression fixtures. No new dependency is installed.
+Native compiler startup remains a per-distinct-TypeScript-file cost. Measure it
+before applying full scans to a large TypeScript tree or source-heavy archive;
+batching compiler inputs may then be appropriate. Keep full CI coverage if a future
+local changed-file optimization is approved. Secret-history scan growth is separate
+from hygiene reader performance. Artifact support and manual-review limits are in
+[CONTRIBUTING](../CONTRIBUTING.md#file-and-review-workflow).
 
 ## Test artifact lifecycle
 

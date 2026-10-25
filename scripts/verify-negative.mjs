@@ -9,6 +9,7 @@ import { root, toolPath } from './tool-path.mjs';
 import { scanStaged } from './scan-staged.mjs';
 import { checkReservedFiles } from './check-reserved-files.mjs';
 import { checkTestArtifacts } from './check-test-artifacts.mjs';
+import { gitEnvironment } from './git-environment.mjs';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-negative-'));
 function mustReject(command, args, label) {
@@ -20,7 +21,7 @@ function mustReject(command, args, label) {
 }
 try {
   const artifactRepo = mkdtempSync(path.join(directory, 'test-artifacts-'));
-  const artifactGit = args => execFileSync('git', args, { cwd: artifactRepo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const artifactGit = args => execFileSync('git', args, { cwd: artifactRepo, env: gitEnvironment(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   const artifactWrite = (file, content = 'fixture\n') => {
     const target = path.join(artifactRepo, file);
     mkdirSync(path.dirname(target), { recursive: true });
@@ -94,7 +95,7 @@ try {
   const originalReadme = readFileSync(path.join(root, 'README.md'));
   function reservedCase(label, change, expectedError) {
     const repository = mkdtempSync(path.join(directory, 'reserved-'));
-    const git = args => execFileSync('git', args, { cwd: repository, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const git = args => execFileSync('git', args, { cwd: repository, env: gitEnvironment(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     const write = (file, content = '# Fixture\n') => {
       const target = path.join(repository, file);
       mkdirSync(path.dirname(target), { recursive: true });
@@ -191,7 +192,7 @@ try {
   console.log('PASS: scanner output did not disclose the synthetic credential.');
   const stagedRepo = path.join(directory, 'staged-regression');
   mkdirSync(stagedRepo);
-  const git = args => execFileSync('git', args, { cwd: stagedRepo, stdio: 'pipe' });
+  const git = args => execFileSync('git', args, { cwd: stagedRepo, env: gitEnvironment(), stdio: 'pipe' });
   git(['init', '--quiet']);
   writeFileSync(path.join(stagedRepo, 'example.txt'), 'clean\n');
   git(['add', 'example.txt']);
