@@ -1,12 +1,11 @@
-import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { root } from './tool-path.mjs';
-import { indexEntries } from './repository-files.mjs';
+import { git as repositoryGit, indexEntries } from './repository-files.mjs';
 
 export function checkReservedFiles(repository = root) {
-  const git = args => execFileSync('git', args, { cwd: repository, encoding: 'utf8' });
+  const git = args => repositoryGit(repository, args);
   const files = git(['ls-files', '--cached', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
   for (const file of new Set(files)) {
     if (file === 'AGENTS.md') continue;

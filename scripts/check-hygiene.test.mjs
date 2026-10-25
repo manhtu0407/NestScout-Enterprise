@@ -7,6 +7,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { root } from './tool-path.mjs';
+import { gitEnvironment } from './git-environment.mjs';
 import { git, repositoryFiles, blobByteLimit } from './repository-files.mjs';
 import { checkPath, checkAttribution, checkHygiene, sourceComments } from './check-hygiene.mjs';
 import { inspectArtifact, artifactLimits } from './inspect-artifact.mjs';
@@ -486,7 +487,7 @@ test('actual optional commit-msg hook accepts human metadata and rejects an AI t
   const message = path.join(directory, 'commit-message');
   for (const [text, expected] of [['chore: verify hook\n', 0], ['chore: verify hook\n\nCo-Authored-By: Codex <noreply@openai.com>\n', 1]]) {
     writeFileSync(message, text);
-    const result = spawnSync('git', ['-c', 'core.hooksPath=.githooks', 'hook', 'run', 'commit-msg', '--', message], { cwd: root, encoding: 'utf8' });
+    const result = spawnSync('git', ['-c', 'core.hooksPath=.githooks', 'hook', 'run', 'commit-msg', '--', message], { cwd: root, env: gitEnvironment(), encoding: 'utf8' });
     assert.equal(result.status, expected, result.stderr);
   }
 });

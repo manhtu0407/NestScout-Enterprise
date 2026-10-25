@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
+import { gitEnvironment } from './git-environment.mjs';
 
 export const blobByteLimit = 32 * 1024 * 1024;
 const snapshotByteLimit = 128 * 1024 * 1024;
@@ -8,8 +9,21 @@ const snapshotByteLimit = 128 * 1024 * 1024;
 export function git(repository, args, options = {}) {
   return execFileSync('git', args, {
     cwd: repository, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    maxBuffer: 32 * 1024 * 1024, ...options,
+    maxBuffer: 32 * 1024 * 1024, ...options, env: gitEnvironment(options.env ?? process.env),
   });
+}
+
+export function checkHookIndex(repository, environment = process.env) {
+  if (!environment.GIT_INDEX_FILE) return;
+  const expected = path.resolve(git(repository, ['rev-parse', '--path-format=absolute', '--git-path', 'index']).trim());
+  const selected = path.resolve(repository, environment.GIT_INDEX_FILE);
+  const normalize = value => {
+    const canonical = path.join(realpathSync.native(path.dirname(value)), path.basename(value));
+    return process.platform === 'win32' ? canonical.toLowerCase() : canonical;
+  };
+  if (normalize(selected) !== normalize(expected)) {
+    throw new Error('Alternate Git indexes are unsupported by repository hooks. Stage the intended files and use an ordinary commit.');
+  }
 }
 
 export function indexEntries(repository) {

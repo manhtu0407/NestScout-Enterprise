@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { gitEnvironment } from './git-environment.mjs';
 
 const cwd = fileURLToPath(new URL('../', import.meta.url));
-const run = (command, args) => execFileSync(command, args, { cwd, encoding: 'utf8' }).trim();
+const run = (command, args) => execFileSync(command, args, { cwd, env: gitEnvironment(), encoding: 'utf8' }).trim();
 export const repositoryIdentity = Object.freeze({
   fullName: 'manhtu0407/NestScout-Enterprise', id: 1432052547,
   account: 'manhtu0407', defaultBranch: 'main', private: false,

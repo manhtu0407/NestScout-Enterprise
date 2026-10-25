@@ -125,7 +125,7 @@ test('reject every dotenv/link override and scrub case-insensitive ambient targe
       assert.throws(() => validateLocalFiles(directory));
       unlinkSync(file);
     }
-    assert.deepEqual(localEnvironment({ PATH: 'fixture', supabase_access_token: 'synthetic', PgPaSsWoRd: 'synthetic', database_url: 'synthetic', GIT_WORK_TREE: 'other', GIT_CONFIG_COUNT: '1' }), { PATH: 'fixture', DO_NOT_TRACK: '1' });
+    assert.deepEqual(localEnvironment({ PATH: 'fixture', supabase_access_token: 'synthetic', PgPaSsWoRd: 'synthetic', database_url: 'synthetic', GIT_WORK_TREE: 'other', GIT_CONFIG_COUNT: '1', git_object_directory: 'other', GIT_NAMESPACE: 'other' }), { PATH: 'fixture', DO_NOT_TRACK: '1' });
     const docker = localEnvironment({ docker_host: 'tcp://example.invalid:2376', docker_context: 'fixture' });
     assert.equal(docker.DOCKER_CONTEXT, 'fixture');
     assert.throws(() => validateDockerEndpoint(docker.DOCKER_HOST));

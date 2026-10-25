@@ -8,7 +8,7 @@ import { createVirtualFileSystem } from 'typescript/unstable/fs';
 import { createScanner } from 'typescript/unstable/ast/scanner';
 import { SyntaxKind } from 'typescript/unstable/ast';
 import { root } from './tool-path.mjs';
-import { repositoryFiles } from './repository-files.mjs';
+import { repositoryFiles, checkHookIndex } from './repository-files.mjs';
 import { checkTestArtifacts } from './check-test-artifacts.mjs';
 import { inspectArtifact, hasArtifactSignature } from './inspect-artifact.mjs';
 
@@ -194,6 +194,8 @@ export function checkHygiene(repository = root) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (process.argv.length === 3 && process.argv[2] === '--hook') checkHookIndex(root);
+  else if (process.argv.length !== 2) throw new Error('Use no arguments or --hook.');
   checkHygiene();
   console.log('Repository paths, index/working content and attribution settings passed. Comment usefulness requires review.');
 }
