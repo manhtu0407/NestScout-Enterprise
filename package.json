@@ -12,11 +12,28 @@
     "lint:workflows": "node scripts/check-tools.mjs workflows",
     "check:reserved": "node scripts/check-reserved-files.mjs",
     "scan:secrets": "node scripts/check-tools.mjs secrets",
-    "check": "npm run check:reserved && npm run lint:markdown && npm run lint:yaml && npm run lint:workflows && npm run scan:secrets",
-    "verify:negative": "node scripts/verify-negative.mjs"
+    "check": "npm run check:reserved && npm run lint:markdown && npm run lint:yaml && npm run lint:workflows && npm run scan:secrets && npm run verify:supabase && npm run typecheck:db",
+    "verify:negative": "node scripts/verify-negative.mjs",
+    "db:start": "node scripts/supabase-local.mjs start",
+    "db:status": "node scripts/supabase-local.mjs status",
+    "db:reset": "node scripts/supabase-local.mjs reset",
+    "db:test": "node scripts/supabase-local.mjs test",
+    "db:mcp:test": "node --test scripts/supabase-mcp.integration.test.mjs",
+    "db:types": "node scripts/supabase-local.mjs types",
+    "db:types:check": "node scripts/supabase-local.mjs check-types",
+    "db:lint": "node scripts/supabase-local.mjs lint",
+    "db:drift": "node scripts/supabase-local.mjs drift",
+    "db:history": "node scripts/supabase-local.mjs history",
+    "db:stop": "node scripts/supabase-local.mjs stop",
+    "verify:supabase": "node --test scripts/supabase-local.test.mjs",
+    "typecheck:db": "tsc --noEmit --strict --skipLibCheck supabase/database.types.ts"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
     "markdownlint-cli2": "0.24.0",
+    "smol-toml": "1.9.1",
+    "supabase": "2.122.0",
+    "typescript": "7.0.2",
     "yaml": "2.9.1"
   },
   "overrides": {

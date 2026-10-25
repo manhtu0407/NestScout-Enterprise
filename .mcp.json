@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "supabase_enterprise_readonly": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=axpdymbusiwxfzurfclg&read_only=true&features=database,debugging,docs",
+      "oauth": {
+        "scopes": "database:read analytics:read"
+      }
+    },
+    "supabase_enterprise_local": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["scripts/supabase-mcp.mjs"]
+    }
+  }
+}

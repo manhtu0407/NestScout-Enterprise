@@ -1,0 +1,10 @@
+[mcp_servers.supabase_enterprise_readonly]
+url = "https://mcp.supabase.com/mcp?project_ref=axpdymbusiwxfzurfclg&read_only=true&features=database,debugging,docs"
+enabled_tools = ["list_tables", "list_extensions", "list_migrations", "execute_sql", "get_advisors", "search_docs"]
+default_tools_approval_mode = "prompt"
+
+[mcp_servers.supabase_enterprise_local]
+command = "node"
+args = ["scripts/supabase-mcp.mjs"]
+enabled_tools = ["list_tables", "list_extensions", "list_migrations", "execute_sql", "get_advisors", "search_docs"]
+default_tools_approval_mode = "prompt"

@@ -1,0 +1,2 @@
+-- No application tables exist. Add deterministic synthetic fixtures only when
+-- their owning application migrations exist; never import hosted customer data.

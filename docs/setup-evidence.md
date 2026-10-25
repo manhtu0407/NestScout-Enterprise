@@ -1,5 +1,8 @@
 # GitHub foundation setup evidence
 
+Latest Supabase results: [GitHub protection and Linux CI, 2026-10-25](#github-protection-and-linux-ci-2026-10-25).
+Earlier dated test counts and agent limitations below are historical observations.
+
 ## Supersession note — 2026-10-24
 
 This file preserves historical observations, not current agent instructions or
@@ -156,3 +159,427 @@ on [setup PR #3](https://github.com/manhtu0407/NestScout-Enterprise/pull/3).
 - Application build/test/deployment/monitoring/data recovery: WAITING FOR STACK.
 - Initial private eligibility was BLOCKED BY FREE PLAN. After the authorized public
   transition, reevaluate native features separately; no mandatory merge rules were added.
+
+## Supabase agent setup 2026-10-24
+
+Verdict: **PARTIALLY_READY**. Evidence applies to baseline
+`935824e4c07ea7de7012a8f1b0d1b72517f41a44`, setup commit
+`4c5f00b5816f49617e42ce30414a1e5c7a00e5d9`, and the managed-stack follow-up on
+`chore/supabase-agent-local-setup`, Windows x64, Node 24.19.0, npm 11.17.0,
+Supabase CLI 2.122.0, Docker 29.9.2 / local named-pipe context `desktop-linux`.
+The task cloned the existing GitHub repository into the previously empty workspace;
+its initial working tree was clean. Root policy and original README are unchanged.
+
+### Hosted discovery
+
+- PASS: GitHub connector and `npm run identity` verified repository ID `1432052547`,
+  owner `manhtu0407`, public, default `main`, exact HTTPS fetch/push origins.
+- PASS: Supabase connector project/org metadata and authenticated dashboard agree:
+  `axpdymbusiwxfzurfclg`, Seoul `ap-northeast-2`, Free, Nano/t4g.nano, healthy,
+  Postgres `17.11.0.003`. Integration names the exact target repository.
+- OBSERVED: zero hosted migrations, zero public relations, zero Storage buckets,
+  no public/Storage policies, no Edge Functions. Catalogs show `rls_auto_enable`
+  returning `event_trigger`, `SECURITY DEFINER`, `search_path=pg_catalog`, with
+  PUBLIC/anon/authenticated EXECUTE grants, and an `ensure_rls` event trigger.
+  Local public schema is empty. Platform-object parity remains NOT VERIFIED.
+- OBSERVED: email Auth enabled, email confirmation/signup enabled; anonymous and
+  manual linking disabled; listed social/phone providers disabled, no custom
+  providers. No provider settings, secrets or customer records were accessed/changed.
+- Security Advisor: two WARN findings for anonymous/authenticated EXECUTE on
+  `rls_auto_enable`. Exploitability of this event-trigger-returning function was
+  not established; no production fix was applied. Review
+  [anonymous EXECUTE guidance](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable)
+  and [authenticated EXECUTE guidance](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable).
+  Performance Advisor returned no findings. This does not prove application security.
+- Logs queries: NOT RUN to avoid additional scan usage; dashboard health and
+  small catalog queries only. Exposed Data API schema settings beyond observed
+  public objects/grants remain NOT VERIFIED.
+
+### Free usage alert
+
+Dashboard cycle **25 Sep–25 Oct 2026**. Organization totals showed Log Ingestion
+**4.39 GB / 1 GB** (3.39 GB over) and Log Query **690.37 GB / 100 GB**
+(590.37 GB over). Other observed totals were below allowance: egress 1.98/5 GB,
+Storage average 0.06/1 GB, 18/50,000 MAU, 169,065/500,000 function invocations,
+215/2,000,000 realtime messages, peak connections 8/200.
+
+Project filter for NestScout-Enterprise showed ingestion approximately **0.001 GB**,
+query **0 GB**, DB **24.88 MB**, no reported egress/MAU/Storage/function usage.
+These aggregate observations do not attribute the organization excess to this
+project. Dashboard labels the log metrics UPCOMING; official
+[ingest](https://supabase.com/docs/guides/platform/manage-your-usage/logs-ingest)
+and [query](https://supabase.com/docs/guides/platform/manage-your-usage/logs-query)
+docs confirm the grace period through the start of 2027. No billing/restriction
+impact from these two metrics was observed. Usage may lag; reassess after cycle
+reset. Lowest-cost response: avoid polling/broad scans, narrow time/source/columns,
+and investigate logging sources only within the approved project scope.
+
+### Local verification
+
+| Command/check | Result and limit |
+| --- | --- |
+| `npm ci --ignore-scripts`, pinned installs | PASS; no lifecycle scripts; npm audit reported 0 vulnerabilities |
+| `npm run tools:install` | PASS; existing actionlint/gitleaks SHA-256 verification preserved |
+| `npm run check` | PASS; reserved files, Markdown, YAML, workflows, staged/history/working-file secret scans |
+| `npm run verify:negative` | PASS; existing invalid fixtures and staged-secret regression rejected |
+| `npm run verify:supabase` | PASS; local target, container/bind, Docker endpoint, diagnostics and MCP configuration cases |
+| `npm run db:types`, `npm run db:types:check` | PASS; generated from verified local DB; byte-equivalent normalized regeneration |
+| `npm run typecheck:db` | PASS; generated artifact only; product typecheck NOT IMPLEMENTED |
+| `npm run db:test` | PASS; 4 pgTAP metadata checks on actual empty public schema |
+| `npm run db:lint` | PASS; no public function/type issues locally |
+| `npm run db:status` | PASS; reports verified worktree/branch stack and actual loopback endpoints without credentials |
+| `npm run db:start`, `db:reset`, `db:history`, `db:drift` | PASS on managed Docker stack; reset/replay, empty migration history and strict pg-delta drift |
+| Local migration replay from reset | PASS for the actual empty migration directory; not application schema coverage |
+| Customer/Worker/Admin/payment/Kael RLS scenarios | NOT IMPLEMENTED; no owning schema/endpoints; no invented business fixtures |
+| Local MCP handshake/catalog query | PASS; SDK discovered six allowed tools; catalog query returned zero public tables |
+| `npm run db:mcp:test` | PASS; real stdio/HTTP catalog query and denied migration-tool request |
+
+The initial legacy runtime published all interfaces despite Docker's documented
+network option. Those task containers were stopped, and an inert probe reproduced
+the problem. The follow-up proved the experimental managed stack on a separate
+disposable scratch root: explicit `127.0.0.1` bindings, distinct identity/endpoints,
+and targeted destroy. Its generated local credentials were accidentally included
+in a diagnostic output; the scratch stack was destroyed to invalidate them. No
+hosted credential was involved. The final wrapper withholds raw credential-bearing
+status/start JSON and reports only selected identity/endpoints.
+
+The verified task stack ID is
+`ebb98b437806fcbf5befd634aa49e3c47385672ad6aad011030a0a889b1e0cf2`, root
+`C:/Users/Phan Manh Tu/Documents/ChatGPT/NestScout`, branch
+`refs/heads/chore/supabase-agent-local-setup`. Observed dynamic ports were DB
+28148, API/MCP 23033, Studio 26249, pgmeta 31244. Docker inspection confirmed
+loopback-only publishing for every running task service. Both `db:start` resume
+and a second reset/test/lint/drift/type-consistency sequence passed. The lock
+rejects concurrent CLI/MCP operations and releases after asynchronous failure.
+`npm run db:mcp:test` then passed against the real stack, including a rejected
+migration-tool call. `npm run db:stop` passed, retaining local data for later use.
+
+The managed backend rejected migra; the wrapper uses its supported pg-delta engine
+with strict coverage. CLI and service-image digests are pinned. Experimental
+compatibility risk remains; this is not a stable-runtime guarantee. Docker Desktop
+was started when it was found stopped; no global Docker setting or unrelated stack
+was changed. No application migrations or seed data were fabricated.
+
+### Agent capabilities and publication gates
+
+| Client | Verified capability | Remaining gap |
+| --- | --- | --- |
+| This Codex session | Supabase/GitHub connectors authenticated; harmless project/catalog queries demonstrated; official Supabase skill entrypoints read | Connector is broad, not enforced read-only/project-scoped |
+| Standalone Codex CLI 0.163.0-alpha.10.2 | Exact checkout trusted; narrow OAuth; six-tool discovery and hosted/local `list_migrations` returned empty lists through app-server | Fresh model policy/approval behavior NOT RUN |
+| Claude Code 2.1.310 | Official signed Windows executable installed; hosted/local native `mcp get` Connected; narrow OAuth accepted | Claude model sign-in, model-driven query and skill/policy behavior NOT RUN |
+| Claude OAuth transport | SDK used only the matching endpoint/client credential in memory; hosted `list_migrations` and `list_tables(public)` returned empty lists | This is independent auth/transport proof, not a model-driven Claude query |
+| Local MCP | Shared stdio bridge; six-tool allowlist, verified dynamic endpoint, no redirects, identity checks and serialized operations | Start the local stack before connecting; experimental backend |
+
+The owner explicitly approved Database READ and Analytics READ for both clients.
+Codex's scoped login succeeded. Claude's first consent listed eight read groups
+despite its requested scopes; it was cancelled. Explicit narrow client registration,
+native fixed-client configuration, clearing the old cached registration and another
+login produced a consent with only the approved two groups. Claude authenticated
+successfully. Its local per-project override retains the identical hosted URL;
+client configuration/credentials remain outside Git. The local approval file names
+only these two servers and keeps tool prompts. Tracked Claude permissions also deny
+`query_logs`, migration/deploy and key retrieval. No PAT was created. Existing Codex
+plugin skills were reused rather than duplicated; Claude skill behavior is unverified.
+
+Repository workflow runs on `pull_request` and pushes to `main`; no workflow was
+edited or dispatched. No open PR references the setup branch. Repo webhooks,
+deployment records and environments were empty; CodeQL default setup is not
+configured; Pages endpoint returned 404. Supabase production deployment is OFF,
+automatic branching OFF/disabled, branch limit 0, working directory `.`.
+
+The initial push blocker was investigated through authenticated external dashboards.
+Vercel account `manh-tus-projects` listed four existing projects: two had no Git
+repository, and the two Fable projects referenced other repositories. The uncertain
+Fable project's Git settings explicitly named `manhtu0407/Fable-Thread-`, not
+NestScout-Enterprise. No NestScout Vercel hosting was created. Expo account `tshine`
+listed one existing `home-services` project; GitHub settings offered
+`manhtu0407/NestScout-Enterprise` with a Connect button, proving it was unbound.
+No connection, build, deployment or unrelated setting was changed.
+
+Feature-push gate: PASS for this branch without an open PR, with the inspected
+workflow triggers, no repo webhooks and Supabase production deployment/automatic
+branching OFF. No trigger was disabled or bypassed. The final delivery records
+the committed SHA and push verification. PR creation, hosted CI, merge, deployment,
+billing and production schema changes remain NOT RUN.
+
+P1: main branch protection is absent (API 404), rulesets empty; successful local
+checks do not provide server-side enforcement. Hosted platform-object parity is
+incomplete and must be resolved before a production migration release.
+P2: experimental runtime compatibility; two advisor EXECUTE warnings need focused
+review; fresh Claude model/skill/policy behavior remains unverified. No P0 incident
+was established. Recommendations are not completed production fixes.
+
+### Changed files in the complete setup
+
+- Agent configuration: `.codex/config.toml`, `.mcp.json`, `.claude/settings.json`.
+- Tooling: `package.json`, `package-lock.json`, `scripts/supabase-local.mjs`,
+  `scripts/supabase-local.test.mjs`, `scripts/supabase-mcp.mjs`,
+  `scripts/supabase-mcp.integration.test.mjs`.
+- Local schema/configuration: `supabase/config.toml`, `supabase/supabase.lock`,
+  `supabase/.gitignore`, `supabase/database.types.ts`, `supabase/migrations/.gitkeep`,
+  `supabase/seed.sql`, `supabase/tests/database/security.test.sql`.
+- Documentation/hygiene: `.gitignore`, `docs/development-guide.md`,
+  `docs/supabase-development.md`, `docs/operations.md`, `docs/setup-evidence.md`.
+
+Root `AGENTS.md`, reserved original `README.md` and hosted workflow files are
+unchanged. Machine trust, OAuth credentials and Claude local approvals are not Git
+artifacts. No paid plan, production release or Vercel hosting was provisioned.
+
+## Supabase hardening verification 2026-10-25
+
+Verdict: **ACCEPT WITH CONDITIONS** for continued local development. This is not
+approval for a PR, hosted CI, merge or Production deployment. The independent
+audit started at `3d0af495b6fcb0855c78606ef207ce0c60baae0f`, with a clean working
+tree on `chore/supabase-agent-local-setup`; current main was
+`935824e4c07ea7de7012a8f1b0d1b72517f41a44`. Git root, single worktree, HTTPS
+fetch/push origins, public repository ID `1432052547` and authenticated owner were
+verified. No other agent or unexpected modifications were observed. Results below
+cover that HEAD plus this hardening diff; the delivery commit identifies the diff.
+Root AGENTS, original README, workflow, dependencies and service pins are unchanged.
+
+### Fixes and verified boundaries
+
+- Local guards now reject both CLI link formats and dotenv variants before every
+  CLI invocation, scrub ambient target/Git overrides case-insensitively, normalize
+  Docker selector casing, verify the real Git root, and reject host networking or
+  missing inspectable database bindings. The existing deterministic stack design
+  and CLI 2.122.0/image digests are retained.
+- Diagnostics allowlist stable error/exit codes and endpoint fields instead of
+  forwarding arbitrary subprocess/upstream errors. Successful CLI text still has
+  credential redaction. MCP failures stay failures, with upstream error bodies
+  withheld. Synthetic negative cases cover URL, bearer, JSON/env/query secrets and
+  unexpected response fields without printing test secrets.
+- Async locks record PID/start time and a unique lease; replaced/stale locks are
+  preserved for investigation. Tests use isolated temporary directories and cover
+  overlap, failure and abrupt process exit. No automatic stale-lock deletion was
+  introduced. Stop verifies owner state and actual task containers; repeat stop
+  succeeds without touching another stack or deleting data.
+- The shared pgTAP catalog query catches column-only view grants, client-readable
+  materialized/foreign relations, RPC versus hook EXECUTE paths and unreviewed
+  definer search paths. Transactional real catalog fixtures demonstrate negative
+  cases and repaired positive cases, then roll back. No product tables or migrations
+  were added. This is metadata coverage, not business-role authorization proof.
+- Existing development/operations guides explain Windows reinstall ordering,
+  migration reconciliation, future role tests, exact owner-only ACL remediation,
+  solo-maintainer branch protection and a minimal proposed Linux database CI job.
+
+### Hosted catalog and reconciliation
+
+Read-only connector/native metadata queries and the dashboard agree on project
+`axpdymbusiwxfzurfclg`, Seoul `ap-northeast-2`, Free, healthy, PostgreSQL
+`17.11.0.003`. Hosted migrations, public relations and ordinary public RPCs remain
+zero. Local database image `17.11.0.006` agrees on major/minor, not platform patch.
+Empty local reset/history/drift/types establish reproducible **application**
+migration consistency; they do not compare complete hosted platform catalogs.
+
+`public.rls_auto_enable()` is PL/pgSQL, returns `event_trigger`, SECURITY DEFINER,
+owner `postgres`, `search_path=pg_catalog`, without extension membership. PUBLIC,
+anon, authenticated, service_role and postgres have EXECUTE. The enabled
+`ensure_rls` ddl_command_end trigger binds it to CREATE TABLE, CREATE TABLE AS and
+SELECT INTO. The inspected body resolves table names through catalog OIDs, quotes
+identifiers and catches/logs ALTER failures. Client roles have no CREATE on public.
+
+The definition matches the official
+[Studio template at 7e866ef](https://github.com/supabase/supabase/blob/7e866ef83e89e35cdda45a6c98abd069d5fa1b2f/apps/studio/components/interfaces/Database/Triggers/EventTriggersList/EventTriggers.constants.ts).
+[Project creation source](https://github.com/supabase/supabase/blob/7e866ef83e89e35cdda45a6c98abd069d5fa1b2f/apps/studio/components/interfaces/ProjectCreation/ProjectCreationForm.tsx)
+offers it through an optional flag, default false. This establishes template
+provenance, not the actual installing actor. Ask the project creator which creation
+option/editor operation installed it; do not call it an automatically maintained
+extension or import it into migrations without an explicit ownership decision.
+
+Fresh usage UI still shows cycle 25 Sep–25 Oct: organization log ingestion
+4.393/1 GB and log query 690.373/100 GB, both UPCOMING with the documented early
+2027 grace period. The project-only filter shows about 0.002 GB ingestion, zero
+log query and 24.88 MB database size. Other organization quotas are below allowance;
+the UI reports no current Free quota excess. This does not attribute other projects'
+usage to NestScout. No log scans, upgrades, paid branches or billing changes were
+performed; aggregates may lag the cycle reset.
+
+Both anonymous/authenticated Security Advisor warnings remain; Performance Advisor
+returned none. PostgreSQL 17's
+[PL/pgSQL compiler](https://github.com/postgres/postgres/blob/REL_17_STABLE/src/pl/plpgsql/src/pl_comp.c)
+rejects ordinary calls of event-trigger-returning PL/pgSQL functions with 0A000
+before executing their body. The
+[event trigger contract](https://www.postgresql.org/docs/17/event-trigger-definition.html)
+requires trigger context; normal [PostgREST RPC](https://docs.postgrest.org/en/stable/references/api/functions.html)
+does not supply it. Thus a directly executable privileged body is not established
+by these warnings. Exact hosted HTTP/schema-cache behavior is **NOT RUN**: the
+function was never invoked. Excess EXECUTE remains an ACL-hardening finding.
+The old local hook exclusion missed that hygiene issue; tests now report hooks
+separately. A local PASS still cannot clear hosted warnings.
+
+Dashboard Data API exposes public and graphql_public, reports one exposed function,
+no tables, and automatic new-table exposure enabled. These settings were only read.
+Future migrations must explicitly enable RLS and review grants; the optional hook
+can log a failure without preventing table creation. Avoid its names and rely on
+reviewed migrations, not automatic RLS. The minimal proposed ACL change, verification,
+compatibility checks and exact-ACL recovery are in
+[owner actions](operations.md#supabase-hardening-owner-actions); none was executed.
+
+### Fresh verification matrix
+
+Windows x64, Node 24.19.0, npm 11.17.0, Docker 29.9.2, local desktop-linux pipe,
+CLI 2.122.0 and MCP SDK 1.32.2. Commands ran sequentially against the verified
+worktree/branch stack `ebb98b437806fcbf5befd634aa49e3c47385672ad6aad011030a0a889b1e0cf2`.
+All published service bindings were 127.0.0.1; no hosted reset was attempted.
+
+| Command/check | Fresh outcome |
+| --- | --- |
+| `npm run identity` | PASS; exact repository, owner and branch |
+| `npm ci --ignore-scripts` | PASS after stopping this task stack; initial EPERM was its open supabase.exe on Windows, not bypassed |
+| `npm audit --audit-level=low`, `npm run tools:install` | PASS; zero reported vulnerabilities, actionlint/gitleaks checksums verified |
+| `npm run db:start`, `npm run db:status` | PASS; pinned Docker stack and isolated loopback endpoints |
+| `npm run db:reset`, `npm run db:history` | PASS; empty migration replay/history |
+| `npm run db:test` | PASS; 13 actual pgTAP assertions including transactional negative/positive fixtures |
+| `npm run db:mcp:test` | PASS; real stdio/HTTP session, six tools, catalog query, denied migration tool and sanitized SQL failure |
+| `npm run db:lint`, `npm run db:drift` | PASS; local public lint and strict pg-delta drift |
+| `npm run db:types`, `npm run db:types:check`, `npm run typecheck:db` | PASS; normalized generated artifact unchanged |
+| `npm run check`, `npm run verify:negative` | PASS; 10 wrapper/config tests, repository checks and invalid/staged-secret fixtures |
+| `npm run db:stop` twice | PASS; no task containers running, data retained |
+| Product role/isolation tests | NOT RUN; owning application modules are not implemented |
+| Hosted Linux Docker job | NOT RUN; proposed, not added/dispatched |
+| Production mutations | NOT RUN; metadata inspection only |
+
+### Agent states, independently observed
+
+| Gate | Codex 0.163.0-alpha.11.2 | Claude Code 2.1.310 |
+| --- | --- | --- |
+| CONFIGURED | Project-scoped read-only hosted endpoint; exact six tools; prompt approvals; local bridge | Same endpoint/scopes; local per-project override; ask and explicit deny rules |
+| AUTHENTICATED | ChatGPT model login and existing hosted OAuth | Hosted OAuth works; model auth reports loggedIn=false |
+| TRANSPORT VERIFIED | Fresh native app-server and interactive metadata responses | Fresh native `mcp get` Connected for both; OAuth SDK metadata responses |
+| TOOL DISCOVERY VERIFIED | Six allowed tools on each native server | Seven upstream hosted tools observed by SDK; query_logs denied by native config, not filtered by SDK |
+| MODEL BEHAVIOR VERIFIED | Fresh read-only interactive session returned hosted migrations=[] and local tables=[] | BLOCKED: no model authentication |
+| POLICY COMPLIANCE VERIFIED | Root policy/target/reserved files recalled; existing edits preserved; hypothetical Production write refused | BLOCKED: version/default ancestor inspection alone is not runtime proof |
+| Supabase skill discovery/use | Fresh interactive session found and read the existing installed plugin entrypoint | BLOCKED: no authenticated model session |
+
+Codex noninteractive `exec` initially refused both MCP calls because prompt approval
+was unavailable under policy never. Interactive `--no-daemon --sandbox read-only
+--ask-for-approval on-request` then displayed and received a separate one-time
+approval for each authorized metadata read; persistent configuration was unchanged.
+The bundled CLI's default interactive background-server mode lacked a complete local
+package, so its documented no-daemon mode was used. This mode's installed-plugin
+skill discovery succeeded; isolated app-server skill inventory alone was empty.
+Unrelated pre-existing global MCP/hook warnings were observed, not repaired or
+treated as Supabase failures. These representative checks do not prove arbitrary
+future model compliance. Claude native denial behavior remains untested by a model;
+the SDK probe is only OAuth/transport evidence, not permission-runner evidence.
+
+### Governance and release decisions
+
+Fresh GitHub inspection: main protection absent, rulesets zero, one human admin,
+no setup-branch PR, only unrelated Dependabot PRs. Workflow still triggers PRs and
+pushes to main only, with existing pins/read permissions; repository webhooks zero.
+Supabase production deployment OFF, automatic branching disabled/OFF, branch limit
+zero. Expo offers this repo with Connect (unbound); inspected Vercel projects are
+unbound or point to Fable repositories. No NestScout Vercel hosting was introduced.
+Recheck these gates immediately before the authorized feature push and verify its
+remote SHA and absence of Actions runs/checks/deployments afterward.
+
+P1: main has no server-side protection. P2: hosted hook excess EXECUTE, experimental
+runtime and unverified Linux Docker compatibility, and incomplete Claude model
+verification. P3: exact hook installer remains unknown; global client warnings need
+separate scoped investigation if they affect development. No P0 exploit was
+established. Local development can continue; the diff is ready for owner PR review.
+Hosted CI needs explicit authorization. Merge requires successful approved checks
+and governance; Production release needs a separate application/security/release
+decision. No PR, hosted CI, merge, deployment or settings change was performed.
+
+## GitHub protection and Linux CI 2026-10-25
+
+The owner explicitly authorized main protection, the Linux job, feature commits/
+pushes, PR creation and its CI/fix cycles. Merge, Production changes and paid
+resources remain outside that authority. Starting HEAD was
+`20eee155c2892936215f5a97028e3007600cb0fc`; main remains
+`935824e4c07ea7de7012a8f1b0d1b72517f41a44`. The checkout was clean, its sole
+worktree and exact HTTPS origins were verified, and repository ID `1432052547`
+was public with owner/admin access. Root AGENTS and original README are unchanged.
+The earlier sections' statements that protection/PR/CI were absent are historical.
+
+### Saved GitHub protection
+
+REST GET and GraphQL confirmed one classic rule, `main`, ID
+`BPR_kwDOVVtjQ84FFdCA`, and zero rulesets:
+
+- PR required; approving review count 0; CODEOWNERS and last-push approval off.
+- `Repository checks` and `Supabase local verification` required, each restricted
+  to GitHub Actions app 15368; strict/up-to-date checks on.
+- Conversation resolution and administrator enforcement on.
+- Force pushes and branch deletion off; bypass allowances empty.
+- Auto-merge remains disabled. No direct-main push or merge was used as a test.
+
+Initially only the existing repository job was required. The database job was
+added to that same rule after run 40147775647 completed successfully. PR #10 was
+observed BLOCKED while the first required repository check was queued; no bypass
+operation was attempted. Final PR status remains a live platform check, not a
+standing merge authorization. The owner can administratively change settings in
+future, but cannot bypass the current enforced checks through an allowed actor.
+
+### Actual Linux results and minimal repair
+
+[PR #10](https://github.com/manhtu0407/NestScout-Enterprise/pull/10) targets main
+from `chore/supabase-agent-local-setup`. No manual workflow dispatch or unrelated
+rerun was performed.
+
+| PR-triggered run | Actual result |
+| --- | --- |
+| [40147385656](https://github.com/manhtu0407/NestScout-Enterprise/actions/runs/40147385656), head `4f65f8caa9409da06ec480af2833a21746e4d12b` | Repository checks PASS; database startup FAIL, cleanup attempted and FAIL; later DB steps skipped |
+| [40147775647](https://github.com/manhtu0407/NestScout-Enterprise/actions/runs/40147775647), head `5c2b9409d4c59df5cf087e904956779d380427b1` | Both jobs PASS; repository job 22 seconds, database job 82 seconds |
+
+The first failure was reproduced with the pinned CLI on a pristine local root:
+`stack status` exits 1 with JSON Error/ExperimentalStackStatusError and exactly
+`No managed stack exists for the selected project.` The wrapper previously queried
+status before allowing startup, so an existing Windows stack hid the cold-start
+defect. The repair accepts only that pinned response for first start/absent stop;
+other failures remain failures. Startup still verifies real worktree/branch
+identity, Docker ownership and all published loopback bindings. No runtime upgrade,
+native fallback, mocked success or weakened isolation was used.
+
+The successful hosted run used Ubuntu 24.04.5/image 20261012.334.1, Node 24,
+CLI 2.122.0 and pinned service images. Checkout kept the PR verification revision;
+a local `ci-supabase` branch supplies the managed runtime's branch identity. Logs
+show stack ID `5a4ed46165cbf386b56bf9197a52eab335a28e7c209db5a3bd02faa913d1ca31`
+and every published service at 127.0.0.1. This is execution evidence, not a
+workflow-text assertion.
+
+PASS on hosted Linux: locked installation, runtime startup/status, reset/replay,
+empty migration history, 13 pgTAP metadata assertions, one real MCP integration
+scenario, database lint, strict pg-delta drift, generated type consistency and
+database artifact typecheck. Targeted stop passed with no task containers running.
+The other job passed 11 wrapper/config tests, reserved-file/Markdown/YAML/workflow
+checks, checksum tool installation, secret scans, negative fixtures and executable
+Linux hooks. Both downloaded run logs passed Gitleaks with redacted reporting;
+the successful run had zero artifacts. Future runs remain separately verifiable
+through the PR checks; a previous green run does not validate a later head.
+
+Fresh Windows checks also passed locked install/audit (zero reported vulnerabilities),
+tool hashes, repository/negative tests and the full local database sequence. A
+separate pristine ignored probe ran the canonical scripts with copied current
+sources/config, proving absent stop, cold startup, reset/history/13 pgTAP/MCP/lint/
+drift/types and targeted stop. Its ID was
+`49fbfc1a1da39f3749e32b77afaafb0fa8c539ab574853394fbd125103b25842`, separate
+from the existing development stack. Existing-stack resume/status/stop also passed.
+Probe sources/logs/credentials are not Git artifacts; no product fixture was added.
+
+### Billing, Production and remaining limits
+
+Current billing UI showed GitHub Free and an unchanged account-wide $0 Actions
+budget with billable usage blocked. The repository is public, and the standard
+runner actually executed; no larger runner, trial, cache or artifact upload was
+added. Official [runner eligibility](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+was rechecked. Supabase changelog and managed-stack/GitHub integration documentation
+were reviewed; there was no demonstrated reason to upgrade the pinned runtime.
+
+Before PR creation, Supabase dashboard showed project `axpdymbusiwxfzurfclg`,
+Free, Seoul, working directory `.`, production deployment OFF, automatic branching
+disabled/OFF and branch limit 0. These settings were not changed. Project metadata
+was healthy on PostgreSQL 17.11.0.003; fresh Advisor results still contained the
+same two EXECUTE warnings for `public.rls_auto_enable()`. This task made no remote
+DDL/DML, invoked no hosted function and created no Supabase branch or application
+deployment. Repository deployment records/environments/webhooks were empty at
+preflight. No Vercel hosting or Expo build configuration was introduced.
+
+P1 main-protection gap is resolved by saved enforcement. P2 remains: experimental
+runtime compatibility across future releases and the separately reviewed hosted
+hook ACL warnings; Claude model authentication/behavior is still outside this phase.
+No P0 incident was established. Final self-review is technical verification only;
+independent human review and a new explicit owner merge decision remain necessary.

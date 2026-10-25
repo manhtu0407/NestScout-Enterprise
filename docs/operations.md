@@ -117,3 +117,114 @@ Keep credentials in appropriate secret stores; use OIDC only where the selected
 provider supports it. Preview/deployment, smoke tests, monitoring/alerts, data backup,
 migrations, recovery objectives, and rollback require a concrete service design.
 No current repository check proves application readiness or native-device behavior.
+
+## Supabase Pro readiness
+
+Preparation only; no upgrade, billing, branch, addon or production change is
+authorized by this checklist. See [Supabase development](supabase-development.md)
+and the dated [setup evidence](setup-evidence.md#supabase-agent-setup-2026-10-24).
+
+- Review organization-wide usage and billing cycle, including other projects.
+  Pro starts at $25/month with $10 compute credits; extra projects, compute,
+  overages and preview branches can increase the total. Agree a monthly ceiling,
+  owner and alert thresholds before upgrading; validate the current
+  [pricing calculator](https://supabase.com/pricing) and
+  [branching charges](https://supabase.com/docs/guides/platform/manage-your-usage/branching).
+- Preserve the verified managed-stack loopback checks and reconcile hosted platform objects
+  before using migrations for a release. Review advisor findings and actual RLS,
+  Auth, Storage, payment and role tests once those features exist.
+- Define database recovery objectives, protected backup retention/destination and
+  a disposable restore drill. Database backups do not cover Storage object bytes;
+  arrange separate object protection. No production dump or restore was performed.
+- Use separately scoped deployment credentials in approved secret stores. Keep
+  developer MCP read-only/project-scoped, interactive approvals, and runtime Kael
+  permissions separate. Verify MFA, network/TLS settings and incident access.
+- Inspect GitHub/Supabase/Expo integrations again before publication. The owner
+  selected native App development without Vercel hosting; no Vercel project is
+  bound to this repository in the inspected account. Keep
+  production auto-deployment off if deployment requires separate owner approval;
+  propose reviewed manual CD rather than changing integration settings silently.
+- Establish health/error/cost alerts, synthetic smoke checks, release/rollback
+  ownership and schema roll-forward/restore procedures. Do not equate a Git revert
+  with safe data rollback. Use on-demand preview branches only after approving
+  their compute, retention and cleanup costs.
+- Reduce unnecessary log generation and broad/repeated log scans locally first.
+  The inspected log quotas are upcoming with a grace period through early 2027;
+  recheck enforcement and prices before committing a future budget.
+
+## Supabase hardening owner actions
+
+The owner subsequently authorized main protection and PR-triggered Linux CI on
+2026-10-25. One classic rule now protects `main`; no ruleset was added. Both
+`Repository checks` and `Supabase local verification` are required from GitHub
+Actions (app 15368), with strict/up-to-date checks and administrator enforcement.
+The latter was promoted only after successful hosted run
+[40147775647](https://github.com/manhtu0407/NestScout-Enterprise/actions/runs/40147775647).
+There is still one human maintainer, zero required approving reviews, no bypass
+allowances, and auto-merge is disabled. Maintain this single rule using the settings
+below; changing protection later requires explicit owner authorization:
+
+1. Require a pull request before merging; keep required approving reviews at
+   **zero/off** while there is only one maintainer. Do not require CODEOWNERS or
+   last-push approval that the owner cannot independently satisfy.
+2. Require both named status checks from GitHub Actions and require branches to
+   be up to date. Enable conversation resolution.
+3. Enable “Do not allow bypassing the above settings,” including administrators;
+   leave force pushes and branch deletion disallowed. Use manual owner review and
+   merge authorization; zero required reviews does not mean automatic approval.
+4. Verify the saved rule with read-only API/UI inspection. Do not test enforcement
+   by pushing to `main`. Add a required database job only after its approved first
+   successful run; requiring an absent check would block every merge.
+
+CI retains offline wrapper/configuration/image-pin regressions through `npm run
+check`, dependency/tool integrity and negative tests. The implemented `Supabase
+local verification` job uses standard `ubuntu-24.04`, Node 24, existing SHA-pinned
+checkout/setup Actions, `contents: read`, a 20-minute timeout, locked dependencies,
+no hosted credentials, and these sequential commands:
+
+```sh
+npm ci --ignore-scripts
+npm run db:start
+npm run db:status
+npm run db:reset
+npm run db:history
+npm run db:test
+npm run db:mcp:test
+npm run db:lint
+npm run db:drift
+npm run db:types:check
+npm run typecheck:db
+```
+
+Cleanup uses `always()` whenever startup was attempted, including a failed start,
+and runs `npm run db:stop` without hiding prior failures. The checkout's actual
+verification revision gets the local branch `ci-supabase`, preserving PR merge
+revision coverage while satisfying managed-stack identity. PR/main triggers,
+concurrency controls and the existing job are unchanged. Standard public
+Linux runners have 4 CPUs, 16 GB RAM and 14 GB SSD and are free under current
+[GitHub runner terms](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+The first complete hosted database job took 82 seconds, including cold startup
+and cleanup. This demonstrates fit on that runner image, not a guarantee against
+future image changes or download failures. No cache or artifact upload is configured.
+Keep the account's $0 Actions budget; do not use paid larger runners, native fallback
+or hosted Supabase credentials to make checks pass. A hard cancellation/runner loss
+can prevent in-job cleanup; the hosted VM is disposable and no cloud DB is created.
+
+For the hosted `public.rls_auto_enable()` ACL finding, the minimal proposed change
+is to retain the definition, owner and event trigger while revoking client access:
+
+```sql
+begin;
+revoke execute on function public.rls_auto_enable() from public, anon, authenticated;
+commit;
+```
+
+**Do not execute without explicit Production approval.** First retain its current
+definition, owner, trigger binding and ACL metadata privately and confirm the
+installing mechanism with the project creator. Confirm the effective privileges
+and Advisor results afterward, without invoking the hosted function. Keep owner
+and `service_role` grants; validate hook behavior with disposable local/staging
+DDL only. If necessary, restore the exact prior ACL: the inspected snapshot had
+EXECUTE granted to PUBLIC, anon and authenticated. No function/trigger drop or
+SECURITY INVOKER conversion is proposed. This reduces excess privileges; it does
+not imply that the original event-trigger function was an exploitable RPC.
