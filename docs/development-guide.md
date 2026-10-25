@@ -85,6 +85,20 @@ It retains NestScout's ESM, kebab names, two-space indentation and current modul
 Comments explaining security, races, compatibility, legal constraints or contracts
 remain legitimate; their usefulness is a human review decision.
 
+The hygiene reader uses Git batch reads for unique index blobs, checks working files
+separately, and reuses content inspection only when bytes for the same path are equal.
+Manifest hashes and path/configuration presence checks still run for both states.
+TypeScript syntax inspection uses the pinned TypeScript 7 native API in a virtual
+filesystem with no emit, imports or standard libraries resolved; every client closes
+in `finally`. Its API is explicitly unstable, so dependency updates must retain the
+TypeScript comment/string/JSX regression fixtures. No new dependency is installed.
+Native compiler startup remains a per-distinct-TypeScript-file cost. Measure it
+before applying full scans to a large TypeScript tree or source-heavy archive;
+batching compiler inputs may then be appropriate. Keep full CI coverage if a future
+local changed-file optimization is approved. Secret-history scan growth is separate
+from hygiene reader performance. Artifact support and manual-review limits are in
+[CONTRIBUTING](../CONTRIBUTING.md#file-and-review-workflow).
+
 ## Test artifact lifecycle
 
 Use these categories when implementing the root policy with Codex or Claude Code:

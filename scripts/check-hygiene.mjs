@@ -3,9 +3,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseJavaScript } from 'acorn';
 import { parse } from 'smol-toml';
+import { API } from 'typescript/unstable/sync';
+import { createVirtualFileSystem } from 'typescript/unstable/fs';
+import { createScanner } from 'typescript/unstable/ast/scanner';
+import { SyntaxKind } from 'typescript/unstable/ast';
 import { root } from './tool-path.mjs';
 import { repositoryFiles } from './repository-files.mjs';
 import { checkTestArtifacts } from './check-test-artifacts.mjs';
+import { inspectArtifact, hasArtifactSignature } from './inspect-artifact.mjs';
 
 const fixedPaths = new Set([
   'AGENTS.md', 'README.md', 'CONTRIBUTING.md', 'SECURITY.md',
@@ -65,17 +70,55 @@ export function checkAttribution(text, label) {
   }
 }
 
-function sourceComments(file, text) {
-  if (/\.mjs$/.test(file)) {
+export function sourceComments(file, text) {
+  if (/\.(?:[cm]?ts|tsx)$/.test(file)) {
+    const directory = path.resolve(root, '.cache/hygiene-types').replaceAll('\\', '/');
+    const sourcePath = `${directory}/input${file.match(/(?:\.d)?\.(?:[cm]?ts|tsx)$/)[0]}`;
+    const configPath = `${directory}/tsconfig.json`;
+    const fs = createVirtualFileSystem({
+      [sourcePath]: text,
+      [configPath]: JSON.stringify({ compilerOptions: { noLib: true, noResolve: true, jsx: 'preserve' }, files: [sourcePath] }),
+    });
+    const api = new API({ cwd: root, fs });
+    try {
+      const snapshot = api.updateSnapshot({ openProjects: [configPath] });
+      const program = snapshot.getProjects()[0]?.program;
+      const source = program?.getSourceFile(sourcePath);
+      if (!source || program.getSyntacticDiagnostics(sourcePath).length) throw new Error(`Invalid TypeScript syntax in ${file}.`);
+      const literals = [];
+      function visit(node) {
+        if ([SyntaxKind.StringLiteral, SyntaxKind.RegularExpressionLiteral, SyntaxKind.JsxText,
+          SyntaxKind.NoSubstitutionTemplateLiteral, SyntaxKind.TemplateHead, SyntaxKind.TemplateMiddle, SyntaxKind.TemplateTail].includes(node.kind)) {
+          literals.push([node.getStart(source), node.end]);
+        }
+        node.forEachChild(visit);
+      }
+      visit(source);
+      literals.sort((a, b) => a[0] - b[0]);
+      const comments = [];
+      let start = 0;
+      for (const [end, next] of [...literals, [text.length, text.length]]) {
+        const scanner = createScanner(false, source.languageVariant, text, start, end - start);
+        for (let token = scanner.scan(); token !== SyntaxKind.EndOfFile; token = scanner.scan()) {
+          if ([SyntaxKind.SingleLineCommentTrivia, SyntaxKind.MultiLineCommentTrivia].includes(token)) comments.push(scanner.getTokenText());
+        }
+        start = next;
+      }
+      return comments.join('\n');
+    } finally {
+      api.close();
+    }
+  }
+  if (/\.[cm]?js$/.test(file)) {
     const comments = [];
     try {
-      parseJavaScript(text, { ecmaVersion: 'latest', sourceType: 'module', onComment: (_block, value) => comments.push(value) });
+      parseJavaScript(text, { ecmaVersion: 'latest', sourceType: file.endsWith('.cjs') ? 'script' : 'module', onComment: (_block, value) => comments.push(value) });
     } catch (error) {
       throw new Error(`Invalid JavaScript in ${file} at ${error.loc?.line}:${error.loc?.column}.`);
     }
     return comments.join('\n');
   }
-  if (/\.(?:json|jsonc|toml|ya?ml|sql|ts)$/.test(file) || file.startsWith('.githooks/')) {
+  if (/\.(?:json|jsonc|toml|ya?ml|sql)$/.test(file) || file.startsWith('.githooks/')) {
     return text.split(/\r?\n/).filter(line => /^\s*(?:#|\/\/|\/\*|\*|--)/.test(line)).join('\n');
   }
   return text;
@@ -113,6 +156,7 @@ function artifactManifest(files, state) {
 export function checkHygiene(repository = root) {
   checkTestArtifacts(repository);
   const files = repositoryFiles(repository);
+  const inspected = new Map();
   for (const state of ['index', 'working']) {
     const artifacts = artifactManifest(files, state);
     for (const required of ['.codex/config.toml', '.claude/settings.json']) {
@@ -124,7 +168,15 @@ export function checkHygiene(repository = root) {
       const folded = file.toLowerCase();
       if (seen.has(folded)) throw new Error(`Case-colliding repository path: ${JSON.stringify(file)}`);
       seen.add(folded);
-      if (/\.(?:pdf|zip)$/.test(file)) continue;
+      if (inspected.get(file)?.equals(content)) continue;
+      if (/\.(?:pdf|zip)$/.test(file)) {
+        for (const record of inspectArtifact(file, content)) {
+          checkAttribution(record.metadata ? record.text : sourceComments(record.file, record.text), `${state} ${file}/${record.file}`);
+        }
+        inspected.set(file, content);
+        continue;
+      }
+      if (hasArtifactSignature(content)) throw new Error(`PDF/ZIP content requires its registered artifact extension: ${state} ${file}`);
       const text = new TextDecoder('utf-8', { fatal: true }).decode(content);
       if (text.includes('\0')) throw new Error(`Unexpected binary content: ${JSON.stringify(file)}`);
       if (file === '.codex/config.toml') {
@@ -136,6 +188,7 @@ export function checkHygiene(repository = root) {
         if (attribution !== false && (attribution?.commit !== '' || attribution?.pr !== '' || attribution?.sessionUrl !== false)) throw new Error(`Claude attribution must be disabled in ${state}.`);
       }
       checkAttribution(sourceComments(file, text), `${state} ${file}`);
+      inspected.set(file, content);
     }
   }
 }

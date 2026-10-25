@@ -72,11 +72,38 @@ at `docs/artifacts/<kebab-name>.pdf` or `.zip`, registered in the existing
 artifacts. Blobs must fit the checker's 32 MiB read limit; retain larger inputs
 outside Git. Both index and working manifests must match their own bytes. Review
 licensing, provenance and publication authority; a hash cannot establish them.
+The reader caps each index/working snapshot at 128 MiB (unique blobs for the index).
+
+Artifact inspection never rewrites inputs or extracts archive paths to disk. Supported
+PDFs use classic xref tables, one trailer and an Info dictionary. Title/Author strings
+are decoded from literal/hex strings and indirect references, including octal escapes,
+escaped names and BOM-marked Unicode. Factual human names remain accepted. Encryption,
+incremental histories, object/xref streams, XMP, embedded files, indirect stream lengths
+and unsupported metadata encodings fail closed for separate parser/review work.
+This is a bounded metadata check, not a complete PDF validator, renderer, OCR or proof
+of authorship. Page text, graphics, custom metadata and legal/provenance truth still
+need review; a tool named in Creator/Producer is not automatically an authorship claim.
+
+ZIP32 supports stored/deflated entries and data descriptors, with at most 1,000 entries,
+8 MiB per expanded entry and 32 MiB total expansion. Local/central headers, sizes, CRCs,
+non-overlap, safe paths, file/directory collisions, case aliases and symlink modes are
+checked. UTF-8 text entries use the existing signature/comment rules; embedded PDFs
+receive the metadata check. ZIP comments are checked, and Gitleaks scans one archive
+level in index/history/working scans. Nested archives, encryption, ZIP64, alternate
+Unicode path/comment fields, unsupported binary/entry formats and misleading PDF/ZIP
+extensions fail closed. Only timestamp and Unix UID/GID extra fields are accepted.
+No malware, image-content or complete encoded-secret claim
+is made. Unsupported owner inputs need a reviewed compatible inspection path; do not
+strip metadata, rewrite archives or bypass checks to make them pass.
 
 `check:hygiene` inspects resolved regular index blobs and tracked/unignored working
 files separately, including renamed and force-added files. JavaScript comments are
 parsed with Acorn so test strings and regular expressions are not treated as comments.
-Other configuration/generated formats receive line-leading comment checks; Markdown
+TypeScript (`.ts`, `.mts`, `.cts`, declarations and `.tsx`) uses the pinned compiler's
+native syntax tree to exclude literal/JSX text spans, then its scanner to collect
+inline and multiline comments, including comments inside type-only declarations.
+This does not expand the approved repository filename categories. Other configuration
+formats receive line-leading comment checks; Markdown
 and legal/contributor records receive signature-line checks. Known AI trailers,
 promotional signatures, explicit role signatures and AI self-introductions fail.
 There is no blanket comment ban or automatic deletion. Reviewers must assess narrative
@@ -97,6 +124,9 @@ format exemption grants no trust, Issue exemption, signature exemption or author
 The optional pre-push hook only accepts the current feature branch at HEAD with an
 identical remote name. It rejects direct `main` pushes, alternate-ref pushes and
 deletions; exceptional operations still need the owner's explicit authorization.
+The referenced Issue must actually cover the change. The static guard checks reference
+syntax, not GitHub existence or relevance; do not reuse an unrelated Issue. Creating
+an Issue or PR still requires separate owner authorization.
 
 ## Open and review a PR
 

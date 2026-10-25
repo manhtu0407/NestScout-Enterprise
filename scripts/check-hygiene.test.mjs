@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, renameSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, renameSync, realpathSync, truncateSync } from 'node:fs';
+import { crc32, deflateRawSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { root } from './tool-path.mjs';
-import { git } from './repository-files.mjs';
-import { checkPath, checkAttribution, checkHygiene } from './check-hygiene.mjs';
+import { git, repositoryFiles, blobByteLimit } from './repository-files.mjs';
+import { checkPath, checkAttribution, checkHygiene, sourceComments } from './check-hygiene.mjs';
+import { inspectArtifact, artifactLimits } from './inspect-artifact.mjs';
+import { scanStaged } from './scan-staged.mjs';
+import { randomBytes } from 'node:crypto';
 import { checkBranch, checkMessage, checkMetadata, checkPullRequest, checkCommitRange, checkPush } from './check-metadata.mjs';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-hygiene-'));
@@ -35,6 +39,53 @@ function fixture() {
   run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
   run(['switch', '--quiet', '-c', 'codex/hygiene-fixture']);
   return { repository, run, write };
+}
+
+function pdfFixture({ info = '/Title (Interface contract) /Author (Example Contributor)', extra = [], trailer = '' } = {}) {
+  const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [] /Count 0 >>', `<< ${info} >>`, ...extra];
+  let text = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(Buffer.byteLength(text, 'latin1'));
+    text += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(text, 'latin1');
+  text += `xref\n0 ${offsets.length}\n0000000000 65535 f \n`;
+  for (const offset of offsets.slice(1)) text += `${String(offset).padStart(10, '0')} 00000 n \n`;
+  text += `trailer\n<< /Size ${offsets.length} /Root 1 0 R /Info 3 0 R ${trailer} >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(text, 'latin1');
+}
+
+function zipFixture(entries, comment = '') {
+  const localParts = [], centralParts = [];
+  let offset = 0;
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name), localName = Buffer.from(entry.localName ?? entry.name);
+    const bytes = Buffer.from(entry.body ?? ''), method = entry.method ?? 8, flags = entry.flags ?? 0x800;
+    const payload = entry.payload ?? (method === 8 ? deflateRawSync(bytes) : bytes);
+    const size = entry.size ?? bytes.length, crc = entry.crc ?? crc32(bytes);
+    const local = Buffer.alloc(30), central = Buffer.alloc(46);
+    const extra = entry.extra ?? Buffer.alloc(0);
+    local.writeUInt32LE(0x04034b50); local.writeUInt16LE(20, 4); local.writeUInt16LE(flags, 6); local.writeUInt16LE(method, 8);
+    if (!(flags & 8)) { local.writeUInt32LE(crc, 14); local.writeUInt32LE(payload.length, 18); local.writeUInt32LE(size, 22); }
+    local.writeUInt16LE(localName.length, 26); local.writeUInt16LE(extra.length, 28);
+    const descriptor = flags & 8 ? Buffer.alloc(16) : Buffer.alloc(0);
+    if (flags & 8) { descriptor.writeUInt32LE(0x08074b50); descriptor.writeUInt32LE(crc, 4); descriptor.writeUInt32LE(payload.length, 8); descriptor.writeUInt32LE(size, 12); }
+    central.writeUInt32LE(0x02014b50); central.writeUInt16LE(0x0314, 4); central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(flags, 8); central.writeUInt16LE(method, 10); central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(payload.length, 20); central.writeUInt32LE(size, 24); central.writeUInt16LE(name.length, 28);
+    central.writeUInt16LE(extra.length, 30); central.writeUInt32LE(((entry.mode ?? 0x8000) << 16) >>> 0, 38); central.writeUInt32LE(offset, 42);
+    localParts.push(local, localName, extra, payload, descriptor); centralParts.push(central, name, extra);
+    offset += local.length + localName.length + extra.length + payload.length + descriptor.length;
+  }
+  const central = Buffer.concat(centralParts), end = Buffer.alloc(22), note = Buffer.from(comment);
+  end.writeUInt32LE(0x06054b50); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(central.length, 12); end.writeUInt32LE(offset, 16); end.writeUInt16LE(note.length, 20);
+  return Buffer.concat([...localParts, central, end, note]);
+}
+
+function checkArtifact(file, content) {
+  for (const record of inspectArtifact(file, content)) checkAttribution(record.metadata ? record.text : sourceComments(record.file, record.text), record.file);
 }
 
 test('existing naming categories and exact required/generated/legal filenames pass', () => {
@@ -153,7 +204,7 @@ test('attribution configuration must exist and be disabled in both index and wor
 });
 test('permanent artifacts require matching index and working manifests, hash and provenance', () => {
   const { repository, run, write } = fixture();
-  const content = Buffer.from('%PDF-1.7\nfixture\n');
+  const content = pdfFixture();
   const item = { path: 'docs/artifacts/interface-contract.pdf', purpose: 'Reviewable interface contract', source: 'Owner supplied specification', sha256: createHash('sha256').update(content).digest('hex') };
   write(item.path, content);
   assert.throws(() => checkHygiene(repository), /Unregistered permanent artifact/);
@@ -194,6 +245,158 @@ test('invalid UTF-8, NUL content and malformed JavaScript fail transparently', (
     write('scripts/example.mjs', content);
     assert.throws(() => checkHygiene(repository));
   }
+});
+test('TypeScript AST comments cover inline, type-only, multiline, declaration and JSX contexts', () => {
+  for (const file of ['input.ts', 'input.mts', 'input.cts', 'input.d.ts', 'input.d.mts', 'input.d.cts', 'input.tsx']) {
+    for (const text of ['type Value = string; // Generated with Codex\n',
+      'type Value = { x: string /* Generated with Claude Code */ };\n',
+      'type Value = {\n /*\n * Maintainer: Codex\n */\n x: string;\n};\n',
+      'declare function f(value: /* Written by Codex */ string): void;\n']) {
+      assert.throws(() => checkAttribution(sourceComments(file, text), file), /Unapproved AI attribution/, `${file}: ${text}`);
+    }
+    const valid = 'type Value = "Generated with Codex";\n' +
+      'declare const value: { field: string /* Retain the old field for wire compatibility. */ };\n' +
+      '/** @returns A lock token; release it after the asynchronous callback settles. */\n' +
+      'declare function acquire(): string;\n';
+    assert.doesNotThrow(() => checkAttribution(sourceComments(file, valid), file));
+  }
+  for (const text of ['const x: string = `literal // Generated with Codex`;\n',
+    'const x = /[/*]Generated with Codex/;\n', 'const x = `prefix ${1 /* Keep ordering across retries. */} // Generated with Codex`;\n',
+    'const view = <span>// Generated with Codex</span>;\n']) {
+    assert.doesNotThrow(() => checkAttribution(sourceComments('input.tsx', text), 'fixture'));
+  }
+  assert.throws(() => sourceComments('input.ts', 'type Value = { broken: ; };'), /Invalid TypeScript/);
+});
+test('TypeScript staged comments cannot hide behind clean working files or renames', () => {
+  const { repository, run, write } = fixture();
+  write('supabase/database.types.ts', 'export type Value = string; // Generated with Codex\n');
+  run(['add', '.']);
+  write('supabase/database.types.ts', 'export type Value = string; // Preserve the wire contract.\n');
+  assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+  run(['add', '.']);
+  assert.doesNotThrow(() => checkHygiene(repository));
+  write('supabase/database.types.ts', 'export type Value = { x: string /* Generated with Codex */ };\n');
+  assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+});
+test('PDF metadata accepts factual authors, escaped strings, Unicode and indirect text without rewriting bytes', () => {
+  const unicode = Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from('Hợp đồng', 'utf16le').swap16()]).toString('hex');
+  for (const content of [pdfFixture(), pdfFixture({ info: `/Title <${unicode}> /Author (Claude Shannon)` }),
+    pdfFixture({ info: '/Title 4 0 R /Author (Example \\(Contributor\\)) /Creator (Codex) /Producer (Claude Code)', extra: ['(Interface contract)'] }),
+    pdfFixture({ extra: [`<< /Length ${Buffer.byteLength('/Author (Codex) in text')} >>\nstream\n/Author (Codex) in text\nendstream`] })]) {
+    const original = Buffer.from(content);
+    assert.doesNotThrow(() => checkArtifact('input.pdf', content));
+    assert.deepEqual(content, original);
+  }
+});
+test('PDF Title/Author signatures cannot hide in escapes, hex, references, alternate case or author lists', () => {
+  const unicode = Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from('Codex', 'utf16le').swap16()]).toString('hex');
+  for (const options of [{ info: '/Title (Generated with Codex)' }, { info: '/Author (Claude Code)' },
+    { info: '/A#75thor (Co\\144ex)' }, { info: `/Author <${unicode}>` },
+    { info: '/Title 4 0 R', extra: ['(Generated with Claude Code)'] },
+    { info: '/author (Example Contributor; Codex)' }, { info: '/Author (Claude   Code)' }]) {
+    assert.throws(() => checkArtifact('input.pdf', pdfFixture(options)), /Unapproved AI attribution/);
+  }
+});
+test('PDF unsupported metadata features and malformed structures fail closed', () => {
+  for (const content of [Buffer.from('%PDF-1.7\nfixture\n'), pdfFixture({ trailer: '/Encrypt 4 0 R' }),
+    pdfFixture({ extra: ['<< /Type /Metadata /Subtype /XML /Length 0 >>\nstream\n\nendstream'] }),
+    pdfFixture({ extra: ['<< /Type /ObjStm >>'] }), pdfFixture({ info: '/Author 4 0 R', extra: ['4 0 R'] }),
+    pdfFixture({ info: '/Author (A) /Author (B)' }), pdfFixture({ info: '/Author <81>' }),
+    pdfFixture({ trailer: '/Prev 0' }), pdfFixture({ extra: ['<< /Length 4 0 R >>\nstream\ntext\nendstream'] })]) {
+    assert.throws(() => checkArtifact('input.pdf', content), /Artifact inspection blocked/);
+  }
+  const broken = pdfFixture().toString('latin1').replace(/(xref\n0 4\n0000000000 65535 f \n)\d{10}/, (_, prefix) => `${prefix}0000000001`);
+  assert.throws(() => checkArtifact('input.pdf', Buffer.from(broken, 'latin1')), /Artifact inspection blocked/);
+});
+test('ZIP stored/deflated/data-descriptor entries inspect comments and contents while preserving legitimate strings', () => {
+  for (const entry of [{ name: 'reference.md', body: '# Reference\n\nPreserve the wire contract.\n', method: 0 },
+    { name: 'module/input.ts', body: 'export type Value = "Generated with Codex"; /* Keep wire compatibility. */\n' },
+    { name: 'input.mjs', body: 'const fixture = "Generated with Codex";\n', flags: 0x808 },
+    { name: 'contract.pdf', body: pdfFixture() }]) {
+    const content = zipFixture([entry]);
+    const original = Buffer.from(content);
+    assert.doesNotThrow(() => checkArtifact('input.zip', content));
+    assert.deepEqual(content, original);
+  }
+  assert.doesNotThrow(() => checkArtifact('input.zip', zipFixture([{ name: 'module/', mode: 0x4000 }, { name: 'module/input.txt', body: 'Reference\n', extra: Buffer.from([0x55, 0x54, 5, 0, 1, 0, 0, 0, 0]) }])));
+  assert.doesNotThrow(() => checkArtifact('input.zip', zipFixture([{ name: 'LICENSE', body: 'Copyright 2026 Example Corporation.\n' },
+    { name: 'coverage.test.mjs', body: 'export const value = true;\n' }, { name: 'src/coverage/index.ts', body: 'export type Value = string;\n' }])));
+  for (const content of [zipFixture([{ name: 'reference.md', body: 'Generated with Codex\n' }]),
+    zipFixture([{ name: 'input.ts', body: 'export type Value = string; // Generated with Codex\n' }]),
+    zipFixture([{ name: 'contract.pdf', body: pdfFixture({ info: '/Author (Codex)' }) }]),
+    zipFixture([], 'Generated with Claude Code')]) assert.throws(() => checkArtifact('input.zip', content), /Unapproved AI attribution/);
+});
+test('ZIP traversal, aliases, local header mismatches, symlinks, encryption, CRC and expansion failures reject', () => {
+  for (const name of ['../outside.txt', '/outside.txt', 'C:/outside.txt', 'a\\b.txt', 'a/../b.txt', '.git/config.txt',
+    'a/NUL.txt', 'a./b.txt', 'a//b.txt', 'a\0b.txt']) assert.throws(() => checkArtifact('input.zip', zipFixture([{ name }])));
+  for (const entries of [[{ name: 'A.txt' }, { name: 'a.txt' }], [{ name: 'a.txt' }, { name: 'a.txt/b.txt' }],
+    [{ name: 'a.txt/b.txt' }, { name: 'a.txt' }], [{ name: 'a.txt', localName: '../b.txt' }],
+    [{ name: 'a.txt', mode: 0xa000 }], [{ name: 'a.txt', mode: 0x4000 }], [{ name: 'a.txt', flags: 0x801 }], [{ name: 'a.txt', method: 99 }],
+    [{ name: 'a.txt', body: 'x', crc: 0 }], [{ name: 'a.txt', body: 'x', size: 2 }],
+    [{ name: 'a.txt', size: artifactLimits.entryBytes + 1 }], [{ name: 'a.zip', body: zipFixture([]) }],
+    [{ name: 'image.png', body: Buffer.from([137, 80, 78, 71]) }], [{ name: 'a.txt', body: Buffer.from([255]) }],
+    [{ name: 'a.txt', extra: Buffer.from([0x75, 0x70, 0, 0]) }],
+    [{ name: 'a.txt', body: 'x', payload: Buffer.concat([deflateRawSync(Buffer.from('x')), Buffer.from('hidden')]) }]]) {
+    assert.throws(() => checkArtifact('input.zip', zipFixture(entries)), /Artifact inspection blocked/);
+  }
+  assert.throws(() => checkArtifact('input.zip', zipFixture([{ name: 'misleading.txt', body: pdfFixture({ info: '/Author (Codex)' }) }])), /misleading extension/);
+  assert.throws(() => inspectArtifact('input.zip', zipFixture(new Array(artifactLimits.entries + 1).fill({ name: 'a.txt' }))), /Artifact inspection blocked/);
+  const expansion = zipFixture(Array.from({ length: 5 }, (_, index) => ({ name: `${index}.txt`, body: Buffer.alloc(artifactLimits.entryBytes, 65) })));
+  assert.throws(() => inspectArtifact('input.zip', expansion), /expansion limit/);
+});
+test('PDF/ZIP staged metadata and contents are validated independently of restored working artifacts', () => {
+  for (const [file, good, bad] of [['docs/artifacts/input.pdf', pdfFixture(), pdfFixture({ info: '/Author (Codex)' })],
+    ['docs/artifacts/input.zip', zipFixture([{ name: 'input.txt', body: 'Technical reference\n' }]), zipFixture([{ name: 'input.txt', body: 'Generated with Codex\n' }])]]) {
+    const { repository, run, write } = fixture();
+    const manifest = bytes => JSON.stringify({ repositoryHygiene: { artifacts: [{ path: file, purpose: 'Durable reference input', source: 'Owner fixture', sha256: createHash('sha256').update(bytes).digest('hex') }] } });
+    write(file, bad); write('package.json', manifest(bad)); run(['add', '.']);
+    write(file, good); write('package.json', manifest(good));
+    assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+    run(['add', '.']); assert.doesNotThrow(() => checkHygiene(repository));
+    write(file, bad); write('package.json', manifest(bad));
+    assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+  }
+});
+test('PDF/ZIP signatures cannot be renamed into ordinary repository documentation', () => {
+  const { repository, write } = fixture();
+  write('docs/contract.md', pdfFixture());
+  assert.throws(() => checkHygiene(repository), /requires its registered artifact extension/);
+  write('docs/contract.md', zipFixture([]));
+  assert.throws(() => checkHygiene(repository), /requires its registered artifact extension/);
+});
+test('Git batch reads preserve duplicate/binary blobs and reject oversized staged and working files', () => {
+  const { repository, run, write } = fixture();
+  const content = Buffer.from([10, 0, 255, 13, 10]);
+  write('scripts/first.json', content); write('scripts/second.json', content); run(['add', '.']);
+  for (const file of ['scripts/first.json', 'scripts/second.json']) {
+    const record = repositoryFiles(repository).find(item => item.file === file && item.state === 'index');
+    assert.deepEqual(record.content, content);
+  }
+  truncateSync(path.join(repository, 'scripts/first.json'), blobByteLimit + 1);
+  assert.throws(() => repositoryFiles(repository), /exceeds 32 MiB/);
+  run(['add', 'scripts/first.json']); write('scripts/first.json', content);
+  assert.throws(() => repositoryFiles(repository), /exceeds 32 MiB/);
+});
+test('the staged secret scanner rejects compressed ZIP contents with a clean working archive and redacted output', () => {
+  const { repository, run, write } = fixture();
+  const token = ['gh', 'p_'].join('') + randomBytes(27).toString('base64url');
+  const file = 'docs/artifacts/input.zip';
+  write(file, zipFixture([{ name: 'reference.txt', body: `token=${token}\n` }]));
+  run(['add', '.']);
+  write(file, zipFixture([{ name: 'reference.txt', body: 'Technical reference\n' }]));
+  assert.throws(() => scanStaged(repository, 'pipe'), error => error.status === 1 && !(String(error.stdout) + String(error.stderr)).includes(token));
+});
+test('Git batch inspection rejects aggregate index and working snapshots above 128 MiB', () => {
+  const { repository, run, write } = fixture();
+  for (let index = 0; index < 5; index++) {
+    const file = `scripts/large-${index}.json`;
+    write(file, Buffer.from([index]));
+    truncateSync(path.join(repository, file), 28 * 1024 * 1024);
+  }
+  assert.throws(() => repositoryFiles(repository), /working snapshot exceeds 128 MiB/);
+  run(['add', '.']);
+  for (let index = 0; index < 5; index++) write(`scripts/large-${index}.json`, '{}\n');
+  assert.throws(() => repositoryFiles(repository), /index snapshot exceeds 128 MiB/);
 });
 test('branch rules accept declared conventions and isolate the authenticated automation exception', () => {
   for (const branch of ['feat/12-add-guard', 'fix/1-index', 'docs/2-guide', 'chore/3-tools', 'codex/hygiene', 'claude/hygiene']) assert.doesNotThrow(() => checkBranch(branch));
