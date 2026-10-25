@@ -33,6 +33,13 @@ consumers and verification under the root policy, rather than importing the
 HomeServices implementation. Pinned tooling currently supports Windows/Linux x64;
 macOS tooling and native iOS execution have not been verified.
 
+## Engineering tool library
+
+Use the [tool library](tool-library/index.md) before writing a substitute for an
+existing tool. `npm run tools:list` maps native capabilities to runbooks;
+`npm run tools:doctor` reports host readiness without starting services.
+Docker smoke is a separate explicitly targeted local operation.
+
 ## Start here
 
 Requirements: Git, GitHub CLI authenticated as `manhtu0407`, Node.js 24 LTS,
