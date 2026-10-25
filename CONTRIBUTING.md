@@ -27,6 +27,11 @@ git pull --ff-only origin main
 git switch -c feat/123-short-description
 ```
 
+Use that switch/pull sequence only from a clean, coordinated checkout. With pending
+or concurrent work, fetch and create a separate task worktree from `origin/main`.
+For coding agents, the root policy's operation-specific authorization still applies
+to PRs, hosted CI, merges and releases in the human workflow below.
+
 Use `feat/`, `fix/`, `docs/`, or `chore/` plus the Issue number. Keep commits focused;
 titles should explain the outcome, for example `chore: add repository checks`.
 Preserve unrelated local work; do not reset or clean another person's changes.
@@ -66,7 +71,8 @@ handles collaboration concerns privately via the contact route in SECURITY.
 
 ## Free-plan boundary
 
-PR review and green checks are our operating procedure. This repository is now public
-by explicit owner approval; branch protection is eligible but has not been configured.
-Local hooks are optional and bypassable. No approval claim, ownership file, or bot
-is a substitute for actual branch protection. The planning Project stays private.
+This public repository has an enforced classic protection rule for `main`, including
+required checks. The [operations guide](docs/operations.md#github-protection-and-local-database-ci)
+records its configuration and verification procedure. Zero required approving reviews
+accommodates the single maintainer; the owner still reviews and authorizes merges.
+Local hooks remain optional and bypassable. The planning Project stays private.

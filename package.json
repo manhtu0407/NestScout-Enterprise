@@ -2,7 +2,7 @@
   "name": "nestscout-repository-tooling",
   "version": "0.0.0",
   "private": true,
-  "description": "Repository checks only; application stack has not been selected.",
+  "description": "Engineering tooling only; no product application is implemented.",
   "engines": { "node": ">=24 <25" },
   "scripts": {
     "identity": "node scripts/verify-repository.mjs",
@@ -12,7 +12,7 @@
     "lint:workflows": "node scripts/check-tools.mjs workflows",
     "check:reserved": "node scripts/check-reserved-files.mjs",
     "scan:secrets": "node scripts/check-tools.mjs secrets",
-    "check": "npm run check:reserved && npm run lint:markdown && npm run lint:yaml && npm run lint:workflows && npm run scan:secrets && npm run verify:supabase && npm run typecheck:db",
+    "check": "npm run check:reserved && npm run lint:markdown && npm run lint:yaml && npm run lint:workflows && npm run scan:secrets && npm run verify:supabase && npm run typecheck:db && npm run verify:foundation",
     "verify:negative": "node scripts/verify-negative.mjs",
     "db:start": "node scripts/supabase-local.mjs start",
     "db:status": "node scripts/supabase-local.mjs status",
@@ -26,7 +26,9 @@
     "db:history": "node scripts/supabase-local.mjs history",
     "db:stop": "node scripts/supabase-local.mjs stop",
     "verify:supabase": "node --test scripts/supabase-local.test.mjs",
-    "typecheck:db": "tsc --noEmit --strict --skipLibCheck supabase/database.types.ts"
+    "typecheck:db": "tsc --noEmit --strict --skipLibCheck supabase/database.types.ts",
+    "verify:foundation": "node --test scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs",
+    "agents:evaluate": "node scripts/agent-evaluation.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

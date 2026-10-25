@@ -3,7 +3,8 @@
 Persistency on the tenth times...!
 
 Public, new NestScout repository. The Delivery Project remains private. This repository contains development
-workflow and security tooling; the application stack has not been selected.
+workflow and security tooling. The intended product direction is native React Native,
+TypeScript and Supabase, without Vercel; no product application is implemented.
 
 ## Repository identity
 
@@ -32,7 +33,9 @@ npm run verify:negative
 ```
 
 Node/npm are repository tooling, not a choice of application stack. There is no
-application server, application build, typecheck, or unit suite yet. Tool downloads
+application server, application build, product typecheck, or product unit suite yet.
+Tooling unit tests, database artifact typechecking and disposable local SQL checks
+do exist; use the commands in `package.json`. Tool downloads
 are version-pinned and SHA-256 checked; dependency installation uses the lockfile.
 
 Optional local hooks (affect only this checkout):
@@ -95,7 +98,7 @@ application stack or authorize hosted operations.
 1. Create an Issue with acceptance criteria; prioritize it in the private
    [NestScout Delivery project](https://github.com/users/manhtu0407/projects/3).
 2. Create a short branch, implement the scoped change, and run the checks.
-3. Open a PR linked to the Issue; include evidence and rollback steps.
+3. When authorized, open a PR linked to the Issue; include evidence and rollback steps.
 4. The owner reviews the exact commit and CI results, then chooses whether to merge.
 5. Release only when there is an application/artifact and a verified source commit.
 
@@ -103,14 +106,16 @@ See [CONTRIBUTING](../CONTRIBUTING.md), [security reporting](../SECURITY.md),
 [operations and recovery](operations.md),
 [root engineering policy](../AGENTS.md),
 [workflow coverage](workflow-coverage.md), and
-[setup evidence](setup-evidence.md).
+[setup evidence](setup-evidence.md), [agent evaluation](agent-evaluation.md), and
+[proposed architecture decisions](architecture.md).
 
 ## GitHub Free limits
 
 Public repositories can use standard GitHub-hosted runners without consuming private
-repository minutes. Branch protection and required status checks are now eligible
-under GitHub Free, but are not configured by the visibility-change task. Checks alone
-do not enforce a server-side merge gate. Auto-merge remains off.
+repository minutes. `main` now has a classic protection rule and required checks;
+see the [current configuration](operations.md#github-protection-and-local-database-ci).
+Earlier visibility-transition statements in setup evidence are historical.
+Auto-merge remains off. A previous successful run does not validate a new revision.
 
 Public visibility changes eligibility for native security features and attestations;
 do not infer their activation from this change. Gitleaks CI detects secrets after
