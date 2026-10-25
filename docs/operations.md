@@ -22,9 +22,11 @@ without consuming private-repository minutes. Larger runners remain paid and are
 not configured. The planning Project stays private. Re-check billing before adding
 other metered services; a limit is not permission to buy usage or switch runners.
 
-CI is configured for standard Linux runners, a 10-minute timeout, no scheduled full scans,
+CI uses standard Linux runners, a 10-minute repository job and 20-minute local
+database job, no scheduled full scans,
 no Actions dependency cache, and no uploaded artifacts. Superseded PR runs cancel.
-Repository artifact/log retention is seven days. If adding artifacts later, set
+Seven-day repository artifact/log retention was observed during setup; recheck the
+live setting before relying on it. If adding artifacts later, set
 `retention-days: 7` explicitly and avoid sensitive content. Add Actions to the
 allowlist only after reviewing and SHA-pinning them. GitHub also permits owner-owned
 Actions under its selected-Actions policy; retain code review of all workflow changes.
@@ -79,38 +81,55 @@ node scripts/backup.mjs C:/Users/YOUR_USER/NestScout-backups/snapshot-YYYYMMDD
 ```
 
 The script verifies the repository/account, makes a Git bundle of all local refs,
-verifies it, clones it into a temporary proof directory inside the backup, and
-checks that the restored HEAD commit equals the source HEAD. It also exports
+verifies it, mirror-clones it into `restore-proof.git` inside the backup, runs
+`git fsck --full`, and compares HEAD and every local ref name/object ID. It rejects
+ref movement during the drill; coordinate other tasks before retrying. It also exports
 Issues/PR metadata, labels, milestones, releases, and accessible repo settings.
+Classic protection for each protected branch is exported separately from rulesets.
 Restricted API exports are recorded as UNVERIFIED, not silently omitted.
 
 Bundle scope is local committed Git objects and refs, not uncommitted files, remote
 refs never fetched, Git LFS objects, release binaries, or GitHub database content.
 Issue comments and PR reviews/comments are exported separately by the script.
-Project views/automation must be captured through its UI when Projects API scope
-is unavailable. No credentials or secret values are exported.
+Project views/automation require a separate authorized export. Credential/secret
+endpoints and local agent credentials are never requested. Git history and free-form
+Issue/PR content may nevertheless contain sensitive text: keep archives private,
+review scanner results and follow SECURITY for any exposure. GitHub settings exports
+are snapshots, not proof that they can all be restored through the same APIs.
 
 To restore to a NEW path, never overwrite the current checkout:
 
 ```sh
-git clone C:/BACKUP/source.bundle C:/NEW/restore-checkout
+git clone --mirror C:/BACKUP/source.bundle C:/NEW/restore.git
+git -C C:/NEW/restore.git fsck --full
+git -C C:/NEW/restore.git for-each-ref --format="%(refname) %(objectname)"
+git clone C:/NEW/restore.git C:/NEW/restore-checkout
 git -C C:/NEW/restore-checkout fsck --full
 git -C C:/NEW/restore-checkout log -1
 ```
 
-The restored origin initially points to the bundle. Before any push, set it to
+The restored origin initially points to the local archive/mirror. Before any push, set it to
 `https://github.com/manhtu0407/NestScout-Enterprise.git`, authenticate, and run the
 identity check. Metadata JSON exports are archival records, not an automatic
 round-trip restore of GitHub database IDs or settings. Do not republish private data.
+Compare the mirror's refs and HEAD with `sourceRefs`/`sourceHead` in the manifest;
+a normal checkout clone alone renames branch refs and is not an exact ref proof.
+Backups exclude reflog-only/unreachable objects, ignored local files, dependency
+caches, agent authentication, repository secret values, account recovery material,
+Supabase data/Storage and native signing assets. Recover those through their owners.
 
 Store backup copies outside the checkout and protect the volume. Off-device/encrypted
 backup scheduling is not installed. The owner controls retention and destinations.
+Until a retention/destination decision exists, local snapshots are a recovery drill,
+not an off-device disaster recovery guarantee. The repository owner owns restore
+decisions and access; designate a second custodian before relying on team recovery.
 
 ## Add the application later
 
-Before the first feature, decide the stack in an Issue and record a short architecture
-decision: users, platform, runtime/package manager, API/data boundaries, hosting,
-environment names, and test/build commands. Then add actual lint/typecheck/unit/build
+The intended native React Native/TypeScript/Supabase direction is recorded in the
+[architecture decisions](architecture.md); project layout, SDK, role boundaries,
+environment promotion and release choices remain PROPOSED. Resolve those before
+the first feature. Then add actual lint/typecheck/unit/build
 checks, lockfiles, sanitized environment examples, and a reproducible local setup.
 
 Keep credentials in appropriate secret stores; use OIDC only where the selected

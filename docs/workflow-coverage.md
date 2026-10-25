@@ -1,5 +1,14 @@
 # Workflow coverage and historical scope
 
+## Current navigation — 2026-10-25
+
+Classic main protection and both required checks are enabled; the earlier coverage
+register is historical. Current procedures live in [operations](operations.md),
+agent behavior methodology in [agent evaluation](agent-evaluation.md), and unresolved
+product choices in [architecture decisions](architecture.md). The
+[hardening evidence](setup-evidence.md#foundation-hardening-2026-10-25) records fresh
+checks separately from earlier setup runs. These references add no task authority.
+
 ## Governance consolidation — 2026-10-24
 
 The root [AGENTS.md](../AGENTS.md) is the sole repository-wide engineering policy
