@@ -12,7 +12,7 @@ import { git as repositoryGit, repositoryFiles, checkHookIndex } from './reposit
 test('aggregate verification retains Foundation, hygiene and existing checks', () => {
   const { scripts } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
   const checks = scripts.check.split(' && ');
-  for (const name of ['check:reserved', 'check:hygiene', 'check:metadata', 'lint:markdown',
+  for (const name of ['check:reserved', 'check:hygiene', 'check:metadata', 'check:test-selection', 'lint:markdown',
     'lint:yaml', 'lint:workflows', 'scan:secrets', 'verify:supabase', 'typecheck:db', 'verify:foundation']) {
     assert.ok(checks.includes(`npm run ${name}`), `Aggregate dropped ${name}.`);
   }
@@ -116,7 +116,7 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
       assert.ifError(child.error);
       assert.equal(child.status, 0, `${args.join(' ')}\n${child.stdout}${child.stderr}`);
       if (args[0] === '--test') {
-        assert.match(child.stdout, args[1] === 'scripts/check-verification.test.mjs' ? /tests 6\b/ : /tests 46\b/);
+        assert.match(child.stdout, args[1] === 'scripts/check-verification.test.mjs' ? /tests 11\b/ : /tests 46\b/);
         for (const outcome of ['fail', 'cancelled', 'skipped', 'todo']) assert.match(child.stdout, new RegExp(`${outcome} 0\\b`));
       }
       assert.deepEqual(snapshot(), withLinked, 'Poisoned hygiene checks or fixtures changed the donor repository.');
