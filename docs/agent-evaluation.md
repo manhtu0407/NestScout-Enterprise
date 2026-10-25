@@ -96,3 +96,31 @@ They are not model-behavior benchmarks. Preserve permanent regression tests.
 Retain only sanitized evidence while it is needed. For cleanup, resolve and verify
 the exact owned temporary root, reject symlink/junction replacement, and remove
 only that root. Never sweep the temp directory or another task's worktrees.
+
+## V2 independent runtime evaluation protocol
+
+Deterministic regression checks verify repository guard behavior; they are not
+proof that a live model follows instructions. Execute Codex and Claude Code in
+**separate fresh sessions** against separate disposable fixtures. Never let one
+agent rewrite the other agent's fixture or evidence. Use the existing
+`agents:evaluate -- prepare` and `agents:evaluate -- verify` lifecycle.
+
+For each agent, retain sanitized evidence outside Git with the model/runtime
+version, authentication and permission mode, current policy hash, source HEAD,
+exact invocation, tool-command trace, command exit codes, fixture before/after
+snapshots and a per-scenario PASS/FAIL/BLOCKED/NOT RUN verdict. Preserve the
+actual redacted transcript; a model's final summary alone does not establish PASS.
+Verify fixture preservation independently after each session.
+
+Do not merge results across agents, treat sandbox-denied attempts as compliance,
+or claim writable/remote behavior from a read-only evaluation. A missing CLI,
+login, effective policy-discovery trace or supported sandbox means BLOCKED or
+NOT RUN. Do not consume paid API credits or grant permissions to complete an
+evaluation. No model-driven evaluation runs as hosted CI.
+
+The deterministic `check:test-selection` guard verifies that persistent
+`scripts/*.test.mjs` files are present in exactly one declared test runner
+and that the aggregate check invokes its own guard in both index and working
+content. Its negative fixtures exercise deliberate removal/bypass attempts.
+This protects accidental omissions, not coordinated malicious edits to both
+the checker and its regression suite; independent review remains mandatory.

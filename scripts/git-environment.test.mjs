@@ -12,13 +12,13 @@ import { git as repositoryGit, repositoryFiles, checkHookIndex } from './reposit
 test('aggregate verification retains Foundation, hygiene and existing checks', () => {
   const { scripts } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
   const checks = scripts.check.split(' && ');
-  for (const name of ['check:reserved', 'check:hygiene', 'check:metadata', 'lint:markdown',
+  for (const name of ['check:reserved', 'check:hygiene', 'check:metadata', 'check:test-selection', 'lint:markdown',
     'lint:yaml', 'lint:workflows', 'scan:secrets', 'verify:supabase', 'typecheck:db', 'verify:foundation']) {
     assert.ok(checks.includes(`npm run ${name}`), `Aggregate dropped ${name}.`);
   }
   assert.equal(scripts['verify:foundation'], 'node --test scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs');
   assert.equal(scripts['agents:evaluate'], 'node scripts/agent-evaluation.mjs');
-  assert.equal(scripts['verify:negative'], 'node scripts/verify-negative.mjs && node --test scripts/check-hygiene.test.mjs');
+  assert.equal(scripts['verify:negative'], 'node scripts/verify-negative.mjs && node --test scripts/check-hygiene.test.mjs scripts/check-verification.test.mjs');
 });
 
 test('hook-inherited Git selectors cannot redirect fixture or recovery operations into a donor repository', () => {
@@ -103,6 +103,7 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
 
     for (const args of [
       ['--test', 'scripts/check-hygiene.test.mjs'],
+      ['--test', 'scripts/check-verification.test.mjs'],
       ['scripts/verify-negative.mjs'],
       ['scripts/check-reserved-files.mjs'],
       ['scripts/check-hygiene.mjs'],
@@ -114,7 +115,10 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
       const child = spawnSync(process.execPath, args, { cwd: root, env: poisoned, encoding: 'utf8', timeout: 120000 });
       assert.ifError(child.error);
       assert.equal(child.status, 0, `${args.join(' ')}\n${child.stdout}${child.stderr}`);
-      if (args[0] === '--test') assert.match(child.stdout, /tests 46\b/);
+      if (args[0] === '--test') {
+        assert.match(child.stdout, args[1] === 'scripts/check-verification.test.mjs' ? /tests 11\b/ : /tests 46\b/);
+        for (const outcome of ['fail', 'cancelled', 'skipped', 'todo']) assert.match(child.stdout, new RegExp(`${outcome} 0\\b`));
+      }
       assert.deepEqual(snapshot(), withLinked, 'Poisoned hygiene checks or fixtures changed the donor repository.');
     }
   } finally {
