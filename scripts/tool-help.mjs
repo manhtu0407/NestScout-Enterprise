@@ -8,7 +8,7 @@ const families = {
   k6: ['', 'run', 'inspect', 'archive', 'version'],
   docker: ['', 'container', 'container ls', 'container inspect', 'container logs', 'container stats', 'container exec',
     'image', 'image inspect', 'network', 'volume', 'system', 'system df', 'context', 'events'],
-  compose: ['', 'config', 'ps', 'logs', 'up', 'down', 'profiles', 'build', 'run', 'wait'],
+  compose: ['', 'config', 'ps', 'logs', 'up', 'down', 'build', 'run', 'wait'],
   buildx: ['', 'ls', 'inspect', 'build', 'du', 'prune', 'imagetools', 'bake'],
   jq: [''], shellcheck: [''], hadolint: [''], gitleaks: ['', 'git', 'dir', 'stdin'],
   actionlint: [''], 'osv-scanner': ['', 'scan', 'scan source', 'scan image', 'fix'],

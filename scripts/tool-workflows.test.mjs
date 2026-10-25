@@ -17,7 +17,7 @@ test('native help selects fixed executable/argv and rejects malicious or mutatin
   assert.deepEqual(helpCommand(['trivy', 'image']), [toolPath('trivy'), ['image', '--help']]);
   assert.deepEqual(helpCommand(['k6']), [toolPath('k6'), ['--help']]);
   for (const args of [[], ['__proto__'], ['trivy', '--output', 'outside'], ['k6', 'run', 'script.js'],
-    ['docker; echo unsafe'], ['docker', 'context', 'use'], ['compose', '--file', 'outside'], ['trivy', '../image'], ['k6', 'run\n']]) {
+    ['docker; echo unsafe'], ['docker', 'context', 'use'], ['compose', '--file', 'outside'], ['compose', 'profiles'], ['trivy', '../image'], ['k6', 'run\n']]) {
     assert.throws(() => nativeHelp(args, () => { assert.fail('invalid args executed'); }));
   }
   assert.equal(nativeHelp(['k6', 'run'], (exe, args) => {
@@ -68,20 +68,25 @@ test('verified archives install only the exact binary; missing binary never repl
   } finally { rmSync(directory, { recursive: true }); }
 });
 
-const identity = { id: 'a'.repeat(64), endpoints: { 'database.sql': { port: 15432 } } };
-const container = () => ({ Id: 'b'.repeat(64), Config: { Labels: { 'com.supabase.stack': identity.id, 'com.supabase.service': 'database' } },
+const identity = { id: 'a'.repeat(64), databaseInstance: '12345678-1234-1234-1234-123456789abc', endpoints: { 'database.sql': { port: 15432 } } };
+const container = () => ({ Id: 'b'.repeat(64), Config: { Labels: { 'com.supabase.stack': identity.id, 'com.supabase.service': 'database', 'com.supabase.instance': identity.databaseInstance } },
   State: { Running: true }, HostConfig: { NetworkMode: 'owned-network' }, NetworkSettings: { Ports: { '5432/tcp': [{ HostIp: '127.0.0.1', HostPort: '15432' }] } } });
 
-test('PostgreSQL reuses canonical ownership and rejects wrong stack, nonloopback, wrong port and targets', () => {
+test('PostgreSQL binds the managed service instance while accepting a different loopback backend port', () => {
   assert.equal(databaseContainer([container()], identity), 'b'.repeat(64));
+  const backend = container(); backend.NetworkSettings.Ports['5432/tcp'][0].HostPort = '25432';
+  assert.equal(databaseContainer([backend], identity), 'b'.repeat(64));
   for (const mutate of [c => { c.Config.Labels['com.supabase.stack'] = 'c'.repeat(64); },
     c => { c.NetworkSettings.Ports['5432/tcp'][0].HostIp = '0.0.0.0'; },
-    c => { c.NetworkSettings.Ports['5432/tcp'][0].HostPort = '25432'; },
+    c => { c.NetworkSettings.Ports['5432/tcp'][0].HostPort = '0'; },
+    c => { c.Config.Labels['com.supabase.instance'] = '87654321-1234-1234-1234-123456789abc'; },
+    c => { delete c.Config.Labels['com.supabase.instance']; },
     c => { c.HostConfig.NetworkMode = 'host'; }, c => { c.State.Running = false; }, c => { c.Id = '--privileged'; }]) {
     const c = container(); mutate(c); assert.throws(() => databaseContainer([c], identity));
   }
   assert.throws(() => databaseContainer([], identity));
   assert.throws(() => databaseContainer([container(), container()], identity));
+  assert.throws(() => databaseContainer([container()], { ...identity, databaseInstance: '' }), /instance differs/);
   assert.equal(clientAction(['help', 'pg_restore']), 'pg_restore');
   assert.equal(clientAction(['smoke']), 'smoke');
   for (const args of [['smoke', '--db-url', 'postgres://hosted.invalid'], ['help', 'pg_restore;rm'], ['sql', 'DELETE']]) {

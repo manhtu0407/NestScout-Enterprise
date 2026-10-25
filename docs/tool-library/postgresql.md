@@ -12,15 +12,17 @@ to connect to an arbitrary local container or hosted database.
 `pg_restore`) obtains installed help through a verified owned database container.
 `npm run tools:postgresql -- smoke` uses the same path. It requires the current
 worktree/branch's existing managed local stack and canonical lock/verification,
-checks Docker context, stack label, running state, database service, immutable
-container ID and matching loopback port, then invokes the container's native CLI.
+checks Docker context, stack label, running state, database service-instance UUID,
+immutable container ID and loopback bindings, then invokes the container's native CLI.
+The managed endpoint and Docker backend have separate ports; equality is not an
+identity check. The instance UUID must match the verified managed database service.
 No target/SQL flags are accepted. It does not start or stop any stack.
 
 Without a matching stack the result is BLOCKED_NO_LOCAL_STACK. Containers from
 another repository/worktree do not satisfy the prerequisite. Host-native `psql`
 presence in doctor is reported separately and never substitutes for ownership.
 Use canonical `db:start` only under an authorized bounded local lifecycle task.
-The V2 task does not start a stack solely to change readiness status.
+The authorized V2 finalization runs the canonical bounded start/stop lifecycle.
 
 | Client / help | Operational families and effects | Default smoke |
 | --- | --- | --- |
@@ -35,6 +37,10 @@ after smoke. No passwords/connection strings are logged; no hosted fallback,
 restoration, reset, credential harvesting or persistent container files occur.
 Inherited host PG/connection overrides are removed by the canonical environment.
 Do not equate readiness with a successful authenticated SQL operation.
+Smoke also verifies an unknown local role is denied (exit 2 / FATAL role does not exist)
+and DDL in a read-only transaction is denied (exit 3 / SQLSTATE 25006). It checks
+the fixture role/table names are absent before and after; it creates neither.
+These same workflows run in the existing isolated Supabase CI job before cleanup.
 
 ## Diagnostics, archive handling and limitations
 

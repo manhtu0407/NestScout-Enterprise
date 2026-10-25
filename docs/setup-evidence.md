@@ -1153,3 +1153,62 @@ arsenal/parity remains BLOCKED by the owned SQL stack, advisory DB preparation,
 Claude authentication and unexecuted native Linux workflows. This verdict grants
 no PR/hosted-CI/merge/deployment authority. Next scoped work is owner-selected
 prerequisite resolution and corresponding rerun; no production changes are needed.
+
+### V2 finalization: isolated PostgreSQL integration
+
+The owner subsequently authorized isolated local PostgreSQL verification, a V2 PR
+and necessary hosted CI, while preserving the merge/deployment/production boundary.
+The starting revision was verified locally and remotely as
+`9e99938b24c2470bc08b4f079bf554bcb15f53f7`; all 25 reviewed file hashes matched.
+The following evidence supersedes the initial PostgreSQL BLOCKED_NO_LOCAL_STACK
+and SQL-denial NOT RUN entries above. Final revision/CI identities are reported
+with the PR; earlier optional-tool/runtime evidence retains its original scope.
+
+Canonical `db:start` created only the current worktree/branch's managed stack,
+ID `54aa5280f6833b0f6044d3906de4326ed9a90241d7dd2009d3d3e15d130a4884`.
+The existing 39 unrelated containers were inventoried before startup. Root policy,
+README, runtime settings, dependencies, image pins, canonical Supabase lifecycle,
+CI triggers and CI permissions were preserved.
+
+Integration reproduced a real V2 defect: the managed SQL endpoint was loopback
+port 22035, while its database container's loopback backend used port 55525.
+Equality between these distinct layers rejected a legitimate owned stack.
+The helper now checks the database service-instance UUID from validated stack
+status against `com.supabase.instance`, in addition to stack/worktree/branch,
+running state, immutable container ID, local Docker context and loopback bindings.
+It rejects wrong/missing instance labels, invalid backend ports, non-loopback
+bindings and duplicate/missing database services. Regression fixtures explicitly
+accept different valid managed/backend ports without relaxing target identity.
+
+PostgreSQL 17.11 clients were reused inside the owned official pinned container;
+no host-native client or second server was installed. Actual client help, readiness,
+read-only version/database SELECT, 4,222-byte schema-only dump, custom archive and
+`pg_restore --list` passed. Read-only DDL was rejected with exit 3 / SQLSTATE 25006;
+an absent role was rejected with exit 2 / FATAL role does not exist. Fixture role
+and table absence were checked before and after; no role/table was created and no
+restore ran. Owned dumps were removed. The negative script uses psql `-f -` with
+ON_ERROR_STOP, matching the native script exit contract in the
+[PostgreSQL 17 reference](https://www.postgresql.org/docs/17/app-psql.html).
+
+The existing Supabase CI job now runs the same PostgreSQL workflow before its
+existing always-run stack cleanup. No runner/job, token scope, trigger or paid
+service was added. Complete job outcomes/logs are inspected on the final PR SHA.
+Native discovery also rejects the nonexistent `compose profiles` family; profiles
+remain discoverable through native `compose config --help` / `config --profiles`.
+
+Local `db:test` passed all 13 SQL security assertions, and `db:mcp:test` passed
+the real MCP catalog/query and denied-migration test. All four native client help
+paths returned actual help. Fresh Trivy and k6 bounded smokes passed with their
+documented limits. Canonical `db:stop` confirmed no task containers remained
+running; local task data was retained by the existing lifecycle contract. All 39
+pre-existing container IDs/names/running states and all five unrelated worktrees'
+HEAD/index/status/working diffs were verified unchanged. Sanitized evidence is
+retained under ignored `.cache/agent-tests/v2-finalize/`.
+
+Remaining limitations: Trivy advisory DB scans remain DATABASE_MISSING; OSV Windows
+execution remains blocked by the previously documented host-policy restriction;
+Claude remains BLOCKED_AUTH and its tool-choice benchmark is NOT RUN. Native Linux
+Trivy/k6 optional workflows, broader Docker drivers/GPU, native skill-loading parity,
+product/device integration, real product performance and restore/recovery into an
+application database remain NOT RUN. Hosted foundation/SQL results do not establish
+those capabilities. No merge, deployment or production change is authorized here.
