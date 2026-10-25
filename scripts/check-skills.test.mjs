@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync, lstatSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -116,7 +116,8 @@ test('staged and working manifests cannot conceal each other or combine into one
 test('unsafe, missing and incorrectly cased inline, reference and HTML resource paths fail', () => {
   for (const destination of ['../secret.md', '%2e%2e/secret.md', '/secret.md', 'C:/secret.md',
     '\\secret.md', 'file:///secret.md', 'javascript:alert', 'SKILL.MD', 'missing.md', 'a/../SKILL.md']) {
-    for (const link of [`[resource](${destination})`, `[resource]: ${destination}`, `<img src="${destination}">`]) {
+    for (const link of [`[resource](${destination})`, `[resource]: ${destination}`, `<img src="${destination}">`,
+      `[outer [inner]](${destination})`, `<a href=${destination}>resource</a>`]) {
       fixture(({ repository, write }) => {
         write(skill, valid + '\n' + link + '\n');
         assert.throws(() => checkSkills(repository), /resource/);
@@ -126,7 +127,7 @@ test('unsafe, missing and incorrectly cased inline, reference and HTML resource 
 });
 
 test('unreviewed resources, executable formats, secrets and competing instructions fail existing naming', () => {
-  for (const file of ['references/guide.md', 'scripts/run.mjs', 'scripts/run.sh', 'assets/tool.exe',
+  for (const file of ['references/guide.txt', 'scripts/run.mjs', 'scripts/run.sh', 'assets/tool.exe',
     '.env', 'AGENTS.md', 'CLAUDE.md', 'nested/SKILL.md']) {
     fixture(({ repository, write, run }) => {
       write(skill, valid);
@@ -139,6 +140,89 @@ test('unreviewed resources, executable formats, secrets and competing instructio
       assert.throws(() => checkSkills(repository), /naming|unsupported/);
     });
   }
+});
+
+test('linked references, including reference chains, are supported under both native roots', () => {
+  fixture(({ repository, write, run }) => {
+    for (const root of ['.agents', '.claude']) {
+      write(`${root}/skills/example/SKILL.md`, valid + '\n[Review](references/first.md).\n');
+      write(`${root}/skills/example/references/first.md`, '# Review\n\n[Next](second.md).\n');
+      write(`${root}/skills/example/references/second.md`, '# Detail\n\n[Previous](first.md).\n');
+      assert.doesNotThrow(() => checkSkills(repository));
+      run(['add', '--', root]);
+      assert.doesNotThrow(() => checkSkills(repository));
+      run(['rm', '--cached', '-r', '--', root]);
+      const owned = path.join(repository, root);
+      assert.equal(path.dirname(realpathSync(owned)), realpathSync(repository));
+      assert.ok(!lstatSync(owned).isSymbolicLink());
+      rmSync(owned, { recursive: true });
+    }
+  });
+});
+
+test('orphan reference and package without owning manifest fail in each snapshot', () => {
+  fixture(({ repository, write, run }) => {
+    const reference = '.agents/skills/example/references/review.md';
+    write(reference, '# Review\n');
+    assert.throws(() => checkSkills(repository), /working.*no owning SKILL.md/);
+    write(skill, valid);
+    assert.throws(() => checkSkills(repository), /working.*no link consumer/);
+    run(['add', '--', '.agents']);
+    write(skill, valid + '\n[Review](references/review.md).\n');
+    assert.throws(() => checkSkills(repository), /index.*no link consumer/);
+    run(['add', '--', skill]);
+    assert.doesNotThrow(() => checkSkills(repository));
+    run(['rm', '--cached', '--', skill]);
+    assert.throws(() => checkSkills(repository), /index.*no owning SKILL.md/);
+  });
+});
+
+test('reference text and links receive UTF-8, control and path validation in both snapshots', () => {
+  for (const text of ['# Review\r\n', '\ufeff# Review\n', '# Review\n\u202ehidden\n', '',
+    '# Review\n\n[Outside](../../outside.md)\n', '# Review\n\n<a href=/outside.md>outside</a>\n',
+    '# Review\n\n<file:///outside.md>\n', Buffer.from([0xff])]) {
+    fixture(({ repository, write, run }) => {
+      write(skill, valid + '\n[Review](references/review.md).\n');
+      const reference = '.agents/skills/example/references/review.md';
+      write(reference, text);
+      assert.throws(() => checkSkills(repository), /working/);
+      run(['add', '--', '.agents']);
+      write(reference, '# Review\n');
+      assert.throws(() => checkSkills(repository), /index/);
+    });
+  }
+});
+
+test('reference content present in the index cannot repair a missing working resource', () => {
+  fixture(({ repository, write, run }) => {
+    const reference = '.agents/skills/example/references/review.md';
+    write(skill, valid + '\n[Review](references/review.md).\n');
+    write(reference, '# Review\n');
+    run(['add', '--', '.agents']);
+    rmSync(path.join(repository, reference));
+    assert.throws(() => checkSkills(repository), /working.*resource destination/);
+    write(reference, '# Review\n');
+    assert.doesNotThrow(() => checkSkills(repository));
+  });
+});
+
+test('a link to another package cannot satisfy resource ownership', () => {
+  fixture(({ repository, write }) => {
+    write(skill, valid + '\n[Review](../other/references/review.md).\n');
+    write('.agents/skills/other/SKILL.md', valid.replace('name: example', 'name: other') + '\n[Review](references/review.md).\n');
+    write('.agents/skills/other/references/review.md', '# Review\n');
+    assert.throws(() => checkSkills(repository), /unsafe resource/);
+  });
+});
+
+test('resource symlink modes are rejected before parsing index contents', () => {
+  fixture(({ repository, write, run }) => {
+    write(skill, valid + '\n[Review](references/review.md).\n');
+    run(['add', '--', skill]);
+    const blob = run(['hash-object', '-w', '--stdin'], { input: 'unused' }).trim();
+    run(['update-index', '--add', '--cacheinfo', `120000,${blob},.agents/skills/example/references/review.md`]);
+    assert.throws(() => checkSkills(repository), /regular resolved index entry/);
+  });
 });
 
 test('incorrectly cased skill entrypoint fails', () => {

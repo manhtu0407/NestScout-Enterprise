@@ -46,7 +46,7 @@ export function checkPath(file, artifacts = []) {
     || new RegExp(`^supabase/migrations/[0-9]{14}_[a-z0-9]+(?:_[a-z0-9]+)*\\.sql$`).test(file)
     || new RegExp(`^supabase/tests/database/${segments}${word}\\.test\\.sql$`).test(file)
     || new RegExp(`^(?:${word}/)+(?:README\\.md|LICENSE|NOTICE|AUTHORS|CONTRIBUTORS\\.md)$`).test(file)
-    || new RegExp(`^\\.(?:agents|claude)/skills/${word}/SKILL\\.md$`).test(file)) return;
+    || new RegExp(`^\\.(?:agents|claude)/skills/${word}/(?:SKILL\\.md|references/${word}\\.md)$`).test(file)) return;
   throw new Error(`No approved naming convention for path: ${JSON.stringify(file)}`);
 }
 

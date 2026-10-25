@@ -59,7 +59,7 @@ in the existing module. Do not add a source file merely to split a short functio
 | Supabase migrations | `supabase/migrations/<14-digit-timestamp>_<snake_case_name>.sql` |
 | Database tests | `supabase/tests/database/<kebab-name>.test.sql`, optionally in kebab directories |
 | Required and generated names | Exact paths in `scripts/check-hygiene.mjs`, including root policy/docs/configs, hooks, `database.types.ts` and `supabase.lock` |
-| Legal/contributor records and skills | Exact conventional basenames such as `LICENSE`, `NOTICE`, `AUTHORS`, `CONTRIBUTORS.md`, module `README.md`, and `.agents/skills/<kebab-name>/SKILL.md` or `.claude/skills/<kebab-name>/SKILL.md` |
+| Legal/contributor records and skills | Exact conventional basenames such as `LICENSE`, `NOTICE`, `AUTHORS`, `CONTRIBUTORS.md`, module `README.md`, and `.agents/skills/<kebab-name>/SKILL.md` or `.claude/skills/<kebab-name>/SKILL.md`; skills also accept one-level `references/<kebab-name>.md` with ownership and link validation |
 
 Case aliases, unknown categories, and document/source basenames beginning with
 `todo`, `notes`, `plan`, `report`, `handoff`, `session-summary`, `debug`, or `scratch`

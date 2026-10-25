@@ -17,13 +17,15 @@ function fail(label, message) {
 function checkLinks(text, file, available, label) {
   // Check inline/image, reference-definition and HTML destinations; never fetch them.
   const destinations = [
-    ...text.matchAll(/!?\[[^\]\n]*\]\(\s*(<[^>\n]*>|[^\s)]+)(?:\s+[^\n)]*)?\)/g),
+    ...text.matchAll(/\]\(\s*(<[^>\n]*>|[^\s)]+)(?:\s+[^\n)]*)?\)/g),
     ...text.matchAll(/^\s{0,3}\[[^\]\n]+\]:\s*(<[^>\n]*>|\S+)/gm),
-    ...text.matchAll(/\b(?:href|src)\s*=\s*["']([^"'\n]+)["']/gi),
-  ];
-  for (const match of destinations) {
+    ...text.matchAll(/\b(?:href|src)\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^\s>]+))/gi),
+    ...text.matchAll(/<((?:[a-z][a-z0-9+.-]*:|[./\\])[^<>\s]*)>/gi),
+  ].map(match => match[1] ?? match[2] ?? match[3]);
+  const targets = new Set();
+  for (const value of destinations) {
     let destination;
-    try { destination = decodeURIComponent(match[1].replace(/^<|>$/g, '')); }
+    try { destination = decodeURIComponent(value.replace(/^<|>$/g, '')); }
     catch { fail(label, 'invalid resource URL encoding'); }
     if (/^https:\/\//i.test(destination)) continue;
     if (destination.startsWith('#')) continue;
@@ -34,15 +36,22 @@ function checkLinks(text, file, available, label) {
     }
     const target = path.posix.join(path.posix.dirname(file), destination);
     if (!available.has(target)) fail(label, 'missing or incorrectly cased resource destination');
+    targets.add(target);
   }
+  return targets;
 }
 
-function checkManifest(content, file, available, label) {
+function skillText(content, label) {
   let text;
   try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(content); }
   catch { fail(label, 'expected UTF-8'); }
   if (/[\r\u0000-\u0008\u000b-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/u.test(text)
     || !text.endsWith('\n')) fail(label, 'expected LF, final newline and no hidden control characters');
+  if (!text.trim()) fail(label, 'empty skill document');
+  return text;
+}
+
+function checkManifest(text, file, label) {
   const frontmatter = /^---\n([\s\S]*?)\n---\n([\s\S]+)$/.exec(text);
   if (!frontmatter || !frontmatter[2].trim()) fail(label, 'missing frontmatter delimiters or body');
   const document = parseDocument(frontmatter[1], { schema: 'failsafe', uniqueKeys: true });
@@ -72,7 +81,6 @@ function checkManifest(content, file, available, label) {
     fail(label, 'metadata must map string keys to strings');
   }
   if (text.split('\n').length - 1 > 500) fail(label, 'SKILL.md exceeds the local 500-line limit');
-  checkLinks(text, file, available, label);
   return name;
 }
 
@@ -81,16 +89,27 @@ export function checkSkills(repository = root) {
   const inventory = [];
   for (const state of ['index', 'working']) {
     const current = files.filter(item => item.state === state);
-    const available = new Set(current.map(item => item.file));
     const names = new Set();
+    const packages = new Map();
     for (const { file, content } of current) {
       const label = `${state} ${file}`;
       checkPath(file);
-      // No resource type is needed yet; extend canonical hygiene with reviewed fixtures first.
-      if (!/^\.(?:agents|claude)\/skills\/[^/]+\/SKILL\.md$/.test(file)) fail(label, 'unsupported skill package file');
-      const name = checkManifest(content, file, available, label);
+      const directory = file.split('/').slice(0, 3).join('/');
+      if (!packages.has(directory)) packages.set(directory, new Map());
+      packages.get(directory).set(file, skillText(content, label));
+    }
+    for (const [directory, documents] of packages) {
+      const file = `${directory}/SKILL.md`;
+      const label = `${state} ${file}`;
+      if (!documents.has(file)) fail(label, 'resource package has no owning SKILL.md in this snapshot');
+      const name = checkManifest(documents.get(file), file, label);
       if (names.has(name)) fail(label, 'colliding project skill name across native roots');
       names.add(name);
+      const available = new Set(documents.keys());
+      const links = new Map([...documents].map(([source, text]) => [source, checkLinks(text, source, available, `${state} ${source}`)]));
+      const reachable = new Set([file]);
+      for (const source of reachable) for (const target of links.get(source)) reachable.add(target);
+      for (const resource of available) if (!reachable.has(resource)) fail(`${state} ${resource}`, 'resource has no link consumer from SKILL.md');
       inventory.push({ state, file, name });
     }
   }

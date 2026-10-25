@@ -11,13 +11,20 @@ recurring workflows that need more than a native tool command.
 | --- | --- | --- |
 | Codex | `.agents/skills/<name>/SKILL.md` | `skill-lifecycle` |
 | Claude Code | `.claude/skills/<name>/SKILL.md` | None; do not create an empty root |
+| Claude session plugin | `claude --plugin-dir ./.agents` | Same source, namespaced `.agents:skill-lifecycle` |
 
-Use one native location per justified package. Portable Markdown does not imply
-shared discovery. No common single-source discovery route has been established
-within the current no-symlink, no-mirror, no-loader constraints. Shared automatic
-discovery is BLOCKED. Future owner choices are independent runtime-specific skills
-with distinct responsibilities, or a separately approved policy amendment for a
-checked distribution adapter. Neither is implemented by V1.
+Use one native location per justified package. Codex reads the project skill root;
+Claude can read that same source through its native session plugin flag. Claude's
+manifestless plugin layout scans `skills/` under the supplied directory, so `.agents`
+is the plugin root. No manifest, loader, copy, symlink or saved setting is needed.
+Review that root as a skills-only bundle before loading it. This is explicit session
+loading; default shared automatic discovery is still not established.
+
+From the repository root, start an already authorized Claude session with
+`claude --plugin-dir ./.agents`, then invoke `/.agents:skill-lifecycle` with the
+approved library request. Use the installed executable's absolute path if it is not
+on PATH. Namespaces differ from Codex's `$skill-lifecycle`; do not create a second
+package to hide that difference. This flag grants no additional operation authority.
 
 Before creating anything, identify the recurring task, actual consumer, positive
 acceptance example and ordinary-task non-trigger. Search existing skills and tools;
@@ -40,10 +47,14 @@ permissions and execution extensions require separate review; V1 rejects them.
 `synced` and `anthropic-skills` are reserved runtime names. Duplicate names across
 the two project roots fail; personal/managed/plugin collisions need live inventory.
 
-V1 needs no packaged references, scripts or assets, so existing hygiene remains
-unchanged and rejects them. Add a resource only for a concrete consumer, together
-with a narrow canonical hygiene extension, reviewed extensions and positive/negative
-fixtures. Do not allow arbitrary trees, binaries, hidden configs or policy files.
+The lifecycle skill has one on-demand [adoption checklist](../.agents/skills/skill-lifecycle/references/adoption-review.md).
+Both native roots accept `references/<kebab-name>.md`, exactly one level deep.
+References require an owning `SKILL.md` in each snapshot and a reachable link from
+it; unused resources, hidden files, nested policy files and other formats fail.
+The same UTF-8/LF/control and local-link checks apply to every reference.
+Scripts and assets have no concrete consumer in this library and remain unsupported;
+do not add empty directories, binaries or generic templates. A future extension
+needs its own reviewed naming/behavior tests and test-runner compatibility.
 Local Markdown/HTML resource destinations must resolve with exact case inside the
 owning package; traversal and absolute paths fail. Mention repository procedural
 paths as repository-relative code paths, as the first skill does. External HTTPS
@@ -68,12 +79,10 @@ semantic safety, license suitability, effective invocation or model compliance.
 1. **Intake and discover:** inspect the live repo and target runtime; record visible
    project, personal, managed and plugin skill names/locations and inaccessible
    roots. Resolve collisions before writing. Default to a project-local package.
-2. **Review external source:** record original URL, maintainer, exact commit SHA,
-   verified signature status if available, license and public redistribution rights.
-   Inspect every file, submodule, dependency, script, network/credential need and
-   hidden payload. Review the complete proposed diff before copying or execution.
-   Unpinned downloads, download-and-execute instructions or unresolved licensing
-   stop adoption. No third-party package is installed in V1.
+2. **Review external source:** use the on-demand adoption checklist linked above
+   for immutable provenance, complete file review, licensing, effects and recovery.
+   Resolve its findings before copying or execution. No third-party package is
+   installed in V1.
 3. **Write minimally:** create the justified workflow or update its reviewed diff.
    Reuse canonical tools and root policy references. Git history records internal
    provenance and versions; no parallel registry or lockfile is needed. Retain the
@@ -103,8 +112,11 @@ references in the same scoped change. Never prune global skills as repo cleanup.
 symlink, case and snapshot-size guards. It checks both native roots in index and
 working snapshots independently, including staged files absent from disk. It parses
 frontmatter using the locked YAML package without aliases/tags, checks portable
-fields, collisions, bounded descriptions and local destinations, and never executes
-or downloads package content. Existing hygiene/reserved/secrets guards still apply.
+fields, collisions, bounded descriptions, reference ownership/reachability and local
+destinations, and never executes or downloads package content. Inline links with
+nested labels, reference definitions, autolinks and quoted/unquoted HTML destinations
+receive path checks. This bounded destination scan is not a complete Markdown parser
+or semantic safety review. Existing hygiene/reserved/secrets guards still apply.
 Ignored untracked files are outside repository snapshot checks; review the complete
 external bundle before adoption, including ignored/hidden files.
 
@@ -112,6 +124,29 @@ external bundle before adoption, including ignored/hidden files.
 The existing aggregate retains its checks and appends `check:skills`. Deterministic
 fixtures cover valid packages and malformed/index-only/unsafe cases. They cannot
 test prompt injection refusal, non-trigger decisions, permissions or discovery.
+
+Keep permanent resource-validation tests in the existing `scripts/` runner. Do not
+put unregistered `.test.mjs` or `.spec.mjs` files inside a skill package. When
+combining changes to runner manifests and exact runner assertions, preserve every
+registered suite and the skill check rather than choosing one branch's full line.
+
+## Claude authentication and discovery gates
+
+Inspect `claude --version` and `claude auth status` independently. A Claude Desktop
+session does not establish CLI authentication. On 2026-10-25, the installed CLI
+`2.1.310` returned `loggedIn=false`, `authMethod=none`. Do not read credential files,
+add an API key or change a login/configuration to turn a blocked gate green. The
+owner can use the CLI's normal `auth login` or interactive `/login` flow when ready.
+
+Discovery can be observed before model authentication: a disposable trusted project
+with distinct diagnostic skills under `.claude/skills` and `.agents/skills` exposed
+only the Claude-native diagnostic by default. A fresh invocation with `--plugin-dir`
+also exposed the `.agents` diagnostic through the native plugin namespace. These
+observations used temporary isolated configuration, no tools/MCP and no saved user
+settings; they do not prove personal/managed collision behavior in a normal session.
+The emitted `system/init` inventory and plugin paths establish registration, while
+`Not logged in` and exit 1 leave model activation, non-trigger and safety tests BLOCKED.
+Recheck the actual package's registration and model behavior after material changes.
 
 ## Fresh runtime evidence protocol
 
@@ -150,5 +185,8 @@ Rechecked 2026-10-25; inspect current runtime behavior before later reliance:
 - [Lean skill context](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra): keep useful context small.
 - [OpenAI plugin skills](https://developers.openai.com/plugins/build/skills): plugin packaging is a separate surface.
 - [Claude Code skills](https://code.claude.com/docs/en/skills): `.claude/skills`, precedence and runtime extensions.
+- [Claude plugin layout](https://code.claude.com/docs/en/plugins-reference): manifestless native `skills/` loading.
+- [Claude CLI](https://code.claude.com/docs/en/cli-reference): session-only `--plugin-dir` and diagnostic flags.
+- [Claude authentication](https://code.claude.com/docs/en/authentication): CLI login methods and credential boundaries.
 - [GitHub skills](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills): Copilot interoperability does not prove local Codex/Claude discovery.
 - [Microsoft skills](https://learn.microsoft.com/en-us/agent-framework/agents/skills): discretionary instructions versus deterministic workflows.
