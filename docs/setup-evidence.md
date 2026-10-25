@@ -1,6 +1,6 @@
 # GitHub foundation setup evidence
 
-Latest inspection: [foundation hardening 2026-10-25](#foundation-hardening-2026-10-25).
+Latest inspection: [final foundation verification 2026-10-25](#final-foundation-verification-2026-10-25).
 Earlier dated sections retain their original observations, including settings and
 blockers later superseded. Current operational guidance belongs to the development,
 security and operations documents, not to an earlier snapshot in this file.
@@ -419,7 +419,7 @@ Future migrations must explicitly enable RLS and review grants; the optional hoo
 can log a failure without preventing table creation. Avoid its names and rely on
 reviewed migrations, not automatic RLS. The minimal proposed ACL change, verification,
 compatibility checks and exact-ACL recovery are in
-[owner actions](operations.md#supabase-hardening-owner-actions); none was executed.
+[owner actions](operations.md#hosted-rls-hook-acl-proposal); none was executed.
 
 ### Fresh verification matrix
 
@@ -729,7 +729,8 @@ under `NestScout-backups/hardening-hook-recovery-20261025-0900`. Shared non-bare
 configuration was restored immediately. All 54 authored working files were hashed
 against the verified `b54f275` commit before atomically restoring that task branch
 and its index; no working file was overwritten. The fixture commit was unpublished
-and is preserved only in the external incident bundle. Concurrent hygiene work was
+and was removed from delivery refs while retained in the incident bundle and local
+reflog; dangling objects were not pruned. Concurrent hygiene work was
 not staged or removed. No foreign lock was deleted and no hook was bypassed.
 
 The repair introduces one shared `gitEnvironment` helper for backup/evaluation Git
@@ -793,7 +794,7 @@ SECURITY DEFINER, return type `event_trigger`, search_path pg_catalog, client EX
 and one event-trigger binding. The Advisor's generic RPC wording does not establish
 that an event-trigger function can be exploited through RPC. The scoped ACL proposal,
 pre-change metadata capture, local validation and exact-ACL recovery requirements
-remain in [operations](operations.md#supabase-hardening-owner-actions). Hosted repair
+remain in [operations](operations.md#hosted-rls-hook-acl-proposal). Hosted repair
 is BLOCKED pending specific Production approval; no ACL/schema/data mutation occurred.
 No Customer/Worker/Admin/Kael permissions exist to validate yet.
 
@@ -883,3 +884,83 @@ outside tracked source. Delivery is a feature-branch push only after fresh ident
 trigger and open-PR checks. PR creation, hosted CI, merge, deployment and settings/
 hosted-resource writes are not authorized by this initiative; no hosted PASS is
 claimed for these changes. Final commit and remote verification are reported at delivery.
+
+## Final foundation verification 2026-10-25
+
+The owner separately authorized final corrections, one foundation PR, PR-triggered
+CI and a squash merge conditional on G1–G4. This supersedes the earlier task's
+PR/CI restriction for this initiative only. Settings/allowlists, root AGENTS/original
+README, unrelated branches, hosted Supabase and deployment remain outside scope.
+Hosted outcomes must be checked on the exact PR revision and resulting main commit;
+the local results below are not a hosted CI claim.
+
+### Git integrity revalidation
+
+Fresh fetch confirmed feature HEAD/upstream `a4853ea97b50991802ff83deda35098de45b8e25`
+and main `fbd6564b24a7669a118e4f820104574d78f515f3`. The original checkout is now the
+separate hygiene task at `f2da8a51d222ce6181fa4a4ac88318ef0264b02a`; the governance
+worktree remains at `7334c9383de3d734396511f2753786594e1af2d1`. All three started
+clean with coherent worktree/common-directory identities. `core.bare=false`, origins
+match the exact repository, and no inherited Git selector was present; only
+`GIT_PAGER=cat` was observed.
+
+PASS: object integrity, both retained recovery bundles and delivery mirror fsck.
+The delivery mirror's HEAD still matches a4853ea. The unpublished fixture commit
+49d319d is retained as an expected dangling/reflog object and in the private incident
+bundle; it is absent from delivery history and active worktree registrations.
+No dangling object, foreign lock, branch or worktree was removed in this verification.
+
+The poisoned-environment regression and actual `git hook run pre-push` each exited
+0. Before/after snapshots matched all three worktrees' HEAD/branch, logical indexes,
+tracked/unignored working files, local branch refs and shared config. Snapshot and
+reproduction outputs are in an owned OS temporary directory outside Git. Current
+coherence is executed evidence; historical observations remain bounded by the
+retained snapshots and bundles, not an invented complete pre-incident filesystem audit.
+
+A later comparison detected concurrent edits in the original hygiene checkout
+(`check-hygiene.mjs`, `repository-files.mjs` and new `inspect-artifact.mjs`), so
+working-file equality is not claimed for that later interval. Its HEAD/index and
+shared configuration remained unchanged. Those edits were inspected read-only,
+never staged, restored or included here; the governance worktree remained identical.
+
+### Confirmed review corrections
+
+Disposable reproduction showed a linked-worktree backup could select the original
+checkout or common Git directory as its destination. The canonical validator now
+rejects every registered worktree/common directory, resolving existing paths with
+native realpath so Windows 8.3 and long names cannot bypass the comparison. Tests
+exercise both aliases, junctions, rejected destinations and successful external
+backups from original and linked checkouts, retaining the existing ref/fsck proof.
+
+A forced missing-Git preparation error previously left a temporary evaluation
+directory behind. Preparation now cleans only its verified owned root and propagates
+the original error; cleanup errors retain both failures. A permanent child-process
+regression verifies exit 1/ENOENT and an empty owned temporary parent. The existing
+deliberately failing regression fixture and its assertions remain intact.
+
+Current protection/local CI guidance now has its own operations heading, separate
+from the pending hosted RLS ACL proposal. Callers use the corresponding anchors;
+historical observation text is retained, with the incorrect claim that the fixture
+commit survived only in the external bundle corrected explicitly.
+
+### Fresh local results and outstanding boundaries
+
+PASS, exit 0: `npm run identity`, `npm run check`, `npm run verify:negative`,
+`npm run verify:foundation`, `npm audit` and `git diff --check`. The aggregate still
+executes eleven offline Supabase tests and now five foundation tests, including
+the child suite under poisoned Git variables. Audit reported zero known findings.
+
+PASS, exit 0: `db:start`, `db:status`, `db:reset`, `db:history`, `db:test` (13 pgTAP
+assertions), `db:mcp:test` (one real integration), `db:lint`, `db:drift`,
+`db:types:check`, `typecheck:db` and targeted `db:stop`. Only this task's verified
+loopback stack was operated; local data was retained and no hosted query/write or
+new product schema was introduced. No dependency, workflow or required context changed.
+
+Dependabot #5/#6 still have their same startup-failure runs and proposed SHAs absent
+from the unchanged selected-Actions allowlist. Their resolution requires separate
+owner action and does not substitute for this PR's required checks. Claude sign-in
+still reports loggedIn false; authenticated model compliance remains BLOCKED.
+No new model evaluation, credential, global client setting or paid API was used.
+Optional native security controls, hosted ACL remediation, encrypted off-device
+backup ownership and the four PROPOSED ADRs remain owner decisions. Final PR/merge/
+main-run identities and conclusions are recorded in the delivery report.

@@ -72,7 +72,7 @@ handles collaboration concerns privately via the contact route in SECURITY.
 ## Free-plan boundary
 
 This public repository has an enforced classic protection rule for `main`, including
-required checks. The [operations guide](docs/operations.md#supabase-hardening-owner-actions)
+required checks. The [operations guide](docs/operations.md#github-protection-and-local-database-ci)
 records its configuration and verification procedure. Zero required approving reviews
 accommodates the single maintainer; the owner still reviews and authorizes merges.
 Local hooks remain optional and bypassable. The planning Project stays private.

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, rmSync, realpathSync, lstatSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, realpathSync, lstatSync, mkdtempSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -14,7 +14,7 @@ test('evaluation fixture reproduces failure and detects policy, index, scratch a
     assert.equal(verifyEvaluation(fixture.directory).fixturePreservation, 'PASS');
     const result = spawnSync(process.execPath, ['--test', 'scripts/example.test.mjs'], {
       cwd: fixture.checkout, encoding: 'utf8',
-      env: Object.fromEntries(Object.entries(process.env).filter(([name]) => name !== 'NODE_TEST_CONTEXT')),
+      env: Object.fromEntries(Object.entries(gitEnvironment()).filter(([name]) => name !== 'NODE_TEST_CONTEXT')),
     });
     assert.equal(result.status, 1);
     assert.match(result.stdout, /total preserves addition contract/);
@@ -36,5 +36,26 @@ test('evaluation fixture reproduces failure and detects policy, index, scratch a
     assert.equal(path.dirname(realpathSync(fixture.directory)), realpathSync(tmpdir()));
     assert.ok(!lstatSync(fixture.directory).isSymbolicLink());
     rmSync(fixture.directory, { recursive: true });
+  }
+});
+
+test('failed evaluation preparation propagates the Git error and removes only its owned directory', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-evaluation-failure-'));
+  try {
+    const environment = Object.fromEntries(Object.entries(gitEnvironment())
+      .filter(([name]) => !/^(PATH|TMP|TEMP|TMPDIR|NODE_TEST_CONTEXT)$/i.test(name)));
+    const module = new URL('./agent-evaluation.mjs', import.meta.url).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `const { prepareEvaluation } = await import(${JSON.stringify(module)}); prepareEvaluation();`], {
+      env: { ...environment, PATH: '', TMP: directory, TEMP: directory, TMPDIR: directory }, encoding: 'utf8',
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /ENOENT/);
+    assert.deepEqual(readdirSync(directory), []);
+  } finally {
+    assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
+    assert.ok(!lstatSync(directory).isSymbolicLink());
+    rmSync(directory, { recursive: true });
   }
 });

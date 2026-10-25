@@ -74,7 +74,8 @@ For a credential incident, follow [SECURITY](../SECURITY.md): revoke/rotate firs
 ## Git and metadata backup
 
 Run from a clean checkout after `git fetch origin --prune`. Use an absolute, new
-backup directory outside the repository on a trusted local volume:
+backup directory outside every linked worktree and the common Git directory on a
+trusted local volume:
 
 ```sh
 node scripts/backup.mjs C:/Users/YOUR_USER/NestScout-backups/snapshot-YYYYMMDD
@@ -171,7 +172,7 @@ and the dated [setup evidence](setup-evidence.md#supabase-agent-setup-2026-10-24
   The inspected log quotas are upcoming with a grace period through early 2027;
   recheck enforcement and prices before committing a future budget.
 
-## Supabase hardening owner actions
+## GitHub protection and local database CI
 
 The owner subsequently authorized main protection and PR-triggered Linux CI on
 2026-10-25. One classic rule now protects `main`; no ruleset was added. Both
@@ -228,6 +229,8 @@ future image changes or download failures. No cache or artifact upload is config
 Keep the account's $0 Actions budget; do not use paid larger runners, native fallback
 or hosted Supabase credentials to make checks pass. A hard cancellation/runner loss
 can prevent in-job cleanup; the hosted VM is disposable and no cloud DB is created.
+
+## Hosted RLS hook ACL proposal
 
 For the hosted `public.rls_auto_enable()` ACL finding, the minimal proposed change
 is to retain the definition, owner and event trigger while revoking client access:

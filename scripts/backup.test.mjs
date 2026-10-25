@@ -26,8 +26,15 @@ test('restore retains every local ref and historical object without modifying th
     writeFileSync(path.join(repository, 'example.txt'), 'second commit\n');
     git(['add', '.']);
     git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'second']);
+    const linked = path.join(directory, 'linked-source');
+    git(['worktree', 'add', '--quiet', '-b', 'linked-source', linked]);
+    for (const destination of [path.join(repository, '.git/backup'), path.join(repository, 'backup'), path.join(linked, 'backup'),
+      path.join(realpathSync.native(repository), '.git/backup'), path.join(realpathSync.native(repository), 'backup')]) {
+      assert.throws(() => createGitBackup(linked, destination), /outside every repository worktree/);
+    }
     const before = git(['show-ref']);
     const proof = createGitBackup(repository, path.join(directory, 'backup'));
+    assert.equal(createGitBackup(linked, path.join(directory, 'linked-backup')).sourceHead, proof.sourceHead);
     const ordinary = path.join(directory, 'ordinary-clone');
     execFileSync('git', ['clone', path.join(proof.directory, 'source.bundle'), ordinary], options);
     assert.notEqual(execFileSync('git', ['show-ref'], { ...options, cwd: ordinary, encoding: 'utf8' }).trim(), before,

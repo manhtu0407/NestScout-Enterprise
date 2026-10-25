@@ -35,7 +35,7 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
     });
     assert.ifError(result.error);
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.match(result.stdout, /tests 3/);
+    assert.match(result.stdout, /tests 4/);
     assert.deepEqual(snapshot(), before, 'Donor HEAD, refs, index, config or unrelated work changed.');
   } finally {
     assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));

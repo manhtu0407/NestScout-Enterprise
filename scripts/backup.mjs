@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { root } from './tool-path.mjs';
@@ -12,10 +12,16 @@ const run = (command, args, cwd) => execFileSync(command, args, {
 export function backupDestination(repository, requested) {
   if (!requested || !path.isAbsolute(requested)) throw new Error('Provide an absolute NEW backup directory outside this checkout.');
   const absolute = path.resolve(requested);
-  const directory = path.join(realpathSync(path.dirname(absolute)), path.basename(absolute));
-  const relative = path.relative(realpathSync(repository), directory);
-  if (!relative || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
-    throw new Error('Backup must be outside the checkout, including through symlinks.');
+  const directory = path.join(realpathSync.native(path.dirname(absolute)), path.basename(absolute));
+  const common = run('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], repository);
+  const worktrees = run('git', ['worktree', 'list', '--porcelain', '-z'], repository)
+    .split('\0').filter(entry => entry.startsWith('worktree ')).map(entry => entry.slice(9));
+  if ([repository, common, ...worktrees].some(protectedPath => {
+    const resolved = existsSync(protectedPath) ? realpathSync.native(protectedPath) : path.resolve(protectedPath);
+    const relative = path.relative(resolved, directory);
+    return !relative || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+  })) {
+    throw new Error('Backup must be outside every repository worktree and its common Git directory, including through symlinks.');
   }
   return directory;
 }

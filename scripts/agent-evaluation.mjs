@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, realpathSync, lstatSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,8 +58,7 @@ export function evaluationSnapshot(directory) {
   };
 }
 
-export function prepareEvaluation() {
-  const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-agent-evaluation-'));
+function initializeEvaluation(directory) {
   const checkout = path.join(directory, 'checkout');
   mkdirSync(path.join(checkout, 'scripts'), { recursive: true });
   mkdirSync(path.join(checkout, 'docs'));
@@ -103,6 +102,22 @@ ${scenarios.map(([id, question]) => `${id}: ${question}`).join('\n')}
     scenarioIds: scenarios.map(([id]) => id), snapshot: evaluationSnapshot(directory),
   }, null, 2) + '\n');
   return { directory, checkout, prompt: path.join(directory, 'prompt.txt'), sourceHead, policyHash };
+}
+
+export function prepareEvaluation() {
+  const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-agent-evaluation-'));
+  try {
+    return initializeEvaluation(directory);
+  } catch (error) {
+    try {
+      assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
+      assert.ok(!lstatSync(directory).isSymbolicLink());
+      rmSync(directory, { recursive: true });
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], 'Evaluation preparation failed and its owned directory could not be safely cleaned.');
+    }
+    throw error;
+  }
 }
 
 export function verifyEvaluation(directory) {

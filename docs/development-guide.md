@@ -113,7 +113,7 @@ See [CONTRIBUTING](../CONTRIBUTING.md), [security reporting](../SECURITY.md),
 
 Public repositories can use standard GitHub-hosted runners without consuming private
 repository minutes. `main` now has a classic protection rule and required checks;
-see the [current configuration](operations.md#supabase-hardening-owner-actions).
+see the [current configuration](operations.md#github-protection-and-local-database-ci).
 Earlier visibility-transition statements in setup evidence are historical.
 Auto-merge remains off. A previous successful run does not validate a new revision.
 
