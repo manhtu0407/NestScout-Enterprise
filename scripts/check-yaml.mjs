@@ -1,23 +1,27 @@
-import { git } from './repository-files.mjs';
-import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { repositoryFiles } from './repository-files.mjs';
 import { parseDocument } from 'yaml';
 import { root } from './tool-path.mjs';
 
-const files = git(root, ['ls-files', '--cached', '--others', '--exclude-standard', '-z']).split('\0');
-let failed = false;
-for (const file of [...new Set(files)].filter(file => /\.ya?ml$/.test(file))) {
-  const document = parseDocument(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), { uniqueKeys: true });
-  for (const error of document.errors) {
-    console.error(`${file}: ${error.message}`);
-    failed = true;
-  }
-  if (file.startsWith('.github/ISSUE_TEMPLATE/') && !file.endsWith('/config.yml') && !document.errors.length) {
-    const form = document.toJS();
-    if (!form.name || !form.description || !Array.isArray(form.body)) {
-      console.error(`${file}: missing Issue Form name, description, or body.`);
-      failed = true;
+export function checkYaml(repository = root) {
+  for (const { file, state, content } of repositoryFiles(repository).filter(item => /\.ya?ml$/.test(item.file))) {
+    const label = `${state} ${file}`;
+    const document = parseDocument(new TextDecoder('utf-8', { fatal: true }).decode(content), { uniqueKeys: true });
+    if (document.errors.length) {
+      throw new Error(`${label}: invalid YAML (${document.errors.map(error => error.code).join(', ')}).`);
+    }
+    if (file.startsWith('.github/ISSUE_TEMPLATE/') && !/\/config\.ya?ml$/.test(file)) {
+      const form = document.toJS();
+      if (!form || !['name', 'description'].every(key => typeof form[key] === 'string' && form[key].trim()) || !Array.isArray(form.body)) {
+        throw new Error(`${label}: missing Issue Form name, description, or body.`);
+      }
     }
   }
 }
-if (failed) process.exitCode = 1;
-else console.log('YAML syntax, unique keys, and Issue Form basics passed.');
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (process.argv.length !== 2) throw new Error('Use no arguments.');
+  checkYaml();
+  console.log('Index and working YAML syntax, unique keys, and Issue Form basics passed.');
+}

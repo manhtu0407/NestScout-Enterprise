@@ -179,6 +179,7 @@ export function checkHygiene(repository = root) {
       if (hasArtifactSignature(content)) throw new Error(`PDF/ZIP content requires its registered artifact extension: ${state} ${file}`);
       const text = new TextDecoder('utf-8', { fatal: true }).decode(content);
       if (text.includes('\0')) throw new Error(`Unexpected binary content: ${JSON.stringify(file)}`);
+      if (file.endsWith('.json')) parseConfiguration(JSON.parse, text, `${state} ${file}`);
       if (file === '.codex/config.toml') {
         const config = parseConfiguration(parse, text, `${state} ${file}`);
         if (Object.hasOwn(config, 'commit_attribution') && config.commit_attribution !== '') throw new Error(`Configured Codex commit_attribution must be empty in ${state}.`);
