@@ -47,3 +47,45 @@ jobs:
         run: |
           printf '## Repository checks\nStatus: %s\n\nApplication tests/build: WAITING FOR STACK.\n' "$CHECK_STATUS" >> "$GITHUB_STEP_SUMMARY"
           printf 'Status checks alone do not enforce branch protection; repository rules must be configured separately.\n' >> "$GITHUB_STEP_SUMMARY"
+
+  supabase-local:
+    name: Supabase local verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out verification revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Name the isolated verification branch
+        run: git switch --create ci-supabase
+      - name: Install locked repository tooling
+        run: npm ci --ignore-scripts
+      - name: Start isolated local Supabase
+        id: stack
+        run: npm run db:start
+      - name: Verify runtime identity and loopback bindings
+        run: npm run db:status
+      - name: Reset and replay local migrations
+        run: npm run db:reset
+      - name: Verify local migration history
+        run: npm run db:history
+      - name: Run database security tests
+        run: npm run db:test
+      - name: Run local MCP integration tests
+        run: npm run db:mcp:test
+      - name: Lint local database
+        run: npm run db:lint
+      - name: Verify local schema drift
+        run: npm run db:drift
+      - name: Verify generated database types
+        run: npm run db:types:check
+      - name: Typecheck database artifact
+        run: npm run typecheck:db
+      - name: Stop isolated local stack
+        if: ${{ always() && steps.stack.outcome != 'skipped' }}
+        run: npm run db:stop
