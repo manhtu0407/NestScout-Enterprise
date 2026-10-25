@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'smol-toml';
-import { validateLocalConfig, validateContainer, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock, validateLocalFiles, localEnvironment, safeDiagnostic, safeEndpoints } from './supabase-local.mjs';
+import { validateLocalConfig, validateContainer, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock, validateLocalFiles, localEnvironment, safeDiagnostic, safeEndpoints, isMissingStack } from './supabase-local.mjs';
 import { localTools, safeToolResult } from './supabase-mcp.mjs';
 
 const config = parse(readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8'));
@@ -20,6 +20,18 @@ const status = {
   },
 };
 const validate = value => validateLocalStatus(value, 'fixture-root', 'refs/heads/fixture');
+
+test('only the pinned CLI missing-stack response permits cold start or absent-stack stop', () => {
+  const response = { _tag: 'Error', error: { code: 'ExperimentalStackStatusError', message: 'No managed stack exists for the selected project.' } };
+  const failure = { status: 1, stdout: JSON.stringify(response) };
+  assert.equal(isMissingStack(failure), true);
+  for (const other of [{ ...failure, status: 2 }, { ...failure, stdout: '' },
+    { ...failure, stdout: JSON.stringify({ ...response, _tag: 'Unknown' }) },
+    { ...failure, stdout: JSON.stringify({ error: { ...response.error, code: 'OtherFailure' } }) },
+    { ...failure, stdout: JSON.stringify({ error: { ...response.error, message: 'Owner unavailable' } }) }]) {
+    assert.equal(isMissingStack(other), false);
+  }
+});
 
 test('reject target overrides before Docker operations', () => {
   for (const [script, args] of [['supabase-local.mjs', ['reset', '--linked']], ['supabase-mcp.mjs', ['--url=https://example.invalid']]]) {

@@ -19,6 +19,15 @@ export function safeDiagnostic(error) {
   return `Local operation failed (${code}${status}); credential-bearing subprocess/upstream detail withheld.`;
 }
 
+export function isMissingStack(error) {
+  if (error?.status !== 1) return false;
+  try {
+    const response = JSON.parse(String(error.stdout));
+    return response._tag === 'Error' && response.error?.code === 'ExperimentalStackStatusError'
+      && response.error.message === 'No managed stack exists for the selected project.';
+  } catch { return false; }
+}
+
 export function validateLocalConfig(config, linked) {
   requireLocal(!linked, 'Unlink this checkout before using the disposable local workflow.');
   requireLocal(/^nestscout-enterprise-[a-z0-9-]+$/.test(config.project_id), 'Invalid disposable project ID.');
@@ -119,7 +128,13 @@ export function localRuntime() {
     validateLocalFiles(root);
     return run(process.execPath, [path.join(root, 'node_modules/supabase/dist/supabase.js'), '--workdir', root, '--agent', 'no', ...args]);
   };
-  const status = () => JSON.parse(cli(['stack', 'status', '--output-format', 'json']));
+  const status = (allowMissing = false) => {
+    try { return JSON.parse(cli(['stack', 'status', '--output-format', 'json'])); }
+    catch (error) {
+      if (allowMissing && isMissingStack(error)) return null;
+      throw error;
+    }
+  };
   const verify = () => {
     const current = status();
     const mcp = validateLocalStatus(current, realpathSync(root), branch);
@@ -131,7 +146,8 @@ export function localRuntime() {
     return { id: current.identity.id, branch, mcp, endpoints: safeEndpoints(current.endpoints) };
   };
   const stop = () => {
-    const current = status();
+    const current = status(true);
+    if (!current) return false;
     validateLocalStatus(current, realpathSync(root), branch, false);
     requireLocal(current.runtime === 'docker', 'Only an existing local Docker stack can be stopped.');
     cli(['stack', 'stop', '--stack-id', current.identity.id, '--output-format', 'json']);
@@ -140,6 +156,7 @@ export function localRuntime() {
     const stopped = status();
     validateLocalStatus(stopped, realpathSync(root), branch, false);
     requireLocal(stopped.identity.id === current.identity.id && stopped.lifecycle !== 'running', 'Local owner still reports a running stack after stop.');
+    return true;
   };
   return { cli, status, verify, branch, stop };
 }
@@ -165,17 +182,19 @@ async function main(action) {
   const runtime = localRuntime();
   await withLocalLock(() => {
     if (action === 'start') {
-      const before = runtime.status();
-      validateLocalStatus(before, realpathSync(root), runtime.branch, false);
+      const before = runtime.status(true);
+      if (before) validateLocalStatus(before, realpathSync(root), runtime.branch, false);
       runtime.cli(['stack', 'start', '--runtime', 'docker', '--preparation', 'on-demand', '--frozen',
         '--exclude', 'realtime,storage,functions,mail,analytics,pooler', '--output-format', 'json']);
-      requireLocal(runtime.verify().id === before.identity.id, 'Stack identity changed during startup.');
+      const current = runtime.verify();
+      requireLocal(!before || current.id === before.identity.id, 'Stack identity changed during startup.');
       console.log('PASS: current worktree/branch stack started; all Docker ports bind to loopback.');
       return;
     }
     if (action === 'stop') {
-      runtime.stop();
-      console.log('PASS: stopped only this worktree/branch stack; no task containers running; local data retained.');
+      console.log(runtime.stop()
+        ? 'PASS: stopped only this worktree/branch stack; no task containers running; local data retained.'
+        : 'PASS: no managed stack exists for this worktree/branch; no resources targeted.');
       return;
     }
     const before = runtime.verify();

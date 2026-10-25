@@ -64,6 +64,10 @@ After interruption, verify the owning process has exited before removing a stale
 `.cache/supabase-local.lock`. Its PID/start time identify the operation; stale
 leases are never automatically reaped, and release preserves a replaced lease.
 Stop checks both the owner state and running task containers and retains data.
+On a pristine checkout, the pinned CLI reports a specific missing-stack error.
+Only that exact response permits first startup or a stop with no resources
+targeted; other status failures remain errors. Startup still verifies the resulting
+worktree/branch identity and Docker loopback bindings before reporting success.
 Never log raw CLI
 status/start JSON: its `env` field contains local passwords and API keys. The
 wrapper outputs only selected identity and endpoint fields.
