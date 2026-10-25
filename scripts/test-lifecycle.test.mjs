@@ -9,6 +9,8 @@ import { git } from './repository-files.mjs';
 import { checkTestSelection } from './check-test-selection.mjs';
 import { checkHygiene } from './check-hygiene.mjs';
 import { scanStaged } from './scan-staged.mjs';
+import { checkMetadata } from './check-metadata.mjs';
+import { repositoryIdentity } from './verify-repository.mjs';
 
 const testBody = 'import { test } from "node:test"; test("fixture", () => {});\n';
 
@@ -19,7 +21,7 @@ function fixture(operation) {
     mkdirSync(path.dirname(target), { recursive: true });
     writeFileSync(target, content);
   };
-  const run = args => git(repository, args);
+  const run = (args, options) => git(repository, args, options);
   const scripts = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts;
   const manifest = (value = scripts) => write('package.json', JSON.stringify({ scripts: value }) + '\n');
   try {
@@ -168,21 +170,36 @@ test('real pre-commit rejects unregistered tests and a disabled npm guard withou
   ];
   for (const [module, callable] of modules) {
     const source = pathToFileURL(path.join(root, 'scripts', module + '.mjs')).href;
+    // Fixture commits use local metadata; the outer workflow event belongs to another repository.
+    const args = module === 'check-metadata' ? 'process.cwd(), {}' : 'process.cwd()';
     write(`scripts/${module === 'scan-staged' ? 'check-tools' : module}.mjs`,
-      `import { ${callable} } from ${JSON.stringify(source)};\n${callable}(process.cwd());\n`);
+      `import { ${callable} } from ${JSON.stringify(source)};\n${callable}(${args});\n`);
   }
   run(['add', '.']);
   const commit = ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'test: lifecycle fixture'];
   run(commit);
   run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
   const hookCommit = ['-c', 'core.hooksPath=.githooks', ...commit];
+  const eventRepository = { id: repositoryIdentity.id, full_name: repositoryIdentity.fullName };
+  const eventFile = '.cache/agent-tests/outer-event.json';
+  write(eventFile, JSON.stringify({
+    repository: eventRepository,
+    pull_request: {
+      title: 'test: outer repository event', body: 'Closes #25',
+      base: { repo: eventRepository, ref: repositoryIdentity.defaultBranch, sha: git(root, ['rev-parse', 'origin/main']).trim() },
+      head: { repo: eventRepository, ref: 'codex/outer-fixture', sha: git(root, ['rev-parse', 'HEAD']).trim() },
+    },
+  }) + '\n');
+  const eventEnvironment = { ...process.env, GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: path.join(repository, eventFile) };
+  assert.throws(() => checkMetadata(repository, eventEnvironment), error => error.status === 128 && /Not a valid commit name/.test(String(error.stderr)));
+  const commitWithHook = () => run(hookCommit, { env: eventEnvironment });
   write('scripts/accepted.mjs', 'export const accepted = true;\n');
   run(['add', '--', 'scripts/accepted.mjs']);
-  assert.doesNotThrow(() => run(hookCommit));
+  assert.doesNotThrow(commitWithHook);
   const reject = message => {
     const head = run(['rev-parse', 'HEAD']);
     const index = run(['ls-files', '--stage']);
-    assert.throws(() => run(hookCommit), error => error.status === 1 && message.test(String(error.stderr) + String(error.stdout)));
+    assert.throws(commitWithHook, error => error.status === 1 && message.test(String(error.stderr) + String(error.stdout)));
     assert.equal(run(['rev-parse', 'HEAD']), head);
     assert.equal(run(['ls-files', '--stage']), index);
   };
@@ -195,7 +212,7 @@ test('real pre-commit rejects unregistered tests and a disabled npm guard withou
   scripts['verify:foundation'] += ' ' + target;
   manifest();
   run(['add', '--', 'package.json']);
-  assert.doesNotThrow(() => run(hookCommit));
+  assert.doesNotThrow(commitWithHook);
   manifest({ ...scripts, 'check:test-selection': 'echo disabled' });
   run(['add', '--', 'package.json']);
   reject(/index: test-selection guard disabled/);
