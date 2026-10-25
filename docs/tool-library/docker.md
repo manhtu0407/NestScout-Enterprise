@@ -81,8 +81,12 @@ discovery. Engine availability requires both server version and info to succeed
 against an inspected local endpoint. Plugin versions are independent probes.
 Doctor omits raw context endpoint, host info, auth/log/env dumps. Run separate
 `--tool compose` / `--tool buildx` probes for independent plugin results.
-Remote TCP/SSH contexts, unknown context names and target overrides are rejected
-for local smoke; even loopback TCP is rejected because its owner is unproven.
+Remote TCP/SSH contexts and unknown targets are rejected for local smoke; even
+loopback TCP is rejected because its owner is unproven. `DOCKER_CONTEXT` is accepted
+when it matches an explicit requested context; a local `DOCKER_HOST` must match that
+context's inspected socket/pipe. Conflicting case variants, TLS overrides and
+`BUILDKIT_HOST` are rejected. An explicit non-current local context is supported:
+every operation uses `--context`, without changing global selection.
 No command here starts Docker Desktop, reconfigures a daemon or boots Supabase.
 
 ## Tier 1: owned offline smoke
@@ -101,6 +105,7 @@ missing explicit context:
 
 ```text
 npm run tools:smoke -- --context OBSERVED_LOCAL_CONTEXT --image sha256:EXISTING_LOCAL_IMAGE_ID
+npm run tools:smoke -- --context OBSERVED_LOCAL_CONTEXT --image sha256:EXISTING_LOCAL_IMAGE_ID --builder INSPECTED_LOCAL_BUILDER
 ```
 
 The approved task must permit local owned mutation. Inspect image provenance and
@@ -111,11 +116,24 @@ network/supply approval before pulling. The runner never pulls or chooses an ima
 for the operator. It refuses non-Linux images and declared volumes.
 
 The executor [tool-smoke.mjs](../../scripts/tool-smoke.mjs) checks context overrides,
-socket/pipe, expected context, Linux Engine and memory/CPU. It requires the named
-Buildx builder's driver to be `docker`, its sole endpoint to equal that context and
-its status to be running. It does not bootstrap or create a builder. Unknown builder
-output fails closed. At least 256 MiB host free/Engine allocated memory is required;
+socket/pipe, expected context, Linux Engine identity and memory/CPU. It requires the
+named Buildx builder's driver to be `docker`, one running node and a proven local
+endpoint. Node endpoints may be the selected context, its socket/pipe, or another
+local context/socket reporting the same Engine ID. Different-Engine, remote,
+unknown and multi-node builders are rejected. Builders using other drivers remain
+discoverable but this offline smoke reports BLOCKED for them: bootstrapping a
+`docker-container` builder could create a shared BuildKit container or pull images.
+It does not bootstrap, switch or create builders. Unknown builder output fails
+closed. At least 256 MiB host free/Engine allocated memory is required;
 that guard does not guarantee resource availability under concurrent activity.
+
+`--builder` or a matching child `BUILDX_BUILDER` can select an existing builder;
+conflicting explicit/environment names are rejected. The builder is inspected again
+immediately before build. Context-backed Docker builders use their own context for
+the build invocation, after local socket/Engine equivalence is rechecked. This
+supports native Buildx's special `default` builder without redirecting other task
+operations or modifying user/global context settings. Local socket identity probes
+strip ambient host/context selectors only from that child process.
 
 It creates one unique OS temp directory, verifies Compose's synthetic model with
 `config --services`, and runs a network-disabled `FROM scratch` COPY build through
@@ -137,7 +155,7 @@ Commands have bounded output and timeouts (build 60 seconds; Compose lifecycle
 
 Cleanup inspects the exact task name/tag, confirms full object ID and ownership
 label (plus exact container name), then removes only that ID. Context and endpoint
-are rechecked before each mutation, including cleanup. Context changes, ownership
+are rechecked before each mutation, including cleanup. Endpoint changes, ownership
 mismatch or inspection failure prevent removal; failed cleanup remains FAIL with
 the unique task name for recovery. No network/volume is created, so none is removed.
 Container timeout recovery may force-remove only its verified owned container.

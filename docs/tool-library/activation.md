@@ -1,7 +1,7 @@
 # Product activation and architectural references
 
 These entries remain discoverable before a product exists. Doctor reports
-NOT_APPLICABLE, installed/available/verified false; it performs no installs or app
+NOT_APPLICABLE, installed/available unknown and verified false; it performs no installs or app
 commands. No empty application, fake service, app test config or product schema is
 created to exercise a CLI. Pick versions/licenses/platforms after an actual consumer
 and owner-approved SDK/architecture exist; use the same manifest/lockfile principle.

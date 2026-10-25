@@ -41,11 +41,17 @@ These are separate dimensions, not a single completion badge:
 | Dimension | Required observation |
 | --- | --- |
 | CONFIGURED | Valid catalog/runbook/executor exists |
-| INSTALLED | Selected executable's version probe exits zero on this host |
+| INSTALLED | Known project binary is present, or selected executable successfully reports its version; blocked execution is separate |
 | AVAILABLE | Prerequisites for the reported scope pass; Docker also needs local context and Engine; gh needs auth |
 | VERIFIED | Named workflow/smoke completes with assertions at the recorded revision |
 
 Doctor always leaves `verified: false`: version/help is not behavioral verification.
+`null` installation/availability means not established, not missing. C/D entries
+are explicitly `documentationOnly: true`; doctor does not infer whether unrelated
+global tools happen to be installed. A failed PATH probe with no file observation
+does not prove absence. Installed project binaries can still be unavailable due to
+host security policy. Repository-check dependencies are compared with all current
+manifest pins, not a handpicked module subset.
 For repository checks, dependency presence is reported as `CHECKS_NOT_RUN`; run the
 actual checks. Compose/Buildx version availability is independent of Engine availability.
 Doctor uses fixed argv, no shell, per-probe timeouts and output bounds. Reports retain
@@ -55,16 +61,22 @@ disable telemetry and Supabase's update notifier only in the child environment;
 the native Supabase discovery regression asserts no telemetry/update files are
 created. Native `--help` alone is not a universal guarantee of zero side effects.
 
-Conditions include `MISSING_BINARY`, `MISSING_DEPENDENCY`, `NO_DAEMON`, `AUTH_BLOCKED`,
+Conditions include `MISSING_BINARY`, `MISSING_DEPENDENCY`, `NO_DAEMON`, `ENGINE_ACCESS_BLOCKED`,
+`ENGINE_UNREACHABLE`, `AUTH_BLOCKED`,
 `UNSUPPORTED_PLATFORM`, `VERSION_MISMATCH`, `TIMEOUT`, `PROBE_FAILED`, target rejection
-and `NOT_APPLICABLE`. Missing A capabilities make doctor exit 1. Missing optional B
-tools remain in the catalog without failing default foundation readiness. A present
+and `NOT_APPLICABLE`. Missing A capabilities make doctor exit 1. Failed probes are
+distinct from missing binaries. Docker permission denial does not prove a
+stopped daemon: known access denial, connection-refused/not-found, timeout and other
+unreachable states receive separate conditions. No raw native error is printed.
+Missing optional B tools remain in the catalog without failing default foundation readiness. A present
 optional tool whose probe fails does return nonzero; failure is not masked as absence.
 C/D tools
-are not probed or installed. Network-dependent scans report `NETWORK_BLOCKED` when
+are not probed or installed by this command. Network-dependent scans report `NETWORK_BLOCKED` when
 the native scan cannot reach its service; doctor does not pretend to test connectivity.
-Windows/Linux x64 is the validated tooling matrix; other hosts remain unsupported
-by this doctor even if some native tools independently work there.
+Windows/Linux x64 is the supported installer/probe matrix; actual runtime evidence
+must name its host. Windows execution and Linux-shaped fixtures do not prove Linux
+runtime execution. Other hosts remain unsupported by this doctor even if some native
+tools independently work there.
 
 Every page supplies provenance, bootstrap, command discovery, workflow, diagnostics,
 smoke and target/cleanup limits. Shared bootstrap and evidence rules in this index
@@ -92,8 +104,9 @@ No second executable pin source is introduced. Native help wins over prose examp
 ## Bootstrap and cost
 
 Use `npm ci --ignore-scripts` and `npm run tools:install` for the existing mandatory
-tools. Both download files and modify local caches. Optional OSV installation is
-explicit: `npm run tools:install -- --tool osv-scanner`. No implicit global installer,
+tools. Both download files and modify local caches. Optional jq, ShellCheck, Hadolint
+and OSV installation is explicit through `tools:install -- --tool <pinned-tool-id>`;
+see [onboarding and execution prerequisites](optional.md). No implicit global installer,
 PATH edit, daemon start, hosted migration, API workload or background monitor exists.
 Download integrity checks happen before execution. Native installer supports
 Windows/Linux x64; package binaries depend on their own supported host assets.

@@ -4,7 +4,8 @@ import { tmpdir, freemem } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { probe, probeCondition, dockerTarget } from './tool-doctor.mjs';
+import { probe, probeCondition, dockerTarget, dockerOverride, dockerName, inspectDockerContext } from './tool-doctor.mjs';
+import { validateDockerEndpoint } from './supabase-local.mjs';
 
 const label = 'nestscout.tool-smoke';
 const imageId = /^sha256:[a-f0-9]{64}$/;
@@ -15,27 +16,35 @@ export function assertOwned(object, owner, id, type) {
     || (type === 'container' && object.Name !== `/${owner}`)) throw new Error('OWNERSHIP_MISMATCH: refusing cleanup.');
 }
 
-export function assertBuilder(text, context) {
+export function assertBuilder(text, target, sameEngine = () => false) {
   const driver = /^Driver:\s+(\S+)\s*$/m.exec(text)?.[1];
   const endpoints = [...text.matchAll(/^Endpoint:\s+(\S+)\s*$/gm)].map(match => match[1]);
-  if (driver !== 'docker' || endpoints.length !== 1 || endpoints[0] !== context
+  if (driver !== 'docker' || endpoints.length !== 1
     || !/^Status:\s+running\s*$/m.test(text)) throw new Error('NON_LOCAL_BUILDER');
+  const endpoint = endpoints[0];
+  if (endpoint !== target.context && endpoint !== target.endpoint
+    && !sameEngine(endpoint)) throw new Error('NON_LOCAL_BUILDER');
+  return endpoint;
 }
 
-export function smoke({ context, image, run = probe, environment = process.env, hostMemory = freemem(), platform = process.platform }) {
+export function smoke({ context, image, builder, run = probe, environment = process.env, hostMemory = freemem(), platform = process.platform }) {
   if (!['win32', 'linux'].includes(platform)) throw new Error('UNSUPPORTED_PLATFORM');
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,80}$/.test(context ?? '') || !imageId.test(image ?? '')) throw new Error('Use an explicit context and existing immutable local image ID.');
+  if (!dockerName.test(context ?? '') || !imageId.test(image ?? '')) throw new Error('Use an explicit context and existing immutable local image ID.');
   if (hostMemory < 256 * 1024 * 1024) throw new Error('RESOURCE_BLOCKED');
   const started = performance.now();
   const target = dockerTarget(run, environment, context);
+  const configuredBuilder = dockerOverride(environment, 'BUILDX_BUILDER');
+  if (builder && configuredBuilder && builder !== configuredBuilder) throw new Error('BUILDER_MISMATCH');
+  const selectedBuilder = builder || configuredBuilder || context;
+  if (!dockerName.test(selectedBuilder)) throw new Error('INVALID_BUILDER');
   const owner = `nestscout-tool-smoke-${randomUUID()}`;
   const composeOwner = `${owner}-compose`;
   const tag = `${owner}:local`;
-  const prefix = ['--context', context];
   const steps = [];
-  function command(args, mutation = false, options = {}) {
+  function command(args, mutation = false, options = {}, executionContext = context) {
     if (mutation && dockerTarget(run, environment, context).endpoint !== target.endpoint) throw new Error('CONTEXT_CHANGED');
-    const result = run('docker', [...prefix, ...args], options);
+    if (mutation && executionContext !== context && !sameEngine(executionContext)) throw new Error('CONTEXT_CHANGED');
+    const result = run('docker', ['--context', executionContext, ...args], { ...options, env: environment });
     if (probeCondition(result) !== 'AVAILABLE') throw new Error(`DOCKER_OPERATION_FAILED: ${args[0]}/${args[1] ?? ''}; ${probeCondition(result)}; exit ${result.status ?? 'none'}.`);
     return result.stdout.trim();
   }
@@ -47,14 +56,24 @@ export function smoke({ context, image, run = probe, environment = process.env, 
     catch { throw new Error('INSPECTION_FAILED: no unsafe cleanup attempted.'); }
   }
   let engine;
-  try { engine = JSON.parse(command(['info', '--format', '{"OSType":{{json .OSType}},"MemTotal":{{json .MemTotal}},"NCPU":{{json .NCPU}}}'])); }
+  try { engine = JSON.parse(command(['info', '--format', '{"ID":{{json .ID}},"OSType":{{json .OSType}},"MemTotal":{{json .MemTotal}},"NCPU":{{json .NCPU}}}'])); }
   catch { throw new Error('ENGINE_INFO_UNAVAILABLE'); }
-  if (engine.OSType !== 'linux' || engine.MemTotal < 256 * 1024 * 1024 || engine.NCPU < 1) throw new Error('RESOURCE_OR_ENGINE_BLOCKED');
+  if (!/^[a-zA-Z0-9:_-]{8,128}$/.test(engine.ID ?? '') || engine.OSType !== 'linux' || !Number.isFinite(engine.MemTotal) || engine.MemTotal < 256 * 1024 * 1024
+    || !Number.isInteger(engine.NCPU) || engine.NCPU < 1) throw new Error('RESOURCE_OR_ENGINE_BLOCKED');
   const localImage = inspect('image', image);
   if (localImage.Id !== image || localImage.Os !== 'linux' || Object.keys(localImage.Config?.Volumes ?? {}).length) throw new Error('UNSUITABLE_IMAGE: use an inspected Linux image without declared volumes.');
   command(['compose', 'version']);
   command(['buildx', 'version']);
-  assertBuilder(command(['buildx', 'inspect', context]), context);
+  function sameEngine(candidate) {
+    const endpoint = dockerName.test(candidate) ? inspectDockerContext(candidate, run, environment) : candidate;
+    try { validateDockerEndpoint(endpoint); } catch { throw new Error('NON_LOCAL_BUILDER'); }
+    if (endpoint === target.endpoint) return true;
+    const identityEnvironment = Object.fromEntries(Object.entries(environment).filter(([key]) => !/^(DOCKER_CONTEXT|DOCKER_HOST)$/i.test(key)));
+    const response = run('docker', ['--host', endpoint, 'info', '--format', '{{.ID}}'], { env: identityEnvironment });
+    return probeCondition(response) === 'AVAILABLE' && response.stdout.trim() === engine.ID;
+  }
+  const checkBuilder = () => assertBuilder(command(['buildx', 'inspect', selectedBuilder]), target, sameEngine);
+  checkBuilder();
   const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-tool-smoke-'));
   let created = false;
   let composed = false;
@@ -70,7 +89,9 @@ export function smoke({ context, image, run = probe, environment = process.env, 
     writeFileSync(path.join(directory, 'payload.txt'), 'nestscout-tool-smoke\n');
     writeFileSync(path.join(directory, 'Dockerfile'), `FROM scratch\nLABEL ${label}="${owner}"\nCOPY payload.txt /payload.txt\n`);
     built = true;
-    command(['buildx', '--builder', context, 'build', '--network', 'none', '--pull=false', '--load', '--tag', tag, directory], true, { timeout: 60000 });
+    const buildEndpoint = checkBuilder();
+    const buildContext = dockerName.test(buildEndpoint) ? buildEndpoint : context;
+    command(['buildx', '--builder', selectedBuilder, 'build', '--network', 'none', '--pull=false', '--load', '--tag', tag, directory], true, { timeout: 60000 }, buildContext);
     const builtImage = inspect('image', tag);
     if (!imageId.test(builtImage.Id)) throw new Error('INVALID_BUILT_IMAGE');
     assertOwned(builtImage, owner, builtImage.Id, 'image');
@@ -129,8 +150,9 @@ export function smoke({ context, image, run = probe, environment = process.env, 
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
-  if (args.length !== 4 || args[0] !== '--context' || args[2] !== '--image') throw new Error('Use --context <observed-local-context> --image sha256:<existing-local-id>.');
-  try { console.log(JSON.stringify(smoke({ context: args[1], image: args[3] }), null, 2)); }
+  if (![4, 6].includes(args.length) || args[0] !== '--context' || args[2] !== '--image'
+    || (args.length === 6 && (args[4] !== '--builder' || !dockerName.test(args[5])))) throw new Error('Use --context <observed-local-context> --image sha256:<existing-local-id> [--builder <inspected-local-builder>].');
+  try { console.log(JSON.stringify(smoke({ context: args[1], image: args[3], builder: args[5] }), null, 2)); }
   catch (error) {
     console.error(JSON.stringify({ status: 'FAIL', reason: error.message, owner: error.owner, causes: error.errors?.map(item => item.message) }));
     process.exitCode = 1;

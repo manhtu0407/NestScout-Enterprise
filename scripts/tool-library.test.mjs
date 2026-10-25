@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync, lstatSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync, lstatSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { validateCapabilities, checkCapabilities } from './tool-library.mjs';
-import { diagnose, doctorExitCode, dockerTarget, probe, probeCondition, nodeVersionSupported, discoveryEnvironment } from './tool-doctor.mjs';
+import { diagnose, doctorExitCode, dockerTarget, probe, probeCondition, nodeVersionSupported, discoveryEnvironment, dockerEngineCondition } from './tool-doctor.mjs';
 import { smoke, assertOwned, assertBuilder } from './tool-smoke.mjs';
-import { selectTools } from './install-tools.mjs';
-import { root, tools } from './tool-path.mjs';
+import { selectTools, installTool } from './install-tools.mjs';
+import { root, tools, toolPath } from './tool-path.mjs';
 import { git } from './repository-files.mjs';
 
 const entry = { id: 'docker', name: 'Docker', tier: 'A', documentation: 'docs/tool-library/docker.md',
@@ -88,9 +88,12 @@ function dockerFixture({ daemon = true, failStart = false, wrongOwner = false, r
     const args = original[0] === '--context' ? original.slice(2) : original;
     if (args[0] === '--version') return ok('Docker version 29.9.2');
     if (args.join(' ') === 'context show') return ok('desktop-linux');
-    if (args[0] === 'context') return ok(JSON.stringify('npipe:////./pipe/dockerDesktopLinuxEngine'));
-    if (args[0] === 'version') return daemon ? ok('29.9.2') : { status: 1, stderr: 'credential detail withheld' };
-    if (args[0] === 'info') return daemon ? ok(args.at(-1) === '{{.OSType}}' ? 'linux' : JSON.stringify({ OSType: 'linux', MemTotal: 1024 ** 3, NCPU: 2 })) : { status: 1 };
+    if (args[0] === 'context') {
+      if (args[2] === 'remote') return ok(JSON.stringify('ssh://remote'));
+      return ok(JSON.stringify('npipe:////./pipe/dockerDesktopLinuxEngine'));
+    }
+    if (args[0] === 'version') return daemon ? ok('29.9.2') : { status: 1, stderr: 'connection refused' };
+    if (args[0] === 'info') return daemon ? ok(args.at(-1) === '{{.OSType}}' ? 'linux' : JSON.stringify({ ID: 'fixture-engine-id', OSType: 'linux', MemTotal: 1024 ** 3, NCPU: 2 })) : { status: 1 };
     if (args[0] === 'compose') {
       if (args.includes('up')) { composed = true; return ok(''); }
       return ok(args.includes('--services') ? 'smoke' : 'Docker Compose version v5.6.1');
@@ -161,14 +164,16 @@ test('Docker targets reject remote, malformed, override and unexpected contexts 
   const fixture = dockerFixture();
   assert.equal(dockerTarget(fixture.run, {}, 'desktop-linux').context, 'desktop-linux');
   assert.throws(() => dockerTarget(fixture.run, { DOCKER_HOST: 'tcp://remote:2375' }), /TARGET_OVERRIDE/);
-  assert.throws(() => dockerTarget(fixture.run, { BUILDX_BUILDER: 'remote' }), /TARGET_OVERRIDE/);
-  assert.throws(() => dockerTarget(fixture.run, {}, 'default'), /CONTEXT_MISMATCH/);
+  assert.throws(() => dockerTarget(fixture.run, { BUILDKIT_HOST: 'tcp://remote' }), /TARGET_OVERRIDE/);
+  assert.throws(() => dockerTarget(fixture.run, { DOCKER_CONTEXT: 'desktop-linux' }, 'default'), /CONTEXT_MISMATCH/);
+  assert.equal(dockerTarget(fixture.run, {}, 'default').context, 'default');
   for (const endpoint of ['tcp://127.0.0.1:2375', 'ssh://remote', 'tcp://remote:2375', 'garbage']) {
-    const run = (exe, args) => args[0] === 'context' && args[1] === 'inspect' ? ok(JSON.stringify(endpoint)) : fixture.run(exe, args);
+    const run = (exe, args) => args.includes('context') && args.includes('inspect') ? ok(JSON.stringify(endpoint)) : fixture.run(exe, args);
     assert.throws(() => smoke({ context: 'desktop-linux', image: fixture.source, run, environment: {} }), /NON_LOCAL_CONTEXT/);
   }
-  assert.throws(() => assertBuilder('Driver: docker-container\nEndpoint: desktop-linux\nStatus: running', 'desktop-linux'), /NON_LOCAL_BUILDER/);
-  assert.throws(() => assertBuilder('Driver: docker\nEndpoint: remote\nStatus: running', 'desktop-linux'), /NON_LOCAL_BUILDER/);
+  const target = { context: 'desktop-linux', endpoint: 'npipe:////./pipe/dockerDesktopLinuxEngine' };
+  assert.throws(() => assertBuilder('Driver: docker-container\nEndpoint: desktop-linux\nStatus: running', target), /NON_LOCAL_BUILDER/);
+  assert.throws(() => assertBuilder('Driver: docker\nEndpoint: remote\nStatus: running', target), /NON_LOCAL_BUILDER/);
 });
 
 test('smoke is bounded, never pulls, removes only inspected owned IDs, and preserves failure after cleanup', () => {
@@ -209,7 +214,7 @@ test('absent Engine and context change stop mutation; failed create is cleaned o
     const fixture = dockerFixture();
     let attempted = false;
     const run = (exe, args, options) => {
-      if (condition === 'context' && attempted && args[0] === 'context' && args[1] === 'show') return ok('another-context');
+      if (condition === 'context' && attempted && args.includes('context') && args.includes('inspect')) return ok(JSON.stringify('npipe:////./pipe/anotherEngine'));
       if (condition === 'inspection' && attempted && args.includes('inspect') && args.includes('container')) return { status: 1 };
       const result = fixture.run(exe, args, options);
       if (args.includes('create')) {
@@ -230,6 +235,100 @@ test('installer keeps default mandatory pins, optional selection, hashes and pla
   for (const args of [['--tool', '../other'], ['--tool', 'osv-scanner; echo unsafe'], ['--tool'], ['--all']]) assert.throws(() => selectTools(args, 'win32', 'x64'));
   assert.throws(() => selectTools([], 'darwin', 'arm64'), /Windows\/Linux x64/);
   for (const tool of Object.values(tools)) for (const os of ['win32', 'linux']) assert.match(tool[os].sha256, /^[a-f0-9]{64}$/);
+});
+
+test('local context overrides, explicit non-current contexts and rootless sockets keep target identity', () => {
+  for (const endpoint of ['unix:///var/run/docker.sock', 'unix:///run/user/1000/docker.sock', 'npipe:////./pipe/docker_engine']) {
+    const fixture = dockerFixture();
+    const run = (exe, args, options) => args.includes('context') && args.includes('inspect') ? ok(JSON.stringify(endpoint)) : fixture.run(exe, args, options);
+    for (const context of ['default', 'desktop-linux', 'local+work']) {
+      assert.deepEqual(dockerTarget(run, { DOCKER_CONTEXT: context, DOCKER_HOST: endpoint }, context), { context, endpoint });
+      assert.equal(dockerTarget(run, {}, context).context, context);
+    }
+    assert.throws(() => dockerTarget(run, { DOCKER_HOST: 'unix:///another/socket' }, 'default'), /TARGET_OVERRIDE/);
+    assert.throws(() => dockerTarget(run, { DOCKER_CONTEXT: 'default', docker_context: 'another' }), /TARGET_OVERRIDE/);
+  }
+  const fixture = dockerFixture();
+  assert.throws(() => dockerTarget(fixture.run, {}, 'default; echo unsafe'), /CONTEXT_MISMATCH/);
+  assert.throws(() => dockerTarget(fixture.run, { DOCKER_HOST: 'tcp://localhost:2375' }, 'default'), /TARGET_OVERRIDE/);
+  assert.equal(fixture.calls.length, 0);
+});
+
+test('smoke accepts named embedded builders and same-Engine local aliases but rejects a different Engine', () => {
+  for (const builderEndpoint of ['desktop-linux', 'default', 'unix:///var/run/docker.sock', 'local+alias']) {
+    for (const matching of [true, false]) {
+      const fixture = dockerFixture();
+      const run = (exe, args, options) => {
+        if (args[0] === '--host') {
+          assert.ok(!Object.keys(options.env).some(name => /^(DOCKER_HOST|DOCKER_CONTEXT)$/i.test(name)));
+          return ok(matching ? 'fixture-engine-id' : 'another-engine-id');
+        }
+        if (args.includes('context') && args.includes('inspect') && args.includes('local+alias')) return ok(JSON.stringify('unix:///run/user/1000/docker.sock'));
+        if (args.includes('context') && args.includes('inspect') && args.includes('default')) return ok(JSON.stringify('npipe:////./pipe/docker_engine'));
+        if (args.includes('buildx') && args.includes('inspect')) return ok(`Driver: docker\nEndpoint: ${builderEndpoint}\nStatus: running\n`);
+        return fixture.run(exe, args, options);
+      };
+      const operation = () => smoke({ context: 'desktop-linux', image: fixture.source, builder: 'named-builder',
+        environment: { DOCKER_CONTEXT: 'desktop-linux', BUILDX_BUILDER: 'named-builder' }, hostMemory: 1024 ** 3, run });
+      if (matching || builderEndpoint === 'desktop-linux') {
+        assert.equal(operation().status, 'PASS');
+        const build = fixture.calls.find(call => call.args.includes('build'));
+        assert.equal(build.args[build.args.indexOf('--builder') + 1], 'named-builder');
+        assert.equal(build.args[1], ['default', 'local+alias'].includes(builderEndpoint) ? builderEndpoint : 'desktop-linux');
+      } else {
+        assert.throws(operation, /NON_LOCAL_BUILDER/);
+        assert.equal(fixture.removed.length, 0);
+        assert.ok(!fixture.calls.some(call => call.args.includes('create') || call.args.includes('build')));
+      }
+    }
+  }
+  const fixture = dockerFixture();
+  assert.throws(() => smoke({ context: 'desktop-linux', image: fixture.source, builder: 'named-builder', environment: { BUILDX_BUILDER: 'other-builder' }, run: fixture.run }), /BUILDER_MISMATCH/);
+});
+
+test('unprobed and unsupported capabilities do not assert missing installation; malformed Engine data cannot start smoke', () => {
+  const fail = () => { throw new Error('Unexpected execution'); };
+  for (const tier of ['C', 'D']) {
+    const result = diagnose({ ...entry, tier }, fail);
+    assert.equal(result.installed, null); assert.equal(result.available, null); assert.equal(result.documentationOnly, true);
+  }
+  const denied = diagnose({ ...entry, id: 'trivy', tier: 'B' }, () => ({ error: { code: 'EACCES' }, status: null }));
+  assert.equal(denied.installed, null); assert.equal(denied.available, false);
+  for (const malformed of [{ OSType: 'linux' }, { ID: 'fixture-engine-id', OSType: 'linux', MemTotal: 'unknown', NCPU: 2 }]) {
+    const fixture = dockerFixture();
+    const run = (exe, args, options) => args.includes('info') ? ok(JSON.stringify(malformed)) : fixture.run(exe, args, options);
+    assert.throws(() => smoke({ context: 'desktop-linux', image: fixture.source, run, environment: {}, hostMemory: 1024 ** 3 }), /RESOURCE_OR_ENGINE_BLOCKED/);
+    assert.ok(!fixture.calls.some(call => call.args.includes('create') || call.args.includes('build')));
+  }
+});
+
+test('Engine access denial is distinct from a stopped daemon, timeout or unknown connection failure', () => {
+  assert.equal(dockerEngineCondition(ok('version'), { status: 1, stderr: 'permission denied while connecting to the API' }), 'ENGINE_ACCESS_BLOCKED');
+  assert.equal(dockerEngineCondition({ status: null, error: { code: 'EPERM' } }), 'ENGINE_ACCESS_BLOCKED');
+  assert.equal(dockerEngineCondition({ status: 1, stderr: 'The system cannot find the file specified.' }), 'NO_DAEMON');
+  assert.equal(dockerEngineCondition({ error: { code: 'ETIMEDOUT' } }), 'TIMEOUT');
+  assert.equal(dockerEngineCondition({ status: 1, stderr: 'Unclassified native failure' }), 'ENGINE_UNREACHABLE');
+  const fixture = dockerFixture();
+  const run = (exe, args, options) => args.includes('version') && args.includes('{{.Server.Version}}')
+    ? { status: 1, stderr: 'access is denied' } : fixture.run(exe, args, options);
+  const result = diagnose(entry, run, { os: 'win32', arch: 'x64' }, {});
+  assert.equal(result.installed, true); assert.equal(result.available, false); assert.equal(result.condition, 'ENGINE_ACCESS_BLOCKED');
+});
+
+test('checksum mismatch rejects optional installation before changing any existing binary or cache directory', async () => {
+  const target = toolPath('jq');
+  const before = existsSync(target) ? readFileSync(target) : null;
+  const directoryExists = existsSync(path.dirname(target));
+  let requested;
+  const tool = structuredClone(tools.jq);
+  tool[process.platform].sha256 = '0'.repeat(64);
+  await assert.rejects(() => installTool('jq', tool, async url => {
+    requested = url;
+    return { ok: true, arrayBuffer: async () => Buffer.from('invalid archive') };
+  }), /Checksum mismatch/);
+  assert.equal(requested, `https://github.com/${tools.jq.repository}/releases/download/${tools.jq.tagPrefix}${tools.jq.version}/${tools.jq[process.platform].asset}`);
+  assert.deepEqual(existsSync(target) ? readFileSync(target) : null, before);
+  assert.equal(existsSync(path.dirname(target)), directoryExists);
 });
 
 test('read-only Supabase discovery suppresses telemetry and update-cache writes without changing parent settings', () => {

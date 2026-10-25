@@ -5,6 +5,30 @@
     "linux": { "asset": "actionlint_1.7.12_linux_amd64.tar.gz", "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8" },
     "win32": { "asset": "actionlint_1.7.12_windows_amd64.zip", "sha256": "6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9" }
   },
+  "jq": {
+    "version": "1.8.2",
+    "repository": "jqlang/jq",
+    "tagPrefix": "jq-",
+    "optional": true,
+    "format": "binary",
+    "linux": { "asset": "jq-linux-amd64", "sha256": "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f" },
+    "win32": { "asset": "jq-windows-amd64.exe", "sha256": "a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627" }
+  },
+  "shellcheck": {
+    "version": "0.11.0",
+    "repository": "koalaman/shellcheck",
+    "optional": true,
+    "linux": { "asset": "shellcheck-v0.11.0.linux.x86_64.tar.gz", "sha256": "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6", "stripComponents": 1 },
+    "win32": { "asset": "shellcheck-v0.11.0.zip", "sha256": "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e" }
+  },
+  "hadolint": {
+    "version": "2.15.1",
+    "repository": "hadolint/hadolint",
+    "optional": true,
+    "format": "binary",
+    "linux": { "asset": "hadolint-linux-x86_64", "sha256": "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507" },
+    "win32": { "asset": "hadolint-windows-x86_64.exe", "sha256": "01d927294962b5387f9ead4f18679158452be4f17c765ad0bdffe5264b9c7b0a" }
+  },
   "osv-scanner": {
     "version": "2.7.0",
     "repository": "google/osv-scanner",
