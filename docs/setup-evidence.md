@@ -715,6 +715,38 @@ checks, task-specific worktrees, local target/lock guards and exact owner gates.
 Next reliability evidence requires owner-authenticated Claude and isolated writable/
 approval/race tests; do not weaken sandbox or prompts to obtain apparent PASS.
 
+### Hook-context failure and repair
+
+The first feature push was blocked by the existing pre-push hook, before remote
+publication. Standalone checks had passed, but the new foundation tests inherited
+the hook's `GIT_*` environment. Fixture Git commands selected the task repository
+despite their temporary working directory. An evaluation fixture commit advanced
+only the task branch, and an attempted mirror operation changed shared `core.bare`
+to true. This was an actual isolation defect in the new tests, not a CI/provider issue.
+
+The failed state's config, task index and commit history were preserved privately
+under `NestScout-backups/hardening-hook-recovery-20261025-0900`. Shared non-bare
+configuration was restored immediately. All 54 authored working files were hashed
+against the verified `b54f275` commit before atomically restoring that task branch
+and its index; no working file was overwritten. The fixture commit was unpublished
+and is preserved only in the external incident bundle. Concurrent hygiene work was
+not staged or removed. No foreign lock was deleted and no hook was bypassed.
+
+The repair introduces one shared `gitEnvironment` helper for backup/evaluation Git
+subprocesses and their tests, and reuses it in the local Supabase environment filter.
+It removes all case-insensitive `GIT_*` overrides, including index/object/common-dir,
+namespace and configuration injection. A permanent negative regression executes the
+recovery/evaluation suites under a disposable donor's poisoned hook environment and
+compares donor HEAD/refs/index/config/content before and after. This reproduces the
+actual failing boundary without using the real repository as the donor. Exact hook
+execution and final push must pass with unchanged source HEAD/index/config; the
+incident is not resolved merely by a standalone rerun.
+
+PASS after repair: poisoned-environment regression and exact `git hook run pre-push`.
+The hook completed its aggregate checks with source HEAD still `b54f275`, the task
+index unchanged, and `core.bare=false`. No remote write is performed by that hook
+probe. The final committed repair is subjected to the same hook again during push.
+
 ### F3 — Security capabilities independently inspected
 
 Read-only GitHub API inspection targeted repository ID `1432052547` only. The GitHub
@@ -838,7 +870,7 @@ application recovery has been implemented or proven by this initiative.
 PASS on the combined implementation plus documentation: `npm run check`,
 `npm run verify:negative`, `npm audit`, changed-behavior recovery/evaluation tests,
 local database/MCP sequence and `git diff --check`. The aggregate includes the
-eleven existing offline Supabase tests and three new foundation tests; the negative
+eleven existing offline Supabase tests and four new foundation tests; the negative
 suite retains its invalid fixtures, staged-blob protection and permanent-test
 acceptance cases. The deliberate agent fixture failure is separate from these
 passing repository checks. No assertion was weakened or scanner disabled.

@@ -45,6 +45,11 @@ detected. `agents:evaluate verify` compares file hashes (including ignored peer
 locks), HEAD/branch/refs, index, status and local Git config in both worktrees.
 It does **not** grade natural-language answers, detect transient reverted mutations,
 or prove absence of external side effects; inspect the actual tool trace separately.
+All fixture/backup Git subprocesses use `gitEnvironment` to remove inherited
+`GIT_*` selectors/configuration. The permanent regression runs the fixture and
+recovery suites with poisoned hook-like variables and proves a donor repository's
+HEAD, refs, index, config and unrelated work remain unchanged. A working-directory
+argument alone does not isolate Git commands launched from hooks.
 
 ## Scenario rubric
 

@@ -3,9 +3,10 @@ import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { root } from './tool-path.mjs';
+import { gitEnvironment } from './git-environment.mjs';
 
 const run = (command, args, cwd) => execFileSync(command, args, {
-  cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
+  cwd, env: gitEnvironment(), encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
 }).trim();
 
 export function backupDestination(repository, requested) {

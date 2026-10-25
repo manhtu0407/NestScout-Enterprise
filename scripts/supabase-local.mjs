@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'smol-toml';
 import { root } from './tool-path.mjs';
+import { gitEnvironment } from './git-environment.mjs';
 
 class LocalGuardError extends Error {}
 
@@ -99,8 +100,8 @@ export function validateLocalFiles(directory) {
 }
 
 export function localEnvironment(source) {
-  return Object.fromEntries(Object.entries({ ...source, DO_NOT_TRACK: '1' }).filter(([name]) =>
-    !/^(PG|SUPABASE_|DATABASE_URL$|OPENAI_API_KEY$|GIT_(?:DIR$|WORK_TREE$|COMMON_DIR$|INDEX_FILE$|CONFIG))/i.test(name))
+  return Object.fromEntries(Object.entries({ ...gitEnvironment(source), DO_NOT_TRACK: '1' }).filter(([name]) =>
+    !/^(PG|SUPABASE_|DATABASE_URL$|OPENAI_API_KEY$)/i.test(name))
     .map(([name, value]) => [/^DOCKER_/i.test(name) ? name.toUpperCase() : name, value]));
 }
 

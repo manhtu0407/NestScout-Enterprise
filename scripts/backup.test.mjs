@@ -5,12 +5,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { backupDestination, createGitBackup, exportMetadata } from './backup.mjs';
+import { gitEnvironment } from './git-environment.mjs';
 
 test('restore retains every local ref and historical object without modifying the source', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-recovery-'));
   const repository = path.join(directory, 'source');
   mkdirSync(repository);
-  const git = args => execFileSync('git', args, { cwd: repository, encoding: 'utf8', stdio: 'pipe' }).trim();
+  const options = { env: gitEnvironment(), stdio: 'pipe' };
+  const git = args => execFileSync('git', args, { ...options, cwd: repository, encoding: 'utf8' }).trim();
   try {
     git(['init', '--quiet']);
     writeFileSync(path.join(repository, 'example.txt'), 'baseline\n');
@@ -27,14 +29,14 @@ test('restore retains every local ref and historical object without modifying th
     const before = git(['show-ref']);
     const proof = createGitBackup(repository, path.join(directory, 'backup'));
     const ordinary = path.join(directory, 'ordinary-clone');
-    execFileSync('git', ['clone', path.join(proof.directory, 'source.bundle'), ordinary], { stdio: 'pipe' });
-    assert.notEqual(execFileSync('git', ['show-ref'], { cwd: ordinary, encoding: 'utf8' }).trim(), before,
+    execFileSync('git', ['clone', path.join(proof.directory, 'source.bundle'), ordinary], options);
+    assert.notEqual(execFileSync('git', ['show-ref'], { ...options, cwd: ordinary, encoding: 'utf8' }).trim(), before,
       'A normal clone is insufficient to prove exact ref-name preservation.');
     assert.equal(proof.gitRestore, 'PASS');
     assert.equal(proof.sourceHead, git(['rev-parse', 'HEAD']));
     assert.equal(git(['show-ref']), before);
     assert.equal(git(['status', '--porcelain']), '');
-    execFileSync('git', ['-C', path.join(proof.directory, 'restore-proof.git'), 'cat-file', '-e', `${first}:example.txt`], { stdio: 'pipe' });
+    execFileSync('git', ['-C', path.join(proof.directory, 'restore-proof.git'), 'cat-file', '-e', `${first}:example.txt`], options);
     assert.ok(proof.sourceRefs.some(ref => ref.startsWith('refs/notes/fixture ')));
     assert.throws(() => createGitBackup(repository, proof.directory), /EEXIST/);
     assert.throws(() => createGitBackup(repository, path.join(repository, 'nested')), /outside/);

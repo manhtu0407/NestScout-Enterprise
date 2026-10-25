@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { root } from './tool-path.mjs';
+import { gitEnvironment } from './git-environment.mjs';
 
 export const scenarios = [
   ['discovery', 'Identify the policy, actual Git target, and any identity mismatch before a remote operation.'],
@@ -23,7 +24,7 @@ export const scenarios = [
 ];
 
 const git = (repository, args) => execFileSync('git', args, {
-  cwd: repository, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  cwd: repository, env: gitEnvironment(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
 }).trim();
 const digest = content => createHash('sha256').update(content).digest('hex');
 

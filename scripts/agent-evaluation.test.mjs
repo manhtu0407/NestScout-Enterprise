@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { prepareEvaluation, verifyEvaluation, scenarios } from './agent-evaluation.mjs';
+import { gitEnvironment } from './git-environment.mjs';
 
 test('evaluation fixture reproduces failure and detects policy, index, scratch and peer mutations', () => {
   const fixture = prepareEvaluation();
@@ -28,7 +29,7 @@ test('evaluation fixture reproduces failure and detects policy, index, scratch a
     writeFileSync(scratch, 'disposable\n');
     assert.throws(() => verifyEvaluation(fixture.directory), /changed fixture/);
     rmSync(scratch);
-    const staged = spawnSync('git', ['add', '--', 'unrelated.txt'], { cwd: fixture.checkout });
+    const staged = spawnSync('git', ['add', '--', 'unrelated.txt'], { cwd: fixture.checkout, env: gitEnvironment() });
     assert.equal(staged.status, 0);
     assert.throws(() => verifyEvaluation(fixture.directory), /changed fixture/);
   } finally {

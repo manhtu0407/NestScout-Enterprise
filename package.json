@@ -27,7 +27,7 @@
     "db:stop": "node scripts/supabase-local.mjs stop",
     "verify:supabase": "node --test scripts/supabase-local.test.mjs",
     "typecheck:db": "tsc --noEmit --strict --skipLibCheck supabase/database.types.ts",
-    "verify:foundation": "node --test scripts/backup.test.mjs scripts/agent-evaluation.test.mjs",
+    "verify:foundation": "node --test scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs",
     "agents:evaluate": "node scripts/agent-evaluation.mjs"
   },
   "devDependencies": {
