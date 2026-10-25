@@ -1,15 +1,5 @@
 #!/bin/sh
 set -eu
 npm run identity
-branch=$(git branch --show-current)
-if [ "$branch" = main ]; then
-  echo 'Use a feature branch and pull request; direct main pushes are not part of this workflow.' >&2
-  exit 1
-fi
-while read -r local_ref local_sha remote_ref remote_sha; do
-  if [ "$remote_ref" = refs/heads/main ]; then
-    echo 'Direct pushes to remote main are outside this workflow; open a pull request.' >&2
-    exit 1
-  fi
-done
+node scripts/check-metadata.mjs --pre-push
 npm run check

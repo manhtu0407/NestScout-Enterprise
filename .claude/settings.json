@@ -1,4 +1,9 @@
 {
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
   "permissions": {
     "ask": ["mcp__supabase_enterprise_readonly__*", "mcp__supabase_enterprise_local__*"],
     "deny": [

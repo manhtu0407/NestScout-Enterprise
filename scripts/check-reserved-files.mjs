@@ -3,6 +3,7 @@ import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { root } from './tool-path.mjs';
+import { indexEntries } from './repository-files.mjs';
 
 export function checkReservedFiles(repository = root) {
   const git = args => execFileSync('git', args, { cwd: repository, encoding: 'utf8' });
@@ -35,11 +36,7 @@ export function checkReservedFiles(repository = root) {
     throw new Error('Root AGENTS.md must not be deleted from the index.');
   }
 
-  const entries = git(['ls-files', '--stage', '-z']).split('\0').filter(Boolean).map(entry => {
-    const tab = entry.indexOf('\t');
-    const [mode, blob, stage] = entry.slice(0, tab).split(' ');
-    return { mode, blob, stage, file: entry.slice(tab + 1) };
-  });
+  const entries = indexEntries(repository);
   for (const entry of entries.filter(entry => ['AGENTS.md', 'README.md'].includes(entry.file))) {
     if (!['100644', '100755'].includes(entry.mode) || entry.stage !== '0') {
       throw new Error(`Root policy/README must be a regular, resolved index entry: ${entry.file}`);

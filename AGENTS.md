@@ -52,8 +52,9 @@ and resolve them within approved scope; do not silently bypass controls.
 ## Architecture and investigation
 
 The inspected repository contains development tooling, not an application stack.
-`package.json` and `package-lock.json` define npm tooling on Node.js 24. Product
-apps, native targets, database, Kael runtime, product tests, and deployment targets
+`package.json` and `package-lock.json` define npm tooling on Node.js 24. Isolated
+Supabase development tooling, generated database types and database tests are
+present. Product apps, native targets, Kael runtime and product deployment targets
 are NOT PRESENT IN INSPECTED SCOPE. Reinspect as the repository evolves; do not
 import architecture, commands, credentials, or conventions from another repository.
 
@@ -62,6 +63,8 @@ import architecture, commands, credentials, or conventions from another reposito
 | Commands and locked dependencies | `package.json`, `package-lock.json` |
 | Tool pins/hashes, shared paths, installation | `scripts/tools.json`, `scripts/tool-path.mjs`, `scripts/install-tools.mjs` |
 | Identity and reserved-file checks | `scripts/verify-repository.mjs`, `scripts/check-reserved-files.mjs` |
+| Naming, attribution and Git metadata | `scripts/check-hygiene.mjs`, `scripts/check-metadata.mjs` |
+| Index and working-file inspection | `scripts/repository-files.mjs` |
 | Secret scanning, including staged blobs | `scripts/check-tools.mjs`, `scripts/scan-staged.mjs` |
 | YAML validation and invalid-fixture verification | `scripts/check-yaml.mjs`, `scripts/verify-negative.mjs` |
 | Hosted checks and optional hooks | `.github/workflows/ci.yml`, `.githooks/` |
@@ -135,7 +138,8 @@ checksum-verified tools. Native tooling currently supports Windows/Linux x64.
 Setup is not a read-only check or a choice of application stack.
 
 Run `npm run check` and `npm run verify:negative` before delivery. The aggregate
-checks reserved files, Markdown, YAML, workflows, and secrets. Existing negative
+checks reserved files, hygiene, metadata, Markdown, YAML, workflows, secrets and
+local Supabase contracts/types. Existing negative
 fixtures use isolated temporary repositories/files. Report exact failures;
 component passes do not turn an aggregate failure into PASS. Add meaningful
 positive and negative tests when changing enforcement.
@@ -162,6 +166,26 @@ hooks and successful workflows alone do not prove server-side enforcement.
 - Do not add unsolicited author/AI credits, narration comments, or TODO/NOTES/PLAN/
   report files. Preserve legal notices and comments explaining useful invariants
   or non-obvious reasons.
+- New source files need one responsibility, a real caller or verification consumer,
+  and a location/name consistent with the current module. Use the enforced naming
+  categories in CONTRIBUTING; approve a real new module's convention before adding
+  exceptions. Do not invent an application layout to satisfy a filename check.
+- Keep disposable reports, debugging output and archives outside committed source.
+  Long-lived PDF/ZIP artifacts need an approved durable purpose, source/provenance,
+  and matching SHA-256 in the manifest described in CONTRIBUTING. Registration does
+  not prove owner approval or authorize publication.
+- Do not claim AI authorship, add promotional signatures, fabricate organizational
+  roles, or identify an AI as Founder, Co-Founder, Owner or Maintainer without explicit
+  owner authority. Preserve legal notices, factual Git identities, legitimate
+  contributor records and necessary provenance. Never impersonate a human author
+  or rewrite historical commits to remove attribution.
+- Disable automatic commit/PR attribution through supported project settings where
+  available. Preserve MCP and permission configuration. Report unsupported runtime
+  settings rather than adding incompatible keys or silently changing user settings.
+- Review comments for useful invariants, security constraints, races, compatibility
+  and API contracts; remove redundant narration only within scope. Static checks
+  reject known signature forms, not every paraphrase or unnecessary explanation.
+  Human review must assess usefulness, provenance, truth and owner authorization.
 - Preserve unrelated modified, staged, and untracked work, authenticated sessions,
   and processes. Recheck before writes. Do not reset, clean, overwrite, delete,
   force-push, or rewrite another person's work/shared history by inference.
