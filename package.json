@@ -34,8 +34,12 @@
     "db:stop": "node scripts/supabase-local.mjs stop",
     "verify:supabase": "node --test scripts/supabase-local.test.mjs",
     "typecheck:db": "tsc --noEmit --strict --skipLibCheck supabase/database.types.ts",
-    "verify:foundation": "node --test scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs",
-    "agents:evaluate": "node scripts/agent-evaluation.mjs"
+    "verify:foundation": "node --test scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs",
+    "agents:evaluate": "node scripts/agent-evaluation.mjs",
+    "tools:help": "node scripts/tool-help.mjs",
+    "tools:trivy:smoke": "node scripts/tool-workflows.mjs trivy",
+    "tools:k6:smoke": "node scripts/tool-workflows.mjs k6",
+    "tools:postgresql": "node scripts/postgresql-clients.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

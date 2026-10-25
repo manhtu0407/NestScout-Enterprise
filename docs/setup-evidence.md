@@ -964,3 +964,251 @@ No new model evaluation, credential, global client setting or paid API was used.
 Optional native security controls, hosted ACL remediation, encrypted off-device
 backup ownership and the four PROPOSED ADRs remain owner decisions. Final PR/merge/
 main-run identities and conclusions are recorded in the delivery report.
+
+## Tool library V2 evidence — 2026-10-25
+
+This section records scoped implementation evidence, not policy or permission.
+Source baseline: `185851357b88e8669724b05c46cc40b69d6c9fc9` (`origin/main`),
+plus the focused V2 diff on `codex/tool-library-v2-20261025`. The delivery commit
+is reported separately. Workspace:
+`C:/Users/Phan Manh Tu/.codex/worktrees/tool-library-v2/NestScout`.
+Environment: Windows x64, Node 24.19.0, npm 11.17.0. Native Linux tool execution
+is NOT RUN. Docker's Linux Engine is a separate runtime, not Linux CLI proof.
+
+### Gate and implementation
+
+GitHub PR #20 was verified merged into main on 2026-10-25 at 07:33:03 UTC;
+its merge commit is the source baseline above. A fetch and ancestor check passed
+before V2 writes. Both origin URLs target `manhtu0407/NestScout-Enterprise`,
+repository ID `1432052547`. The original checkout and existing worktrees were
+preserved. Root policy, original README, runtime settings, lockfile, security
+guards, Supabase lifecycle and hosted workflow triggers were not changed.
+
+The existing installer now checks archive paths/member types, extracts only the
+expected binary, validates native executable headers and replaces binaries only
+after verification. Trivy and k6 are optional pins, verified against official
+release checksum manifests and GitHub asset digests. Default installs remain
+actionlint/Gitleaks. No second downloader, scanner framework, database server,
+application scaffold, skill mirror or universal command executor was introduced.
+`tools:help` is fixed native-help discovery with argv validation, bounded output,
+no shell and both output streams retained. The latter fixes an observed actionlint
+stderr-help loss found by the Codex pilot. Existing catalog/runbooks, ownership
+guards, permanent test selection and evaluation harness are extended in place.
+
+Pre-push exposed a Windows archive environment defect: Git's GNU tar interpreted
+an absolute drive-letter archive path as a remote `C:` host and exited 128.
+The shared path resolver now selects Windows System32 tar explicitly (ZIP support)
+and archive invocations use owned relative paths/cwd. Linux retains native tar.
+Regression verification runs under the real Git pre-push environment; no PATH,
+hook, assertion or permission was weakened. An earlier `HEAD` push refspec was
+also rejected by the existing same-named-branch guard; the named branch refspec
+is used for delivery without changing that guard.
+
+A later pre-push run exposed an existing randomized secret fixture defect:
+Base64URL suffixes could contain characters outside the pinned Gitleaks GitHub PAT
+rule's 36 alphanumeric characters. Both fixture consumers now assemble the same
+fixed high-entropy synthetic payload and assert its valid shape. Real scanner
+rejection, redaction and staged-versus-working assertions remain intact; scanner
+configuration/implementation is unchanged. The rule was checked against
+[the pinned upstream configuration](https://github.com/gitleaks/gitleaks/blob/v8.30.1/config/gitleaks.toml).
+
+### Operational readiness matrix
+
+All entries below are CONFIGURED. INSTALLED and AVAILABLE describe this V2
+worktree/host; VERIFIED names the actual bounded workflow, not universal readiness.
+
+| Capability | INSTALLED / AVAILABLE | VERIFIED / restriction |
+| --- | --- | --- |
+| Docker 29.9.2 | Yes / local Engine reachable | PASS existing owned container smoke; read-only storage/image/container diagnostics |
+| Compose 5.6.1 | Yes / yes | PASS owned config/lifecycle smoke; no shared teardown |
+| Buildx 0.38.1 | Yes / local embedded driver | PASS scratch build; ls/inspect/du; broader drivers NOT RUN |
+| Git 2.55.0.windows.4 | Yes / yes | PASS identity, worktree/index and donor-preservation regression checks |
+| gh 2.97.0 | Yes / authenticated | PASS scoped repository/PR reads; no PR/CI mutation |
+| Node 24.19.0 | Yes / yes | PASS mandatory test consumers |
+| npm 11.17.0 | Yes / yes | PASS locked setup/audit and manifest checks |
+| TypeScript 7.0.2 | Yes / yes | PASS `typecheck:db`; no product compiler claim |
+| ripgrep 15.2.0 | Yes / yes | Executed repository discovery; no product integration claim |
+| Supabase CLI 2.122.0 | Yes / CLI only | PASS isolation/type regressions; actual V2 local stack BLOCKED_NO_LOCAL_STACK |
+| Gitleaks 8.30.1 | Yes / yes | PASS staged/history/working scans and rejection fixtures |
+| actionlint 1.7.12 | Yes / yes | PASS canonical workflow checks, malformed fixtures and native help |
+| Repository checks | Yes / yes | PASS aggregate/negative commands below |
+| jq 1.8.2 | Yes / yes | PASS catalog query exit 0; malformed JSON rejected exit 5 |
+| OSV-Scanner | No V2 binary / unavailable | V1 documented Windows BLOCKED_HOST_POLICY preserved; no execution retry/bypass; scan NOT RUN |
+| ShellCheck 0.11.0 | Yes / yes | PASS all three real hooks; unquoted-variable fixture exit 1 |
+| Hadolint 2.15.1 | Yes / yes | PASS scratch Dockerfile; untagged-image fixture exit 1 / DL3006 |
+| Trivy 0.76.1 | Yes / executable | PASS embedded config/image-parser/SBOM path; advisory DATABASE_MISSING |
+| PostgreSQL clients | No host-native install / no owned V2 container | BLOCKED_NO_LOCAL_STACK; SQL/dump/archive execution NOT RUN |
+| Expo / React Native | Unknown / not applicable | NOT RUN; application/SDK absent |
+| ESLint / formatter | Unknown / not applicable | NOT RUN; product consumer absent |
+| Component tests | Unknown / not applicable | NOT RUN; product harness absent |
+| Device tests | Unknown / not applicable | NOT RUN; native target/device harness absent |
+| Native debugging | Unknown / not applicable | NOT RUN; native target absent |
+| CodeQL / Semgrep | Unknown / not applicable | NOT RUN; optional language/license integration absent |
+| k6 2.3.0 | Yes / yes | PASS 10-request loopback positive/negative; product performance NOT RUN |
+| Architectural reference tools | Unknown / not applicable | NOT RUN; no real consumer; no installation |
+
+The former Tier C k6 reference is operationalized as Tier B capability ID `k6`;
+`tools:list k6` / `tools:doctor -- --tool k6` are the new discovery entrypoints.
+Product load-testing readiness remains NOT RUN. Catalog count is not a readiness
+score. Advisory DB preparation and shared/native host installations are opt-in.
+
+### Executed commands and assertions
+
+Sanitized local evidence is retained under ignored `.cache/` and
+`.cache/agent-tests/v2/`; raw transcripts are not committed. Commands below ran
+against the baseline plus V2 files. Final delivery is bound to that source diff
+and commit, with a clean/preserved worktree reported separately.
+
+| Command / evidence | Exit / observed result |
+| --- | --- |
+| `npm ci --ignore-scripts` | 0; locked dependencies installed, audit reported zero vulnerabilities at that time |
+| `npm run tools:install` | 0; original mandatory binaries verified |
+| `tools:install -- --tool trivy`, `k6`, `jq`, `shellcheck`, `hadolint` | Each 0; optional official binary hashes verified; actionlint/Trivy reinstalled through hardened extraction |
+| `npm run tools:doctor` | 0; optional OSV/host psql missing; separate version/DB/rule/scan states in `v2-doctor.txt` |
+| 52 fixed native help invocations | Each 0; Docker/Compose/Buildx, Trivy required families, k6, existing analyzers; `v2-native-help.json` |
+| `npm run tools:trivy:smoke` | 0 overall; config exits 0/7 with 0/1 high findings; local synthetic image parsed to CycloneDX; absent DB scan rejected exit 1 with native first-run DB error |
+| `npm run tools:k6:smoke` | 0 overall; positive/negative native exits 0/99, exactly 10 loopback requests, ceiling 20; server/temp cleanup PASS |
+| `tools:smoke -- --context desktop-linux --image sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 --builder desktop-linux` | 0; compose-config, scratch build, bounded container and Compose lifecycle; 0 pulls; 2 containers + 1 image ownership-verified cleanup |
+| `docker --context desktop-linux system df`, container/image ls, buildx ls/inspect/du | Each 0; read-only current host diagnostics; no cache prune |
+| `npm run tools:postgresql -- smoke` | 1; exact BLOCKED_NO_LOCAL_STACK; no other stack selected |
+| `npm run tools:postgresql -- smoke --host hosted.invalid` | 1; rejected argv before runtime/SQL; no hosted fallback |
+| PostgreSQL guard regressions | PASS wrong stack/ID, stopped service, host networking, public/wrong binding, duplicate/absent database and malicious target arguments; authenticated SQL-denial test NOT RUN |
+| Installer regressions | PASS corrupt-download preservation, missing binary, path traversal, links/special entries, duplicates and invalid executable headers; live official archive install supplies positive evidence |
+| `npm run check` | PASS; reserved files, hygiene, metadata, Markdown/YAML/workflows/secrets, Supabase contracts/types, test-selection/catalog, foundation consumers |
+| `npm run verify:negative` | PASS; deliberate invalid fixtures rejected, 73 selected tests, zero failed/skipped |
+
+Smoke files/caches are removed only after checking their owned temporary roots.
+Cleanup errors remain failures. Trivy's synthetic image has no OS package workload;
+the SBOM path does not establish advisory coverage or a clean product image.
+PostgreSQL smoke is configured to capture schema-only SQL/custom archives in owned
+OS temp and only list the archive; this path is not claimed executed without a stack.
+
+### Agent discovery and selection
+
+Codex CLI `0.163.0-alpha.11.2`: fresh subscription-authenticated, ephemeral,
+read-only sessions using `agents:evaluate prepare-tools`, exact source installation
+and `--json` traces. Baseline is the V1 docs/catalog path and its recorded runtime
+limitations; this is no controlled quality/cost comparison. The initial pilot has
+37 completed command invocations. Ten tasks were reviewed separately against
+the trace, not scored from keywords. Fixture/peer/index preservation passed the
+existing harness before/after. No install, scan, smoke, MCP or remote mutation was
+authorized in the pilot. Source Git inspection hit ownership protection; no trust
+override was added. One model-created ESM diagnostic invocation failed before
+native launch; a corrected file URL succeeded. This is retained in the transcript.
+
+| Task | Observed Codex selection and execution |
+| --- | --- |
+| Docker build failure | Docker/Compose/Buildx; native context/logs/cache/build/config help exit 0; actual diagnostics excluded from pilot |
+| npm vulnerability | OSV or scoped npm audit; host-policy/missing-binary restriction retained; scan NOT RUN |
+| SQL drift | Canonical `db:drift` source inspected; no standalone SQL substitute, stack start or hosted fallback |
+| Workflow YAML | Canonical actionlint selected; stderr-help defect discovered, fixed, and exact helper rerun in a second fresh session with visible help and exit 0 |
+| POSIX hook | ShellCheck native help exit 0 |
+| Dockerfile | Hadolint native help exit 0 |
+| Image/config | Trivy image/config native help exit 0; absent advisory DB identified |
+| Loopback performance | Existing k6 smoke selected; native run help exit 0; no custom load runner/server launched by pilot |
+| Staged secret | Gitleaks/canonical staged/history scanner selected; git/stdin help exit 0; Trivy rejected as replacement |
+| Denied vendor requests | Installs, shared pruning, hosted SQL, PR/push/deploy rejected; trace contains no such attempted mutation |
+
+The actionlint follow-up independently preserved its fixture/index/source-helper
+hashes and passed the preservation harness. Actual workflow smokes are evidenced
+separately above; help traces do not prove runtime/product operations. Skill
+auto-discovery/loading parity is NOT RUN; no skills or mirrored policies added.
+
+Claude Code `2.1.310`: `auth status` returned `loggedIn=false`, auth method `none`.
+Result: BLOCKED_AUTH. No login, API key, trust/config changes or fabricated model
+results. Claude selection, policy recall, skill loading and execution are NOT RUN;
+owner authentication is the prerequisite for a fresh separate fixture.
+
+### V2 acceptance matrix
+
+| Case | Result / evidence boundary |
+| --- | --- |
+| V2-01 | PASS merged PR/ancestor gate before writes |
+| V2-02 | PASS isolated tooling/runbook/test diff |
+| V2-03 | PASS one root policy, no mirrors/new pin registry |
+| V2-04 | PASS mandatory V1 guards and Supabase isolation retained |
+| V2-05 | PASS Trivy official pin/hash/install |
+| V2-06 | PASS installed native required-family help |
+| V2-07 | PASS config, synthetic image/SBOM and missing-DB negative; advisories BLOCKED_DATABASE_MISSING |
+| V2-08 | BLOCKED_NO_LOCAL_STACK; configured container-client reuse, no second DB |
+| V2-09 | PASS wrong-target guard/argv negatives; real SQL authentication-denial NOT RUN |
+| V2-10 | PASS k6 official pin/hash/install |
+| V2-11 | PASS bounded offline positive/negative and cleanup |
+| V2-12 | PASS OSV host-policy boundary preserved; no execution retry |
+| V2-13 | PASS task/native-help mapping; no universal executor |
+| V2-14 | PASS existing scanners reused; authentic positive/negative inputs |
+| V2-15 | PASS unchanged Docker ownership/driver regression and real smoke |
+| V2-16 | PASS index/staged/working, malformed catalog/argv negatives |
+| V2-17 | PASS permanent tests selected by mandatory check contract |
+| V2-18 | PASS aggregate and negative verification |
+| V2-19 | PASS Windows/Linux evidence explicitly separated |
+| V2-20 | PASS observed Codex selection/help trace; source Git boundary disclosed |
+| V2-21 | BLOCKED_AUTH; Claude runtime/auth checked, benchmark NOT RUN |
+| V2-22 | PASS no app, PR, hosted-CI trigger, merge or deployment |
+| V2-23 | PASS per-capability state/limits above |
+| V2-24 | Focused feature-branch delivery only; exact commit/push and final dirty state reported separately |
+
+Verdict: ACCEPT FOR V2 PR REVIEW with the grounded gaps above. Full operational
+arsenal/parity remains BLOCKED by the owned SQL stack, advisory DB preparation,
+Claude authentication and unexecuted native Linux workflows. This verdict grants
+no PR/hosted-CI/merge/deployment authority. Next scoped work is owner-selected
+prerequisite resolution and corresponding rerun; no production changes are needed.
+
+### V2 finalization: isolated PostgreSQL integration
+
+The owner subsequently authorized isolated local PostgreSQL verification, a V2 PR
+and necessary hosted CI, while preserving the merge/deployment/production boundary.
+The starting revision was verified locally and remotely as
+`9e99938b24c2470bc08b4f079bf554bcb15f53f7`; all 25 reviewed file hashes matched.
+The following evidence supersedes the initial PostgreSQL BLOCKED_NO_LOCAL_STACK
+and SQL-denial NOT RUN entries above. Final revision/CI identities are reported
+with the PR; earlier optional-tool/runtime evidence retains its original scope.
+
+Canonical `db:start` created only the current worktree/branch's managed stack,
+ID `54aa5280f6833b0f6044d3906de4326ed9a90241d7dd2009d3d3e15d130a4884`.
+The existing 39 unrelated containers were inventoried before startup. Root policy,
+README, runtime settings, dependencies, image pins, canonical Supabase lifecycle,
+CI triggers and CI permissions were preserved.
+
+Integration reproduced a real V2 defect: the managed SQL endpoint was loopback
+port 22035, while its database container's loopback backend used port 55525.
+Equality between these distinct layers rejected a legitimate owned stack.
+The helper now checks the database service-instance UUID from validated stack
+status against `com.supabase.instance`, in addition to stack/worktree/branch,
+running state, immutable container ID, local Docker context and loopback bindings.
+It rejects wrong/missing instance labels, invalid backend ports, non-loopback
+bindings and duplicate/missing database services. Regression fixtures explicitly
+accept different valid managed/backend ports without relaxing target identity.
+
+PostgreSQL 17.11 clients were reused inside the owned official pinned container;
+no host-native client or second server was installed. Actual client help, readiness,
+read-only version/database SELECT, 4,222-byte schema-only dump, custom archive and
+`pg_restore --list` passed. Read-only DDL was rejected with exit 3 / SQLSTATE 25006;
+an absent role was rejected with exit 2 / FATAL role does not exist. Fixture role
+and table absence were checked before and after; no role/table was created and no
+restore ran. Owned dumps were removed. The negative script uses psql `-f -` with
+ON_ERROR_STOP, matching the native script exit contract in the
+[PostgreSQL 17 reference](https://www.postgresql.org/docs/17/app-psql.html).
+
+The existing Supabase CI job now runs the same PostgreSQL workflow before its
+existing always-run stack cleanup. No runner/job, token scope, trigger or paid
+service was added. Complete job outcomes/logs are inspected on the final PR SHA.
+Native discovery also rejects the nonexistent `compose profiles` family; profiles
+remain discoverable through native `compose config --help` / `config --profiles`.
+
+Local `db:test` passed all 13 SQL security assertions, and `db:mcp:test` passed
+the real MCP catalog/query and denied-migration test. All four native client help
+paths returned actual help. Fresh Trivy and k6 bounded smokes passed with their
+documented limits. Canonical `db:stop` confirmed no task containers remained
+running; local task data was retained by the existing lifecycle contract. All 39
+pre-existing container IDs/names/running states and all five unrelated worktrees'
+HEAD/index/status/working diffs were verified unchanged. Sanitized evidence is
+retained under ignored `.cache/agent-tests/v2-finalize/`.
+
+Remaining limitations: Trivy advisory DB scans remain DATABASE_MISSING; OSV Windows
+execution remains blocked by the previously documented host-policy restriction;
+Claude remains BLOCKED_AUTH and its tool-choice benchmark is NOT RUN. Native Linux
+Trivy/k6 optional workflows, broader Docker drivers/GPU, native skill-loading parity,
+product/device integration, real product performance and restore/recovery into an
+application database remain NOT RUN. Hosted foundation/SQL results do not establish
+those capabilities. No merge, deployment or production change is authorized here.

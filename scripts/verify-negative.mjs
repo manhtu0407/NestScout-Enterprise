@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync, existsSync, realpathSync, lstatSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
@@ -184,8 +183,9 @@ try {
   const workflow = path.join(directory, 'invalid.yml');
   writeFileSync(workflow, 'name: Invalid\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n        unknown-property: invalid\n');
   mustReject(toolPath('actionlint'), ['-shellcheck=', '-pyflakes=', workflow], 'Actionlint');
-  // Random synthetic shape only. No real credential is used or printed.
-  const token = ['gh', 'p_'].join('') + randomBytes(27).toString('base64url');
+  // Synthetic shape only. No real credential is used or printed.
+  const token = ['gh', 'p_', 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'].join('');
+  assert.match(token, /^ghp_[A-Za-z0-9]{36}$/);
   writeFileSync(path.join(directory, 'synthetic.txt'), `token=${token}\n`);
   const result = mustReject(toolPath('gitleaks'), ['dir', '--redact', '--no-banner', directory], 'Gitleaks');
   assert.ok(!(result.stdout + result.stderr).includes(token), 'Secret output must be redacted.');

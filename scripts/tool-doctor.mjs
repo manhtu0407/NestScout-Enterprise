@@ -86,6 +86,7 @@ const native = {
   git: ['git', ['--version']], gh: ['gh', ['--version']], node: [process.execPath, ['--version']],
   rg: ['rg', ['--version']], jq: ['jq', ['--version']], 'osv-scanner': ['osv-scanner', ['--version']],
   shellcheck: ['shellcheck', ['--version']], hadolint: ['hadolint', ['--version']], trivy: ['trivy', ['--version']],
+  k6: ['k6', ['version']],
   postgresql: ['psql', ['--version']],
   typescript: [process.execPath, [path.join(root, 'node_modules/typescript/bin/tsc'), '--version']],
   supabase: [process.execPath, [path.join(root, 'node_modules/supabase/dist/supabase.js'), '--version']],
@@ -108,7 +109,7 @@ export function diagnose(entry, run = probe, platform = { os: process.platform, 
   if (['actionlint', 'gitleaks'].includes(entry.id)) command = [toolPath(entry.id), [entry.id === 'actionlint' ? '-version' : 'version']];
   if (tools[entry.id] && tools[entry.id].optional) {
     result.binaryPresent = existsSync(toolPath(entry.id));
-    if (result.binaryPresent) command = [toolPath(entry.id), ['--version']];
+    if (result.binaryPresent) command = [toolPath(entry.id), [entry.id === 'k6' ? 'version' : '--version']];
   }
   if (entry.id === 'npm') {
     const cli = environment.npm_execpath || path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
@@ -135,6 +136,16 @@ export function diagnose(entry, run = probe, platform = { os: process.platform, 
   if (result.available && ((entry.id === 'node' && !nodeVersionSupported(result.version))
     || (pinnedVersion && result.version.replace(/^v/, '') !== pinnedVersion))) {
     result.available = false; result.condition = 'VERSION_MISMATCH';
+  }
+  if (entry.id === 'trivy') {
+    const metadata = path.join(root, '.cache/trivy/db/metadata.json');
+    result.database = existsSync(metadata) ? 'PRESENT_NOT_VERIFIED: metadata only; freshness/scan not tested' : 'DATABASE_MISSING: project .cache/trivy/db';
+    result.rules = 'NOT_RUN: use tools:trivy:smoke to test embedded checks';
+    result.scan = 'NOT_RUN';
+  }
+  if (entry.id === 'postgresql') {
+    result.hostNativeInstalled = result.installed;
+    result.localStack = 'NOT_RUN: use tools:postgresql; requires canonical local ownership verification';
   }
   if (entry.id === 'gh' && result.installed) {
     const auth = check('auth-status', 'gh', ['auth', 'status']);

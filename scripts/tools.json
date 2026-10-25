@@ -1,4 +1,18 @@
 {
+  "trivy": {
+    "version": "0.76.1",
+    "repository": "aquasecurity/trivy",
+    "optional": true,
+    "linux": { "asset": "trivy_0.76.1_Linux-64bit.tar.gz", "sha256": "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0", "binary": "trivy" },
+    "win32": { "asset": "trivy_0.76.1_windows-64bit.zip", "sha256": "1051f49cb22d5284f43425f72aad9cda63ca12ceb92e7caa06903490c82dc9bf", "binary": "trivy.exe" }
+  },
+  "k6": {
+    "version": "2.3.0",
+    "repository": "grafana/k6",
+    "optional": true,
+    "linux": { "asset": "k6-v2.3.0-linux-amd64.tar.gz", "sha256": "39c3117b6af817592dcd0ce4242105c0a7af10948c2a425306f0be8f7a8a8ab1", "binary": "k6-v2.3.0-linux-amd64/k6" },
+    "win32": { "asset": "k6-v2.3.0-windows-amd64.zip", "sha256": "112276d495e5741c968e2bc09ea6196099c1275bd6db9ee0875d173c7148ce43", "binary": "k6-v2.3.0-windows-amd64/k6.exe" }
+  },
   "actionlint": {
     "version": "1.7.12",
     "repository": "rhysd/actionlint",

@@ -293,7 +293,7 @@ test('unprobed and unsupported capabilities do not assert missing installation; 
     assert.equal(result.installed, null); assert.equal(result.available, null); assert.equal(result.documentationOnly, true);
   }
   const denied = diagnose({ ...entry, id: 'trivy', tier: 'B' }, () => ({ error: { code: 'EACCES' }, status: null }));
-  assert.equal(denied.installed, null); assert.equal(denied.available, false);
+  assert.equal(denied.installed, existsSync(toolPath('trivy')) ? true : null); assert.equal(denied.available, false);
   for (const malformed of [{ OSType: 'linux' }, { ID: 'fixture-engine-id', OSType: 'linux', MemTotal: 'unknown', NCPU: 2 }]) {
     const fixture = dockerFixture();
     const run = (exe, args, options) => args.includes('info') ? ok(JSON.stringify(malformed)) : fixture.run(exe, args, options);

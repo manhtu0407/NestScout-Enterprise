@@ -173,6 +173,46 @@ between calls. No process should concurrently reconfigure the selected context.
 
 ## Workflows and failure routing
 
+The installed help helper supports `docker container logs`, `docker container
+stats`, `compose config` and `buildx du`, among other families. It only obtains
+help. Run actual diagnostics against an inspected explicit context. These native
+examples extend selection beyond the smoke's lifecycle:
+
+```text
+docker --context OBSERVED_LOCAL_CONTEXT container ls --all
+docker --context OBSERVED_LOCAL_CONTEXT image ls --digests
+docker --context OBSERVED_LOCAL_CONTEXT system df
+docker --context OBSERVED_LOCAL_CONTEXT buildx ls
+docker --context OBSERVED_LOCAL_CONTEXT buildx inspect INSPECTED_LOCAL_BUILDER
+docker --context OBSERVED_LOCAL_CONTEXT buildx du --builder INSPECTED_LOCAL_BUILDER
+docker --context OBSERVED_LOCAL_CONTEXT network ls
+docker --context OBSERVED_LOCAL_CONTEXT volume ls
+docker --context OBSERVED_LOCAL_CONTEXT compose --file OWNED_FILE --project-name OWNED_PROJECT config --services
+docker --context OBSERVED_LOCAL_CONTEXT compose --file OWNED_FILE --project-name OWNED_PROJECT config --profiles
+```
+
+Compose profiles are reported by `config --profiles`, not a `compose profiles`
+subcommand. Use `container logs --tail 100 ID`, `container stats --no-stream ID`,
+selective inspect formats and bounded `events --since ... --until ...` only for
+approved targets; logs/config can contain secrets. On Windows use
+`Get-NetTCPConnection -State Listen` to identify port owners without killing them;
+on Linux inspect `ss -ltnp` where available. No custom port or disk scanner is needed.
+
+Docker supports `docker`, `docker-container`, `remote`, `cloud` and `kubernetes`
+[Buildx drivers](https://docs.docker.com/build/builders/drivers/). The V1 offline
+smoke deliberately exercises only an inspected local embedded `docker` builder;
+that limit does not describe Docker's broader support. `docker-container` may
+need a BuildKit image pull and creates daemon resources; remote/cloud/kubernetes
+targets require separate identity and authority. No driver conversion is automatic.
+
+Image digests identify content; use selective `image inspect`/`history`, while
+`buildx imagetools` and provenance lookup may contact registries. Snapshot planning
+distinguishes image `save/load`, container writable layers, mounted volumes and
+database-consistent dumps. An image archive does not back up a database volume.
+Restoration needs an inspected owned target and recovery verification; no broad
+Compose teardown or shared cache prune occurs. GPU use needs actual driver,
+runtime/toolkit and device evidence; GPU execution is NOT RUN in this foundation.
+
 | Observed failure | Read-only inspection | Focused recovery and validation |
 | --- | --- | --- |
 | Client exists, Engine fails | `version`, `context ls/inspect`, `info` | Report NO_DAEMON, wrong context or permission; owner handles shared daemon startup |

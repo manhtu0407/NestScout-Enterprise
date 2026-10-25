@@ -4,7 +4,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
-import { prepareEvaluation, verifyEvaluation, scenarios } from './agent-evaluation.mjs';
+import { prepareEvaluation, verifyEvaluation, scenarios, toolScenarios } from './agent-evaluation.mjs';
 import { gitEnvironment } from './git-environment.mjs';
 
 test('evaluation fixture reproduces failure and detects policy, index, scratch and peer mutations', () => {
@@ -57,5 +57,25 @@ test('failed evaluation preparation propagates the Git error and removes only it
     assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
     assert.ok(!lstatSync(directory).isSymbolicLink());
     rmSync(directory, { recursive: true });
+  }
+});
+
+test('tool-choice evaluation reuses preservation harness and records copied discovery inputs before a session', () => {
+  const fixture = prepareEvaluation(true);
+  try {
+    const baseline = JSON.parse(readFileSync(path.join(fixture.directory, 'baseline.json')));
+    assert.deepEqual(baseline.scenarioIds, toolScenarios.map(([id]) => id));
+    assert.equal(toolScenarios.length, new Set(baseline.scenarioIds).size);
+    assert.equal(verifyEvaluation(fixture.directory).fixturePreservation, 'PASS');
+    const catalog = path.join(fixture.checkout, 'scripts/tool-capabilities.json');
+    const before = readFileSync(catalog);
+    writeFileSync(catalog, '{}\n');
+    assert.throws(() => verifyEvaluation(fixture.directory), /changed fixture/);
+    writeFileSync(catalog, before);
+    assert.equal(verifyEvaluation(fixture.directory).fixturePreservation, 'PASS');
+  } finally {
+    assert.equal(path.dirname(realpathSync(fixture.directory)), realpathSync(tmpdir()));
+    assert.ok(!lstatSync(fixture.directory).isSymbolicLink());
+    rmSync(fixture.directory, { recursive: true });
   }
 });

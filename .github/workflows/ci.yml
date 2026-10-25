@@ -82,6 +82,8 @@ jobs:
         run: npm run db:history
       - name: Run database security tests
         run: npm run db:test
+      - name: Verify PostgreSQL client read-only workflows
+        run: npm run tools:postgresql -- smoke
       - name: Run local MCP integration tests
         run: npm run db:mcp:test
       - name: Lint local database

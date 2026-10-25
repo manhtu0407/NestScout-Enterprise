@@ -99,6 +99,26 @@ only that root. Never sweep the temp directory or another task's worktrees.
 
 ## V2 independent runtime evaluation protocol
 
+`npm run agents:evaluate -- prepare-tools` reuses the same disposable checkout,
+dirty peer, immutable baseline and `verify` lifecycle for ten tool-choice tasks.
+It copies the current discovery docs/catalog/manifest before taking the baseline
+and records source HEAD plus file hashes. Fresh sessions may read the authorized
+source installation and execute only installed native help through `tools:help`.
+Smoke, installs, scans, network, MCP, hosted operations and Docker mutations are
+excluded from this read-only pilot. Separate workflow execution evidence validates
+the actual synthetic tools; help traces alone do not establish operational success.
+
+The baseline is the V1 shared-docs discovery path and its previously reported
+runtime limitations. V2 compares observed selection/execution/preconditions for
+Docker, dependency scan, migration drift, workflow YAML, shell hooks, Dockerfile,
+image scanning, k6, staged secrets and denied vendor requests. It does not produce
+an efficacy percentage or claim a controlled model-quality improvement. Record
+per-task selected commands and real exits from the transcript, then independently
+run `verify` against the untouched baseline. A sandbox-denied command is BLOCKED,
+not a successful execution or proof of compliant behavior. Skill loading remains
+a separate NOT RUN experiment unless directly observed; this task adds no skills
+or runtime configuration.
+
 Deterministic regression checks verify repository guard behavior; they are not
 proof that a live model follows instructions. Execute Codex and Claude Code in
 **separate fresh sessions** against separate disposable fixtures. Never let one

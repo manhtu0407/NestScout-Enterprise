@@ -86,6 +86,31 @@ No second executable pin source is introduced. Native help wins over prose examp
 
 ## Repeatable task flow
 
+V2 operational paths: [Trivy](trivy.md), [PostgreSQL clients](postgresql.md),
+[k6](k6.md) and [Docker diagnostics](docker.md). `npm run tools:help -- TOOL`
+prints bounded installed-version help; append a documented family, for example
+`trivy image`, `k6 run` or `docker container logs`. It uses compiled executable
+choices and validated argv with no shell, scripts, arbitrary flags or target
+execution. Additional native families remain available through native CLI help.
+The capability catalog stays data-only. Help/probes do not imply workflow success.
+
+| Task | Select / canonical consumer | Preconditions and effects |
+| --- | --- | --- |
+| Docker build failure | Docker/Buildx inspect, Hadolint | Inspected local Engine/builder; diagnose before owned build |
+| Lockfile vulnerability | OSV or npm audit | OSV Windows host restriction preserved; audit is npm-only network read |
+| SQL migration drift | `db:drift`, `db:history` | Existing owned local stack; no hosted fallback |
+| Workflow syntax | `lint:workflows` / actionlint | Exact workflow, read-only lint |
+| POSIX hook warning | ShellCheck | Installed binary, exact hook; no shell execution |
+| Dockerfile construction | Hadolint | Selected file/config; no image pull |
+| Image OS/IaC/SBOM | Trivy | Separate DB/rule/scanner readiness; owned cache/artifact |
+| Bounded local performance | `tools:k6:smoke` | Owned loopback only; synthetic 10-request budget |
+| Staged secret | `scan:secrets`, staged-blob scanner | Index/history/working snapshots; Trivy cannot replace gate |
+| Direct SQL diagnostic | `tools:postgresql` | Current worktree/branch owned local container; read-only fixed SQL |
+
+Operational smokes are explicit opt-ins and are not added to mandatory CI. Their
+permanent safety/selection tests are selected by `verify:foundation`; real smoke
+evidence must still be obtained separately on the intended host.
+
 1. Verify root, worktree, branch, HEAD, status and origin URLs; establish acceptance.
 2. Select an entry with `tools:list`; inspect version and native help. Inspect actual
    consumers before changing shared behavior. Prefer canonical scripts where they
