@@ -18,7 +18,7 @@ test('aggregate verification retains Foundation, hygiene and existing checks', (
   }
   assert.equal(scripts['verify:foundation'], 'node --test scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs scripts/check-skills.test.mjs');
   assert.equal(scripts['agents:evaluate'], 'node scripts/agent-evaluation.mjs');
-  assert.equal(scripts['verify:negative'], 'node scripts/verify-negative.mjs && node --test scripts/check-hygiene.test.mjs scripts/check-verification.test.mjs scripts/tool-library.test.mjs');
+  assert.equal(scripts['verify:negative'], 'node scripts/verify-negative.mjs && node --test scripts/check-hygiene.test.mjs scripts/check-verification.test.mjs scripts/test-lifecycle.test.mjs scripts/tool-library.test.mjs');
 });
 
 test('hook-inherited Git selectors cannot redirect fixture or recovery operations into a donor repository', () => {
