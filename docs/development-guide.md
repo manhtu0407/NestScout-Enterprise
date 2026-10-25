@@ -44,6 +44,48 @@ git config --local core.hooksPath .githooks
 Hooks can be bypassed and are not server-side protection. Secret checks cover Git
 history plus tracked/unignored working files. Keep local secrets in ignored files.
 
+## Test artifact lifecycle
+
+Use these categories when implementing the root policy with Codex or Claude Code:
+
+- **EPHEMERAL:** one-off investigation, exploratory tests, diagnostics, scratch
+  fixtures, logs and generated outputs. Use a unique task directory created with
+  `mkdtemp` under `.cache/agent-tests/`, or an owned OS temporary directory when
+  the existing runner supports it. These are disposable and never Git assets.
+- **PERSISTENT:** reviewed unit, integration, security, regression and contract
+  tests with lasting assertions. Follow the owning module's existing conventions;
+  current examples are `scripts/*.test.mjs` and `supabase/tests/database/*.sql`.
+  Keep their sanitized fixtures and relevant local/CI verification versioned.
+
+Use the existing runner (for example `node --test`), capture its actual exit status
+and signal, and use `try/finally` to clean only the unique directory created by
+that operation. Before recursive removal, verify its resolved absolute parent
+and reject a replaced symlink/junction. Do not sweep `.cache/agent-tests/`, the OS
+temp root, stale directories or another agent's files. `scripts/verify-negative.mjs`
+contains an executable example covering success, failure and isolated cleanup.
+
+Report failure even when cleanup succeeds. When investigation needs retained
+evidence, keep only reviewed, sanitized diagnostics in a separately owned ignored
+directory, with command/revision and exit/signal metadata. Do not copy raw subprocess
+output or credentials into evidence. Remove that evidence when the investigation
+no longer needs it; cleanup is not a reason to change a failing status to PASS.
+
+Evaluate every important regression found by an ephemeral probe for promotion:
+extract the smallest deterministic assertion that fails before the fix, remove
+private data and experimental scaffolding, and add it to the existing owning test
+suite and its verification command. A one-off probe passing does not replace that
+lasting coverage. This task does not change the root engineering policy.
+
+The existing ignore rules exclude caches, coverage and logs from normal staging.
+`npm run scan:secrets` now also checks the entire Git index for the designated
+root `.cache/` and `coverage/` paths, case-insensitively, even after `git add -f`
+or when the working file was removed. Staged deletion is allowed. This same guard
+runs through the existing optional pre-commit hook, `npm run check`, pre-push hook
+and repository CI; no new hook setup or workflow is required. It does not classify
+intent outside these paths or reject legitimate test/spec filenames, nested
+fixture paths or application code. Review misplaced exploratory code before staging.
+No global test/spec or permanent-test-directory ignore is introduced.
+
 ## Work and delivery
 
 Supabase local tooling and agent connection setup are documented in
