@@ -145,8 +145,23 @@ Use these categories when implementing the root policy with Codex or Claude Code
   the existing runner supports it. These are disposable and never Git assets.
 - **PERSISTENT:** reviewed unit, integration, security, regression and contract
   tests with lasting assertions. Follow the owning module's existing conventions;
-  current examples are `scripts/*.test.mjs` and `supabase/tests/database/*.sql`.
+  Node tests use `.test.mjs`, `.spec.mjs`, `.integration.test.mjs` or
+  `.integration.spec.mjs` under `scripts/`, including kebab-case subdirectories.
+  Database tests remain under `supabase/tests/database/`.
   Keep their sanitized fixtures and relevant local/CI verification versioned.
+
+Register each persistent Node test exactly once as an explicit path in the owning
+`package.json` runner: `verify:foundation`, `verify:supabase`, `verify:negative` or
+`db:mcp:test`. `npm run check:test-selection` checks index and working-tree
+snapshots separately, including untracked tests, missing files and duplicate
+registrations. It rejects filters, globs, masked failures and disabled mandatory
+commands. Discovery includes both test/spec suffixes even when a path violates
+the naming policy; runner targets must pass the canonical hygiene path check.
+The optional pre-commit hook invokes the guard directly with Node so replacing
+its npm entry with a no-op cannot disable that hook gate. It retains the existing
+hygiene, metadata and secret checks. Hooks can be bypassed; pre-push and CI also
+run the aggregate. Registration proves selection, not assertion quality or agent
+intent.
 
 Use the existing runner (for example `node --test`), capture its actual exit status
 and signal, and use `try/finally` to clean only the unique directory created by
