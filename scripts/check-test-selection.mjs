@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repositoryFiles } from './repository-files.mjs';
+import { checkPath } from './check-hygiene.mjs';
 import { root } from './tool-path.mjs';
 
 const runners = ['verify:foundation', 'verify:supabase', 'verify:negative', 'db:mcp:test'];
@@ -9,7 +10,7 @@ const requiredChecks = [
   'lint:yaml', 'lint:workflows', 'scan:secrets', 'verify:supabase',
   'typecheck:db', 'verify:foundation', 'check:test-selection', 'check:capabilities',
 ];
-const testName = /^scripts\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+)*\.test\.mjs$/;
+const testName = /\.(?:test|spec)\.mjs$/i;
 
 function selectedTests(scripts, state) {
   const selected = new Set();
@@ -27,7 +28,12 @@ function selectedTests(scripts, state) {
       throw new Error(state + ': test runner must execute node --test: ' + runner);
     }
     for (const file of tokens.slice(2)) {
-      if (!testName.test(file)) throw new Error(state + ': invalid or unsafe test target ' + file);
+      try {
+        if (!file.startsWith('scripts/') || !testName.test(file)) throw new Error('Expected a scripts test path.');
+        checkPath(file);
+      } catch (cause) {
+        throw new Error(state + ': invalid or unsafe test target ' + file, { cause });
+      }
       if (selected.has(file)) throw new Error(state + ': persistent test selected more than once: ' + file);
       selected.add(file);
     }
