@@ -66,9 +66,10 @@ Choose a unique lowercase task ID, at most 48 characters. `prepare` is an explic
 network read from the official `ghcr.io/aquasecurity/trivy-db:2` OCI distribution,
 including its HTTPS registry/token/blob delivery endpoints. It uses Trivy's native
 download/validation, not a custom feed. No registry login, credential forwarding,
-mirror, daemon or global cache is involved. Allow up to 180 seconds per process
-(150-second native timeout), an 8 MiB captured-output ceiling and several GiB free
-disk per task. The observed database was 1,636,610,048 bytes expanded; compression,
+mirror, daemon or global cache is involved. Allow a 180-second process deadline
+(150-second native timeout) plus at most one second of termination grace before
+SIGKILL. The same escalation applies to the 8 MiB captured-output ceiling. Allow
+several GiB free disk per task. The observed database was 1,636,610,048 bytes expanded; compression,
 network time and future size vary. The 2 GiB accepted DB ceiling is checked after
 the native download, not a streaming network quota. A failed download stays failed.
 

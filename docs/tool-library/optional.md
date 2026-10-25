@@ -128,7 +128,9 @@ and Rust call analysis so dependency code cannot execute. No private graph, user
 config, API key, upload service or production target is supplied. Native JSON and
 the fixed fixture digest stay in `.cache/advisories/TASK`, under the same exclusive
 ownership/locking protocol as Trivy. Each process has a 180-second deadline and
-8 MiB output ceiling. Empty-source and absent-lockfile native negatives are also
+8 MiB output ceiling. Either breach sends SIGTERM, followed by SIGKILL after a
+one-second grace period if the scanner has not closed. Empty-source and
+absent-lockfile native negatives are also
 executed; clean data with no findings is separately exercised in classifier tests.
 
 The [official output contract](https://google.github.io/osv-scanner/output/) defines

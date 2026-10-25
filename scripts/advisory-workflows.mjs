@@ -79,20 +79,33 @@ export async function withCache(task, action, base = root) {
 }
 
 export async function boundedProcess(executable, args, options = {}) {
-  const { timeout = 180000, limit = 8 * 1024 * 1024, ...spawnOptions } = options;
+  const { timeout = 180000, limit = 8 * 1024 * 1024, terminationGrace = 1000, ...spawnOptions } = options;
   return await new Promise(resolve => {
     const child = spawn(executable, args, { ...spawnOptions, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '', size = 0, condition;
-    const timer = setTimeout(() => { condition = 'TIMEOUT'; child.kill(); }, timeout);
+    let stdout = '', stderr = '', size = 0, condition, forceTimer;
+    const timer = setTimeout(() => terminate('TIMEOUT'), timeout);
+    function terminate(reason) {
+      if (condition) return;
+      condition = reason;
+      clearTimeout(timer);
+      child.kill('SIGTERM');
+      // A scanner may handle SIGTERM; keep the failure cause and bound its grace period.
+      forceTimer = setTimeout(() => child.kill('SIGKILL'), terminationGrace);
+    }
     function collect(key, data) {
+      if (condition) return;
       size += data.length;
-      if (size > limit) { condition = 'OUTPUT_LIMIT'; child.kill(); return; }
+      if (size > limit) { terminate('OUTPUT_LIMIT'); return; }
       if (key === 'stdout') stdout += data; else stderr += data;
     }
     child.stdout.on('data', data => collect('stdout', data));
     child.stderr.on('data', data => collect('stderr', data));
-    child.once('error', error => { condition = error.code === 'ENOENT' ? 'MISSING_BINARY' : ['EACCES', 'EPERM'].includes(error.code) ? 'BLOCKED_HOST_POLICY' : 'PROCESS_ERROR'; });
-    child.once('close', (status, signal) => { clearTimeout(timer); resolve({ status, signal, stdout, stderr, condition }); });
+    child.once('error', error => { condition ??= error.code === 'ENOENT' ? 'MISSING_BINARY' : ['EACCES', 'EPERM'].includes(error.code) ? 'BLOCKED_HOST_POLICY' : 'PROCESS_ERROR'; });
+    child.once('close', (status, signal) => {
+      clearTimeout(timer);
+      clearTimeout(forceTimer);
+      resolve({ status, signal, stdout, stderr, condition });
+    });
   });
 }
 

@@ -127,6 +127,31 @@ test('bounded real processes preserve timeout, error, cancellation and output ov
   assert.equal((await boundedProcess(path.join(tmpdir(), 'nestscout-no-such-binary'), [])).condition, 'MISSING_BINARY');
 });
 
+test('termination escalates for an uncooperative scanner and releases its cache lock', async () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'nestscout-termination-test-'));
+  try {
+    for (const condition of ['TIMEOUT', 'OUTPUT_LIMIT']) {
+      const task = condition === 'TIMEOUT' ? 'timeout' : 'overflow';
+      const code = `process.on('SIGTERM', () => {});
+        setTimeout(() => process.exit(42), 5000);
+        ${condition === 'OUTPUT_LIMIT' ? 'setInterval(() => process.stdout.write("x".repeat(4096)), 100);' : ''}`;
+      const started = performance.now();
+      const result = await withCache(task, () => boundedProcess(process.execPath, ['-e', code], {
+        timeout: condition === 'TIMEOUT' ? 1000 : 5000, terminationGrace: 100, limit: 10,
+      }), base);
+      assert.equal(result.condition, condition);
+      assert.ok(performance.now() - started < 4000, 'Child must close before its voluntary exit');
+      if (process.platform === 'linux') assert.equal(result.signal, 'SIGKILL', 'Ignored SIGTERM must escalate');
+      assert.equal(existsSync(path.join(ownedDirectory(task, base), 'operation.lock')), false);
+      await withCache(task, () => {}, base);
+    }
+    const cooperative = await boundedProcess(process.execPath, ['-e',
+      'process.on("SIGTERM", () => process.exit(23)); setInterval(() => {}, 1000);'], { timeout: 1000, terminationGrace: 500 });
+    assert.equal(cooperative.condition, 'TIMEOUT');
+    if (process.platform === 'linux') assert.equal(cooperative.status, 23, 'Cooperative child may exit during the grace period');
+  } finally { rmSync(base, { recursive: true }); }
+});
+
 test('fixtures contain immutable non-executable package evidence; Windows source workflow never launches OSV', async () => {
   assert.equal(JSON.parse(dependencyFixture).packages['node_modules/lodash'].version, '4.17.20');
   assert.equal(JSON.parse(sbomFixture).components[0].purl, 'pkg:npm/lodash@4.17.20');
