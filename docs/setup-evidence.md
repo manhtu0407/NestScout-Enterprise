@@ -1004,6 +1004,14 @@ hook, assertion or permission was weakened. An earlier `HEAD` push refspec was
 also rejected by the existing same-named-branch guard; the named branch refspec
 is used for delivery without changing that guard.
 
+A later pre-push run exposed an existing randomized secret fixture defect:
+Base64URL suffixes could contain characters outside the pinned Gitleaks GitHub PAT
+rule's 36 alphanumeric characters. Both fixture consumers now assemble the same
+fixed high-entropy synthetic payload and assert its valid shape. Real scanner
+rejection, redaction and staged-versus-working assertions remain intact; scanner
+configuration/implementation is unchanged. The rule was checked against
+[the pinned upstream configuration](https://github.com/gitleaks/gitleaks/blob/v8.30.1/config/gitleaks.toml).
+
 ### Operational readiness matrix
 
 All entries below are CONFIGURED. INSTALLED and AVAILABLE describe this V2

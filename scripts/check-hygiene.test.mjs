@@ -12,7 +12,6 @@ import { git, repositoryFiles, blobByteLimit } from './repository-files.mjs';
 import { checkPath, checkAttribution, checkHygiene, sourceComments } from './check-hygiene.mjs';
 import { inspectArtifact, artifactLimits } from './inspect-artifact.mjs';
 import { scanStaged } from './scan-staged.mjs';
-import { randomBytes } from 'node:crypto';
 import { checkBranch, checkMessage, checkMetadata, checkPullRequest, checkCommitRange, checkPush } from './check-metadata.mjs';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-hygiene-'));
@@ -380,7 +379,8 @@ test('Git batch reads preserve duplicate/binary blobs and reject oversized stage
 });
 test('the staged secret scanner rejects compressed ZIP contents with a clean working archive and redacted output', () => {
   const { repository, run, write } = fixture();
-  const token = ['gh', 'p_'].join('') + randomBytes(27).toString('base64url');
+  const token = ['gh', 'p_', 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'].join('');
+  assert.match(token, /^ghp_[A-Za-z0-9]{36}$/);
   const file = 'docs/artifacts/input.zip';
   write(file, zipFixture([{ name: 'reference.txt', body: `token=${token}\n` }]));
   run(['add', '.']);
