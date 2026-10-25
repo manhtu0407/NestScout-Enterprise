@@ -138,8 +138,7 @@ export function diagnose(entry, run = probe, platform = { os: process.platform, 
     result.available = false; result.condition = 'VERSION_MISMATCH';
   }
   if (entry.id === 'trivy') {
-    const metadata = path.join(root, '.cache/trivy/db/metadata.json');
-    result.database = existsSync(metadata) ? 'PRESENT_NOT_VERIFIED: metadata only; freshness/scan not tested' : 'DATABASE_MISSING: project .cache/trivy/db';
+    result.database = 'NOT_INSPECTED: per-task .cache/advisories/TASK/cache/db; tools:trivy:db scan TASK validates snapshot and runs the matcher';
     result.rules = 'NOT_RUN: use tools:trivy:smoke to test embedded checks';
     result.scan = 'NOT_RUN';
   }

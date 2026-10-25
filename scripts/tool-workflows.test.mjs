@@ -102,8 +102,9 @@ test('PostgreSQL invalid argv fails before runtime operations; missing condition
 
 test('workflow child environment removes hosted secrets, proxies, scanner overrides and k6 output/cloud config', () => {
   const env = workflowEnvironment({ PATH: 'safe', PGHOST: 'external.invalid', HTTPS_PROXY: 'external.invalid', K6_OUT: 'cloud',
-    K6_CLOUD_TOKEN: 'fixture', TRIVY_SERVER: 'external.invalid', NODE_OPTIONS: '--require unwanted', OPENAI_API_KEY: 'fixture' });
+    K6_CLOUD_TOKEN: 'fixture', TRIVY_SERVER: 'external.invalid', TRIVY_DISABLE_TELEMETRY: 'false', NODE_OPTIONS: '--require unwanted', OPENAI_API_KEY: 'fixture' });
   assert.equal(env.PATH, 'safe'); assert.equal(env.K6_NO_USAGE_REPORT, 'true');
+  assert.equal(env.TRIVY_DISABLE_TELEMETRY, 'true');
   for (const key of ['PGHOST', 'HTTPS_PROXY', 'K6_OUT', 'K6_CLOUD_TOKEN', 'TRIVY_SERVER', 'NODE_OPTIONS', 'OPENAI_API_KEY']) assert.ok(!(key in env));
   assertK6Result({ code: 0 }, false); assertK6Result({ code: 99 }, true);
   assert.throws(() => assertK6Result({ code: 0 }, true));
@@ -113,7 +114,7 @@ test('workflow child environment removes hosted secrets, proxies, scanner overri
 test('doctor separates Trivy executable and DB/rules/results; k6 uses native version command', () => {
   const trivy = diagnose({ id: 'trivy', tier: 'B' }, () => ({ status: 0, stdout: 'Version: 0.76.1' }));
   assert.equal(trivy.available, true); assert.equal(trivy.verified, false);
-  assert.match(trivy.database, /DATABASE_MISSING|PRESENT_NOT_VERIFIED/); assert.match(trivy.rules, /NOT_RUN/); assert.equal(trivy.scan, 'NOT_RUN');
+  assert.match(trivy.database, /NOT_INSPECTED.*per-task/); assert.match(trivy.rules, /NOT_RUN/); assert.equal(trivy.scan, 'NOT_RUN');
   const k6 = diagnose({ id: 'k6', tier: 'B' }, (_exe, args) => {
     assert.deepEqual(args, ['version']); return { status: 0, stdout: 'k6 v2.3.0' };
   });

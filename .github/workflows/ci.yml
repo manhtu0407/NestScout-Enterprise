@@ -36,6 +36,13 @@ jobs:
         run: npm run check
       - name: Confirm checks reject invalid fixtures
         run: npm run verify:negative
+      - name: Install pinned native Linux optional tools
+        run: |
+          npm run tools:install -- --tool trivy
+          npm run tools:install -- --tool osv-scanner
+          npm run tools:install -- --tool k6
+      - name: Verify native Linux tools without advisory networking
+        run: npm run tools:linux:smoke
       - name: Verify optional hooks on Linux
         run: |
           test -x .githooks/pre-commit

@@ -6,11 +6,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { toolPath, tarPath } from './tool-path.mjs';
+import { osvOfflineSmoke } from './advisory-workflows.mjs';
 
 export function workflowEnvironment(source = process.env) {
   const allowed = /^(PATH|SYSTEMROOT|WINDIR|TEMP|TMP|HOME|USERPROFILE|PATHEXT)$/i;
   return { ...Object.fromEntries(Object.entries(source).filter(([key]) => allowed.test(key))),
-    DO_NOT_TRACK: '1', K6_NO_USAGE_REPORT: 'true', K6_AUTO_EXTENSION_RESOLUTION: 'false' };
+    DO_NOT_TRACK: '1', TRIVY_DISABLE_TELEMETRY: 'true', K6_NO_USAGE_REPORT: 'true', K6_AUTO_EXTENSION_RESOLUTION: 'false' };
 }
 
 export function assertK6Result(result, negative) {
@@ -24,11 +25,12 @@ function removeOwnedTemp(directory) {
   rmSync(directory, { recursive: true });
 }
 
-export async function k6Smoke() {
+export async function k6Smoke({ timeoutCase = false } = {}) {
   const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-k6-'));
   let requests = 0;
   const server = createServer((request, response) => {
     requests++;
+    if (request.url === '/slow') return;
     response.writeHead(requests > 20 ? 429 : request.url === '/good' ? 200 : 503);
     response.end('owned synthetic k6 fixture');
   });
@@ -37,13 +39,15 @@ export async function k6Smoke() {
     writeFileSync(path.join(directory, 'config.json'), '{}\n');
     const script = path.join(directory, 'smoke.js');
     const results = [];
-    for (const negative of [false, true]) {
+    for (const mode of timeoutCase ? ['good', 'bad', 'timeout'] : ['good', 'bad']) {
+      const negative = mode !== 'good';
+      const iterations = mode === 'timeout' ? 1 : 5;
       writeFileSync(script, `import http from 'k6/http';
 import { check } from 'k6';
-export const options = { vus: 1, iterations: 5, maxRedirects: 0, thresholds: { checks: ['rate==1'] } };
-export default function () { const r = http.get('http://127.0.0.1:${server.address().port}/${negative ? 'bad' : 'good'}', { timeout: '2s', redirects: 0 }); check(r, { 'expected 200': r => r.status === 200 }); }
+export const options = { vus: 1, iterations: ${iterations}, maxRedirects: 0, thresholds: { checks: ['rate==1'] } };
+export default function () { const r = http.get('http://127.0.0.1:${server.address().port}/${mode === 'timeout' ? 'slow' : mode}', { timeout: '${mode === 'timeout' ? '100ms' : '2s'}', redirects: 0 }); check(r, { 'expected 200': r => r.status === 200 }); }
 `);
-      const args = ['run', '--config', path.join(directory, 'config.json'), '--no-usage-report', '--vus', '1', '--iterations', '5', '--duration', '10s', script];
+      const args = ['run', '--config', path.join(directory, 'config.json'), '--no-usage-report', '--vus', '1', '--iterations', String(iterations), '--duration', '10s', script];
       const result = await new Promise((resolve, reject) => {
         const child = spawn(toolPath('k6'), args, { cwd: directory, env: workflowEnvironment(), shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
         let output = '';
@@ -55,9 +59,10 @@ export default function () { const r = http.get('http://127.0.0.1:${server.addre
       });
       assertK6Result(result, negative);
       assert.equal(result.signal, null);
-      results.push({ command: ['k6', ...args], exit: result.code, assertion: negative ? 'threshold rejected 503' : 'five checks passed' });
+      if (mode === 'timeout') assert.match(result.output, /request timeout/i);
+      results.push({ command: ['k6', ...args], exit: result.code, assertion: mode === 'timeout' ? 'native request timeout rejected by threshold' : negative ? 'threshold rejected 503' : 'five checks passed' });
     }
-    assert.equal(requests, 10);
+    assert.equal(requests, timeoutCase ? 11 : 10);
     return { status: 'PASS', results, requests, ceiling: 20, cleanup: 'PASS: server closed and task files removed', scope: 'Synthetic loopback only; no product performance claim' };
   } finally {
     server.closeAllConnections();
@@ -112,6 +117,16 @@ export function trivySmoke() {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
-  if (args.length !== 1 || !['k6', 'trivy'].includes(args[0])) throw new Error('Use k6 or trivy; no target overrides.');
-  console.log(JSON.stringify(args[0] === 'k6' ? await k6Smoke() : trivySmoke(), null, 2));
+  if (args.length !== 1 || !['k6', 'trivy', 'linux'].includes(args[0])) throw new Error('Use k6, trivy or linux; no target overrides.');
+  if (args[0] === 'linux') {
+    assert.equal(process.platform, 'linux', 'Native Linux is required; Engine/container availability is insufficient');
+    assert.equal(process.arch, 'x64');
+    assert.match(process.version, /^v24\./);
+    const { diagnose } = await import('./tool-doctor.mjs');
+    const versions = ['trivy', 'osv-scanner', 'k6'].map(id => diagnose({ id, tier: 'B' }));
+    for (const version of versions) assert.equal(version.available, true, `Native pinned ${version.id} version required`);
+    console.log(JSON.stringify({ platform: process.platform, arch: process.arch, node: process.version, versions,
+      trivy: trivySmoke(), k6: await k6Smoke({ timeoutCase: true }), osv: await osvOfflineSmoke(),
+      advisoryNetwork: 'NOT RUN: prepare/source online are separate explicit opt-ins' }, null, 2));
+  } else console.log(JSON.stringify(args[0] === 'k6' ? await k6Smoke() : trivySmoke(), null, 2));
 }

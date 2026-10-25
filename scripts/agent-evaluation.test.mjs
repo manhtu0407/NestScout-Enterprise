@@ -4,7 +4,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
-import { prepareEvaluation, verifyEvaluation, scenarios, toolScenarios } from './agent-evaluation.mjs';
+import { prepareEvaluation, verifyEvaluation, scenarios, toolScenarios, v3ToolScenarios } from './agent-evaluation.mjs';
 import { gitEnvironment } from './git-environment.mjs';
 
 test('evaluation fixture reproduces failure and detects policy, index, scratch and peer mutations', () => {
@@ -77,5 +77,28 @@ test('tool-choice evaluation reuses preservation harness and records copied disc
     assert.equal(path.dirname(realpathSync(fixture.directory)), realpathSync(tmpdir()));
     assert.ok(!lstatSync(fixture.directory).isSymbolicLink());
     rmSync(fixture.directory, { recursive: true });
+  }
+});
+
+test('V3 scenarios extend V2 and the single disposable skill is included in preservation evidence', () => {
+  assert.deepEqual(v3ToolScenarios.slice(0, toolScenarios.length), toolScenarios);
+  assert.ok(v3ToolScenarios.length >= 12);
+  for (const skill of [false, true]) {
+    const fixture = prepareEvaluation(true, !skill, skill);
+    try {
+      const baseline = JSON.parse(readFileSync(path.join(fixture.directory, 'baseline.json')));
+      assert.match(baseline.fixtureSHA, /^[a-f0-9]{64}$/);
+      assert.equal(verifyEvaluation(fixture.directory).fixturePreservation, 'PASS');
+      if (skill) {
+        const file = path.join(fixture.checkout, '.agents/skills/dependency-security-triage/SKILL.md');
+        assert.match(readFileSync(file, 'utf8'), /docs\/tool-library\/trivy.md/);
+        writeFileSync(file, 'changed candidate\n');
+        assert.throws(() => verifyEvaluation(fixture.directory), /changed fixture/);
+      } else assert.deepEqual(baseline.scenarioIds, v3ToolScenarios.map(([id]) => id));
+    } finally {
+      assert.equal(path.dirname(realpathSync(fixture.directory)), realpathSync(tmpdir()));
+      assert.ok(!lstatSync(fixture.directory).isSymbolicLink());
+      rmSync(fixture.directory, { recursive: true });
+    }
   }
 });
