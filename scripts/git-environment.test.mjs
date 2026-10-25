@@ -16,7 +16,7 @@ test('aggregate verification retains Foundation, hygiene and existing checks', (
     'lint:yaml', 'lint:workflows', 'scan:secrets', 'verify:supabase', 'typecheck:db', 'verify:foundation']) {
     assert.ok(checks.includes(`npm run ${name}`), `Aggregate dropped ${name}.`);
   }
-  assert.equal(scripts['verify:foundation'], 'node --test scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs');
+  assert.equal(scripts['verify:foundation'], 'node --test scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs');
   assert.equal(scripts['agents:evaluate'], 'node scripts/agent-evaluation.mjs');
   assert.equal(scripts['verify:negative'], 'node scripts/verify-negative.mjs && node --test scripts/check-hygiene.test.mjs scripts/check-verification.test.mjs scripts/tool-library.test.mjs');
 });
@@ -52,7 +52,7 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
     });
     assert.ifError(result.error);
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.match(result.stdout, /tests 5\b/);
+    assert.match(result.stdout, /tests 6\b/);
     assert.deepEqual(snapshot(), before, 'Donor HEAD, refs, index, config or unrelated work changed.');
 
     const linked = path.join(directory, 'linked');
@@ -116,7 +116,7 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
       assert.ifError(child.error);
       assert.equal(child.status, 0, `${args.join(' ')}\n${child.stdout}${child.stderr}`);
       if (args[0] === '--test') {
-        assert.match(child.stdout, args[1] === 'scripts/check-verification.test.mjs' ? /tests 11\b/ : /tests 46\b/);
+        assert.match(child.stdout, args[1] === 'scripts/check-verification.test.mjs' ? /tests 12\b/ : /tests 46\b/);
         for (const outcome of ['fail', 'cancelled', 'skipped', 'todo']) assert.match(child.stdout, new RegExp(`${outcome} 0\\b`));
       }
       assert.deepEqual(snapshot(), withLinked, 'Poisoned hygiene checks or fixtures changed the donor repository.');

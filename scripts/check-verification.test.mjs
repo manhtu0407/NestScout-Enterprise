@@ -28,6 +28,25 @@ test('hosted repository checks retain unconditional aggregate and negative verif
   }
 });
 
+test('native Linux optional checks preserve CI identity, triggers, read-only permissions and offline scope', () => {
+  const workflow = parseDocument(readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')).toJS();
+  assert.deepEqual(workflow.permissions, { contents: 'read' });
+  assert.deepEqual(Object.keys(workflow.on).sort(), ['pull_request', 'push']);
+  assert.deepEqual(workflow.on.push.branches, ['main']);
+  assert.deepEqual(workflow.on.pull_request.types, ['opened', 'synchronize', 'reopened', 'edited', 'ready_for_review']);
+  const job = workflow.jobs['repository-checks'];
+  assert.equal(job.name, 'Repository checks');
+  assert.equal(job['timeout-minutes'], 10);
+  const smoke = job.steps.find(step => step.run === 'npm run tools:linux:smoke');
+  assert.ok(smoke);
+  assert.equal(smoke.if, undefined);
+  assert.equal(smoke['continue-on-error'], undefined);
+  for (const step of job.steps) {
+    if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/);
+    assert.doesNotMatch(step.run ?? '', /tools:trivy:db|tools:osv:source|pull_request_target/);
+  }
+});
+
 function fixture(operation) {
   const repository = mkdtempSync(path.join(tmpdir(), 'nestscout-verification-'));
   const write = (file, text) => {

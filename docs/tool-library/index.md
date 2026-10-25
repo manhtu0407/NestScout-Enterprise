@@ -107,9 +107,44 @@ The capability catalog stays data-only. Help/probes do not imply workflow succes
 | Staged secret | `scan:secrets`, staged-blob scanner | Index/history/working snapshots; Trivy cannot replace gate |
 | Direct SQL diagnostic | `tools:postgresql` | Current worktree/branch owned local container; read-only fixed SQL |
 
-Operational smokes are explicit opt-ins and are not added to mandatory CI. Their
+Advisory downloads and online source scans are explicit opt-ins outside mandatory
+CI. The native Linux config/SBOM, missing-offline-DB and loopback checks run in the
+existing repository job when hosted execution is authorized. Their
 permanent safety/selection tests are selected by `verify:foundation`; real smoke
 evidence must still be obtained separately on the intended host.
+
+## Native capability routing
+
+The existing per-tool pages own complete family maps, prerequisites and effects.
+This task map links those sources; it stores no commands, versions or policies in
+the data catalog. Installed-version help resolves unfamiliar syntax. The bounded
+`tools:help` convenience is not a ceiling on authorized native CLI/API use.
+
+| Trigger | Native families / canonical reference | Invocation class, prerequisite, result and recovery |
+| --- | --- | --- |
+| Build failure or wrong context | [Docker](docker.md): context, Buildx ls/inspect/build/du/bake/imagetools | Inspect Engine/builder first; build creates owned resources, imagetools can read registries; no shared prune retry |
+| Early exit, bad ports, storage | [Docker](docker.md): container/image/logs/exec/inspect/stats/system df/network/volume/events; Compose config/ps/logs/build/up/down | Bound reads to inspected context/IDs; exec/up/down mutate; inspect logs/bindings and owner before recovery |
+| Regression, conflict, lost ref | [Git](git.md): status/diff/log/show/refs/worktree/reflog/fsck/bundle | Local reads versus index/ref mutation; preserve both index and working copies; isolate before repair |
+| Workflow or PR diagnosis | [gh](github.md): pr/issue/checks/run/workflow/api | Remote reads need target/auth; explicit repository required; 403 is a permission gap, not permission to change scopes |
+| Dependency or runtime fault | [Node/npm](node.md): scripts/ci/ls/explain/query/audit/node --test | Locked install mutates caches; audit queries npm advisories; no automatic audit fix or second package manager |
+| Type/module failure | [TypeScript](typescript.md): help --all/noEmit/showConfig/traceResolution/diagnostics | Use actual compiler and consumer; traces can disclose paths, emit/watch writes or persists |
+| Migration, local DB diagnosis or backup | [Supabase](supabase.md), [PostgreSQL](postgresql.md): db:*, psql/pg_isready/pg_dump/pg_restore --list | Existing owner-verified stack; SQL and restore can mutate; native dump/list are not a restore test; no hosted fallback |
+| Secret, workflow, shell, Dockerfile or JSON | [Checks](checks.md), [optional tools](optional.md): Gitleaks/actionlint/ShellCheck/Hadolint/jq | Canonical staged/history scans remain required; lint does not execute a shell/build; jq filters are not shell strings |
+| Advisory or inventory question | [Trivy](trivy.md), [OSV](optional.md#v3-operational-osv-source-workflow): image/config/sbom/source/offline/output | Config, SBOM, DB matching and product assurance are separate; missing DB/network/host policy stays blocked |
+| Bounded HTTP regression | [k6](k6.md): run/inspect/archive/output | Existing exact loopback workflow; thresholds, requests and cleanup determine result; cloud/product load needs its own scope |
+
+`tools:linux:smoke` checks Linux x64/Node 24 and real pinned binary execution,
+Trivy config/SBOM/missing DB, OSV missing offline datastore and k6 positive/503
+threshold behavior. The locked installer is still a network download; the smoke
+does not contact advisory services. A successful local WSL run is native Linux
+userspace evidence, separate from Docker Desktop Engine and from hosted CI.
+Prepared workflow YAML, static actionlint and local Linux execution never imply
+`HOSTED_CI_PASS`. Job names/triggers/permissions and Supabase cleanup stay intact.
+
+GPU/rootless/remote builders and signing prerequisites remain in the existing
+[Docker](docker.md) guide; application/device/Kael paths remain
+[WAITING FOR STACK](activation.md). No platform portal, build system or custom
+replacement scanner is installed to fill an unobserved capability.
 
 1. Verify root, worktree, branch, HEAD, status and origin URLs; establish acceptance.
 2. Select an entry with `tools:list`; inspect version and native help. Inspect actual

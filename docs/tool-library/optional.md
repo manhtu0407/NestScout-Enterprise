@@ -81,7 +81,7 @@ the doctor prefers this installed binary, otherwise probes an existing PATH bina
 `binaryPresent` records a project-local file separately from successful executable
 discovery. A host application-control or antivirus execution block remains
 PROBE_FAILED with a bounded native error code; do not disable host policy, change
-permissions, or use another environment to bypass that restriction. Report the
+permissions, or disguise/relaunch the Windows binary to bypass that restriction. Report the
 verified download and blocked version/scan independently.
 Inspect that executable's `--version`, `--help`, `scan --help`, `scan source --help`.
 The [V2 documentation](https://google.github.io/osv-scanner/usage/) covers source,
@@ -110,6 +110,52 @@ authorized dependency fix, not exclusions. `npm audit` is a mature alternate npm
 scan; compare coverage, not counts as a quality metric. Cleanup removes only the
 owned fixture, not scanner/global caches. Initial binary bandwidth and query latency
 are measured only if observed; no recurring scan or paid account is configured.
+
+## V3 operational OSV source workflow
+
+An explicitly authorized native Linux host is a separate supported platform,
+not a workaround that changes Windows policy. The bounded source executor refuses
+Windows before launching OSV. Preserve `BLOCKED_HOST_POLICY` for the Windows path.
+
+```sh
+npm run tools:osv:source -- TASK
+```
+
+This opt-in runs the pinned Linux binary against one owned, data-only npm lockfile
+for `lodash@4.17.20`; no package install or vulnerable service runs. It queries
+`api.osv.dev` with public package/version data, uses `--no-resolve` and disables Go
+and Rust call analysis so dependency code cannot execute. No private graph, user
+config, API key, upload service or production target is supplied. Native JSON and
+the fixed fixture digest stay in `.cache/advisories/TASK`, under the same exclusive
+ownership/locking protocol as Trivy. Each process has a 180-second deadline and
+8 MiB output ceiling. Either breach sends SIGTERM, followed by SIGKILL after a
+one-second grace period if the scanner has not closed. Empty-source and
+absent-lockfile native negatives are also
+executed; clean data with no findings is separately exercised in classifier tests.
+
+The [official output contract](https://google.github.io/osv-scanner/output/) defines
+0 as packages without findings, 1 as findings, 127 as general error and 128 as no
+packages; other reserved outcomes remain errors. Findings require matching JSON,
+real package inventory and the expected advisory alias. Exit 0 with no packages,
+invalid JSON, network failure or an absent offline database never proves clean.
+The workflow summary can exit 0 with `PASS_WITH_FINDINGS` when the deliberate
+vulnerability fixture was detected; this is not a repository clean verdict.
+
+`tools:linux:smoke` separately executes the native offline missing-database negative,
+Trivy config/SBOM and k6 loopback paths. It does not query advisory services.
+OSV [offline mode](https://google.github.io/osv-scanner/usage/offline-mode/) needs
+a predownloaded ecosystem datastore; this V3 path does not prepare that datastore
+or claim offline OSV advisory matching. Use `tools:trivy:db -- clean TASK` to remove
+only the source fixture's owned data, retaining its ownership record.
+
+| Diagnostic question | Select | Evidence boundary |
+| --- | --- | --- |
+| npm dependency advisories | OSV source or `npm audit --json` | Different advisory datasets; compare scope/status, not totals as quality |
+| Image OS package vulnerabilities | Trivy image with advisory DB | npm audit cannot establish OS package safety |
+| Staged/working/history secret | Existing Gitleaks gate | OSV and Trivy modes cannot replace staged-blob enforcement |
+| Dockerfile construction | Hadolint | Complement with Trivy config; advisory scans do not lint Dockerfiles |
+| IaC configuration | Trivy config | Rules need execution; k6/OSV have different coverage |
+| HTTP threshold regression | Existing k6 loopback smoke | Synthetic requests do not establish product performance |
 
 ## jq
 

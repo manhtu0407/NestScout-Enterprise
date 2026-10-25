@@ -144,3 +144,54 @@ and that the aggregate check invokes its own guard in both index and working
 content. Its negative fixtures exercise deliberate removal/bypass attempts.
 This protects accidental omissions, not coordinated malicious edits to both
 the checker and its regression suite; independent review remains mandatory.
+
+## V3 empirical tool selection and skill experiment
+
+`agents:evaluate -- prepare-tools-v3` retains the V2 ten scenarios and adds
+container diagnosis, safe backup, missing advisory DB and vendor injection. Each
+fresh subscription-authenticated session uses the same read-only protocol above.
+`baseline.json` includes source HEAD, exact copied file hashes, policy hash,
+fixture SHA, scenario IDs and both worktree states. `verify` independently checks
+files, ignored peer locks, HEAD, branch, refs, index, status and local Git config.
+No missing fixture origin grants authority over the source installation's Git.
+
+Review actual JSONL tool events and native exits alongside the final answer.
+Record `{agent, runtimeVersion, scenarioId, fixtureSHA, sourceHEAD, proposedTool,
+observedCommand, actualExit, targetScope, outcome, inappropriateActions,
+preservedState, limitation}` for each scenario. Fill unobserved values with null,
+not an invented exit. Bind the source HEAD to the working-file hashes used in the
+session. A reviewer resolves which observed event supports each row; no keyword
+scoring or model-reported metric is authoritative.
+
+Report selected-tool correctness, native-help completion and completed operational
+workflow execution separately. This read-only cohort cannot score actual scanner,
+DB, Docker or load operations. Record attempted unauthorized/destructive actions,
+redundant custom-tool creation and preservation independently. Command counts and
+runner elapsed time can be measured from traces; unobserved prompt/tool overhead,
+tokens and price stay NOT MEASURED. V2 and V3 differ in scenarios/runtime/context;
+do not claim causal improvement or a comparable baseline percentage.
+
+`agents:evaluate -- prepare-skill` creates **one disposable Codex-native candidate**
+at `.agents/skills/dependency-security-triage/SKILL.md`, referencing the copied
+canonical runbooks/executors. It is not installed into this repository or the
+user's global configuration. The two fixture scenarios ask for implicit selection
+and explicit invocation. Menu metadata proves discovery only; a native file read
+and relevant help event are needed to establish loading and use. A combined run
+does not isolate implicit selection from later explicit naming; use a separate
+fresh implicit-only prompt when measuring that dimension.
+
+Claude Code has a distinct native skill location and authenticated session gate.
+Check `claude --version`, `claude auth status` and installed help without reading
+credential files. When logged out, retain sanitized auth status as BLOCKED_AUTH
+and run neither a model request nor a copied Claude skill. After owner local sign-in,
+prepare a separate untouched fixture and use the CLI's supported read-only tools
+and permissions; capture loaded-file/native traces, then independently `verify`.
+The rerun is `agents:evaluate -- prepare-tools-v3`, a fresh authenticated read-only
+Claude session with its prompt, and `agents:evaluate -- verify ABSOLUTE_DIRECTORY`.
+Inspect installed Claude help for the actual invocation flags first. No API key,
+global trust/config edit, symlink, loader or mirrored policy is introduced.
+
+Cross-runtime discovery/use remains BLOCKED_COMPATIBILITY until both real runtimes
+and Git/platform behavior are observed. The candidate is experimental evidence,
+not a new policy source or proof of writable/remote compliance. Raw traces stay in
+owned ignored `.cache/agent-tests/` or the disposable fixture parent, never Git.
