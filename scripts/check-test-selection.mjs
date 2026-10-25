@@ -7,7 +7,7 @@ const runners = ['verify:foundation', 'verify:supabase', 'verify:negative', 'db:
 const requiredChecks = [
   'check:reserved', 'check:hygiene', 'check:metadata', 'lint:markdown',
   'lint:yaml', 'lint:workflows', 'scan:secrets', 'verify:supabase',
-  'typecheck:db', 'verify:foundation', 'check:test-selection',
+  'typecheck:db', 'verify:foundation', 'check:test-selection', 'check:capabilities',
 ];
 const testName = /^scripts\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+)*\.test\.mjs$/;
 
