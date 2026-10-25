@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync, existsSync, realpathSync, lstatSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import { parseDocument } from 'yaml';
 import { root, toolPath } from './tool-path.mjs';
 import { scanStaged } from './scan-staged.mjs';
 import { checkReservedFiles } from './check-reserved-files.mjs';
+import { checkTestArtifacts } from './check-test-artifacts.mjs';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-negative-'));
 function mustReject(command, args, label) {
@@ -18,6 +19,78 @@ function mustReject(command, args, label) {
   return result;
 }
 try {
+  const artifactRepo = mkdtempSync(path.join(directory, 'test-artifacts-'));
+  const artifactGit = args => execFileSync('git', args, { cwd: artifactRepo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const artifactWrite = (file, content = 'fixture\n') => {
+    const target = path.join(artifactRepo, file);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, content);
+  };
+  artifactGit(['init', '--quiet']);
+  artifactWrite('.gitignore', readFileSync(path.join(root, '.gitignore')));
+  const permanent = ['src/cache.ts', 'src/coverage/index.ts', 'coverage.test.mjs', '.cache-contract.spec.mjs', 'scripts/unit.test.mjs',
+    'scripts/contract.spec.mjs', 'scripts/supabase-mcp.integration.test.mjs',
+    'supabase/tests/database/security.test.sql', 'tests/fixtures/diagnostic.log',
+    'tests/fixtures/.cache/payload.json'];
+  for (const file of permanent) artifactWrite(file);
+  artifactWrite('.cache/agent-tests/probe.test.mjs');
+  artifactWrite('coverage/lcov.info');
+  artifactGit(['add', '--all']);
+  const ordinarilyStaged = artifactGit(['ls-files', '-z']).split('\0');
+  assert.ok(!ordinarilyStaged.includes('.cache/agent-tests/probe.test.mjs'));
+  assert.ok(!ordinarilyStaged.includes('coverage/lcov.info'));
+  artifactGit(['add', '--force', '--', ...permanent]);
+  assert.doesNotThrow(() => checkTestArtifacts(artifactRepo));
+  scanStaged(artifactRepo, 'pipe');
+  console.log('PASS: normal staging ignores ephemeral artifacts and accepts permanent tests, fixtures and application files.');
+  for (const file of ['.cache/agent-tests/probe.test.mjs', '.cache/diagnostic.json',
+    'coverage/lcov.info', '.CACHE/agent-tests/case.test.mjs']) {
+    artifactWrite(file);
+    artifactGit(['add', '--force', '--', file]);
+    assert.throws(() => scanStaged(artifactRepo, 'pipe'), /EPHEMERAL artifacts must not be tracked/);
+    rmSync(path.join(artifactRepo, file));
+    assert.throws(() => checkTestArtifacts(artifactRepo), /EPHEMERAL artifacts must not be tracked/);
+    artifactGit(['rm', '--cached', '--force', '--', file]);
+    assert.doesNotThrow(() => checkTestArtifacts(artifactRepo));
+  }
+  console.log('PASS: staging scan rejects forced temporary paths and staged blobs absent from the working tree.');
+  artifactWrite('.cache/agent-tests/already-tracked.json');
+  artifactGit(['add', '--force', '--', '.cache/agent-tests/already-tracked.json']);
+  artifactGit(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'invalid artifact fixture']);
+  assert.equal(artifactGit(['diff', '--cached', '--name-only']).trim(), '');
+  assert.throws(() => checkTestArtifacts(artifactRepo), /EPHEMERAL artifacts must not be tracked/);
+  artifactGit(['rm', '--cached', '--', '.cache/agent-tests/already-tracked.json']);
+  assert.doesNotThrow(() => checkTestArtifacts(artifactRepo));
+  console.log('PASS: clean-checkout index validation rejects committed artifacts and permits their staged removal.');
+
+  const workspace = path.join(artifactRepo, '.cache/agent-tests');
+  const otherAgent = path.join(workspace, 'other-agent/evidence.json');
+  mkdirSync(path.dirname(otherAgent), { recursive: true });
+  writeFileSync(otherAgent, 'untouched\n');
+  for (const expected of [0, 1]) {
+    const probe = mkdtempSync(path.join(workspace, 'probe-'));
+    const evidence = mkdtempSync(path.join(workspace, 'evidence-'));
+    let result;
+    try {
+      writeFileSync(path.join(probe, 'probe.test.mjs'), `import assert from 'node:assert/strict'; import { test } from 'node:test'; test('exploration', () => assert.equal(1, ${expected === 0 ? 1 : 2}));\n`);
+      result = spawnSync(process.execPath, ['--test', 'probe.test.mjs'], { cwd: probe, encoding: 'utf8' });
+      if (result.error) throw result.error;
+      writeFileSync(path.join(evidence, 'result.json'), JSON.stringify({ exitCode: result.status, signal: result.signal }));
+    } finally {
+      assert.equal(path.dirname(realpathSync(probe)), realpathSync(workspace));
+      assert.ok(!lstatSync(probe).isSymbolicLink());
+      rmSync(probe, { recursive: true });
+    }
+    assert.equal(result.status, expected);
+    const retained = JSON.parse(readFileSync(path.join(evidence, 'result.json')));
+    assert.equal(retained.exitCode, expected);
+    assert.deepEqual(Object.keys(retained), ['exitCode', 'signal']);
+    assert.equal(existsSync(probe), false);
+    assert.equal(readFileSync(otherAgent, 'utf8'), 'untouched\n');
+    assert.equal(artifactGit(['check-ignore', '--', path.relative(artifactRepo, evidence)]).trim().length > 0, true);
+  }
+  console.log('PASS: isolated exploratory tests retain success/failure status and safe evidence after task-owned cleanup; other-agent fixture survives.');
+
   const originalReadme = readFileSync(path.join(root, 'README.md'));
   function reservedCase(label, change, expectedError) {
     const repository = mkdtempSync(path.join(directory, 'reserved-'));
@@ -129,5 +202,8 @@ try {
   assert.throws(() => scanStaged(stagedRepo, 'pipe'), error => error.status === 1 && !(String(error.stdout) + String(error.stderr)).includes(token));
   console.log('PASS: staged secret rejected even when working file is clean.');
 } finally {
+  assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
+  assert.ok(!lstatSync(directory).isSymbolicLink());
   rmSync(directory, { recursive: true, force: true });
 }
+assert.equal(existsSync(directory), false);
