@@ -27,8 +27,8 @@ test('only the pinned CLI missing-stack response permits cold start or absent-st
   assert.equal(isMissingStack(failure), true);
   for (const other of [{ ...failure, status: 2 }, { ...failure, stdout: '' },
     { ...failure, stdout: JSON.stringify({ ...response, _tag: 'Unknown' }) },
-    { ...failure, stdout: JSON.stringify({ error: { ...response.error, code: 'OtherFailure' } }) },
-    { ...failure, stdout: JSON.stringify({ error: { ...response.error, message: 'Owner unavailable' } }) }]) {
+    { ...failure, stdout: JSON.stringify({ ...response, error: { ...response.error, code: 'OtherFailure' } }) },
+    { ...failure, stdout: JSON.stringify({ ...response, error: { ...response.error, message: 'Owner unavailable' } }) }]) {
     assert.equal(isMissingStack(other), false);
   }
 });

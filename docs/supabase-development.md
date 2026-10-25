@@ -187,6 +187,15 @@ Claude skill discovery/behavior is NOT VERIFIED. Skills remain technical referen
 
 ## Delivery and references
 
+The workflow now runs `Supabase local verification` on a standard Ubuntu 24.04
+runner for PR/main events. It exercises the same canonical local commands and
+attempts targeted cleanup after an attempted startup, including failures. No
+hosted credentials, caches or uploaded artifacts are used. Main requires this
+job and `Repository checks` from GitHub Actions; zero independent approvals are
+required while there is one maintainer. Passing checks never authorize merging
+or Production deployment. See the latest
+[Linux CI evidence](setup-evidence.md#github-protection-and-linux-ci-2026-10-25).
+
 Discover → isolated feature/worktree → local replay/SQL/types/checks → commit →
 inspect all integrations → gated feature push → explicitly approved PR/hosted CI →
 review and approved merge → separately approved production release.

@@ -1,6 +1,6 @@
 # GitHub foundation setup evidence
 
-Latest Supabase results: [hardening verification, 2026-10-25](#supabase-hardening-verification-2026-10-25).
+Latest Supabase results: [GitHub protection and Linux CI, 2026-10-25](#github-protection-and-linux-ci-2026-10-25).
 Earlier dated test counts and agent limitations below are historical observations.
 
 ## Supersession note — 2026-10-24
@@ -483,3 +483,103 @@ established. Local development can continue; the diff is ready for owner PR revi
 Hosted CI needs explicit authorization. Merge requires successful approved checks
 and governance; Production release needs a separate application/security/release
 decision. No PR, hosted CI, merge, deployment or settings change was performed.
+
+## GitHub protection and Linux CI 2026-10-25
+
+The owner explicitly authorized main protection, the Linux job, feature commits/
+pushes, PR creation and its CI/fix cycles. Merge, Production changes and paid
+resources remain outside that authority. Starting HEAD was
+`20eee155c2892936215f5a97028e3007600cb0fc`; main remains
+`935824e4c07ea7de7012a8f1b0d1b72517f41a44`. The checkout was clean, its sole
+worktree and exact HTTPS origins were verified, and repository ID `1432052547`
+was public with owner/admin access. Root AGENTS and original README are unchanged.
+The earlier sections' statements that protection/PR/CI were absent are historical.
+
+### Saved GitHub protection
+
+REST GET and GraphQL confirmed one classic rule, `main`, ID
+`BPR_kwDOVVtjQ84FFdCA`, and zero rulesets:
+
+- PR required; approving review count 0; CODEOWNERS and last-push approval off.
+- `Repository checks` and `Supabase local verification` required, each restricted
+  to GitHub Actions app 15368; strict/up-to-date checks on.
+- Conversation resolution and administrator enforcement on.
+- Force pushes and branch deletion off; bypass allowances empty.
+- Auto-merge remains disabled. No direct-main push or merge was used as a test.
+
+Initially only the existing repository job was required. The database job was
+added to that same rule after run 40147775647 completed successfully. PR #10 was
+observed BLOCKED while the first required repository check was queued; no bypass
+operation was attempted. Final PR status remains a live platform check, not a
+standing merge authorization. The owner can administratively change settings in
+future, but cannot bypass the current enforced checks through an allowed actor.
+
+### Actual Linux results and minimal repair
+
+[PR #10](https://github.com/manhtu0407/NestScout-Enterprise/pull/10) targets main
+from `chore/supabase-agent-local-setup`. No manual workflow dispatch or unrelated
+rerun was performed.
+
+| PR-triggered run | Actual result |
+| --- | --- |
+| [40147385656](https://github.com/manhtu0407/NestScout-Enterprise/actions/runs/40147385656), head `4f65f8caa9409da06ec480af2833a21746e4d12b` | Repository checks PASS; database startup FAIL, cleanup attempted and FAIL; later DB steps skipped |
+| [40147775647](https://github.com/manhtu0407/NestScout-Enterprise/actions/runs/40147775647), head `5c2b9409d4c59df5cf087e904956779d380427b1` | Both jobs PASS; repository job 22 seconds, database job 82 seconds |
+
+The first failure was reproduced with the pinned CLI on a pristine local root:
+`stack status` exits 1 with JSON Error/ExperimentalStackStatusError and exactly
+`No managed stack exists for the selected project.` The wrapper previously queried
+status before allowing startup, so an existing Windows stack hid the cold-start
+defect. The repair accepts only that pinned response for first start/absent stop;
+other failures remain failures. Startup still verifies real worktree/branch
+identity, Docker ownership and all published loopback bindings. No runtime upgrade,
+native fallback, mocked success or weakened isolation was used.
+
+The successful hosted run used Ubuntu 24.04.5/image 20261012.334.1, Node 24,
+CLI 2.122.0 and pinned service images. Checkout kept the PR verification revision;
+a local `ci-supabase` branch supplies the managed runtime's branch identity. Logs
+show stack ID `5a4ed46165cbf386b56bf9197a52eab335a28e7c209db5a3bd02faa913d1ca31`
+and every published service at 127.0.0.1. This is execution evidence, not a
+workflow-text assertion.
+
+PASS on hosted Linux: locked installation, runtime startup/status, reset/replay,
+empty migration history, 13 pgTAP metadata assertions, one real MCP integration
+scenario, database lint, strict pg-delta drift, generated type consistency and
+database artifact typecheck. Targeted stop passed with no task containers running.
+The other job passed 11 wrapper/config tests, reserved-file/Markdown/YAML/workflow
+checks, checksum tool installation, secret scans, negative fixtures and executable
+Linux hooks. Both downloaded run logs passed Gitleaks with redacted reporting;
+the successful run had zero artifacts. Future runs remain separately verifiable
+through the PR checks; a previous green run does not validate a later head.
+
+Fresh Windows checks also passed locked install/audit (zero reported vulnerabilities),
+tool hashes, repository/negative tests and the full local database sequence. A
+separate pristine ignored probe ran the canonical scripts with copied current
+sources/config, proving absent stop, cold startup, reset/history/13 pgTAP/MCP/lint/
+drift/types and targeted stop. Its ID was
+`49fbfc1a1da39f3749e32b77afaafb0fa8c539ab574853394fbd125103b25842`, separate
+from the existing development stack. Existing-stack resume/status/stop also passed.
+Probe sources/logs/credentials are not Git artifacts; no product fixture was added.
+
+### Billing, Production and remaining limits
+
+Current billing UI showed GitHub Free and an unchanged account-wide $0 Actions
+budget with billable usage blocked. The repository is public, and the standard
+runner actually executed; no larger runner, trial, cache or artifact upload was
+added. Official [runner eligibility](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+was rechecked. Supabase changelog and managed-stack/GitHub integration documentation
+were reviewed; there was no demonstrated reason to upgrade the pinned runtime.
+
+Before PR creation, Supabase dashboard showed project `axpdymbusiwxfzurfclg`,
+Free, Seoul, working directory `.`, production deployment OFF, automatic branching
+disabled/OFF and branch limit 0. These settings were not changed. Project metadata
+was healthy on PostgreSQL 17.11.0.003; fresh Advisor results still contained the
+same two EXECUTE warnings for `public.rls_auto_enable()`. This task made no remote
+DDL/DML, invoked no hosted function and created no Supabase branch or application
+deployment. Repository deployment records/environments/webhooks were empty at
+preflight. No Vercel hosting or Expo build configuration was introduced.
+
+P1 main-protection gap is resolved by saved enforcement. P2 remains: experimental
+runtime compatibility across future releases and the separately reviewed hosted
+hook ACL warnings; Claude model authentication/behavior is still outside this phase.
+No P0 incident was established. Final self-review is technical verification only;
+independent human review and a new explicit owner merge decision remain necessary.

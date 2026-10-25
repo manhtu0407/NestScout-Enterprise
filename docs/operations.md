@@ -154,16 +154,21 @@ and the dated [setup evidence](setup-evidence.md#supabase-agent-setup-2026-10-24
 
 ## Supabase hardening owner actions
 
-These are recommendations, not executed settings or Production changes. The
-2026-10-25 inspection found one human collaborator (the owner), unprotected
-`main`, and no rulesets. For this public Free repository, create **one** classic
-branch protection rule at Settings → Branches → Add rule, pattern `main`:
+The owner subsequently authorized main protection and PR-triggered Linux CI on
+2026-10-25. One classic rule now protects `main`; no ruleset was added. Both
+`Repository checks` and `Supabase local verification` are required from GitHub
+Actions (app 15368), with strict/up-to-date checks and administrator enforcement.
+The latter was promoted only after successful hosted run
+[40147775647](https://github.com/manhtu0407/NestScout-Enterprise/actions/runs/40147775647).
+There is still one human maintainer, zero required approving reviews, no bypass
+allowances, and auto-merge is disabled. Maintain this single rule using the settings
+below; changing protection later requires explicit owner authorization:
 
 1. Require a pull request before merging; keep required approving reviews at
    **zero/off** while there is only one maintainer. Do not require CODEOWNERS or
    last-push approval that the owner cannot independently satisfy.
-2. Require status checks, select `Repository checks` from GitHub Actions, and
-   require branches to be up to date. Enable conversation resolution.
+2. Require both named status checks from GitHub Actions and require branches to
+   be up to date. Enable conversation resolution.
 3. Enable “Do not allow bypassing the above settings,” including administrators;
    leave force pushes and branch deletion disallowed. Use manual owner review and
    merge authorization; zero required reviews does not mean automatic approval.
@@ -171,12 +176,11 @@ branch protection rule at Settings → Branches → Add rule, pattern `main`:
    by pushing to `main`. Add a required database job only after its approved first
    successful run; requiring an absent check would block every merge.
 
-Current CI already runs offline wrapper/configuration/image-pin regressions through
-`npm run check`, plus dependency/tool integrity and negative tests. It does not
-prove Docker integration on Linux. Minimum proposed addition, after review: one
-`Supabase local verification` job using standard `ubuntu-24.04`, Node 24, the
-existing SHA-pinned checkout/setup Actions, `contents: read`, 20-minute timeout,
-locked dependencies, no hosted credentials, and these sequential commands:
+CI retains offline wrapper/configuration/image-pin regressions through `npm run
+check`, dependency/tool integrity and negative tests. The implemented `Supabase
+local verification` job uses standard `ubuntu-24.04`, Node 24, existing SHA-pinned
+checkout/setup Actions, `contents: read`, a 20-minute timeout, locked dependencies,
+no hosted credentials, and these sequential commands:
 
 ```sh
 npm ci --ignore-scripts
@@ -192,14 +196,19 @@ npm run db:types:check
 npm run typecheck:db
 ```
 
-Give cleanup its own `if: always()` step running `npm run db:stop`. Keep the
-current PR/main triggers, concurrency controls and existing job. Standard public
+Cleanup uses `always()` whenever startup was attempted, including a failed start,
+and runs `npm run db:stop` without hiding prior failures. The checkout's actual
+verification revision gets the local branch `ci-supabase`, preserving PR merge
+revision coverage while satisfying managed-stack identity. PR/main triggers,
+concurrency controls and the existing job are unchanged. Standard public
 Linux runners have 4 CPUs, 16 GB RAM and 14 GB SSD and are free under current
 [GitHub runner terms](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
-The reduced, lazy stack is a plausible fit, but cold image download/disk usage and
-Windows/Linux behavior must be measured in that approved run. Do not use paid
-larger runners, native fallback or hosted Supabase credentials to make it pass.
-No workflow was added or dispatched during this audit.
+The first complete hosted database job took 82 seconds, including cold startup
+and cleanup. This demonstrates fit on that runner image, not a guarantee against
+future image changes or download failures. No cache or artifact upload is configured.
+Keep the account's $0 Actions budget; do not use paid larger runners, native fallback
+or hosted Supabase credentials to make checks pass. A hard cancellation/runner loss
+can prevent in-job cleanup; the hosted VM is disposable and no cloud DB is created.
 
 For the hosted `public.rls_auto_enable()` ACL finding, the minimal proposed change
 is to retain the definition, owner and event trigger while revoking client access:
