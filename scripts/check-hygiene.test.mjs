@@ -95,7 +95,8 @@ test('existing naming categories and exact required/generated/legal filenames pa
     'scripts/tools.json', 'docs/claude.architecture.md', 'docs/agents.design.md', 'docs/setup-evidence.md',
     'supabase/database.types.ts', 'supabase/config.toml', 'supabase/supabase.lock',
     'supabase/migrations/20261025090000_add_example.sql', 'supabase/tests/database/security.test.sql',
-    'module/README.md', '.agents/skills/example/SKILL.md', '.claude/skills/example/SKILL.md']) {
+    'module/README.md', '.agents/skills/example/SKILL.md', '.claude/skills/example/SKILL.md',
+    '.agents/skills/example/references/adoption-review.md', '.claude/skills/example/references/adoption-review.md']) {
     assert.doesNotThrow(() => checkPath(file), file);
   }
 });
@@ -106,6 +107,13 @@ test('unknown architecture, case variants, scratch names, archives and unsafe pa
     'scripts/../example.mjs', '/scripts/example.mjs', 'scripts\\example.mjs', 'docs/bad\nname.md',
     'node_modules/example/index.js', 'dist/index.mjs', '.claude/settings.local.json']) {
     assert.throws(() => checkPath(file), undefined, file);
+  }
+  for (const root of ['.agents', '.claude']) {
+    for (const resource of ['references/Guide.md', 'references/guide.txt', 'references/nested/guide.md',
+      'references/.env', 'references/AGENTS.md', 'references/CLAUDE.md', 'references/report.md',
+      'references/../guide.md', 'scripts/run.mjs', 'scripts/run.test.mjs', 'assets/template.md', 'assets/tool.exe']) {
+      assert.throws(() => checkPath(`${root}/skills/example/${resource}`), undefined, resource);
+    }
   }
 });
 test('real technical comments, factual people, API contracts and provenance pass', () => {
