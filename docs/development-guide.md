@@ -3,7 +3,7 @@
 Persistency on the tenth times...!
 
 Public, new NestScout repository. The Delivery Project remains private. This repository contains development
-workflow and security tooling. The intended product direction is native React Native,
+workflow and security tooling. The confirmed product direction is Expo/React Native,
 TypeScript and Supabase, without Vercel; no product application is implemented.
 
 ## Repository identity
@@ -16,6 +16,22 @@ TypeScript and Supabase, without Vercel; no product application is implemented.
 Run `npm run identity` before remote writes. It verifies both origin URLs,
 repository ID, visibility, default branch, authenticated account, and admin access.
 Always pass `--repo manhtu0407/NestScout-Enterprise` to GitHub CLI write commands.
+
+## Application preparation
+
+[Architecture decisions](architecture.md#confirmed-product-direction) separate the
+owner-confirmed direction from pending implementation details: Clients, Workers
+and Kael Service Operator, iOS first, and TestFlight testing after owner setup.
+The repository stays public. BPMN, interface design, SDK version, application
+layout, business permissions and release configuration remain pending.
+
+The [implementation preparation](architecture.md#entry-into-application-implementation)
+maps current folder responsibilities and the information needed before introducing
+a product module. This setup creates no app or empty module directories and
+installs no product dependencies. Future structure follows real responsibilities,
+consumers and verification under the root policy, rather than importing the
+HomeServices implementation. Pinned tooling currently supports Windows/Linux x64;
+macOS tooling and native iOS execution have not been verified.
 
 ## Start here
 
@@ -32,7 +48,7 @@ npm run check
 npm run verify:negative
 ```
 
-Node/npm are repository tooling, not a choice of application stack. There is no
+These Node/npm commands set up repository tooling, not the future application. There is no
 application server, application build, product typecheck, or product unit suite yet.
 Tooling unit tests, database artifact typechecking and disposable local SQL checks
 do exist; use the commands in `package.json`. Tool downloads
@@ -172,7 +188,7 @@ See [CONTRIBUTING](../CONTRIBUTING.md), [security reporting](../SECURITY.md),
 [root engineering policy](../AGENTS.md),
 [workflow coverage](workflow-coverage.md), and
 [setup evidence](setup-evidence.md), [agent evaluation](agent-evaluation.md), and
-[proposed architecture decisions](architecture.md).
+[architecture direction and decisions](architecture.md).
 
 ## GitHub Free limits
 
