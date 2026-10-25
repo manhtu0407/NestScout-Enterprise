@@ -19,10 +19,9 @@ Do not download the Trivy database just to repeat a bounded OSV lockfile scan.
 jq, ShellCheck and Hadolint now have explicit project-local onboarding through the
 existing installer. jq supports catalog/fixture JSON queries, ShellCheck has real
 consumers in the three repository hooks, and Hadolint supports the owned synthetic
-Dockerfile workflow before product code exists. Trivy and standalone PostgreSQL
-clients remain staged: there is no demonstrated IaC/image scan or separate client
-consumer justifying another install/database download today. This is not a workaround
-for OSV's Windows execution restriction.
+Dockerfile workflow before product code exists. V2 adds opt-in [Trivy](trivy.md)
+and [k6](k6.md), plus [owned PostgreSQL client reuse](postgresql.md). These paths
+do not bypass OSV's Windows execution restriction.
 
 ```sh
 npm run tools:install -- --tool jq
@@ -31,9 +30,9 @@ npm run tools:install -- --tool hadolint
 ```
 
 Pins, release tag conventions, archive layout and SHA-256 stay exclusively in
-`scripts/tools.json`. The installer verifies bytes before writing/extracting; the
-ShellCheck Windows ZIP preserves its README/license and its Linux archive strips
-one upstream directory level. No PATH or global package manager is changed.
+`scripts/tools.json`. The installer verifies bytes before writing, rejects unsafe archive entries,
+and extracts only the exact binary. Upstream notices remain available from the
+release/source; preserve them if redistributing binaries. No PATH or global package manager is changed.
 Resolve all installed optional binary paths with `toolPath(ID)` from
 `scripts/tool-path.mjs`; doctor prefers that path to an existing PATH installation.
 Default `tools:install` still installs only the original mandatory tools, so optional

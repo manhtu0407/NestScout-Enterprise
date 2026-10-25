@@ -51,3 +51,6 @@ maintenance, distribution, license and target permission before designing a task
 The historical [Netflix Conductor repository](https://github.com/Netflix/conductor)
 is archived; famous provenance is not proof of maintenance. No workflow engine,
 developer portal, Docker replacement or universal shell interpreter is introduced.
+
+Local k6 CLI discovery and bounded synthetic smoke are now Tier B: see [k6](k6.md).
+Product performance remains NOT RUN.
