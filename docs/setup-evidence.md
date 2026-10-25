@@ -995,6 +995,15 @@ no shell and both output streams retained. The latter fixes an observed actionli
 stderr-help loss found by the Codex pilot. Existing catalog/runbooks, ownership
 guards, permanent test selection and evaluation harness are extended in place.
 
+Pre-push exposed a Windows archive environment defect: Git's GNU tar interpreted
+an absolute drive-letter archive path as a remote `C:` host and exited 128.
+The shared path resolver now selects Windows System32 tar explicitly (ZIP support)
+and archive invocations use owned relative paths/cwd. Linux retains native tar.
+Regression verification runs under the real Git pre-push environment; no PATH,
+hook, assertion or permission was weakened. An earlier `HEAD` push refspec was
+also rejected by the existing same-named-branch guard; the named branch refspec
+is used for delivery without changing that guard.
+
 ### Operational readiness matrix
 
 All entries below are CONFIGURED. INSTALLED and AVAILABLE describe this V2

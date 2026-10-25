@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSy
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { toolPath } from './tool-path.mjs';
+import { toolPath, tarPath } from './tool-path.mjs';
 
 export function workflowEnvironment(source = process.env) {
   const allowed = /^(PATH|SYSTEMROOT|WINDIR|TEMP|TMP|HOME|USERPROFILE|PATHEXT)$/i;
@@ -97,7 +97,7 @@ export function trivySmoke() {
     writeFileSync(path.join(archiveRoot, 'config.json'), JSON.stringify({ architecture: 'amd64', os: 'linux', config: { User: '65532' }, rootfs: { type: 'layers', diff_ids: [] } }));
     writeFileSync(path.join(archiveRoot, 'manifest.json'), JSON.stringify([{ Config: 'config.json', RepoTags: ['nestscout-synthetic:local'], Layers: [] }]));
     const archive = path.join(directory, 'image.tar');
-    const tar = spawnSync('tar', ['-cf', archive, '-C', archiveRoot, 'config.json', 'manifest.json'], { timeout: 10000 });
+    const tar = spawnSync(tarPath(), ['-cf', '../image.tar', 'config.json', 'manifest.json'], { cwd: archiveRoot, timeout: 10000 });
     assert.equal(tar.status, 0);
     const output = path.join(directory, 'sbom.json');
     const args = ['image', '--input', archive, '--skip-db-update', '--skip-java-db-update', '--skip-check-update', '--offline-scan', '--skip-version-check', '--format', 'cyclonedx', '--output', output];

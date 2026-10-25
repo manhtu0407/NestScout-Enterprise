@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { root, tools, toolPath } from './tool-path.mjs';
+import { root, tools, toolPath, tarPath } from './tool-path.mjs';
 
 export function selectTools(args, platform = process.platform, arch = process.arch) {
   if (arch !== 'x64' || !['win32', 'linux'].includes(platform)) {
@@ -29,13 +29,13 @@ export async function installTool(name, tool, download = fetch) {
     if (tool.format !== 'binary') {
       const archive = path.join(staging, 'download');
       await writeFile(archive, bytes);
-      const entries = execFileSync('tar', ['-tf', archive], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }).trim().split(/\r?\n/);
-      const detail = execFileSync('tar', ['-tvf', archive], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+      const entries = execFileSync(tarPath(), ['-tf', 'download'], { cwd: staging, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }).trim().split(/\r?\n/);
+      const detail = execFileSync(tarPath(), ['-tvf', 'download'], { cwd: staging, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
       validateArchive(entries, detail);
       const expected = asset.binary ?? `${name}${process.platform === 'win32' ? '.exe' : ''}`;
       const candidates = entries.filter(entry => entry.replace(/^\.\//, '').split('/').slice(asset.stripComponents ?? 0).join('/') === expected);
       if (candidates.length !== 1) throw new Error('Archive must contain exactly one expected binary.');
-      binary = execFileSync('tar', ['-xOf', archive, '--', candidates[0]], { maxBuffer: 256 * 1024 * 1024 });
+      binary = execFileSync(tarPath(), ['-xOf', 'download', '--', candidates[0]], { cwd: staging, maxBuffer: 256 * 1024 * 1024 });
     }
     validateBinary(binary);
     const directory = path.dirname(toolPath(name));

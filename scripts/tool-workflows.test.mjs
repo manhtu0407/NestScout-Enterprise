@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { helpCommand, nativeHelp } from './tool-help.mjs';
 import { validateArchive, validateBinary, installTool } from './install-tools.mjs';
-import { toolPath } from './tool-path.mjs';
+import { toolPath, tarPath } from './tool-path.mjs';
 import { databaseContainer, clientAction, postgresClients } from './postgresql-clients.mjs';
 import { workflowEnvironment, assertK6Result } from './tool-workflows.mjs';
 import { diagnose } from './tool-doctor.mjs';
@@ -44,6 +44,13 @@ test('binary header validation rejects empty, wrong-platform and truncated data 
   assert.throws(() => validateBinary(Buffer.from('MZ'), 'win32'));
 });
 
+test('Windows archives select the OS executable independently of Git hook PATH; Linux retains native tar', () => {
+  assert.equal(tarPath('win32', 'C:\\Windows'), 'C:\\Windows\\System32\\tar.exe');
+  assert.equal(tarPath('linux'), 'tar');
+  assert.throws(() => tarPath('win32', 'relative'), /absolute Windows system root/);
+  assert.throws(() => tarPath('win32', ''), /absolute Windows system root/);
+});
+
 test('verified archives install only the exact binary; missing binary never replaces an existing installation', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-install-fixture-'));
   const target = toolPath('jq');
@@ -51,7 +58,8 @@ test('verified archives install only the exact binary; missing binary never repl
   try {
     writeFileSync(path.join(directory, 'unexpected'), 'fixture, never executable');
     const archive = path.join(directory, 'fixture.tar');
-    assert.equal(spawnSync('tar', ['-cf', archive, '-C', directory, 'unexpected']).status, 0);
+    const result = spawnSync(tarPath(), ['-cf', 'fixture.tar', 'unexpected'], { cwd: directory, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
     const bytes = readFileSync(archive);
     const asset = { asset: 'fixture.tar', sha256: createHash('sha256').update(bytes).digest('hex'), binary: 'missing' };
     const tool = { version: 'fixture', repository: 'jqlang/jq', [process.platform]: asset };
