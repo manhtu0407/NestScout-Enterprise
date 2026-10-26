@@ -1,9 +1,5 @@
 # NestScout Horizon
 
-**Hiểu đúng nhu cầu. An tâm từ đầu.**
-
-![NestScout Horizon logo on a light background](docs/assets/nestscout-horizon-logo-light.png)
-
 NestScout Horizon is a home-services product in development, starting with
 apartment residents in Ho Chi Minh City, Vietnam, who need help understanding
 a problem at home, choosing suitable professionals and agreeing on clear pricing.
