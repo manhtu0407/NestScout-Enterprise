@@ -147,7 +147,10 @@ try {
     renameSync(path.join(repository, 'AGENTS.md'), path.join(repository, 'policy.tmp'));
     renameSync(path.join(repository, 'policy.tmp'), path.join(repository, 'agents.md'));
   }, /Competing agent instruction file|Required regular root file/);
-  reservedCase('reject modified working README', ({ write }) => write('README.md', '# Changed\n'), /Original README.md changed/);
+  reservedCase('reject modified working README', ({ write }) => write('README.md', '# Changed\n'), /Owner-approved README.md changed/);
+  reservedCase('reject obsolete README baseline', ({ write }) => {
+    write('README.md', '# NestScout-Enterprise\nPersistency on the tenth times...!\n');
+  }, /Owner-approved README.md changed/);
   reservedCase('reject modified staged README with clean working copy', ({ git, write }) => {
     write('README.md', '# Changed\n');
     git(['add', 'README.md']);

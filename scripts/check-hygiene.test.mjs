@@ -116,6 +116,38 @@ test('unknown architecture, case variants, scratch names, archives and unsafe pa
     }
   }
 });
+test('only the owner-approved logo path accepts the byte-preserved source image', () => {
+  const { repository, write, run } = fixture();
+  const file = 'docs/assets/nestscout-horizon-logo-light.png';
+  write(file, readFileSync(path.join(root, file)));
+  assert.doesNotThrow(() => checkHygiene(repository));
+  run(['add', '--', file]);
+  assert.doesNotThrow(() => checkHygiene(repository));
+  for (const name of ['docs/assets/other.png', 'docs/assets/NestScout-horizon-logo-light.png',
+    'docs/assets/nestscout-horizon-logo-light.jpg', 'docs/assets/nestscout-horizon-logo-light.png.exe']) {
+    assert.throws(() => checkPath(name), /No approved naming convention/);
+  }
+});
+
+test('logo tampering is rejected in working files and staged blobs even after deletion', () => {
+  const { repository, write, run } = fixture();
+  const file = 'docs/assets/nestscout-horizon-logo-light.png';
+  const valid = readFileSync(path.join(root, file));
+  write(file, valid);
+  run(['add', '--', file]);
+  const changed = Buffer.from(valid);
+  changed[changed.length - 1] ^= 1;
+  write(file, changed);
+  assert.throws(() => checkHygiene(repository), /logo checksum mismatch: working/);
+  run(['add', '--', file]);
+  write(file, valid);
+  assert.throws(() => checkHygiene(repository), /logo checksum mismatch: index/);
+  rmSync(path.join(repository, file));
+  assert.throws(() => checkHygiene(repository), /logo checksum mismatch: index/);
+  run(['rm', '--cached', '--', file]);
+  assert.doesNotThrow(() => checkHygiene(repository));
+});
+
 test('real technical comments, factual people, API contracts and provenance pass', () => {
   for (const text of ['// Keep the lock until the asynchronous callback settles.',
     '/* The caller must approve this SQL before execution. */', '/** @returns {Promise<void>} */',

@@ -44,16 +44,16 @@ export function checkReservedFiles(repository = root) {
       throw new Error('Staged AGENTS.md must not be empty.');
     }
   }
-  const originalBlob = 'e5b4177c7175532f1f9fac63c42ffed2e7f483fc';
-  if (git(['hash-object', '--path=README.md', 'README.md']).trim() !== originalBlob) {
-    throw new Error('Original README.md changed. Separate owner permission is required.');
+  const approvedReadmeBlob = 'a8288318e86bfbfcf2c59eabbd860bbec7b19712';
+  if (git(['hash-object', '--path=README.md', 'README.md']).trim() !== approvedReadmeBlob) {
+    throw new Error('Owner-approved README.md changed. Separate owner permission is required.');
   }
-  if (!entries.some(entry => entry.file === 'README.md' && entry.blob === originalBlob)) {
-    throw new Error('Staged README.md differs from the owner-reserved original.');
+  if (!entries.some(entry => entry.file === 'README.md' && entry.blob === approvedReadmeBlob)) {
+    throw new Error('Staged README.md differs from the owner-approved version.');
   }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   checkReservedFiles();
-  console.log('One canonical root policy; original README unchanged in index and working tree.');
+  console.log('One canonical root policy; owner-approved README unchanged in index and working tree.');
 }
