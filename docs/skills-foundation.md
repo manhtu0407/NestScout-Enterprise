@@ -14,12 +14,13 @@ The [Batch A record](skill-research-batch-a.md) is dated research, not adoption.
 The **NestScout Engineering Skills Library** (NESL) has machine ID
 `nestscout-engineering-skills` and semantic namespace `nestscout`.
 Its single canonical source is `.agents/skills/`: the existing lifecycle package
-plus the 15 specialist packages listed below. The namespace is library identity,
+plus the 16 specialist packages listed below. The namespace is library identity,
 not a name prefix, native routing field or replacement for the plugin namespace.
 
 | Consumer | Native project package | V1 inventory |
 | --- | --- | --- |
 | Codex | `.agents/skills/<name>/SKILL.md` | `skill-lifecycle` |
+| Cursor | `.agents/skills/<name>/SKILL.md` (native) | Same canonical source |
 | Claude Code | `.claude/skills/<name>/SKILL.md` | None; do not create an empty root |
 | Claude session plugin | `claude --plugin-dir ./.agents` | Same source, namespaced `.agents:skill-lifecycle` |
 
@@ -34,7 +35,7 @@ Each package links its own source evidence, immutable upstream paths when
 applicable, legal notices, adaptation decision and individual quality assessment.
 Packages use string metadata identifying this library, domain, specialty,
 consumers and version. Initial versions are `1.0.0`; `be-edge-api` and
-`be-transaction-integrity` are `1.0.1`. There are 16 total packages including
+`be-transaction-integrity` are `1.0.1`. There are 17 total packages including
 `skill-lifecycle`, whose files are unchanged.
 
 | Package | Responsibility | Source mode |
@@ -54,6 +55,7 @@ consumers and version. Initial versions are `1.0.0`; `be-edge-api` and
 | [kael-agent-evaluation](../.agents/skills/kael-agent-evaluation/SKILL.md) | Task/trace/end-state evaluation | PROJECT_NATIVE |
 | [qa-error-prevention](../.agents/skills/qa-error-prevention/SKILL.md) | Causal diagnosis and evidence-based prevention | ADAPTED, Matt Pocock/Lauren Tan MIT |
 | [qa-impact-review](../.agents/skills/qa-impact-review/SKILL.md) | Spec/contracts and downstream change impact | ADAPTED, Matt Pocock/Lauren Tan MIT |
+| [thermo-nuclear-code-quality-review](../.agents/skills/thermo-nuclear-code-quality-review/SKILL.md) | Explicit diff-scoped structural maintainability review | ADAPTED, Cursor MIT |
 
 The owner's 2026-10-26 implementation request supersedes Batch A's proposed
 candidate-by-candidate pilot order: all 15 specialists are installed before
@@ -75,6 +77,22 @@ Run the full-library protocol below and retain per-skill/runtime observations
 outside tracked source. Claude authentication, actual SDK/device access and
 missing Kael/product contracts can block behavioral dimensions independently.
 Do not call the library cross-agent verified from format checks or menu inventory.
+
+## Cursor workspace integration
+
+Cursor natively discovers the canonical `.agents/skills/` packages and reads
+the existing root `AGENTS.md` without any duplicate `.cursor/skills/` directory
+or competing `.cursor/rules/` policy. Use
+`/thermo-nuclear-code-quality-review` in Cursor Agent for an explicit review.
+Actual skill loading and non-trigger behavior still require fresh Cursor runtime
+verification.
+
+The optional workspace `.cursor/mcp.json` configures the **existing** local
+Supabase bridge and remote read-only endpoint for Cursor. It introduces no new
+tools, credentials, policy, plugin manifest or hosted service. Auth remains a
+user/runtime requirement; file presence is not proof of connectivity.
+A Cursor Plugin, by contrast, uses `.cursor-plugin/plugin.json` and separate
+marketplace/local installation. No distribution plugin is needed for NESL.
 
 ## Shared source and discovery
 

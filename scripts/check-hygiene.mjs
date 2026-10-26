@@ -17,7 +17,7 @@ const fixedPaths = new Set([
   'LICENSE', 'LICENSE.md', 'NOTICE', 'AUTHORS', 'CONTRIBUTORS.md',
   '.editorconfig', '.gitattributes', '.gitignore', '.markdownlint-cli2.jsonc', '.mcp.json',
   'package.json', 'package-lock.json', '.env.example',
-  '.codex/config.toml', '.claude/settings.json', '.github/PULL_REQUEST_TEMPLATE.md',
+  '.codex/config.toml', '.claude/settings.json', '.cursor/mcp.json', '.github/PULL_REQUEST_TEMPLATE.md',
   '.github/dependabot.yml', '.githooks/pre-commit', '.githooks/commit-msg', '.githooks/pre-push',
   'supabase/.gitignore', 'supabase/config.toml', 'supabase/database.types.ts',
   'supabase/seed.sql', 'supabase/supabase.lock', 'supabase/migrations/.gitkeep',

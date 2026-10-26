@@ -95,7 +95,7 @@ test('existing naming categories and exact required/generated/legal filenames pa
     'scripts/tools.json', 'docs/claude.architecture.md', 'docs/agents.design.md', 'docs/setup-evidence.md',
     'supabase/database.types.ts', 'supabase/config.toml', 'supabase/supabase.lock',
     'supabase/migrations/20261025090000_add_example.sql', 'supabase/tests/database/security.test.sql',
-    'module/README.md', '.agents/skills/example/SKILL.md', '.claude/skills/example/SKILL.md',
+    'module/README.md', '.cursor/mcp.json', '.agents/skills/example/SKILL.md', '.claude/skills/example/SKILL.md',
     '.agents/skills/example/references/adoption-review.md', '.claude/skills/example/references/adoption-review.md']) {
     assert.doesNotThrow(() => checkPath(file), file);
   }
@@ -105,7 +105,7 @@ test('unknown architecture, case variants, scratch names, archives and unsafe pa
     '.github/workflows/CI.yml', 'supabase/migrations/001_example.sql', 'scripts/example.js', 'src/App.tsx',
     'docs/REPORT.md', 'docs/plan-feature.md', 'docs/notes.md', 'report.zip', 'docs/design.PDF',
     'scripts/../example.mjs', '/scripts/example.mjs', 'scripts\\example.mjs', 'docs/bad\nname.md',
-    'node_modules/example/index.js', 'dist/index.mjs', '.claude/settings.local.json']) {
+    'node_modules/example/index.js', 'dist/index.mjs', '.claude/settings.local.json', '.cursor/rules/competing.mdc', '.cursor/MCP.json']) {
     assert.throws(() => checkPath(file), undefined, file);
   }
   for (const root of ['.agents', '.claude']) {
