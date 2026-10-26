@@ -10,7 +10,6 @@ metadata:
   version: "1.0.0"
 ---
 
-
 # Thermo-Nuclear Code Quality Review
 
 ## NestScout scope and selection
@@ -33,7 +32,6 @@ Report the highest-impact findings first with file/line and a concrete reason,
 then remaining verification gaps. Conclude after the requested review.
 The upstream source, licensing and changes are recorded in
 [source evidence](references/source-evidence.md).
-
 
 Use this skill for an unusually strict review focused on implementation quality, maintainability, abstraction quality, and codebase health.
 
