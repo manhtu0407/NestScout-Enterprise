@@ -1,6 +1,6 @@
 # Source evidence: be-edge-api
 
-Reviewed 2026-10-26 (Asia/Saigon). Local package version 1.0.1; adoption mode
+Reviewed 2026-10-26 (Asia/Saigon). Local package version 1.0.2; adoption mode
 **PROJECT_NATIVE**. This records source/static review, not runtime efficacy.
 
 ## Decision and file scope
@@ -22,6 +22,7 @@ Documentation access date is not an immutable upstream revision or SDK pin.
 
 - [edge](https://supabase.com/docs/guides/functions/auth) — User/service/webhook auth modes and caller-scoped versus administrative clients; helper imports are not installed here.
 - [edgeerrors](https://supabase.com/docs/guides/functions/error-handling) — Response and error ownership must reflect actual runtime/consumer contracts.
+- [Effective client authorization](https://supabase.com/kb/troubleshooting/why-is-my-service-role-key-client-getting-rls-errors-or-not-returning-data-7_1K9z) — inspect the credential actually sent, not merely the key passed to createClient; verified 2026-10-26. No SDK/runtime behavior is claimed from source inspection alone.
 - [deno](https://docs.deno.com/api/web/~/Request) — Web Request body/method interface; TypeScript types do not validate untrusted JSON.
 - [Node 24 Request](https://github.com/nodejs/node/blob/cdc1b38d40cb567b7ad0b39c86addf830a0af0ae/doc/api/globals.md#class-request) — official v24.19.0 source, Class: Request, accessed 2026-10-26; browser-compatible Request is available for isolated parsing probes. No upstream text or code is imported.
 

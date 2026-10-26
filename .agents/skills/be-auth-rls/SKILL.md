@@ -6,7 +6,7 @@ metadata:
   domain: backend
   specialty: supabase-authorization
   consumer: codex,claude-code
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 # Authentication and row authorization
 
@@ -33,8 +33,9 @@ entitlements. An authenticated role alone does not establish object access.
    the actual supported library; decoding a payload is not verification.
 2. Inspect the intersection of schema usage/table or function grants and RLS.
    Enable RLS on exposed tables, restrict unnecessary grants and define the
-   intended policies. No grant can make an RLS-denied row accessible; a missing
-   grant can still deny a policy-permitted operation. Test both layers.
+   intended policies. For an effective role subject to RLS, table grants do not
+   override a row-policy denial; a missing grant can still deny a policy-permitted
+   operation. Establish the effective role and bypass paths before testing both layers.
 3. Inspect SELECT/INSERT/UPDATE/DELETE separately. For UPDATE, check visibility
    plus USING for old rows and WITH CHECK for new rows, especially ownership
    reassignment. INSERT needs its new-row check; SELECT absence may appear as zero
@@ -44,6 +45,9 @@ entitlements. An authenticated role alone does not establish object access.
    views can preserve caller RLS. For a justified definer function inspect owner,
    safe search_path, qualified objects, caller checks and EXECUTE grants.
    Do not add elevated execution to make a failing client request pass.
+   A client initialized with a service-role key may send a signed-in user's JWT
+   instead. Inspect outgoing Authorization and the effective database role;
+   initialization alone does not prove bypass. Record role/subject without tokens.
 5. Never trust user-editable user_metadata for authorization. Trusted app metadata
    still has token freshness/revocation limits; sensitive membership decisions
    need the approved source of truth. Do not expose secret/service-role keys to
