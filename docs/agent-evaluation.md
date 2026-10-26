@@ -4,6 +4,10 @@ This is an evaluation procedure under [AGENTS.md](../AGENTS.md), not another
 instruction source. It tests observable behavior against the current authorized
 task. Do not infer model compliance from configuration, transport or a safe answer.
 
+For candidate intake, source review and matched skill comparisons, use the
+[skill research procedure](skill-research-evaluation-standard.md). Its
+[Batch A record](skill-research-batch-a.md) distinguishes planned pilots from runs.
+
 ## Reproduce without touching the real repository
 
 `npm run agents:evaluate -- prepare` creates an owned OS temporary directory with

@@ -5,6 +5,10 @@ It supplies procedures, not permissions or another agent policy. The existing
 [tool library](tool-library/index.md) remains the capability catalog; skills describe
 recurring workflows that need more than a native tool command.
 
+For candidate research before package creation, use the subordinate
+[research and evaluation procedure](skill-research-evaluation-standard.md).
+The [Batch A record](skill-research-batch-a.md) is dated research, not adoption.
+
 ## Library and adoption decision
 
 | Consumer | Native project package | V1 inventory |

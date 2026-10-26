@@ -202,6 +202,10 @@ that operation. Before recursive removal, verify its resolved absolute parent
 and reject a replaced symlink/junction. Do not sweep `.cache/agent-tests/`, the OS
 temp root, stale directories or another agent's files. `scripts/verify-negative.mjs`
 contains an executable example covering success, failure and isolated cleanup.
+Temporary fixtures follow the same rule: create them with `mkdtempSync` under the OS
+temp directory, remove only that returned directory in `finally`, and first assert
+that its resolved parent is the resolved temp directory and that it is not a link.
+The evidence tests in `scripts/check-verification.test.mjs` show the pattern.
 
 Report failure even when cleanup succeeds. When investigation needs retained
 evidence, keep only reviewed, sanitized diagnostics in a separately owned ignored
