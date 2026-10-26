@@ -12,7 +12,7 @@ scope. No candidate was authored, installed or explicitly invoked.
 ## Identity, authority and preregistration
 
 Repository: `manhtu0407/NestScout-Enterprise`, ID `1432052547`.
-Actual checkout: `C:/Users/Phan Manh Tu/NestScout`; the supplied Desktop path
+Actual checkout: `<USER_HOME>/NestScout`; the supplied Desktop path
 has no Git checkout. Branch: `codex/skill-research-batch-a-20261026`.
 Both origin URLs identify the requested repository. Source foundation baseline:
 `dadd3f988016a84a7e0b6e4cba15a7a8b92da833`.
@@ -165,7 +165,7 @@ No candidate overhead comparison is possible.
 ## Evidence location and integrity
 
 Raw evidence is retained locally in the owned, ignored directory
-`C:/Users/Phan Manh Tu/NestScout/.cache/qa02-r3/`, not pushed as source.
+`<USER_HOME>/NestScout/.cache/qa02-r3/`, not pushed as source.
 It contains each case's prompt, JSONL trace, stderr, final answer, execution
 argv/exit/time, reference oracle modules/tests/results, immutable fixture refs and
 snapshot hashes. Temporary checkout/peer paths are recorded in `cases.json`;
@@ -243,3 +243,9 @@ context, sandbox, tool access and schema; do not compare this run against an
 unmatched environment. Add independent challenge and unseen cases where feasible,
 then perform R4's separately required smoke/qualification checks. Only the
 completed comparison can support a claim about QA02's incremental value.
+
+## Privacy-only amendment
+
+Local Windows profile paths in this document were replaced with `<USER_HOME>`.
+No result, timestamp, score, hash, label or evidence claim changed. Git history is
+not rewritten, so earlier commits still contain the original text.

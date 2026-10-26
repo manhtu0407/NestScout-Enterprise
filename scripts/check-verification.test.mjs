@@ -327,3 +327,125 @@ test('task-local evidence mappings preserve commands, exits, findings and reject
     assert.throws(() => evidenceSanitizer({ profilePrefixes }));
   }
 });
+
+test('task-local evidence mappings sanitize Windows, Linux and macOS profiles without matching neighbors', () => {
+  const config = { profilePrefixes: ['/home/synthetic', '/Users/Synthetic Reviewer', 'E:/Users/Synthetic Windows'] };
+  const sanitizer = evidenceSanitizer(config);
+  for (const [value, expected] of [
+    ['/home/synthetic/repo/probe.mjs', '<USER_HOME>/repo/probe.mjs'],
+    ['\\home\\synthetic\\repo', '<USER_HOME>\\repo'],
+    ['"/home/synthetic"', '"<USER_HOME>"'],
+    ['/Users/Synthetic Reviewer/repo', '<USER_HOME>/repo'],
+    ['/Users/Synthetic%20Reviewer/repo', '<USER_HOME>/repo'],
+    ['E:\\Users\\Synthetic Windows\\repo', '<USER_HOME>\\repo'],
+    ['E%3A/Users/Synthetic%20Windows/repo', '<USER_HOME>/repo'],
+  ]) assert.equal(sanitizer.text(value), expected);
+  assert.equal(sanitizer.counts.home, 7);
+  for (const value of ['/home/synthetic2/repo', '/home/other/repo', '/Users/Synthetic Reviewer2/repo',
+    'E:/Users/Synthetic Windows2/repo', 'E:/Users/Other/repo']) {
+    assert.throws(() => sanitizer.text(value), /Unmapped private path\/identifier/);
+  }
+  // Regex syntax inside a profile name is literal, and a lone POSIX prefix must construct a valid pattern.
+  assert.equal(evidenceSanitizer({ profilePrefixes: ['/home/a.b+c'] }).text('/home/a.b+c/x'), '<USER_HOME>/x');
+  assert.throws(() => evidenceSanitizer({ profilePrefixes: ['/home/a.b+c'] }).text('/home/aXb+c/x'), /Unmapped private path\/identifier/);
+});
+
+test('evidence audit rejects payload tampering, extra or missing files, broken linkage and ledger mismatch', async () => {
+  const directory = realpathSync(mkdtempSync(path.join(tmpdir(), 'nestscout-evidence-package-')));
+  const sha = value => createHash('sha256').update(value).digest('hex');
+  const ids = Array.from({ length: 10 }, (_, n) => `C${String(n + 1).padStart(2, '0')}`);
+  const trace = [{ thread_id: '00000000-0000-0000-0000-000000000000' },
+    { type: 'item.started', item: { type: 'command_execution', id: 'a', command: 'x' } },
+    { type: 'item.completed', item: { type: 'command_execution', id: 'a', command: 'x', exit_code: 0, aggregated_output: '' } },
+  ].map(event => JSON.stringify(event)).join('\n') + '\n';
+  const ledger = { cases: ids.map(id => ({ id, commandCount: 1, nonzero: 0, zeroExitDiagnostics: [],
+    commands: [{ id: 'a', command: 'x', exit: 0, output: '', failureClass: null, zeroExitWithDiagnostic: false }] })), commands: 10, nonzero: 0 };
+  const put = (relative, value) => {
+    mkdirSync(path.dirname(path.join(directory, relative)), { recursive: true });
+    writeFileSync(path.join(directory, relative), typeof value === 'string' ? value : JSON.stringify(value));
+  };
+  const build = ({ ledgerValue = ledger } = {}) => {
+    const raw = { revision: 'QA02-R3-v1', files: Object.fromEntries(ids.map(id => [`${id}/trace.jsonl`, sha(trace)])) };
+    const rawText = JSON.stringify(raw);
+    put('raw-hashes.json', rawText);
+    for (const id of ids) put(`${id}/trace.jsonl`, trace);
+    put('commands-derived.json', ledgerValue);
+    put('post-run-smoke.json', '{}');
+    const files = { ...raw.files };
+    for (const relative of ['raw-hashes.json', 'commands-derived.json', 'post-run-smoke.json']) files[relative] = sha(readFileSync(path.join(directory, relative)));
+    const manifest = { revision: 'QA02-v1-export-v2', sourceRevision: 'e977bd0e77d0e5c8750e537dda00c551e6ddc365',
+      rawManifestSHA256: sha(rawText), files,
+      mapping: { method: 'Exact profile/fixture/thread token replacement; decoded JSON values and keys; no event filtering',
+        files: Object.fromEntries(Object.entries(raw.files).map(([relative, digest]) => [relative, { rawSHA256: digest, sanitizedSHA256: digest }])) },
+      scan: { tool: 'Gitleaks 8.30.1', exit: 0 }, humanPrivacyReview: 'REQUIRED BEFORE SHARING',
+      supplementalEvidence: { file: 'post-run-smoke.json', rawSHA256: '0'.repeat(64) } };
+    return { manifest, pinned: sha(rawText) };
+  };
+  const audit = async (manifest, pinned) => {
+    put('sanitized-manifest.json', manifest);
+    return auditEvidence(directory, sha(readFileSync(path.join(directory, 'sanitized-manifest.json'))), pinned);
+  };
+  const reset = () => { rmSync(directory, { recursive: true }); mkdirSync(directory); };
+  try {
+    // Reference: every earlier integrity gate passes, so a wrong ledger is the first rejection.
+    let { manifest, pinned } = build({ ledgerValue: {} });
+    await assert.rejects(audit(manifest, pinned), /Derived command ledger mismatch/);
+    reset();
+    // A correct ledger proceeds beyond every static gate into replay, which needs the unavailable raw answers.
+    ({ manifest, pinned } = build());
+    await assert.rejects(audit(manifest, pinned), error => !/ledger mismatch|integrity|linkage|allow-list|inventory/.test(error.message));
+    reset();
+
+    ({ manifest, pinned } = build());
+    await assert.rejects(audit(manifest, '1'.repeat(64)), /Raw manifest pin/);
+    put('C03/trace.jsonl', trace.replace('"x"', '"y"'));
+    await assert.rejects(audit(manifest, pinned), /Evidence payload integrity: C03\/trace\.jsonl/);
+    reset();
+
+    ({ manifest, pinned } = build());
+    put('extra.json', '{}');
+    await assert.rejects(audit(manifest, pinned), /Evidence directory inventory/);
+    reset();
+
+    ({ manifest, pinned } = build());
+    rmSync(path.join(directory, 'C07/trace.jsonl'));
+    await assert.rejects(audit(manifest, pinned), /Evidence directory inventory/);
+    reset();
+
+    ({ manifest, pinned } = build());
+    manifest.files['C01/extra.jsonl'] = '0'.repeat(64);
+    await assert.rejects(audit(manifest, pinned), /Evidence payload allow-list/);
+    reset();
+
+    ({ manifest, pinned } = build());
+    delete manifest.mapping.files['C10/trace.jsonl'];
+    await assert.rejects(audit(manifest, pinned), /Raw mapping coverage/);
+    reset();
+
+    ({ manifest, pinned } = build());
+    manifest.mapping.files['C02/trace.jsonl'].rawSHA256 = '2'.repeat(64);
+    await assert.rejects(audit(manifest, pinned), /Raw-to-sanitized hash linkage/);
+    reset();
+
+    ({ manifest, pinned } = build());
+    manifest.mapping.files['C02/trace.jsonl'].sanitizedSHA256 = '2'.repeat(64);
+    await assert.rejects(audit(manifest, pinned), /Raw-to-sanitized hash linkage/);
+    reset();
+
+    // Command text changed between start and completion is rejected by the derived-ledger construction itself.
+    ({ manifest, pinned } = build());
+    const altered = trace.replace('"command":"x","exit_code"', '"command":"z","exit_code"');
+    for (const id of ids) put(`${id}/trace.jsonl`, altered);
+    put('raw-hashes.json', JSON.stringify({ revision: 'QA02-R3-v1', files: Object.fromEntries(ids.map(id => [`${id}/trace.jsonl`, sha(altered)])) }));
+    manifest.rawManifestSHA256 = pinned = sha(readFileSync(path.join(directory, 'raw-hashes.json')));
+    manifest.files['raw-hashes.json'] = pinned;
+    for (const id of ids) {
+      manifest.files[`${id}/trace.jsonl`] = sha(altered);
+      manifest.mapping.files[`${id}/trace.jsonl`] = { rawSHA256: sha(altered), sanitizedSHA256: sha(altered) };
+    }
+    await assert.rejects(audit(manifest, pinned), assert.AssertionError);
+  } finally {
+    assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
+    rmSync(directory, { recursive: true });
+  }
+});

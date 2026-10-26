@@ -28,8 +28,8 @@ framework, application architecture, protected config, root policy or README cha
 
 ## Foundation audit before research
 
-The provided `C:/Users/Phan Manh Tu/Desktop/NestScout` directory had no Git
-checkout. Located and inspected `C:/Users/Phan Manh Tu/NestScout`:
+The provided `<USER_HOME>/Desktop/NestScout` directory had no Git
+checkout. Located and inspected `<USER_HOME>/NestScout`:
 clean `codex/readme-horizon-20261026`, HEAD
 `f798a3c8a2c1b6a4fc9a7f259cb63166e344a5d1`.
 Both fetch/push origins were
@@ -345,3 +345,9 @@ are changed by this follow-up. Root policy/README, other foundation code/tests,
 skill packages, dependency manifests, protected configs and workflow triggers are
 preserved. Commit/push and remote verification are reported separately at delivery;
 PR, hosted CI and merge remain outside scope.
+
+## Privacy-only amendment
+
+Local Windows profile paths in this document were replaced with `<USER_HOME>`.
+No finding, timestamp, score, hash or evidence claim changed. Git history is not
+rewritten, so earlier commits still contain the original text.

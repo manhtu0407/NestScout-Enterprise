@@ -181,3 +181,14 @@ it outside the model checkout. It cannot add answer hints or change scoring. No 
 exists during this preparation. Do not run a candidate, R4 smoke, paid API job or
 hosted CI. A substantive prompt, environment or criterion revision after results
 requires a new version and fresh baseline; do not reuse v1 as a matched v2 arm.
+
+## V08 Unicode edge case
+
+V08's benign rewrite `name.toUpperCase().startsWith('GIT_')` differs from the base
+`/^GIT_/i` for non-ASCII case mappings: `'gıt_x'` (dotless i, U+0131) uppercases to
+`GIT_X`, so the head filters it while the base keeps it. No real Git variable has such
+a name, and the registered oracle inputs, labels, prompts and scoring remain frozen
+as written; the case stays benign. A reviewer who reports this edge case is
+**DISPUTED** under the rule above: recorded separately with its reproduction, not
+scored as a false positive or converted into a seeded defect, and no scored session
+is rerun. Frozen R3-v2 fixture pack, oracles, prompts and criteria are unchanged.

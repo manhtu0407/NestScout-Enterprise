@@ -94,8 +94,10 @@ export function evidenceSanitizer(config, cases = [], threads = []) {
   });
   assert.equal(new Set(prefixes.map(p => p.toLowerCase())).size, prefixes.length, 'Duplicate profile mapping');
   const counts = { home: 0, fixture: 0, thread: 0 };
-  const patterns = prefixes.sort((a, b) => b.length - a.length).map(prefix => new RegExp(prefix.split('/').map(escape)
-    .join('(?:\\\\+|/)').replaceAll(' ', '(?: |%20)').replace(':', '(?::|%3A)') + '(?=$|[\\\\/\\s"\'`])', 'gi'));
+  // Encode each segment before joining: the separator and colon alternatives contain regex syntax.
+  const segment = part => /^[A-Za-z]:$/.test(part) ? escape(part[0]) + '(?::|%3A)' : escape(part).replaceAll(' ', '(?: |%20)');
+  const patterns = prefixes.sort((a, b) => b.length - a.length).map(prefix => new RegExp(prefix.split('/').map(segment)
+    .join('(?:\\\\+|/)') + '(?=$|[\\\\/\\s"\'`])', 'gi'));
   const privateLabels = prefixes.map(prefix => new RegExp(escape(path.posix.basename(prefix)).replaceAll(' ', '(?: |%20)'), 'i'));
   const fixtures = cases.map(c => {
     assert.match(c.id, /^C(?:0[1-9]|10)$/);
@@ -215,7 +217,7 @@ function inventory(directory, prefix = '') {
   return files.sort();
 }
 
-export async function auditEvidence(directory, expectedManifestSHA256) {
+export async function auditEvidence(directory, expectedManifestSHA256, pinnedRawManifestSHA256 = manifestHash) {
   assert.match(expectedManifestSHA256 ?? '', /^[a-f0-9]{64}$/, 'Trusted sanitized manifest digest required');
   evidencePath(directory, 'directory');
   const manifestBytes = bytes(member(directory, 'sanitized-manifest.json'));
@@ -223,10 +225,10 @@ export async function auditEvidence(directory, expectedManifestSHA256) {
   const manifest = JSON.parse(manifestBytes);
   assert.equal(manifest.revision, 'QA02-v1-export-v2', 'Use a hardened v2 export; historical v1 packages remain untouched');
   assert.equal(manifest.sourceRevision, revision);
-  assert.equal(manifest.rawManifestSHA256, manifestHash);
+  assert.equal(manifest.rawManifestSHA256, pinnedRawManifestSHA256, 'Raw manifest pin');
   hashTable(manifest.files);
   const original = bytes(member(directory, 'raw-hashes.json'));
-  assert.equal(sha(original), manifestHash, 'Original manifest integrity');
+  assert.equal(sha(original), pinnedRawManifestSHA256, 'Original manifest integrity');
   const rawHashes = JSON.parse(original);
   assert.equal(rawHashes.revision, 'QA02-R3-v1');
   hashTable(rawHashes.files);
