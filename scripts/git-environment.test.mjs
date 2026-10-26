@@ -16,9 +16,9 @@ test('aggregate verification retains Foundation, hygiene and existing checks', (
     'lint:yaml', 'lint:workflows', 'scan:secrets', 'verify:supabase', 'typecheck:db', 'verify:foundation']) {
     assert.ok(checks.includes(`npm run ${name}`), `Aggregate dropped ${name}.`);
   }
-  assert.equal(scripts['verify:foundation'], 'node --test scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs scripts/check-skills.test.mjs');
+  assert.equal(scripts['verify:foundation'], 'node --test --test-reporter=./scripts/test-integrity-reporter.mjs scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs scripts/check-skills.test.mjs scripts/test-integrity-reporter.test.mjs');
   assert.equal(scripts['agents:evaluate'], 'node scripts/agent-evaluation.mjs');
-  assert.equal(scripts['verify:negative'], 'node scripts/verify-negative.mjs && node --test scripts/check-hygiene.test.mjs scripts/check-verification.test.mjs scripts/test-lifecycle.test.mjs scripts/tool-library.test.mjs');
+  assert.equal(scripts['verify:negative'], 'node scripts/verify-negative.mjs && node --test --test-reporter=./scripts/test-integrity-reporter.mjs scripts/check-hygiene.test.mjs scripts/check-verification.test.mjs scripts/test-lifecycle.test.mjs scripts/tool-library.test.mjs');
 });
 
 test('hook-inherited Git selectors cannot redirect fixture or recovery operations into a donor repository', () => {
@@ -116,7 +116,7 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
       assert.ifError(child.error);
       assert.equal(child.status, 0, `${args.join(' ')}\n${child.stdout}${child.stderr}`);
       if (args[0] === '--test') {
-        assert.match(child.stdout, args[1] === 'scripts/check-verification.test.mjs' ? /tests 12\b/ : /tests 48\b/);
+        assert.match(child.stdout, args[1] === 'scripts/check-verification.test.mjs' ? /tests 22\b/ : /tests 48\b/);
         for (const outcome of ['fail', 'cancelled', 'skipped', 'todo']) assert.match(child.stdout, new RegExp(`${outcome} 0\\b`));
       }
       assert.deepEqual(snapshot(), withLinked, 'Poisoned hygiene checks or fixtures changed the donor repository.');

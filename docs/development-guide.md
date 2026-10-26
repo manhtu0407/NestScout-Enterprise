@@ -163,6 +163,24 @@ hygiene, metadata and secret checks. Hooks can be bypassed; pre-push and CI also
 run the aggregate. Registration proves selection, not assertion quality or agent
 intent.
 
+Every runner passes `--test-reporter=./scripts/test-integrity-reporter.mjs`, and the
+selection guard rejects a runner without it. The reporter keeps the normal spec output
+but fails the run when a persistent test is skipped, marked todo, or its file executes
+no passing test, because `node --test` otherwise exits 0 for all three. A legitimate
+exception is a reviewed `repositoryHygiene.testExceptions` entry in `package.json`
+with `file`, `name` and `reason`; it matches one test exactly and fails once it no
+longer matches a skipped test. No exceptions exist today. The guard does not judge
+assertion quality.
+
+Secret scans ignore inline Gitleaks suppression comments and ambient `GITLEAKS_*`
+configuration, and Gitleaks ignore or configuration files are unapproved paths, so
+the checked-in defaults apply to staged, history and working-copy scans. `npm run
+lint:workflows` also enforces the workflow trust policy in the index and working
+tree for every workflow file: only `pull_request`, `push` (limited to `main`),
+`workflow_dispatch` and `workflow_call` triggers, explicit read-only token
+permissions, and actions pinned to a full commit SHA or image digest. Changing that
+policy requires owner authorization.
+
 Use the existing runner (for example `node --test`), capture its actual exit status
 and signal, and use `try/finally` to clean only the unique directory created by
 that operation. Before recursive removal, verify its resolved absolute parent

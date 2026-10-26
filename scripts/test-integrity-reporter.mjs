@@ -1,0 +1,56 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { Readable } from 'node:stream';
+import { spec } from 'node:test/reporters';
+
+// node:test exits 0 for skipped, todo and empty files, so registration alone does not prove execution.
+// Exceptions are reviewed package.json entries: repositoryHygiene.testExceptions = [{ file, name, reason }].
+const testFile = /\.(?:test|spec)\.mjs$/;
+
+function loadExceptions(directory) {
+  const manifest = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
+  const entries = manifest.repositoryHygiene?.testExceptions ?? [];
+  if (!Array.isArray(entries) || entries.some(entry => !entry || ['file', 'name', 'reason'].some(key => typeof entry[key] !== 'string' || !entry[key].trim()))) {
+    throw new Error('repositoryHygiene.testExceptions entries need non-empty file, name and reason strings.');
+  }
+  return entries;
+}
+
+export default async function* testIntegrityReporter(source) {
+  const directory = process.cwd();
+  const problems = [];
+  const executed = new Map();
+  const used = new Set();
+  let exceptions = [];
+  try { exceptions = loadExceptions(directory); } catch (error) { problems.push(error.message); }
+  const expected = process.argv.filter(argument => testFile.test(argument)).map(argument => path.relative(directory, path.resolve(directory, argument)).split(path.sep).join('/'));
+
+  async function* observed() {
+    for await (const event of source) {
+      const data = event.data;
+      if ((event.type === 'test:pass' || event.type === 'test:fail') && data.details?.type === 'test' && data.file) {
+        const file = path.relative(directory, data.file).split(path.sep).join('/');
+        // A file that registers nothing is reported as one synthetic passing test named after itself.
+        const placeholder = data.nesting === 0 && data.line === 1 && data.column === 1 && [data.file, file, path.basename(file)].includes(data.name);
+        if (!placeholder && (data.skip || data.todo)) {
+          const index = exceptions.findIndex(entry => entry.file === file && entry.name === data.name);
+          if (index < 0) problems.push(`${file}: "${data.name}" was ${data.skip ? 'skipped' : 'marked todo'} without a documented exception`);
+          else used.add(index);
+        } else if (!placeholder && event.type === 'test:pass') {
+          executed.set(file, (executed.get(file) ?? 0) + 1);
+        }
+      }
+      yield event;
+    }
+  }
+
+  yield* Readable.from(observed()).compose(new spec());
+  for (const file of expected) if (!executed.get(file)) problems.push(`${file}: no test executed to a passing result`);
+  exceptions.forEach((entry, index) => {
+    if (expected.includes(entry.file) && !used.has(index)) problems.push(`${entry.file}: documented exception for "${entry.name}" no longer matches a skipped test`);
+  });
+  if (problems.length) {
+    process.exitCode = 1;
+    yield `\nTest integrity violations:\n${problems.map(problem => `  - ${problem}`).join('\n')}\n`;
+  }
+}

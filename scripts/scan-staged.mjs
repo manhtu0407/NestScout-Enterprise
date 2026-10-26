@@ -3,9 +3,14 @@ import { gitEnvironment } from './git-environment.mjs';
 import { toolPath } from './tool-path.mjs';
 import { checkTestArtifacts } from './check-test-artifacts.mjs';
 
-export const secretScanOptions = ['--no-banner', '--redact', '--max-archive-depth=1'];
+// Inline suppression comments are author-controlled and would hide a real secret from every scan mode.
+export const secretScanOptions = ['--no-banner', '--redact', '--max-archive-depth=1', '--ignore-gitleaks-allow'];
+
+// Ambient configuration (GITLEAKS_CONFIG, GITLEAKS_CONFIG_TOML, ...) could replace the default rules or add allowlists.
+export const secretScanEnvironment = (source = process.env) => Object.fromEntries(
+  Object.entries(gitEnvironment(source)).filter(([name]) => !/^GITLEAKS_/i.test(name)));
 
 export function scanStaged(repository, stdio = 'inherit') {
   checkTestArtifacts(repository);
-  execFileSync(toolPath('gitleaks'), ['git', '--pre-commit', '--staged', ...secretScanOptions, repository], { cwd: repository, env: gitEnvironment(), stdio });
+  execFileSync(toolPath('gitleaks'), ['git', '--pre-commit', '--staged', ...secretScanOptions, repository], { cwd: repository, env: secretScanEnvironment(), stdio });
 }

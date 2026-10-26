@@ -32,8 +32,9 @@ function fixture(operation) {
     manifest();
     for (const value of Object.values(scripts)) {
       const command = value.split(' && ').find(command => command.startsWith('node --test '));
-      if (command) for (const target of command.split(' ').slice(2)) write(target, testBody);
+      if (command) for (const target of command.split(' ').slice(2).filter(token => !token.startsWith('--'))) write(target, testBody);
     }
+    write('scripts/test-integrity-reporter.mjs', 'export default async function* () {}\n');
     run(['add', '.']);
     operation({ repository, write, run, scripts, manifest });
   } finally {
