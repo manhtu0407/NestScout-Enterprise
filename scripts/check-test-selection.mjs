@@ -11,6 +11,8 @@ const requiredChecks = [
   'typecheck:db', 'verify:foundation', 'check:test-selection', 'check:capabilities',
 ];
 const testName = /\.(?:test|spec)\.mjs$/i;
+const reporterPath = 'scripts/test-integrity-reporter.mjs';
+const runnerPath = 'scripts/run-tests.mjs';
 
 function selectedTests(scripts, state) {
   const selected = new Set();
@@ -24,8 +26,10 @@ function selectedTests(scripts, state) {
       }
     } else if (commands.length !== 1) throw new Error(state + ': unexpected test runner command ' + runner);
     const tokens = commands[commands.length - 1].split(' ');
-    if (tokens.length < 3 || tokens[0] !== 'node' || tokens[1] !== '--test') {
-      throw new Error(state + ': test runner must execute node --test: ' + runner);
+    // Registration alone does not prove execution; the runner script pins the reporter that fails skipped, todo and empty tests
+    // and rejects ambient options that filter tests, so a bare node --test is not an accepted runner.
+    if (tokens.length < 3 || tokens[0] !== 'node' || tokens[1] !== runnerPath) {
+      throw new Error(state + ': test runner must execute node ' + runnerPath + ': ' + runner);
     }
     for (const file of tokens.slice(2)) {
       try {
@@ -74,6 +78,9 @@ export function checkTestSelection(repository = root) {
     }
     for (const file of selected) if (!present.has(file)) {
       throw new Error(state + ': missing selected persistent test ' + file);
+    }
+    for (const [file, label] of [[runnerPath, 'test runner script'], [reporterPath, 'test integrity reporter']]) {
+      if (!current.some(item => item.file === file)) throw new Error(state + ': missing ' + label);
     }
   }
 }

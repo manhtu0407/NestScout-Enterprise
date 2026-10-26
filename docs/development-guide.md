@@ -163,6 +163,39 @@ hygiene, metadata and secret checks. Hooks can be bypassed; pre-push and CI also
 run the aggregate. Registration proves selection, not assertion quality or agent
 intent.
 
+Every runner is `node scripts/run-tests.mjs <test files>`, and the selection guard
+rejects a bare `node --test` runner. The script is the execution boundary: it starts
+`node --test` with the integrity reporter (loaded by file URL, so absolute paths work
+on Windows and Linux), removes a stale `NODE_TEST_CONTEXT`, and refuses to run when
+`NODE_OPTIONS` or npm's `node-options` carry any `--test-*` or
+`--experimental-test-*` option (name and skip patterns, `--test-only`, sharding, isolation,
+reporters), because those silently drop tests while exiting 0. The value is read with
+Node's own `NODE_OPTIONS` grammar, so quoting, extra spaces and underscores cannot hide
+an option, and a value that is malformed or uses whitespace other than spaces is
+rejected. Other Node options remain allowed. It also requires the reporter's evidence file to list every
+requested test file, so a run whose reporter never completed fails even if Node
+reported success. To run a subset while developing, call `node --test` directly;
+such a run is not verification evidence.
+
+The reporter keeps the normal spec output
+but fails the run when a persistent test is skipped, marked todo, or its file executes
+no passing test, because `node --test` otherwise exits 0 for all three. A legitimate
+exception is a reviewed `repositoryHygiene.testExceptions` entry in `package.json`
+with `file`, `name` and `reason`. Each entry authorizes exactly one skipped test or
+suite: a repeated file and name pair, or a name shared by several skipped tests or
+suites in one file, is rejected as ambiguous, and an entry fails once it no longer
+matches a skipped test. No exceptions exist today. The guard does not judge
+assertion quality.
+
+Secret scans ignore inline Gitleaks suppression comments and ambient `GITLEAKS_*`
+configuration, and Gitleaks ignore or configuration files are unapproved paths, so
+the checked-in defaults apply to staged, history and working-copy scans. `npm run
+lint:workflows` also enforces the workflow trust policy in the index and working
+tree for every workflow file: only `pull_request`, `push` (limited to `main`),
+`workflow_dispatch` and `workflow_call` triggers, explicit read-only token
+permissions, and actions pinned to a full commit SHA or image digest. Changing that
+policy requires owner authorization.
+
 Use the existing runner (for example `node --test`), capture its actual exit status
 and signal, and use `try/finally` to clean only the unique directory created by
 that operation. Before recursive removal, verify its resolved absolute parent
