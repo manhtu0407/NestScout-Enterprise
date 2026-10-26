@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync, lstatSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { randomBytes } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { test } from 'node:test';
 import { parseDocument } from 'yaml';
-import { root } from './tool-path.mjs';
+import { root, toolPath } from './tool-path.mjs';
+import { gitEnvironment } from './git-environment.mjs';
 import { git } from './repository-files.mjs';
 import { checkHygiene } from './check-hygiene.mjs';
 import { checkYaml } from './check-yaml.mjs';
@@ -213,7 +214,17 @@ test('mutation examples reject unapproved delivery metadata while accepting legi
 
 test('staged secret mutations are detected with clean or absent working copies', () => fixture(({ repository, write, run }) => {
   const file = 'scripts/secret-fixture.json';
-  const token = 'gh' + 'p_' + randomBytes(28).toString('base64url');
+  // Keep the fixture valid for github-pat rather than relying on generic-rule fallback.
+  const token = ['gh', 'p_', 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'].join('');
+  assert.match(token, /^ghp_[A-Za-z0-9]{36}$/);
+  const detection = spawnSync(toolPath('gitleaks'), ['stdin', '--no-banner', '--redact', '--report-format', 'json', '--report-path', '-'], {
+    cwd: repository, env: gitEnvironment(), input: JSON.stringify({ token }) + '\n', encoding: 'utf8',
+  });
+  assert.ifError(detection.error);
+  assert.equal(detection.status, 1);
+  assert.ok(!(detection.stdout + detection.stderr).includes(token), 'Native fixture detection must remain redacted.');
+  assert.ok(JSON.parse(detection.stdout).some(finding => finding.RuleID === 'github-pat' && finding.Entropy > 3),
+    'The synthetic fixture must exercise the pinned GitHub PAT rule, not a generic-rule fallback.');
   write(file, JSON.stringify({ token }) + '\n');
   run(['add', '--', file]);
   write(file, '{}\n');

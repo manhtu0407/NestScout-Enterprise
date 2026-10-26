@@ -99,7 +99,7 @@ risk and the full 16-field specification in the linked dossier.
 | K01 kael-workflow-orchestration | Transition/recovery review beyond state-machine code | Pinned SDK + official patterns; absent BPMN/runtime | Specified; RESEARCH_ONLY |
 | K02 kael-tool-permissions | Approval/identity replay audit beyond instruction text | Pinned SDK docs/helper/sampled tests; actual executor absent | Specified; RESEARCH_ONLY |
 | K03 kael-memory-context | Retrieval/staleness/isolation judgment beyond storage | Official memory docs; retention/corpus and reusable pin unresolved | Specified; RESEARCH_ONLY |
-| K04 kael-model-routing | Capability/failure comparison beyond known routing code | Official provider pages retrieved; no provider contract or measurements | Specified; BLOCKED_PRODUCT |
+| K04 kael-model-routing | Capability/failure comparison within the chosen Anthropic/DeepSeek/Perplexity direction | Official provider pages retrieved; runtime/API contracts and budgets unapproved, no measurements | Specified; BLOCKED_PRODUCT |
 | K05 kael-agent-evaluation | Trace/end-state grading beyond snapshot preservation | Official eval methodology + pinned trace/approval reference | Specified; RESEARCH_ONLY |
 | QA01 qa-error-prevention | Test whether prevention workflow adds anything to root policy | Pinned Lauren Tan MIT; policy/CI/edit instructions need revision | Specified; REVISE |
 | QA02 qa-impact-review | Challenge actual consumer safety assumptions beyond symbol search | Pinned Lauren Tan MIT; unsupported metadata/companions need revision | Specified; REVISE |
@@ -212,6 +212,10 @@ sensitivity is a plausible cause, not an established root cause. Scanner coverag
 and flakiness need separate scoped investigation. No test, scanner rule, hook,
 config or assertion was weakened to obtain a green result.
 
+This paragraph records A1's historical uncertainty. The bounded verification
+hardening below subsequently reproduces and repairs the fixture defect without
+changing those original execution results or advancing candidate evaluation.
+
 ## Remaining decisions and completion boundary
 
 For a later pilot, the owner selects 2–3 candidates and approves fixture-only
@@ -238,3 +242,106 @@ Identity verification returned the expected repository/account/feature branch.
 The open-PR query for this branch returned an empty array; inspected workflow
 triggers exclude a feature branch without a PR. No PR, hosted CI, merge or
 deployment is part of Batch A.
+
+## Bounded verification hardening — 2026-10-26
+
+The owner accepted Batch A's research scope and requested this verification-only
+follow-up before R3. Starting HEAD was
+`a8f2208598a01d8487ca2bc6f367038429d13623`, on the same clean feature branch;
+remote feature HEAD matched it, and main remained the inspected research baseline.
+No candidate was installed/prototyped and no R3–R6 run was performed.
+
+### Root cause and source evidence
+
+`check-verification.test.mjs` still generated its synthetic PAT suffix with
+`randomBytes(28).toString('base64url')`: 38 characters from an alphabet that also
+permits hyphen/underscore. That generator does not guarantee the detector's
+positive-fixture contract. Git history shows commit
+`9e99938b24c2470bc08b4f079bf554bcb15f53f7` corrected the two other consumers
+(`check-hygiene.test.mjs` and `verify-negative.mjs`); this consumer was not covered.
+
+The installed Gitleaks executable reports 8.30.1 and has observed SHA-256
+`17157e2ee8b76fc8b1d8bee607a250e34b8a8023c8bc81822d4b5ee4d78fcb7c`.
+The official v8.30.1 tag resolved to immutable commit
+`83d9cd684c87d95d656c1458ef04895a7f1cbd8e`.
+Its [default rules](https://github.com/gitleaks/gitleaks/blob/83d9cd684c87d95d656c1458ef04895a7f1cbd8e/config/gitleaks.toml)
+require a 36-character alphanumeric suffix for github-pat and entropy above 3.
+The regex is unanchored: a longer suffix can still match its first 36 characters.
+Length 38 alone therefore does not explain intermittent rejection.
+
+The generic rule can mask that PAT mismatch. Its stopword filter can also exclude
+a random-looking value containing a common substring. The pinned
+[allowlist implementation](https://github.com/gitleaks/gitleaks/blob/83d9cd684c87d95d656c1458ef04895a7f1cbd8e/config/allowlist.go)
+uses lowercase substring matching; the pinned
+[detector](https://github.com/gitleaks/gitleaks/blob/83d9cd684c87d95d656c1458ef04895a7f1cbd8e/detect/detect.go)
+applies entropy and allowlist checks. Research fetched these files but never used
+the downloaded configuration to replace/restrict the installed scanner defaults.
+
+Five deterministic synthetic inputs were tested in isolated repositories with
+the actual native scanner and unchanged canonical scanStaged wrapper. No real
+credential, network validation or provider API was used; native reports were
+redacted. Separator/stopword input was encoded from a fixed 28-byte buffer, proving
+it is within the original generator's possible output space.
+
+| Synthetic suffix case | Observed matching rules | Native staged / clean working / absent working exits |
+| --- | --- | --- |
+| Legacy 38 alphanumeric characters | github-pat and generic | 1 / 1 / 1 |
+| Legacy 38 characters with separator | generic only | 1 / 1 / 1 |
+| Legacy separator plus generic stopword | None | 0 / 0 / 0 |
+| Legacy low-entropy characters | None | 0 / 0 / 0 |
+| Fixed 36 alphanumeric characters | github-pat, reported entropy 4.821928 | 1 / 1 / 1 |
+
+After removing the staged entry, all five cases returned exit 0. The low-entropy
+case demonstrates a separate fixture-contract condition, not a claim about the
+historical failed sample. That sample's random bytes were not retained; its exact
+triggering substring cannot be reconstructed. The controlled original-test replay
+does reproduce the same Missing expected exception with a valid possible input,
+while another deterministic input passes. This establishes the fixture defect
+and failure mechanism without inventing the historical token.
+
+### Minimal correction and regression evidence
+
+Only the remaining randomized fixture was replaced with the same fixed synthetic
+payload already used by the two other consumers. An anchored shape assertion was
+added. A native stdin JSON-report assertion now requires actual github-pat
+recognition, entropy above 3 and redacted output, so a generic-rule fallback alone
+cannot hide a bad fixture. Existing staged-versus-clean/absent working-copy
+rejection, redaction and removed-index success assertions remain intact.
+
+This extends the existing test body; it adds no test runner or persistent test
+file and changes no exact-count runner contract. Scanner implementation/options,
+version pins, default rules/allowlists, hooks and assertions were not weakened.
+
+| Experiment | Actual result |
+| --- | --- |
+| Original test, deterministic alphanumeric generator output | Exit 0 |
+| Original test, deterministic separator/stopword output | Exit 1, Missing expected exception reproduced |
+| Corrected test with invalid-shape fixture mutation | Exit 1 at the new shape assertion |
+| Corrected test with low-entropy fixture mutation | Exit 1 at native expected-rejection assertion |
+| Corrected targeted test, independent process repetitions | 12/12 exits 0, zero failed tests; 44,595 ms total observed runner time |
+| Full check-verification suite | Exit 0; 12/12, no failures/skips |
+| npm run check | Exit 0; local wrapper 11/11, foundation 63/63, final check:skills completed |
+| npm run verify:negative | Exit 0; 83/83, no failures/skips |
+| git diff --check / preservation inspection | Exit 0; exact five-file scope, unchanged 14 non-K04 records, source pins, pairwise matrix and protected paths |
+
+Mutation copies, reproduction inputs/reports and per-run logs are task-owned
+ignored scratch under `.cache/skill-research-hardening/`; none are committed.
+The raw historical Batch A logs remain unchanged. Twelve stable Windows runs are
+bounded evidence for this fixture, not a general scanner reliability percentage.
+
+### K04 clarification and preservation
+
+K04 now retains the chosen Anthropic/DeepSeek/Perplexity provider direction.
+The prior wording incorrectly grouped provider direction with unapproved runtime
+details. Concrete model/SDK bindings, routing/fallback implementation,
+API/tool/stream contracts, data handling, budgets and measured quality remain
+unapproved/unverified. BLOCKED_PRODUCT remains; no provider is configured, no
+architecture decision is reopened and no execution readiness is inferred.
+
+The corresponding candidate, source and conflict descriptions were clarified in
+place. All 15 research records, source pins, 105-pair matrix, shortlist and research
+procedure remain present. Only the verification test and four research documents
+are changed by this follow-up. Root policy/README, other foundation code/tests,
+skill packages, dependency manifests, protected configs and workflow triggers are
+preserved. Commit/push and remote verification are reported separately at delivery;
+PR, hosted CI and merge remain outside scope.

@@ -323,6 +323,11 @@ Unverified: No memory corpus, retrieval metrics, deletion/isolation execution or
 
 ## K04 — kael-model-routing
 
+Provider direction is already chosen: Anthropic, DeepSeek and Perplexity.
+The owner's bounded-hardening clarification corrects A1's "not selected" wording;
+it does not approve concrete model/SDK bindings, routing/fallback implementation,
+API/tool/stream contracts, data handling, budgets or runtime implementation.
+
 R0: Routing belongs in code once criteria exist. A skill has no demonstrated recurring consumer now; a technical comparison document may suffice.
 
 R1 / disposition: BLOCKED_PRODUCT. High cost/privacy/quality uncertainty; mutable docs do not provide a redistributable routing skill.
@@ -334,17 +339,17 @@ R1 / disposition: BLOCKED_PRODUCT. High cost/privacy/quality uncertainty; mutabl
 | responsibility | Review routing/fallback policy against task quality, allowed provider capabilities and bounded latency/budget/failure behavior. |
 | positive_triggers | Explicit offline provider fallback review; a stream fails after emitting partial output and a retry could repeat an effect. |
 | negative_triggers | Procure providers/change billing; add OpenAI as Kael runtime provider; workflow state routing → K01. |
-| inputs | Owner-approved provider set, task/output contract, privacy/cost/timeout budget and recorded synthetic failure traces. |
+| inputs | Chosen provider direction, plus separately approved task/output and runtime/API contracts, privacy/cost/timeout budget and recorded synthetic failure traces. |
 | outputs | Capability comparison with source dates, fallback stop criteria, cost/latency fields only when measured and unsafe retry cases. |
 | tools_needed | Official docs and offline fixtures; no keys, paid inference, benchmark requests or new routing framework. |
 | permissions_boundary | API-format similarity is not capability/quality parity or authorization to transmit data. Replayed calls must retain K02/BE04 boundaries. |
-| dependencies | Providers/models/budget not selected. Anthropic, DeepSeek and Perplexity docs describe distinct tool/stream/error contracts. |
+| dependencies | Anthropic, DeepSeek and Perplexity are the chosen provider direction; concrete model/SDK bindings, runtime/API contracts and budgets remain unapproved. No runtime exists. |
 | verification | Offline timeout/rate-limit/invalid-request/partial-stream cases; later matched live quality and budget measurement requires explicit separate access. |
-| failure_and_recovery | Absent provider contract/budget → BLOCKED_PRODUCT; unverifiable performance and live fallback claims → NOT RUN. |
+| failure_and_recovery | Absent approved runtime/API contracts or budgets → BLOCKED_PRODUCT; chosen direction alone does not establish implementation readiness; live performance/fallback claims → NOT RUN. |
 | stop_condition | Deliver comparison and unverified items, without recommending a default provider from unmeasured claims. |
 | source_revision | T1 errors + D1 + X1, official mutable provider docs; retrieved content hashes in source dossier, no immutable upstream skill revision. Exact pins/file scope are in the source dossier; proposed local skill revision is null. |
 | compatibility | No runtime/model configuration is proposed. Docs version and observed source URL are not NestScout SDK compatibility. |
-| owner_decisions | Choose provider/data-handling/budget/quality thresholds before implementation or billed testing. |
+| owner_decisions | Within the chosen provider direction, approve concrete models, runtime/API contracts, data handling, budgets and quality thresholds before implementation or billed testing; provider reselection is not implied. |
 
 Unverified: No measured quality, prices/latency benchmark, provider parity, active-account capability or failover execution.
 

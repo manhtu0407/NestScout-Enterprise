@@ -111,6 +111,8 @@ insufficient loading evidence. Shared format does not prove shared discovery.
 The graph denotes knowledge/contract dependencies, not package installation.
 No candidate depends on another candidate being installed. Tools stay under their
 existing canonical owner; skills may hand off a question without adding packages.
-Product inputs (BPMN, roles, design, providers) stay pending owner decisions.
+Product inputs (BPMN, roles, design and runtime/API contracts) stay pending owner
+decisions. K04 retains the chosen Anthropic/DeepSeek/Perplexity provider direction;
+concrete model/SDK bindings, runtime/API contracts and budgets are not yet approved.
 Upstream sibling names, `arena`, feedback CLI and plugin MCP configuration are
 not transitive installation permission. All runtime routing metrics remain null.

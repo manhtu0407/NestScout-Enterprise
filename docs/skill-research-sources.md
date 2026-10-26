@@ -171,7 +171,8 @@ These are official product/engineering references, not licensed reusable Kael
 skills. No immutable upstream revision or redistribution clearance was established
 for these web pages; the observed content hashes below are retrieval evidence.
 K03 still lacks an approved retention/corpus/oracle, BE04 a payment contract, and
-K04 approved providers/budgets. No live quality, token, latency or cost comparisons
+K04 approved runtime/API contracts and budgets within its already chosen provider
+direction (Anthropic, DeepSeek and Perplexity). No live quality, token, latency or cost comparisons
 were performed; marketing/self-reported claims are not accepted as results.
 
 ### Web retrieval ledger
