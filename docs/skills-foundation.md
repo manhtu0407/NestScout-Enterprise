@@ -11,11 +11,71 @@ The [Batch A record](skill-research-batch-a.md) is dated research, not adoption.
 
 ## Library and adoption decision
 
+The **NestScout Engineering Skills Library** (NESL) has machine ID
+`nestscout-engineering-skills` and semantic namespace `nestscout`.
+Its single canonical source is `.agents/skills/`: the existing lifecycle package
+plus the 15 specialist packages listed below. The namespace is library identity,
+not a name prefix, native routing field or replacement for the plugin namespace.
+
 | Consumer | Native project package | V1 inventory |
 | --- | --- | --- |
 | Codex | `.agents/skills/<name>/SKILL.md` | `skill-lifecycle` |
 | Claude Code | `.claude/skills/<name>/SKILL.md` | None; do not create an empty root |
 | Claude session plugin | `claude --plugin-dir ./.agents` | Same source, namespaced `.agents:skill-lifecycle` |
+
+The V1 column records the original foundation. NESL extends that source in one
+batch; no Claude-native copies or runtime settings are added. For example, Codex
+explicit invocation is `$be-auth-rls`; the Claude session plugin command is
+`/.agents:be-auth-rls`. Default Claude discovery of this directory is not claimed.
+
+## NESL specialist inventory
+
+Each package links its own source evidence, immutable upstream paths when
+applicable, legal notices, adaptation decision and individual quality assessment.
+All packages use version `1.0.0` and string metadata identifying this library,
+domain, specialty and consumers. There are 16 total packages including
+`skill-lifecycle`, whose files are unchanged.
+
+| Package | Responsibility | Source mode |
+| --- | --- | --- |
+| [fe-ios-hig-audit](../.agents/skills/fe-ios-hig-audit/SKILL.md) | iPhone task, navigation and platform audit | PROJECT_NATIVE |
+| [fe-design-system](../.agents/skills/fe-design-system/SKILL.md) | Existing RN token/component consistency | ADAPTED, Expo MIT |
+| [fe-native-motion](../.agents/skills/fe-native-motion/SKILL.md) | Native gesture, interruption and motion behavior | ADAPTED, Expo/Emil Kowalski MIT |
+| [fe-accessibility-qa](../.agents/skills/fe-accessibility-qa/SKILL.md) | Assistive task, focus and scalable interface QA | PROJECT_NATIVE |
+| [be-schema-migrations](../.agents/skills/be-schema-migrations/SKILL.md) | Schema history, consumers and safe rollout | ADAPTED, Supabase MIT |
+| [be-auth-rls](../.agents/skills/be-auth-rls/SKILL.md) | Database grants, row policies and real identities | PROJECT_NATIVE |
+| [be-edge-api](../.agents/skills/be-edge-api/SKILL.md) | HTTP validation, caller auth and error contracts | PROJECT_NATIVE |
+| [be-transaction-integrity](../.agents/skills/be-transaction-integrity/SKILL.md) | Concurrency, idempotency and reconciliation | PROJECT_NATIVE |
+| [kael-workflow-orchestration](../.agents/skills/kael-workflow-orchestration/SKILL.md) | Workflow/checkpoint/interrupt recovery | PROJECT_NATIVE |
+| [kael-tool-permissions](../.agents/skills/kael-tool-permissions/SKILL.md) | Executor authority and argument-bound approval | PROJECT_NATIVE |
+| [kael-memory-context](../.agents/skills/kael-memory-context/SKILL.md) | Context scope, freshness, privacy and retention | PROJECT_NATIVE |
+| [kael-model-routing](../.agents/skills/kael-model-routing/SKILL.md) | Cost-first eligible Anthropic/DeepSeek/Perplexity routing | PROJECT_NATIVE |
+| [kael-agent-evaluation](../.agents/skills/kael-agent-evaluation/SKILL.md) | Task/trace/end-state evaluation | PROJECT_NATIVE |
+| [qa-error-prevention](../.agents/skills/qa-error-prevention/SKILL.md) | Causal diagnosis and evidence-based prevention | ADAPTED, Matt Pocock/Lauren Tan MIT |
+| [qa-impact-review](../.agents/skills/qa-impact-review/SKILL.md) | Spec/contracts and downstream change impact | ADAPTED, Matt Pocock/Lauren Tan MIT |
+
+The owner's 2026-10-26 implementation request supersedes Batch A's proposed
+candidate-by-candidate pilot order: all 15 specialists are installed before
+behavioral treatment runs, compared with a lifecycle-only baseline. The prior
+research remains dated evidence, not a contradictory permission source.
+`qa-error-prevention` now includes nontrivial diagnosis as requested in the
+implementation spec; trivial edits still do not need that workflow.
+
+Source review rejected unpinned Expo feedback execution, mandatory companion
+skills, automatic policy/CI edits and unsafe blanket performance claims.
+Vercel's RN material was considered as a reference, not redistributed: the
+expected root license was not resolved at the inspected pin. Anthropic's
+script-based skill creator was inspected for methodology, not installed over
+the existing lifecycle. The original Lauren Tan vendor distribution is used for
+provenance instead of describing a downstream pstack port as original.
+
+Installation and static acceptance are separate from behavioral verification.
+Run the full-library protocol below and retain per-skill/runtime observations
+outside tracked source. Claude authentication, actual SDK/device access and
+missing Kael/product contracts can block behavioral dimensions independently.
+Do not call the library cross-agent verified from format checks or menu inventory.
+
+## Shared source and discovery
 
 Use one native location per justified package. Codex reads the project skill root;
 Claude can read that same source through its native session plugin flag. Claude's
