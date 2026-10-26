@@ -28,15 +28,17 @@ export default async function* testIntegrityReporter(source) {
   async function* observed() {
     for await (const event of source) {
       const data = event.data;
-      if ((event.type === 'test:pass' || event.type === 'test:fail') && data.details?.type === 'test' && data.file) {
+      if ((event.type === 'test:pass' || event.type === 'test:fail') && data.file && ['test', 'suite'].includes(data.details?.type)) {
         const file = path.relative(directory, data.file).split(path.sep).join('/');
+        const suite = data.details.type === 'suite';
         // A file that registers nothing is reported as one synthetic passing test named after itself.
-        const placeholder = data.nesting === 0 && data.line === 1 && data.column === 1 && [data.file, file, path.basename(file)].includes(data.name);
+        const placeholder = !suite && data.nesting === 0 && data.line === 1 && data.column === 1 && [data.file, file, path.basename(file)].includes(data.name);
+        // A skipped or todo suite never runs its children, so only the suite event reveals the disabled tests.
         if (!placeholder && (data.skip || data.todo)) {
           const index = exceptions.findIndex(entry => entry.file === file && entry.name === data.name);
-          if (index < 0) problems.push(`${file}: "${data.name}" was ${data.skip ? 'skipped' : 'marked todo'} without a documented exception`);
+          if (index < 0) problems.push(`${file}: ${suite ? 'suite ' : ''}"${data.name}" was ${data.skip ? 'skipped' : 'marked todo'} without a documented exception`);
           else used.add(index);
-        } else if (!placeholder && event.type === 'test:pass') {
+        } else if (!placeholder && !suite && event.type === 'test:pass') {
           executed.set(file, (executed.get(file) ?? 0) + 1);
         }
       }

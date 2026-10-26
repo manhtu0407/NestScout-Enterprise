@@ -16,6 +16,11 @@ const sources = {
   runtime: header + "test('runs', () => {});\ntest('late', t => { t.skip('not today'); });\n",
   nested: header + "describe('suite', () => { it('runs', () => {}); it.skip('hidden', () => {}); });\n",
   allSkipped: header + "test.skip('only', () => {});\n",
+  skippedSuite: header + "test('runs', () => {});\ndescribe.skip('disabled suite', () => { it('inner', () => {}); });\n",
+  todoSuite: header + "test('runs', () => {});\ndescribe('later suite', { todo: true }, () => { it('inner', () => {}); });\n",
+  nestedSkippedSuite: header + "describe('outer', () => { it('runs', () => {}); describe.skip('inner suite', () => { it('deep', () => {}); }); });\n",
+  onlySkippedSuite: header + "describe.skip('whole file', () => { it('inner', () => {}); });\n",
+  passingSuites: header + "describe('outer', () => { it('runs', () => {}); describe('inner', () => { it('also runs', () => {}); }); });\n",
   empty: "import 'node:test';\n",
   failing: header + "test('fails', () => { throw new Error('expected failure'); });\n",
 };
@@ -98,4 +103,30 @@ test('stale exceptions and malformed exception records fail', () => {
     assert.match(result.output, /testExceptions entries need non-empty/);
   }
   assert.equal(run({ 'a.test.mjs': sources.passing }, '{not json').status, 1);
+});
+
+test('skipped, todo, nested and whole-file skipped suites fail even though their children never run', () => {
+  const expectations = { skippedSuite: /suite "disabled suite" was skipped/, todoSuite: /suite "later suite" was marked todo/,
+    nestedSkippedSuite: /suite "inner suite" was skipped/, onlySkippedSuite: /suite "whole file" was skipped/ };
+  for (const [name, message] of Object.entries(expectations)) {
+    const result = run({ 'a.test.mjs': sources[name] });
+    assert.equal(result.status, 1, name);
+    assert.match(result.output, message, name);
+  }
+  assert.equal(run({ 'a.test.mjs': sources.skippedSuite }, {}, { defaultReporter: true }).status, 0, 'default reporter accepts a skipped suite');
+});
+
+test('valid passing and nested suites are accepted', () => {
+  const result = run({ 'a.test.mjs': sources.passingSuites, 'b.test.mjs': sources.passing });
+  assert.equal(result.status, 0);
+  assert.match(result.output, /ℹ pass 3/);
+});
+
+test('a documented exception covers a skipped suite by exact file and suite name only', () => {
+  assert.equal(run({ 'a.test.mjs': sources.skippedSuite }, exception('a.test.mjs', 'disabled suite')).status, 0);
+  assert.equal(run({ 'a.test.mjs': sources.nestedSkippedSuite }, exception('a.test.mjs', 'inner suite')).status, 0);
+  for (const [file, name] of [['a.test.mjs', 'inner'], ['a.test.mjs', 'other suite'], ['b.test.mjs', 'disabled suite']]) {
+    assert.equal(run({ 'a.test.mjs': sources.skippedSuite, 'b.test.mjs': sources.passing }, exception(file, name)).status, 1, `${file}:${name}`);
+  }
+  assert.equal(run({ 'a.test.mjs': sources.passing }, exception('a.test.mjs', 'disabled suite')).status, 1, 'stale suite exception');
 });

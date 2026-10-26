@@ -377,4 +377,5 @@ test('the integrity reporter used by every runner still fails a skipped test and
   };
   assert.equal(execute("test('runs', () => {});\n"), 0);
   assert.equal(execute("test('runs', () => {});\ntest.skip('disabled', () => {});\n"), 1);
+  assert.equal(execute("import { describe, it } from 'node:test';\ntest('runs', () => {});\ndescribe.skip('disabled suite', () => { it('inner', () => {}); });\n"), 1);
 }));
