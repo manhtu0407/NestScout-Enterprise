@@ -167,10 +167,12 @@ Every runner is `node scripts/run-tests.mjs <test files>`, and the selection gua
 rejects a bare `node --test` runner. The script is the execution boundary: it starts
 `node --test` with the integrity reporter (loaded by file URL, so absolute paths work
 on Windows and Linux), removes a stale `NODE_TEST_CONTEXT`, and refuses to run when
-`NODE_OPTIONS` or npm's `node-options` carry `--test-name-pattern`,
-`--test-skip-pattern`, `--test-only`, `--test-shard`, `--test-isolation` or
-`--test-reporter*`, because those silently drop tests while exiting 0. Other Node
-options remain allowed. It also requires the reporter's evidence file to list every
+`NODE_OPTIONS` or npm's `node-options` carry any `--test-*` or
+`--experimental-test-*` option (name and skip patterns, `--test-only`, sharding, isolation,
+reporters), because those silently drop tests while exiting 0. The value is read with
+Node's own `NODE_OPTIONS` grammar, so quoting, extra spaces and underscores cannot hide
+an option, and a value that is malformed or uses whitespace other than spaces is
+rejected. Other Node options remain allowed. It also requires the reporter's evidence file to list every
 requested test file, so a run whose reporter never completed fails even if Node
 reported success. To run a subset while developing, call `node --test` directly;
 such a run is not verification evidence.

@@ -11,19 +11,52 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const reporter = path.join(path.dirname(fileURLToPath(import.meta.url)), 'test-integrity-reporter.mjs');
 const testFile = /\.(?:test|spec)\.mjs$/;
 const optionVariables = /^(?:NODE_OPTIONS|npm_config_node[_-]options)$/i;
-// Selection, reporting and isolation options change which tests run or how they are judged; other options stay allowed.
-// Node accepts underscores wherever an option name has hyphens, so names are normalized before matching.
-const selecting = /^--(?:experimental-)?test-(?:name-pattern|skip-pattern|only|shard|isolation|reporter(?:-destination)?)(?:=|$)/;
+// Every --test-* option (and its experimental- form) selects, shards, isolates or reports tests, so none may arrive through
+// the environment; other options stay allowed. Node accepts underscores wherever an option name has hyphens.
+const testOption = /^--(?:experimental-)?test(?:[-=]|$)/;
+
+// Splits a NODE_OPTIONS value exactly as Node does: only a space separates options, double quotes group text and are
+// removed wherever they appear, and a backslash escapes the next character inside quotes. Anything Node would reject, or
+// would read differently from a plain split, throws so the caller fails closed instead of guessing.
+export function nodeOptionTokens(value) {
+  if (/[^\S ]/.test(value)) throw new Error('contains whitespace other than spaces');
+  const tokens = [];
+  let token = '';
+  let quoted = false;
+  for (let index = 0; index < value.length; index++) {
+    let character = value[index];
+    if (character === '\\' && quoted) {
+      if (++index === value.length) throw new Error('ends with an incomplete escape');
+      character = value[index];
+    } else if (character === ' ' && !quoted) {
+      if (token) tokens.push(token);
+      token = '';
+      continue;
+    } else if (character === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    token += character;
+  }
+  if (quoted) throw new Error('has an unterminated quote');
+  if (token) tokens.push(token);
+  return tokens;
+}
 
 export function ambientTestOptions(env = process.env) {
-  return Object.entries(env).filter(([name]) => optionVariables.test(name))
-    .flatMap(([name, value]) => String(value).split(/\s+/).filter(option => selecting.test(option.replaceAll('_', '-'))).map(option => `${name}: ${option}`));
+  return Object.entries(env).filter(([name]) => optionVariables.test(name)).flatMap(([name, value]) => {
+    try {
+      return nodeOptionTokens(String(value)).filter(option => testOption.test(option.replaceAll('_', '-'))).map(option => `${name}: ${option}`);
+    } catch (error) {
+      return [`${name}: ${error.message}`];
+    }
+  });
 }
 
 export function runTests(files, env = process.env, cwd = process.cwd()) {
   if (!files.length || files.some(file => !testFile.test(file))) throw new Error('Pass one or more *.test.mjs or *.spec.mjs files.');
   const ambient = ambientTestOptions(env);
-  if (ambient.length) throw new Error(`Ambient Node options would change which tests run: ${ambient.join(', ')}. Unset them or run node --test directly outside verification.`);
+  if (ambient.length) throw new Error(`Ambient Node options would change, or cannot be shown not to change, which tests run: ${ambient.join(', ')}. Unset them or run node --test directly outside verification.`);
   // NODE_TEST_CONTEXT is set only inside a test run; a stale value would make the child skip running the files.
   const childEnvironment = Object.fromEntries(Object.entries(env).filter(([name]) => !/^NODE_TEST_CONTEXT$/i.test(name)));
   const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-test-run-'));

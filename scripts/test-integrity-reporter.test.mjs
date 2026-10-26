@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import { root } from './tool-path.mjs';
+import { ambientTestOptions, nodeOptionTokens } from './run-tests.mjs';
 
 // An absolute --test-reporter path is imported as a URL, so a Windows drive path is invalid there; a file URL works on both platforms.
 const reporter = pathToFileURL(path.join(root, 'scripts/test-integrity-reporter.mjs')).href;
@@ -162,7 +163,7 @@ test('the runner script rejects ambient options that select or redirect tests be
   ]) {
     const result = viaRunner({ 'a.test.mjs': mixed }, {}, { env });
     assert.equal(result.status, 1, JSON.stringify(env));
-    assert.match(result.output, /Ambient Node options would change which tests run/, JSON.stringify(env));
+    assert.match(result.output, /Ambient Node options would change/, JSON.stringify(env));
     assert.doesNotMatch(result.output, /Test integrity violations|✔/, 'nothing may run under rejected options');
   }
 });
@@ -177,11 +178,88 @@ test('npm-forwarded node options cannot filter tests run through the runner scri
     const result = spawnSync(npm, ['run', 't', '--node-options=--test-name-pattern=good'], { cwd: directory, encoding: 'utf8', env, shell: process.platform === 'win32' });
     if (result.error) throw result.error;
     assert.equal(result.status, 1);
-    assert.match(result.stdout + result.stderr, /Ambient Node options would change which tests run/);
+    assert.match(result.stdout + result.stderr, /Ambient Node options would change/);
   } finally {
     assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
     assert.ok(!lstatSync(directory).isSymbolicLink());
     rmSync(directory, { recursive: true });
+  }
+});
+
+test('the runner script reads NODE_OPTIONS with Node\'s own grammar, so quoting and spacing cannot hide a test option', () => {
+  for (const [value, tokens] of [
+    ['--no-warnings --max-old-space-size=512', ['--no-warnings', '--max-old-space-size=512']],
+    ['  --no-warnings    --stack-trace-limit=50  ', ['--no-warnings', '--stack-trace-limit=50']],
+    ['"--test-name-pattern=good"', ['--test-name-pattern=good']],
+    ['--test-name-pattern="good"', ['--test-name-pattern=good']],
+    ['--test-name-pattern "good one"', ['--test-name-pattern', 'good one']],
+    ['--test-"name"-pat"tern"=good', ['--test-name-pattern=good']],
+    ['--title="a \\"quoted\\" b" --no-warnings', ['--title=a "quoted" b', '--no-warnings']],
+    ['""', []],
+    ['', []],
+  ]) assert.deepEqual(nodeOptionTokens(value), tokens, value);
+  for (const value of ['--test-only"', '"--no-warnings', '"--no-warnings\\', '--no-warnings\t--test-only', '--no-warnings\n--test-only', '--no-warnings\r--test-only']) {
+    assert.throws(() => nodeOptionTokens(value), Error, JSON.stringify(value));
+  }
+});
+
+test('quoted, spaced, underscored and malformed ambient test options are all rejected, and ordinary options are not', () => {
+  for (const [value, expected] of [
+    ['"--test-name-pattern=good"', 1], ['--test-name-pattern="good"', 1], ['--test-name-pattern "good"', 1], ['--test-name-pattern    good', 1],
+    ['--test-name-pat"tern"=good', 1], ['"--test-skip-pattern=bad"', 1], ['--no-warnings   "--test-only"', 1], ['"--test_shard=1/2"', 1],
+    ['"--experimental-test-isolation=none"', 1], ['--test-reporter="tap" --test-name-pattern=x', 2], ['--test', 1],
+    ['--test-name-pattern="good', 1], ['--no-warnings\t--test-only', 1], ['"--no-warnings\\', 1],
+    ['--no-warnings', 0], ['"--no-warnings" --max-old-space-size="512"', 0], ['--title="--test-only"', 0], ['--require ./test-helper.cjs', 0], ['', 0],
+  ]) {
+    for (const name of ['NODE_OPTIONS', 'npm_config_node_options', 'npm_config_node-options', 'NPM_CONFIG_NODE_OPTIONS']) {
+      assert.equal(ambientTestOptions({ [name]: value }).length, expected, `${name}=${JSON.stringify(value)}`);
+    }
+  }
+  assert.deepEqual(ambientTestOptions({ OTHER_OPTIONS: '--test-only', PATH: 'x' }), []);
+});
+
+test('without the runner script, a quoted or spaced NODE_OPTIONS filter silently drops a failing test, which is why the runner parses it', () => {
+  for (const NODE_OPTIONS of ['"--test-name-pattern=good"', '--test-name-pattern="good"', '--test-name-pattern   good', '--test-name-pattern "good"']) {
+    assert.equal(run({ 'a.test.mjs': mixed }, {}, { env: { NODE_OPTIONS } }).status, 0, NODE_OPTIONS);
+  }
+});
+
+test('the runner script never reports a pass for a dangerous quoted filter, directly or through npm', () => {
+  const quoted = ['"--test-name-pattern=good"', '--test-skip-pattern="bad"', '--test-name-pattern "good"', '--no-warnings "--test-only"'];
+  for (const NODE_OPTIONS of quoted) {
+    const result = viaRunner({ 'a.test.mjs': mixed }, {}, { env: { NODE_OPTIONS } });
+    assert.equal(result.status, 1, NODE_OPTIONS);
+    assert.match(result.output, /Ambient Node options would change/, NODE_OPTIONS);
+    assert.doesNotMatch(result.output, /ℹ pass|✔/, 'nothing may run under rejected options');
+  }
+  // Node itself refuses an unterminated quote before the runner starts; either way nothing may pass.
+  const malformed = viaRunner({ 'a.test.mjs': mixed }, {}, { env: { NODE_OPTIONS: '--test-name-pattern="good' } });
+  assert.notEqual(malformed.status, 0);
+  assert.doesNotMatch(malformed.output, /ℹ pass|✔/);
+  const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-test-npm-'));
+  try {
+    writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ scripts: { t: `node ${JSON.stringify(runnerScript)} a.test.mjs` } }));
+    writeFileSync(path.join(directory, 'a.test.mjs'), mixed);
+    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const inherited = Object.fromEntries(Object.entries(process.env).filter(([name]) => !ambientNames.test(name)));
+    for (const value of quoted) {
+      const result = spawnSync(npm, ['run', 't'], { cwd: directory, encoding: 'utf8', env: { ...inherited, npm_config_node_options: value }, shell: process.platform === 'win32' });
+      if (result.error) throw result.error;
+      assert.equal(result.status, 1, value);
+      assert.doesNotMatch(result.stdout + result.stderr, /ℹ pass|✔/, value);
+    }
+  } finally {
+    assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
+    assert.ok(!lstatSync(directory).isSymbolicLink());
+    rmSync(directory, { recursive: true });
+  }
+});
+
+test('quoted and spaced legitimate Node options still run every test through the runner script', () => {
+  for (const NODE_OPTIONS of ['"--no-warnings" --max-old-space-size="512"', '  --no-warnings    --stack-trace-limit=50 ']) {
+    const result = viaRunner({ 'a.test.mjs': mixed.replace("throw new Error('expected failure')", '{}') }, {}, { env: { NODE_OPTIONS } });
+    assert.equal(result.status, 0, NODE_OPTIONS + result.output);
+    assert.match(result.output, /ℹ pass 2/, NODE_OPTIONS);
   }
 });
 
