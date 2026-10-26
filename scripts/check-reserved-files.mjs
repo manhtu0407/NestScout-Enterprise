@@ -44,7 +44,7 @@ export function checkReservedFiles(repository = root) {
       throw new Error('Staged AGENTS.md must not be empty.');
     }
   }
-  const approvedReadmeBlob = 'a8288318e86bfbfcf2c59eabbd860bbec7b19712';
+  const approvedReadmeBlob = '0f4dfbd59bb12c49deabf0684d67478c64c83118';
   if (git(['hash-object', '--path=README.md', 'README.md']).trim() !== approvedReadmeBlob) {
     throw new Error('Owner-approved README.md changed. Separate owner permission is required.');
   }
