@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "supabase_enterprise_readonly": {
+      "url": "https://mcp.supabase.com/mcp?project_ref=axpdymbusiwxfzurfclg&read_only=true&features=database,debugging,docs"
+    },
+    "supabase_enterprise_local": {
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/scripts/supabase-mcp.mjs"
+      ]
+    }
+  }
+}
