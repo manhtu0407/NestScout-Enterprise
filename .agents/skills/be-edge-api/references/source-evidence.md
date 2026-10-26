@@ -1,6 +1,6 @@
 # Source evidence: be-edge-api
 
-Reviewed 2026-10-26 (Asia/Saigon). Local package version 1.0.0; adoption mode
+Reviewed 2026-10-26 (Asia/Saigon). Local package version 1.0.1; adoption mode
 **PROJECT_NATIVE**. This records source/static review, not runtime efficacy.
 
 ## Decision and file scope
@@ -23,6 +23,12 @@ Documentation access date is not an immutable upstream revision or SDK pin.
 - [edge](https://supabase.com/docs/guides/functions/auth) — User/service/webhook auth modes and caller-scoped versus administrative clients; helper imports are not installed here.
 - [edgeerrors](https://supabase.com/docs/guides/functions/error-handling) — Response and error ownership must reflect actual runtime/consumer contracts.
 - [deno](https://docs.deno.com/api/web/~/Request) — Web Request body/method interface; TypeScript types do not validate untrusted JSON.
+- [Node 24 Request](https://github.com/nodejs/node/blob/cdc1b38d40cb567b7ad0b39c86addf830a0af0ae/doc/api/globals.md#class-request) — official v24.19.0 source, Class: Request, accessed 2026-10-26; browser-compatible Request is available for isolated parsing probes. No upstream text or code is imported.
+
+A local Node v24.19.0 probe observed SyntaxError while parsing a constructed
+malformed Request, before subsequent handler code. The program did not call
+fetch. This supports a parsing-boundary check when a platform runtime is missing;
+it does not establish deployed-handler, gateway or database behavior.
 
 References were checked for the stated constraints. PostgreSQL 17 matches the
 inspected local configuration; it is not a probe of a running server. RN/Expo/Kael

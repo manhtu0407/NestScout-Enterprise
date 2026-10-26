@@ -6,7 +6,7 @@ metadata:
   domain: backend
   specialty: transaction-concurrency-idempotency
   consumer: codex,claude-code
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 # Transaction integrity
 
@@ -35,6 +35,9 @@ Without product/provider choices, review the supplied algorithm conditionally.
    Choose a constraint, conditional update, appropriate row/advisory lock or
    stronger isolation matching the actual invariant; locking nonexistent rows
    does not protect a missing reservation.
+   For uniqueness limited to active rows, PostgreSQL uses a partial UNIQUE INDEX,
+   not a partial UNIQUE table constraint. Check the predicate and null semantics;
+   do not propose unsupported constraint syntax.
 3. Define idempotency identity and storage: principal + operation + business key,
    normalized request fingerprint, in-progress/result state and lifetime.
    Concurrent identical calls should converge on one committed effect; the same

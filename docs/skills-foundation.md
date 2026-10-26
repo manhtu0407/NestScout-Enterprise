@@ -32,8 +32,9 @@ explicit invocation is `$be-auth-rls`; the Claude session plugin command is
 
 Each package links its own source evidence, immutable upstream paths when
 applicable, legal notices, adaptation decision and individual quality assessment.
-All packages use version `1.0.0` and string metadata identifying this library,
-domain, specialty and consumers. There are 16 total packages including
+Packages use string metadata identifying this library, domain, specialty,
+consumers and version. Initial versions are `1.0.0`; `be-edge-api` and
+`be-transaction-integrity` are `1.0.1`. There are 16 total packages including
 `skill-lifecycle`, whose files are unchanged.
 
 | Package | Responsibility | Source mode |

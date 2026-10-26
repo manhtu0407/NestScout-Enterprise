@@ -6,7 +6,7 @@ metadata:
   domain: backend
   specialty: edge-http-contracts
   consumer: codex,claude-code
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 # Edge API contracts
 
@@ -56,6 +56,13 @@ mean a review of supplied fixtures, not permission to build an API.
    verify availability rather than importing a new major or framework implicitly.
 
 ## Validation and recovery
+
+Separate locally checkable Web API behavior from platform integration. When the
+tooling runtime supplies a compatible Request class (for example Node 24), a
+bounded probe can construct a Request containing malformed JSON and assert that
+json() rejects before subsequent handler code. Construct the Request without
+calling fetch. Record the program's actual exit; this checks the parsing boundary,
+not the deployed handler, Deno compatibility, gateway JWT settings or HTTP response.
 
 Exercise valid request, wrong method/media type, malformed/oversized body, invalid
 shape, missing/expired credential, forbidden object, dependency rejection, timeout

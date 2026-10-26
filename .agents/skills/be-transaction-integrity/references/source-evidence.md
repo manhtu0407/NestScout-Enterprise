@@ -1,6 +1,6 @@
 # Source evidence: be-transaction-integrity
 
-Reviewed 2026-10-26 (Asia/Saigon). Local package version 1.0.0; adoption mode
+Reviewed 2026-10-26 (Asia/Saigon). Local package version 1.0.1; adoption mode
 **PROJECT_NATIVE**. This records source/static review, not runtime efficacy.
 
 ## Decision and file scope
@@ -22,6 +22,11 @@ Documentation access date is not an immutable upstream revision or SDK pin.
 
 - [pgisolation](https://www.postgresql.org/docs/17/transaction-iso.html) — Read Committed snapshots, serialization retries and non-rollback sequence behavior.
 - [pgconstraints](https://www.postgresql.org/docs/17/ddl-constraints.html) — CHECK, UNIQUE, foreign keys and referencing indexes; no automatic FK-side index.
+
+The Unique Constraints section distinguishes whole-table UNIQUE constraints from
+conditional uniqueness enforced by a partial unique index. Validation should
+reject a proposal for a partial UNIQUE table constraint and inspect the actual
+index predicate and null semantics before claiming the invariant is protected.
 
 References were checked for the stated constraints. PostgreSQL 17 matches the
 inspected local configuration; it is not a probe of a running server. RN/Expo/Kael
