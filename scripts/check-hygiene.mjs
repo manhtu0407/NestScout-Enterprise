@@ -25,12 +25,18 @@ const fixedPaths = new Set([
 const word = '[a-z0-9]+(?:-[a-z0-9]+)*';
 const segments = `(?:${word}/)*`;
 const disposable = /^(?:todo|notes|plan|report|handoff|session-summary|debug|scratch)(?:[-.]|$)/i;
+// Owner-supplied NestScout_Horizon_Restored_Asset_Pack_v1.zip, unchanged 04_android/play_store_512x512.png.
+// Archive SHA-256: d845aa9bf8795ff8ab7f57c17edd29a05fe6e7ba558c80c0d2ede25d0ee65064.
+const approvedLogo = Object.freeze({
+  path: 'docs/assets/nestscout-horizon-logo-light.png',
+  sha256: 'b4dbdd2eb0c742e36f61b41f87744f32f709cbdfc4441c93f17a494a87fde446',
+});
 
 export function checkPath(file, artifacts = []) {
   if (file.includes('\\') || file.split('/').some(part => !part || part === '.' || part === '..') || /[\u0000-\u001f\u007f]/u.test(file)) {
     throw new Error(`Unsafe repository path: ${JSON.stringify(file)}`);
   }
-  if (fixedPaths.has(file)) return;
+  if (fixedPaths.has(file) || file === approvedLogo.path) return;
   if (/\.(?:pdf|zip)$/i.test(file)) {
     if (!new RegExp(`^docs/artifacts/${word}\\.(?:pdf|zip)$`).test(file) || !artifacts.some(item => item.path === file)) {
       throw new Error(`Unregistered permanent artifact: ${JSON.stringify(file)}`);
@@ -169,6 +175,13 @@ export function checkHygiene(repository = root) {
       if (seen.has(folded)) throw new Error(`Case-colliding repository path: ${JSON.stringify(file)}`);
       seen.add(folded);
       if (inspected.get(file)?.equals(content)) continue;
+      if (file === approvedLogo.path) {
+        if (createHash('sha256').update(content).digest('hex') !== approvedLogo.sha256) {
+          throw new Error(`Owner-approved logo checksum mismatch: ${state} ${file}`);
+        }
+        inspected.set(file, content);
+        continue;
+      }
       if (/\.(?:pdf|zip)$/.test(file)) {
         for (const record of inspectArtifact(file, content)) {
           checkAttribution(record.metadata ? record.text : sourceComments(record.file, record.text), `${state} ${file}/${record.file}`);
