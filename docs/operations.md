@@ -128,8 +128,12 @@ decisions and access; designate a second custodian before relying on team recove
 ## Add the application later
 
 The intended native React Native/TypeScript/Supabase direction is recorded in the
-[architecture decisions](architecture.md); project layout, SDK, role boundaries,
-environment promotion and release choices remain PROPOSED. Resolve those before
+[architecture decisions](architecture.md): one App, guest discovery, multiple roles
+per account, backend authorization, Vietnamese phone + OTP first, and iOS first.
+Development/testing use Supabase Local without a Staging Project. Project layout,
+SDK, operation permissions and release choices belong to Application Foundation
+and the later Deploy phase. They are OUT OF SCOPE for Engineering Foundation V1.
+Resolve the applicable decisions before
 the first feature. Then add actual lint/typecheck/unit/build
 checks, lockfiles, sanitized environment examples, and a reproducible local setup.
 

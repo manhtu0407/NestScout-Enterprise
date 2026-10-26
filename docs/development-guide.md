@@ -20,10 +20,18 @@ Always pass `--repo manhtu0407/NestScout-Enterprise` to GitHub CLI write command
 ## Application preparation
 
 [Architecture decisions](architecture.md#confirmed-product-direction) separate the
-owner-confirmed direction from pending implementation details: Clients, Workers
-and Kael Service Operator, iOS first, and TestFlight testing after owner setup.
-The repository stays public. BPMN, interface design, SDK version, application
-layout, business permissions and release configuration remain pending.
+owner-confirmed direction from pending implementation details: one App for Clients
+and Workers, guest discovery, multiple roles per account and backend authorization.
+Vietnamese phone + OTP comes first; Google/Facebook are future secondary methods.
+iOS comes first, with TestFlight later. The repository stays public until the
+Deploy-phase owner decision. Development/testing use Supabase Local, without a
+Staging Project or Production writes.
+
+The [foundation contracts](foundation-contracts.md) describe environment inputs,
+security boundaries and API conventions. There is no application environment loader
+or `.env.example` yet: the tooling needs no dotenv file, and the App's variable
+names/storage belong to its real consumer. Missing App structure, BPMN, UI, SDK,
+business permissions and release design are **OUT OF SCOPE**, not foundation blockers.
 
 The [implementation preparation](architecture.md#entry-into-application-implementation)
 maps current folder responsibilities and the information needed before introducing
@@ -32,6 +40,29 @@ installs no product dependencies. Future structure follows real responsibilities
 consumers and verification under the root policy, rather than importing the
 HomeServices implementation. Pinned tooling currently supports Windows/Linux x64;
 macOS tooling and native iOS execution have not been verified.
+
+## Engineering Foundation V1 audit
+
+Audited main `98187746fc67ea64848a544b4a938e4c643a807e` on 2026-10-27, including
+the merged PRs below and their owning source. Historical PR results are not
+verification of a new branch.
+
+| Existing capability | Canonical implementation / reference | Audit disposition |
+| --- | --- | --- |
+| Local DB isolation, replay, SQL security, MCP and generated types | `scripts/supabase-local.mjs`, `supabase/`, [PR #10](https://github.com/manhtu0407/NestScout-Enterprise/pull/10) | Reuse; empty-schema tests do not prove product authorization |
+| Backup/restore and isolated agent evaluation | `scripts/backup.mjs`, `scripts/agent-evaluation.mjs`, [PR #12](https://github.com/manhtu0407/NestScout-Enterprise/pull/12) | Reuse; no product/data recovery claim |
+| Architecture preparation | [Architecture](architecture.md), [PR #16](https://github.com/manhtu0407/NestScout-Enterprise/pull/16) | Update confirmed decisions; retire staging recommendation |
+| Tool catalog and bounded execution | [Tool library](tool-library/index.md), [PR #24](https://github.com/manhtu0407/NestScout-Enterprise/pull/24) | Reuse native tooling; no substitute framework |
+| Test selection, execution integrity, secret scans and workflow trust | `scripts/check-test-selection.mjs`, `scripts/run-tests.mjs`, `scripts/check-tools.mjs`, [PR #26](https://github.com/manhtu0407/NestScout-Enterprise/pull/26), [PR #34](https://github.com/manhtu0407/NestScout-Enterprise/pull/34) | Reuse aggregate and negative tests; no redundant guard |
+| Skills lifecycle and current 17-package library | [Skills foundation](skills-foundation.md), `.agents/skills/`, [PR #28](https://github.com/manhtu0407/NestScout-Enterprise/pull/28), [PR #35](https://github.com/manhtu0407/NestScout-Enterprise/pull/35), [PR #37](https://github.com/manhtu0407/NestScout-Enterprise/pull/37) | Reuse; structural validation is separate from runtime effectiveness |
+| Environment and API contracts | [Foundation contracts](foundation-contracts.md) | Document missing boundaries; implement adapters/checks with real App consumers |
+
+The existing local configuration, dependency/tool pins, hooks and CI already cover
+the tooling foundation. No executable enforcement change is needed for these
+documentation gaps. New prose tests would prove wording, not security behavior.
+Use the existing `npm run check` and `npm run verify:negative`; run the sequential
+[local DB gates](supabase-development.md#installation-and-local-runtime) to verify
+the inherited database boundary. Review links and the complete diff as well.
 
 ## Engineering tool library
 
