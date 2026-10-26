@@ -3,7 +3,7 @@
 Date: 2026-10-26. Starting revision:
 `e977bd0e77d0e5c8750e537dda00c551e6ddc365`, branch
 `codex/skill-research-batch-a-20261026` in `manhtu0407/NestScout-Enterprise`,
-ID `1432052547`. Actual checkout: `C:/Users/Phan Manh Tu/NestScout`.
+ID `1432052547`. Actual checkout: the repository root resolved by `git rev-parse --show-toplevel`.
 Both origins and npm run identity matched. The Desktop path supplied by the app
 is not the Git checkout. This record is under the sole root policy and existing
 [SRES procedure](skill-research-evaluation-standard.md), not another policy.
@@ -68,11 +68,12 @@ future runtime loading, provider routing or writable-session safety.
 ## Sanitized evidence export method
 
 [qa-impact-review-evidence.mjs](../scripts/qa-impact-review-evidence.mjs) is a
-bounded export/audit utility, not a model evaluator. From the delivery checkout:
+bounded export/audit utility, not a model evaluator. The hardening section below
+supersedes the historical export mechanics and package digest. From the delivery checkout:
 
 ```sh
-node scripts/qa-impact-review-evidence.mjs export-v1
-node scripts/qa-impact-review-evidence.mjs audit-v1 ABSOLUTE_SANITIZED_DIRECTORY
+node scripts/qa-impact-review-evidence.mjs export-v1 ABSOLUTE_PRIVATE_MAPPING_JSON
+node scripts/qa-impact-review-evidence.mjs audit-v1 ABSOLUTE_SANITIZED_DIRECTORY TRUSTED_MANIFEST_SHA256
 ```
 
 Export requires the retained `.cache/qa02-r3/`, the post-run smoke record, pinned
@@ -82,7 +83,7 @@ reads the raw directory. Neither command uploads, sends messages, changes auth,
 executes commands from traces or runs a model. Do not execute exported legacy
 dispatch/preparation helpers: they are evidence to inspect, not review commands.
 
-The exporter first verifies the hard-coded original manifest digest and all 156
+The original exporter first verified the hard-coded original manifest digest and all 156
 regular files; absent/modified/nonregular inputs stop the export. It makes a new
 owned ignored output directory, never overwrites or edits the raw one. JSON and
 JSONL are decoded before string transformation. All event types, order, item IDs,
@@ -93,7 +94,7 @@ directory identifiers and ephemeral thread identifiers. Replacements are stable
 tokens, with replacement counts in the manifest; an unknown Windows user path
 stops the export. Relative file/consumer paths and behavior-bearing text survive.
 
-The package contains all 156 transformed files plus raw-hashes.json (the original
+The original package contains all 156 transformed files plus raw-hashes.json (the original
 manifest bytes), commands-derived.json and post-run-smoke.json: **159 hashed
 payload files**, plus sanitized-manifest.json itself. The last supplement is
 explicitly outside the original 156-file manifest/seal and has its own original
@@ -110,10 +111,10 @@ stop distribution, handle it under the existing security procedure and use a new
 versioned redaction rule/export. Do not delete commands, failure outputs or a case
 to obtain a clean package. No evidence package or raw log is committed here.
 
-Two fresh exports produced the same sanitized manifest SHA-256:
+Before hardening, two exports produced the same sanitized manifest SHA-256:
 `553cb633e101ed9c7bb803899ab09a93be6d93b3be9c662ff1533ac67e06020c`.
 The first is retained at
-`C:/Users/Phan Manh Tu/NestScout/.cache/qa02-r3-sanitized-M18zh6/`;
+`.cache/qa02-r3-sanitized-M18zh6/`;
 the second at `.cache/qa02-r3-sanitized-aFfPWE/`.
 Both audits validated all 159 payload hashes, derived 73 commands/16 nonzero exits
 and replayed all four final defect witnesses from the pinned pack, without
@@ -219,3 +220,162 @@ without changing authentication/settings, freeze a committed run seal and perfor
 both-arm preflight in fresh fixtures. A changed environment or substantive design
 revision requires explicit versioning. Do not reuse old outcomes as evidence that
 QA02 is necessary, effective or ready for R4.
+
+## Export hardening after independent design review
+
+Starting commit: `9580020be2293ce1e6a9da0d21d5203767dcbc68` on the same
+feature branch. This section supersedes the export instructions and package
+identity above; earlier exports remain historical local artifacts. No R3-v1
+protocol, fixture, result, trace or seal was rewritten. The R3-v2 protocol, pack,
+case adapter, labels, oracles and scoring criteria are byte-identical to that
+commit. There are still zero R3-v2 scored sessions and no QA02 package or R4 run.
+
+### Path and sanitization boundary
+
+The former reader checked only each final file for a symlink; an ancestor
+junction could redirect it. Its lexical member check also lacked a portable
+Windows alias boundary, and unvalidated case.out paths selected metadata reads.
+The former sanitizer embedded the operator's Windows profile identifiers.
+These are verified implementation weaknesses, not evidence of an observed leak.
+
+The hardened reader walks every component from the filesystem anchor before
+opening a file, including the supplied package root and its ancestors. It rejects
+symlinks/junctions, nonregular files, lexical dot traversal, network/device paths,
+alternate data streams and ambiguous Windows components. Manifest members have
+a restricted portable grammar; case aliases and unlisted payloads are rejected.
+Reads check the opened descriptor against the inspected inode/device and use
+O_NOFOLLOW where supported. Mapping files, raw manifest/payloads, supplements,
+sanitized manifest/payloads and output parents use the same checks. Outputs use
+exclusive creation beneath a fresh task-owned directory. Case metadata paths and
+traced commands are text only; the utility never follows or executes them.
+
+Supply an absolute path to a private task-local JSON file outside tracked source:
+
+```json
+{
+  "profilePrefixes": [
+    "D:/Users/Synthetic Reviewer",
+    "D:/Users/SYNTHR~1"
+  ]
+}
+```
+
+These are synthetic examples. The custodian supplies exact long/short aliases
+observed in the sealed evidence; the utility does not infer identity from the
+reviewer's current profile. No private mapping values or mapping file digest are
+published in the package. Spaces, URL spaces, slash spellings and doubled
+backslashes are handled by the declared mappings. Unknown conventional profile
+paths, unsupported encoded path separators, surviving mapped identity labels,
+duplicate mappings and sanitized object-key collisions stop export. All private
+path validation finishes before an output directory is created. No command,
+event, numeric exit, finding or reproduction record is filtered out.
+
+The two personal absolute paths in this document were replaced with repository
+relative locations. Review of the other new protocol/pack/adapter found no
+personal profile path or email requiring alteration; the fixture email uses the
+reserved example.invalid domain. Existing GitHub repository identifiers remain
+necessary source provenance. Historical commits and frozen R3-v1 retain their
+original bytes; their past profile references were not removed from history.
+
+### Integrity, isolated audit and actual exits
+
+The hardened format is QA02-v1-export-v2. Audit now requires the expected
+sanitized-manifest SHA-256 received from a trusted handoff record before parsing
+member paths. It checks the pinned original manifest bytes, exact 159-payload
+inventory and every digest, complete 156-file raw/sanitized hash linkage, and
+the command ledger against the complete JSONL streams. Export also recomputes
+every transformation from sealed raw bytes, compares the actual output bytes,
+and verifies raw/supplement preservation. These comparisons establish what this
+custodian transformed; they do not independently authenticate the original run.
+
+Two hardened exports returned exit 0 and the same manifest digest:
+`055b58ec3650b5e7d27e82e338a4df43c54a5745edc5097fe9ec2dcc1fa0d26a`.
+The first is `.cache/qa02-r3-sanitized-IxRlQD/`. The complete package, including
+the final manifest, passed native Gitleaks 8.30.1 with exit 0. The private mapping
+file and all raw execution logs remain outside Git.
+All 159 sanitized payload digests also match the historical M18zh6 export: the
+new task-local sanitizer changes no payload bytes. Replacement counts remain
+583 home prefixes, 234 fixture identifiers and 10 thread identifiers; only the
+manifest format/integrity metadata changes.
+
+An isolated local Git clone checked out 9580020, with only the hardened evidence
+utility overlaid for this check. It contained the pinned source objects and no
+raw evidence, private mapping file or node_modules. A copied package was audited
+from an external temporary directory twice, both exit 0: 159 payloads, 73 command
+events, 16 nonzero exits (13 TypeErrors, 2 NUL failures, 1 missing-path bundle),
+4 reproduced findings, 10 source-reference comparisons and 20 smoke arms.
+This demonstrates independence from the custodian's raw directory, not an
+independent person's review. The final committed utility can be used directly
+from a fresh checkout for the same audit command.
+
+| Executed negative scenario | Raw process exit | Observed refusal |
+| --- | --- | --- |
+| Append bytes to C01 trace | 1 | Payload digest mismatch |
+| Edit manifest but retain trusted digest | 1 | Manifest digest mismatch |
+| Remove a payload | 1 | Exact directory inventory mismatch |
+| Add an unlisted payload | 1 | Exact directory inventory mismatch |
+| Alter raw-to-sanitized hash link and recompute package digest | 1 | Mapping mismatch |
+| Edit command ledger and recompute its/package digests | 1 | Re-derived command ledger mismatch |
+| Add traversal member and recompute package digest | 1 | Unsafe relative path |
+| Supply unrelated profile mappings | 1 | Unmapped identity; no output directory created |
+
+These eight disposable mutations left the genuine package untouched; its second
+audit succeeded. Persistent regressions were added to the existing selected
+check-verification.test.mjs, requiring no manifest or runner change. Four evidence
+test groups ran three consecutive times: all four passed each time, runner exits
+0/0/0, no skips. They exercise actual Windows junctions at package/ancestor/leaf
+and mapping-input boundaries, CLI rejection with exit 1, preserved outside
+targets, traversal/ADS/device/alias members, trusted digest rejection, unknown
+identities and preservation of behavior-bearing fields during replacement.
+
+Raw logs and per-command argv/exits are retained under
+`.cache/qa02-hardening-tZfZbQ/`: independent-results.json, export-final-1.json,
+export-final-2.json, targeted-exits.json and preservation.json. Fresh preservation
+checks matched all 156 original raw digests and the original manifest/seal;
+verifyEvaluation passed all 10 retained original checkout/peer snapshots. All
+Initially all 106 tracked files outside the first three-file diff matched 9580020
+bytes. The first npm run check then returned exit 1: the donor-isolation test
+still expected exactly 12 check-verification tests, while its child process
+successfully ran all 16 after these four additions. Updating that single exact
+count to 16 in git-environment.test.mjs is the fourth delivery file. Assertions
+requiring child exit 0, zero failures/skips/cancellations/todos and unchanged
+donor snapshots remain intact. No shared harness implementation changed.
+The subsequent full-source comparison confirmed all 105 tracked files outside
+the four-file delivery allow-list still match 9580020 byte for byte; record:
+`.cache/qa02-hardening-tZfZbQ/source-preservation-final.json`.
+After the exact-count correction, npm run check returned exit 0, including
+foundation 63/63, and npm run verify:negative returned exit 0, 87/87 with no
+skips. Final logs are `.cache/qa02-hardening-check.log` and
+`.cache/qa02-hardening-negative.log`; the initial aggregate exit 1 is preserved
+in `.cache/qa02-hardening-check-first.log`. Node syntax checks and git diff
+--check also returned exit 0. No scanner or behavioral assertion was weakened.
+
+### Retention decision and remaining handoff gates
+
+Keep both utilities as bounded research artifacts for reproducing this dossier.
+The evidence utility has an actual custodian/reviewer consumer and meaningful
+regressions; it is not a general privacy sanitizer. The benchmark adapter has an
+actual preparation consumer and pinned reproducibility evidence; it is not a
+second evaluator. Neither should become an installed skill, production service,
+stable general-purpose API or tool-library capability without a separate reviewed
+need. No framework, registry, loader or dependency was added. Retaining their
+source does not require retaining every temporary preparation directory forever;
+raw research retention remains under the existing evaluation procedure.
+
+Technical export/integrity/replay checks are satisfied for the identified package.
+**Actual external handoff remains NOT READY pending human privacy/content review
+and an owner-authorized delivery channel; nothing was sent.** Generic secret
+scanning and path rules cannot prove absence of arbitrary personal prose or
+unknown credential formats. The package explicitly retains REQUIRED BEFORE
+SHARING. The recipient needs the trusted digest through the approved handoff,
+the delivery source revision with pinned Git objects, Node 24 and the complete
+sanitized directory; private mappings and original temp fixtures are unnecessary.
+
+No adversarial concurrent-filesystem race qualification was run. Component
+checks and descriptor verification reject static links and many replacements,
+but portable Node lacks an atomic openat-style traversal guarantee for all
+ancestors. Run against quiescent, access-controlled task-owned copies; hostile
+concurrent ancestor replacement is outside the verified boundary. Windows is
+the executed platform; Linux-specific behavior is not established here. Original
+raw authenticity, manual safety grading, unrecorded PowerShell constituent exits
+and independent human agreement retain the limitations documented above.

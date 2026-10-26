@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync, lstatSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync, lstatSync, readdirSync, symlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -14,6 +15,7 @@ import { checkWorkflows } from './check-tools.mjs';
 import { checkTestSelection } from './check-test-selection.mjs';
 import { checkMessage } from './check-metadata.mjs';
 import { scanStaged } from './scan-staged.mjs';
+import { evidencePath, evidenceRelative, evidenceSanitizer, auditEvidence } from './qa-impact-review-evidence.mjs';
 
 test('hosted repository checks retain unconditional aggregate and negative verification', () => {
   const workflow = parseDocument(readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')).toJS();
@@ -236,3 +238,92 @@ test('staged secret mutations are detected with clean or absent working copies',
   run(['rm', '--cached', '--', file]);
   assert.doesNotThrow(() => scanStaged(repository, 'pipe'));
 }));
+
+test('evidence paths reject traversal, platform aliases and ambiguous manifest members', () => fixture(({ repository, write }) => {
+  write('evidence/data.json', '{}\n');
+  assert.equal(evidencePath(path.join(repository, 'evidence/data.json')), path.join(repository, 'evidence/data.json'));
+  assert.equal(evidenceRelative('C01/oracle/base/records.mjs'), 'C01/oracle/base/records.mjs');
+  for (const relative of ['../data.json', '/data.json', 'C:/data.json', 'C:data.json', 'C01/../../data.json',
+    'C01\\data.json', 'C01//data.json', './data.json', 'C01/./data.json', 'C01/data.json:stream',
+    '%2e%2e/data.json', 'C01/data.json.', 'C01/data.json ', 'C01/NUL.json', 'C01/CON', 'C01/COM1.txt', 'x\0y']) {
+    assert.throws(() => evidenceRelative(relative), /Unsafe evidence relative path/);
+  }
+  assert.throws(() => evidencePath(repository + '/evidence/../evidence/data.json'), /traversal/);
+  assert.throws(() => evidencePath('relative/data.json'), /Absolute evidence path/);
+  assert.throws(() => evidencePath(path.join(repository, 'evidence/data.json') + ':stream'), /Unsafe evidence path component/);
+}));
+
+test('evidence CLI refuses ancestor junctions, leaf links and linked mapping inputs without writing targets', () => fixture(({ repository, write }) => {
+  write('outside/package/sanitized-manifest.json', '{}\n');
+  write('outside/mapping.json', '{"profilePrefixes":["C:/Users/Synthetic Reviewer"]}\n');
+  write('package/marker.txt', 'preserve\n');
+  const outside = path.join(repository, 'outside');
+  const link = path.join(repository, 'linked-ancestor');
+  const kind = process.platform === 'win32' ? 'junction' : 'dir';
+  symlinkSync(outside, link, kind);
+  const before = readFileSync(path.join(outside, 'package/sanitized-manifest.json'));
+  for (const target of [link, path.join(link, 'package')]) {
+    assert.throws(() => evidencePath(target, 'directory'), /symlink\/junction forbidden/);
+  }
+  // A junction at a manifest leaf must also be refused before JSON parsing.
+  symlinkSync(path.join(outside, 'package'), path.join(repository, 'package/sanitized-manifest.json'), kind);
+  const cli = (args, expected) => {
+    const result = spawnSync(process.execPath, [path.join(root, 'scripts/qa-impact-review-evidence.mjs'), ...args],
+      { encoding: 'utf8', env: gitEnvironment() });
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, expected);
+  };
+  cli(['audit-v1', path.join(link, 'package'), '0'.repeat(64)], /symlink\/junction forbidden/);
+  cli(['audit-v1', path.join(repository, 'package'), '0'.repeat(64)], /symlink\/junction forbidden/);
+  cli(['export-v1', path.join(link, 'mapping.json')], /symlink\/junction forbidden/);
+  cli(['audit-v1', repository + '/outside/../package', '0'.repeat(64)], /Evidence path traversal/);
+  assert.deepEqual(readFileSync(path.join(outside, 'package/sanitized-manifest.json')), before);
+  assert.equal(readFileSync(path.join(repository, 'package/marker.txt'), 'utf8'), 'preserve\n');
+  assert.deepEqual(readdirSync(outside).sort(), ['mapping.json', 'package']);
+}));
+
+test('evidence audit rejects malicious manifest paths, aliases and altered trusted digest before replay', async () => {
+  const directory = realpathSync(mkdtempSync(path.join(tmpdir(), 'nestscout-evidence-negative-')));
+  const file = path.join(directory, 'sanitized-manifest.json');
+  const digest = () => createHash('sha256').update(readFileSync(file)).digest('hex');
+  const manifest = files => ({ revision: 'QA02-v1-export-v2', sourceRevision: 'e977bd0e77d0e5c8750e537dda00c551e6ddc365',
+    rawManifestSHA256: 'b458bfa88ead7714749ec62eefd71b4b47220ba30b14e68f6cded38964b5935c', files });
+  try {
+    for (const member of ['../outside.json', 'C:/outside.json', 'C01\\trace.jsonl', 'C01/trace.jsonl:private', '%2e%2e/outside']) {
+      writeFileSync(file, JSON.stringify(manifest({ [member]: '0'.repeat(64) })));
+      await assert.rejects(auditEvidence(directory, digest()), /Unsafe evidence relative path/);
+    }
+    writeFileSync(file, JSON.stringify(manifest({ 'C01/trace.jsonl': '0'.repeat(64), 'c01/trace.jsonl': '0'.repeat(64) })));
+    await assert.rejects(auditEvidence(directory, digest()), /Evidence case alias/);
+    await assert.rejects(auditEvidence(directory, '0'.repeat(64)), /Sanitized manifest integrity/);
+    await assert.rejects(auditEvidence(directory), /Trusted sanitized manifest digest required/);
+    const result = spawnSync(process.execPath, [path.join(root, 'scripts/qa-impact-review-evidence.mjs'), 'audit-v1', directory, digest()],
+      { encoding: 'utf8', env: gitEnvironment() });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Evidence case alias/);
+  } finally {
+    assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
+    rmSync(directory, { recursive: true });
+  }
+});
+
+test('task-local evidence mappings preserve commands, exits, findings and reject unmapped identities', () => {
+  const config = { profilePrefixes: ['D:/Users/Synthetic Reviewer', 'D:/Users/SYNTHR~1'] };
+  const sanitizer = evidenceSanitizer(config);
+  for (const prefix of ['D:\\Users\\Synthetic Reviewer', 'D:/Users/Synthetic%20Reviewer', 'D:/Users/SYNTHR~1',
+    'D:\\\\Users\\\\Synthetic Reviewer', 'D%3A/Users/Synthetic%20Reviewer']) {
+    const value = { command: `node "${prefix}/project/probe.mjs"`, exit: 7,
+      findings: [{ file: 'scripts/records.mjs', line: 1, input_json: '{"value":0}', expected: false, actual: true }] };
+    assert.deepEqual(sanitizer.transform(value), { ...value, command: 'node "<USER_HOME>/project/probe.mjs"' });
+  }
+  assert.equal(sanitizer.counts.home, 5);
+  for (const value of ['C:/Users/Unknown Person/repo', '/home/unknown/repo', '/Users/unknown/repo',
+    'D:/Users/Synthetic Reviewer2/repo', 'D%3A%5CUsers%5CUnknown/repo', 'Synthetic Reviewer', 'SYNTHR~1']) {
+    assert.throws(() => sanitizer.text(value), /Unmapped private path\/identifier/);
+  }
+  assert.throws(() => sanitizer.transform({ 'D:/Users/Synthetic Reviewer/x': 1, 'D:/Users/SYNTHR~1/x': 2 }), /Sanitized key collision/);
+  for (const profilePrefixes of [[], ['C:/Users'], ['C:/'], ['C:/Users/..'], ['C:/Users/Example', 'c:/users/example']]) {
+    assert.throws(() => evidenceSanitizer({ profilePrefixes }));
+  }
+});
