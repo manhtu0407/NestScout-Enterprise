@@ -16,6 +16,7 @@ import { checkTestSelection } from './check-test-selection.mjs';
 import { checkMessage } from './check-metadata.mjs';
 import { scanStaged } from './scan-staged.mjs';
 import { evidencePath, evidenceRelative, evidenceSanitizer, auditEvidence } from './qa-impact-review-evidence.mjs';
+import { benchmarkSource, preparationDirectory } from './qa-impact-review-benchmark.mjs';
 
 test('hosted repository checks retain unconditional aggregate and negative verification', () => {
   const workflow = parseDocument(readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')).toJS();
@@ -237,6 +238,74 @@ test('staged secret mutations are detected with clean or absent working copies',
     error.status === 1 && !(String(error.stdout) + String(error.stderr)).includes(token));
   run(['rm', '--cached', '--', file]);
   assert.doesNotThrow(() => scanStaged(repository, 'pipe'));
+}));
+
+test('benchmark README comes from the pinned revision without replacing the delivered README', () => {
+  const file = path.join(root, 'README.md');
+  const before = readFileSync(file);
+  const pack = JSON.parse(readFileSync(path.join(root, 'scripts/fixtures/qa-impact-review-r3-v2.json'), 'utf8'));
+  const historical = benchmarkSource('README.md');
+  assert.equal(createHash('sha256').update(historical).digest('hex'), pack.sourceFiles['README.md']);
+  assert.equal(historical.toString(), git(root, ['show', `${pack.sourceRevision}:README.md`]));
+  assert.deepEqual(readFileSync(file), before);
+});
+
+test('benchmark output creates an absent cache parent and preserves other task data', () => fixture(({ repository, write }) => {
+  const first = preparationDirectory(repository);
+  assert.equal(path.dirname(realpathSync(first)), realpathSync(path.join(repository, '.cache')));
+  write('.cache/peer/operation.lock', 'another task\n');
+  write('.cache/peer/evidence.json', '{"preserve":true}\n');
+  write('.cache/retained.txt', 'retained\n');
+  const second = preparationDirectory(repository);
+  assert.notEqual(first, second);
+  assert.deepEqual(readdirSync(first), []);
+  assert.deepEqual(readdirSync(second), []);
+  assert.equal(readFileSync(path.join(repository, '.cache/peer/operation.lock'), 'utf8'), 'another task\n');
+  assert.equal(readFileSync(path.join(repository, '.cache/peer/evidence.json'), 'utf8'), '{"preserve":true}\n');
+  assert.equal(readFileSync(path.join(repository, '.cache/retained.txt'), 'utf8'), 'retained\n');
+}));
+
+test('benchmark output refuses linked roots, ancestors, cache parents and non-directory parents', () => {
+  fixture(({ repository, write }) => {
+    write('outside/nested/marker.txt', 'preserve\n');
+    const outside = path.join(repository, 'outside');
+    const kind = process.platform === 'win32' ? 'junction' : 'dir';
+    symlinkSync(outside, path.join(repository, 'linked'), kind);
+    symlinkSync(outside, path.join(repository, '.cache'), kind);
+    for (const target of [repository, path.join(repository, 'linked'), path.join(repository, 'linked/nested')]) {
+      assert.throws(() => preparationDirectory(target), /symlink\/junction forbidden/);
+    }
+    assert.deepEqual(readdirSync(outside), ['nested']);
+    assert.deepEqual(readdirSync(path.join(outside, 'nested')), ['marker.txt']);
+    assert.equal(readFileSync(path.join(outside, 'nested/marker.txt'), 'utf8'), 'preserve\n');
+  });
+  fixture(({ repository, write }) => {
+    write('.cache', 'not a directory\n');
+    assert.throws(() => preparationDirectory(repository), /Nonregular evidence path/);
+    assert.equal(readFileSync(path.join(repository, '.cache'), 'utf8'), 'not a directory\n');
+  });
+});
+
+test('benchmark CLI accepts delivered README drift before rejecting an unsafe cache', () => fixture(({ repository, write, run }) => {
+  const checkout = path.join(repository, 'delivery');
+  run(['clone', '--quiet', '--no-hardlinks', '--no-checkout', root, checkout]);
+  git(checkout, ['checkout', '--quiet', '--detach', git(root, ['rev-parse', 'HEAD']).trim()]);
+  writeFileSync(path.join(checkout, 'scripts/qa-impact-review-benchmark.mjs'), readFileSync(path.join(root, 'scripts/qa-impact-review-benchmark.mjs')));
+  const before = readFileSync(path.join(checkout, 'README.md'));
+  const pack = JSON.parse(readFileSync(path.join(checkout, 'scripts/fixtures/qa-impact-review-r3-v2.json'), 'utf8'));
+  assert.notEqual(createHash('sha256').update(before).digest('hex'), pack.sourceFiles['README.md']);
+  write('outside/marker.txt', 'preserve\n');
+  symlinkSync(path.join(repository, 'outside'), path.join(checkout, '.cache'), process.platform === 'win32' ? 'junction' : 'dir');
+  const child = spawnSync(process.execPath, ['scripts/qa-impact-review-benchmark.mjs', 'prepare'], {
+    cwd: checkout, env: gitEnvironment(), encoding: 'utf8', timeout: 30000,
+  });
+  assert.ifError(child.error);
+  assert.equal(child.status, 1);
+  assert.match(child.stderr, /symlink\/junction forbidden/);
+  assert.doesNotMatch(child.stderr, /Harness root copy drift|Harness policy drift/);
+  assert.deepEqual(readFileSync(path.join(checkout, 'README.md')), before);
+  assert.deepEqual(readdirSync(path.join(repository, 'outside')), ['marker.txt']);
+  assert.equal(readFileSync(path.join(repository, 'outside/marker.txt'), 'utf8'), 'preserve\n');
 }));
 
 test('evidence paths reject traversal, platform aliases and ambiguous manifest members', () => fixture(({ repository, write }) => {

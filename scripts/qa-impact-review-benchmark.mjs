@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { prepareEvaluation, evaluationSnapshot, verifyEvaluation } from './agent-evaluation.mjs';
 import { gitEnvironment } from './git-environment.mjs';
 import { root } from './tool-path.mjs';
+import { evidencePath } from './qa-impact-review-evidence.mjs';
 
 const adapter = fileURLToPath(import.meta.url);
 const packFile = path.join(root, 'scripts/fixtures/qa-impact-review-r3-v2.json');
@@ -17,11 +18,19 @@ const packHash = sha(readFileSync(packFile));
 const git = (cwd, args, options = {}) => execFileSync('git', args, { cwd, env: gitEnvironment(), encoding: 'utf8', stdio: 'pipe', ...options }).trim();
 const write = (file, content) => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, content); };
 const json = (file, value) => write(file, JSON.stringify(value, null, 2) + '\n');
-const source = file => {
-  const content = execFileSync('git', ['show', `${pack.sourceRevision}:${file}`], { cwd: root });
+export const benchmarkSource = file => {
+  const content = execFileSync('git', ['show', `${pack.sourceRevision}:${file}`], { cwd: root, env: gitEnvironment() });
   assert.equal(sha(content), pack.sourceFiles[file], file);
   return content;
 };
+
+export function preparationDirectory(repository = root) {
+  const cache = path.join(evidencePath(repository, 'directory'), '.cache');
+  try { mkdirSync(cache); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+  evidencePath(cache, 'directory');
+  const destination = mkdtempSync(path.join(cache, 'qa02-r3-v2-preparation-'));
+  return evidencePath(destination, 'directory');
+}
 function replaceOnce(text, before, after) {
   assert.equal(text.split(before).length, 2, 'Patch anchor must occur exactly once');
   return text.replace(before, after);
@@ -92,7 +101,7 @@ function prepareCase(spec, output) {
   const checkout = fixture.checkout;
   git(checkout, ['restore', '--staged', '--', 'unrelated.txt']);
   write(path.join(checkout, 'unrelated.txt'), 'baseline\n');
-  for (const file of Object.keys(pack.sourceFiles)) write(path.join(checkout, file), source(file));
+  for (const file of Object.keys(pack.sourceFiles)) write(path.join(checkout, file), benchmarkSource(file));
   write(path.join(checkout, 'docs/decision.json'), '{"value":"valid"}\n');
   write(path.join(checkout, 'scripts/review-smoke.mjs'), smoke);
   write(path.join(checkout, 'docs/consumer-map.md'), `# Disposable repository inspection context\n\nSource: ${pack.sourceRevision}. Copied modules are repository implementations, not product modules.\n\n`
@@ -103,7 +112,7 @@ function prepareCase(spec, output) {
   git(checkout, ['add', '--', 'AGENTS.md', 'README.md', 'scripts', 'docs', '.agents', 'unrelated.txt']);
   const baseTree = git(checkout, ['write-tree']);
   const base = commitTree(checkout, baseTree, 'review base');
-  let changed = source(family.file).toString();
+  let changed = benchmarkSource(family.file).toString();
   changed = replaceOnce(changed, family.before, family[spec.variant]);
   if (spec.variant === 'benign' && family.extraBenign) changed = replaceOnce(changed, family.extraBenign.before, family.extraBenign.after);
   write(path.join(checkout, family.file), changed);
@@ -128,7 +137,7 @@ function prepareCase(spec, output) {
   for (const arm of ['base', 'head']) {
     const modules = path.join(output, 'oracle', arm);
     for (const file of Object.keys(pack.sourceFiles).filter(f => f.startsWith('scripts/'))) {
-      write(path.join(modules, file), arm === 'head' && file === family.file ? changed : source(file));
+      write(path.join(modules, file), arm === 'head' && file === family.file ? changed : benchmarkSource(file));
     }
     const options = { cwd: checkout, env: gitEnvironment(), encoding: 'utf8', timeout: 30000 };
     const check = spawnSync(process.execPath, [adapter, 'probe', spec.family, modules, checkout, path.join(fixture.directory, 'peer')], options);
@@ -157,27 +166,31 @@ function prepareCase(spec, output) {
   return result;
 }
 
-const [action, ...args] = process.argv.slice(2);
-if (action === 'probe' && args.length === 4) console.log(JSON.stringify(await probe(...args)));
-else if (action === 'prepare' && args.length === 0) {
-  assert.equal(pack.status, 'DESIGN_ONLY_NO_SCORED_RUNS');
-  for (const [file, expected] of Object.entries(pack.harnessFiles)) assert.equal(sha(readFileSync(path.join(root, file))), expected, 'Pinned harness drift');
-  for (const file of ['AGENTS.md', 'README.md']) assert.equal(sha(readFileSync(path.join(root, file))), pack.sourceFiles[file], 'Harness root copy drift');
-  const before = sourceSnapshot();
-  const destination = mkdtempSync(path.join(root, '.cache/qa02-r3-v2-preparation-'));
-  json(path.join(destination, 'response-schema.json'), pack.responseSchema);
-  const rounds = [];
-  for (const round of ['first', 'reconstructed']) rounds.push(pack.cases.map(spec => prepareCase(spec, path.join(destination, round, spec.id))));
-  assert.deepEqual(rounds[0].map(c => c.logicalSHA), rounds[1].map(c => c.logicalSHA));
-  for (const fixture of rounds.flat()) verifyEvaluation(fixture.directory);
-  assert.deepEqual(sourceSnapshot(), before, 'Source repository changed during preparation');
-  assert.equal(sha(readFileSync(adapter)), adapterHash, 'Adapter changed during preparation');
-  assert.equal(sha(readFileSync(packFile)), packHash, 'Case pack changed during preparation');
-  const result = { revision: pack.revision, sourceRevision: pack.sourceRevision, platform: process.platform, node: process.version,
-    adapterSHA256: adapterHash, packSHA256: packHash, casesPerRound: pack.cases.length,
-    independentReconstructions: 2, identicalLogicalFingerprints: true, sourcePreservation: 'PASS', fixturePreservation: '24/24',
-    oracleExecutions: 48, smokeExecutions: 48, scoredModelSessions: 0, rounds };
-  json(path.join(destination, 'preparation.json'), result);
-  console.log(JSON.stringify({ destination, preparationSHA256: sha(readFileSync(path.join(destination, 'preparation.json'))),
-    ...Object.fromEntries(Object.entries(result).filter(([key]) => key !== 'rounds')) }, null, 2));
-} else throw new Error('Use prepare (two unscored reconstructions), or internal probe <family> <module-root> <checkout> <peer>. No model/session runner exists here.');
+if (process.argv[1] && path.resolve(process.argv[1]) === adapter) {
+  const [action, ...args] = process.argv.slice(2);
+  if (action === 'probe' && args.length === 4) console.log(JSON.stringify(await probe(...args)));
+  else if (action === 'prepare' && args.length === 0) {
+    assert.equal(pack.status, 'DESIGN_ONLY_NO_SCORED_RUNS');
+    for (const [file, expected] of Object.entries(pack.harnessFiles)) assert.equal(sha(readFileSync(path.join(root, file))), expected, 'Pinned harness drift');
+    assert.equal(sha(readFileSync(path.join(root, 'AGENTS.md'))), pack.sourceFiles['AGENTS.md'], 'Harness policy drift');
+    // The fixture README belongs to the pinned source, independently of the delivered root README.
+    benchmarkSource('README.md');
+    const before = sourceSnapshot();
+    const destination = preparationDirectory();
+    json(path.join(destination, 'response-schema.json'), pack.responseSchema);
+    const rounds = [];
+    for (const round of ['first', 'reconstructed']) rounds.push(pack.cases.map(spec => prepareCase(spec, path.join(destination, round, spec.id))));
+    assert.deepEqual(rounds[0].map(c => c.logicalSHA), rounds[1].map(c => c.logicalSHA));
+    for (const fixture of rounds.flat()) verifyEvaluation(fixture.directory);
+    assert.deepEqual(sourceSnapshot(), before, 'Source repository changed during preparation');
+    assert.equal(sha(readFileSync(adapter)), adapterHash, 'Adapter changed during preparation');
+    assert.equal(sha(readFileSync(packFile)), packHash, 'Case pack changed during preparation');
+    const result = { revision: pack.revision, sourceRevision: pack.sourceRevision, platform: process.platform, node: process.version,
+      adapterSHA256: adapterHash, packSHA256: packHash, casesPerRound: pack.cases.length,
+      independentReconstructions: 2, identicalLogicalFingerprints: true, sourcePreservation: 'PASS', fixturePreservation: '24/24',
+      oracleExecutions: 48, smokeExecutions: 48, scoredModelSessions: 0, rounds };
+    json(path.join(destination, 'preparation.json'), result);
+    console.log(JSON.stringify({ destination, preparationSHA256: sha(readFileSync(path.join(destination, 'preparation.json'))),
+      ...Object.fromEntries(Object.entries(result).filter(([key]) => key !== 'rounds')) }, null, 2));
+  } else throw new Error('Use prepare (two unscored reconstructions), or internal probe <family> <module-root> <checkout> <peer>. No model/session runner exists here.');
+}
