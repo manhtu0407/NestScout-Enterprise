@@ -289,7 +289,7 @@ test('benchmark output refuses linked roots, ancestors, cache parents and non-di
 test('benchmark CLI accepts delivered README drift before rejecting an unsafe cache', () => fixture(({ repository, write, run }) => {
   const checkout = path.join(repository, 'delivery');
   run(['clone', '--quiet', '--no-hardlinks', '--no-checkout', root, checkout]);
-  git(checkout, ['checkout', '--quiet', '--detach', git(root, ['rev-parse', 'HEAD']).trim()]);
+  git(checkout, ['checkout', '--quiet', '-b', 'benchmark-fixture', git(root, ['rev-parse', 'HEAD']).trim()]);
   writeFileSync(path.join(checkout, 'scripts/qa-impact-review-benchmark.mjs'), readFileSync(path.join(root, 'scripts/qa-impact-review-benchmark.mjs')));
   const before = readFileSync(path.join(checkout, 'README.md'));
   const pack = JSON.parse(readFileSync(path.join(checkout, 'scripts/fixtures/qa-impact-review-r3-v2.json'), 'utf8'));
