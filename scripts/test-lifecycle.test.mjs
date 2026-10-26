@@ -31,10 +31,10 @@ function fixture(operation) {
     }
     manifest();
     for (const value of Object.values(scripts)) {
-      const command = value.split(' && ').find(command => command.startsWith('node --test '));
-      if (command) for (const target of command.split(' ').slice(2).filter(token => !token.startsWith('--'))) write(target, testBody);
+      const command = value.split(' && ').find(command => command.startsWith('node scripts/run-tests.mjs '));
+      if (command) for (const target of command.split(' ').slice(2)) write(target, testBody);
     }
-    write('scripts/test-integrity-reporter.mjs', 'export default async function* () {}\n');
+    for (const file of ['run-tests', 'test-integrity-reporter']) write(`scripts/${file}.mjs`, 'export default async function* () {}\n');
     run(['add', '.']);
     operation({ repository, write, run, scripts, manifest });
   } finally {

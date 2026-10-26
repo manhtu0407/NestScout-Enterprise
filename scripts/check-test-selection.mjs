@@ -12,11 +12,10 @@ const requiredChecks = [
 ];
 const testName = /\.(?:test|spec)\.mjs$/i;
 const reporterPath = 'scripts/test-integrity-reporter.mjs';
-const reporterFlag = '--test-reporter=./' + reporterPath;
+const runnerPath = 'scripts/run-tests.mjs';
 
 function selectedTests(scripts, state) {
   const selected = new Set();
-  const unverified = [];
   for (const runner of runners) {
     const value = scripts[runner];
     if (typeof value !== 'string') throw new Error(state + ': missing test runner ' + runner);
@@ -27,13 +26,12 @@ function selectedTests(scripts, state) {
       }
     } else if (commands.length !== 1) throw new Error(state + ': unexpected test runner command ' + runner);
     const tokens = commands[commands.length - 1].split(' ');
-    if (tokens.length < 3 || tokens[0] !== 'node' || tokens[1] !== '--test') {
-      throw new Error(state + ': test runner must execute node --test: ' + runner);
+    // Registration alone does not prove execution; the runner script pins the reporter that fails skipped, todo and empty tests
+    // and rejects ambient options that filter tests, so a bare node --test is not an accepted runner.
+    if (tokens.length < 3 || tokens[0] !== 'node' || tokens[1] !== runnerPath) {
+      throw new Error(state + ': test runner must execute node ' + runnerPath + ': ' + runner);
     }
-    // Registration alone does not prove execution; the reporter fails skipped, todo and empty tests.
-    const verified = tokens[2] === reporterFlag;
-    if (!verified) unverified.push(runner);
-    for (const file of tokens.slice(verified ? 3 : 2)) {
+    for (const file of tokens.slice(2)) {
       try {
         if (!file.startsWith('scripts/') || !testName.test(file)) throw new Error('Expected a scripts test path.');
         checkPath(file);
@@ -44,7 +42,7 @@ function selectedTests(scripts, state) {
       selected.add(file);
     }
   }
-  return { selected, unverified };
+  return selected;
 }
 
 export function checkTestSelection(repository = root) {
@@ -73,7 +71,7 @@ export function checkTestSelection(repository = root) {
     for (const check of requiredChecks) {
       if (!checks.includes('npm run ' + check)) throw new Error(state + ': mandatory check omitted: ' + check);
     }
-    const { selected, unverified } = selectedTests(scripts, state);
+    const selected = selectedTests(scripts, state);
     const present = new Set(current.map(item => item.file).filter(file => testName.test(file)));
     for (const file of present) if (!selected.has(file)) {
       throw new Error(state + ': unselected persistent test ' + file);
@@ -81,8 +79,9 @@ export function checkTestSelection(repository = root) {
     for (const file of selected) if (!present.has(file)) {
       throw new Error(state + ': missing selected persistent test ' + file);
     }
-    if (unverified.length) throw new Error(state + ': test runner must use the integrity reporter: ' + unverified.join(', '));
-    if (!current.some(item => item.file === reporterPath)) throw new Error(state + ': missing test integrity reporter');
+    for (const [file, label] of [[runnerPath, 'test runner script'], [reporterPath, 'test integrity reporter']]) {
+      if (!current.some(item => item.file === file)) throw new Error(state + ': missing ' + label);
+    }
   }
 }
 

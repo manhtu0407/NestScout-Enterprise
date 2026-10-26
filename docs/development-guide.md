@@ -163,13 +163,26 @@ hygiene, metadata and secret checks. Hooks can be bypassed; pre-push and CI also
 run the aggregate. Registration proves selection, not assertion quality or agent
 intent.
 
-Every runner passes `--test-reporter=./scripts/test-integrity-reporter.mjs`, and the
-selection guard rejects a runner without it. The reporter keeps the normal spec output
+Every runner is `node scripts/run-tests.mjs <test files>`, and the selection guard
+rejects a bare `node --test` runner. The script is the execution boundary: it starts
+`node --test` with the integrity reporter (loaded by file URL, so absolute paths work
+on Windows and Linux), removes a stale `NODE_TEST_CONTEXT`, and refuses to run when
+`NODE_OPTIONS` or npm's `node-options` carry `--test-name-pattern`,
+`--test-skip-pattern`, `--test-only`, `--test-shard`, `--test-isolation` or
+`--test-reporter*`, because those silently drop tests while exiting 0. Other Node
+options remain allowed. It also requires the reporter's evidence file to list every
+requested test file, so a run whose reporter never completed fails even if Node
+reported success. To run a subset while developing, call `node --test` directly;
+such a run is not verification evidence.
+
+The reporter keeps the normal spec output
 but fails the run when a persistent test is skipped, marked todo, or its file executes
 no passing test, because `node --test` otherwise exits 0 for all three. A legitimate
 exception is a reviewed `repositoryHygiene.testExceptions` entry in `package.json`
-with `file`, `name` and `reason`; it matches one test exactly and fails once it no
-longer matches a skipped test. No exceptions exist today. The guard does not judge
+with `file`, `name` and `reason`. Each entry authorizes exactly one skipped test or
+suite: a repeated file and name pair, or a name shared by several skipped tests or
+suites in one file, is rejected as ambiguous, and an entry fails once it no longer
+matches a skipped test. No exceptions exist today. The guard does not judge
 assertion quality.
 
 Secret scans ignore inline Gitleaks suppression comments and ambient `GITLEAKS_*`

@@ -168,7 +168,7 @@ function selectionFixture(operation) {
     const scripts = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts;
     const tests = readdirSync(path.join(root, 'scripts')).filter(file => file.endsWith('.test.mjs'));
     write('package.json', JSON.stringify({ scripts }) + '\n');
-    write('scripts/test-integrity-reporter.mjs', 'export default async function* () {}\n');
+    for (const file of ['run-tests', 'test-integrity-reporter']) write(`scripts/${file}.mjs`, 'export default async function* () {}\n');
     for (const testFile of tests) write('scripts/' + testFile, 'import { test } from "node:test"; test("fixture", () => {});\n');
     run(['add', '.']);
     operation({ repository, write, run, scripts });
@@ -198,7 +198,7 @@ test('mutated aggregate and weakened test commands are rejected', () => selectio
     assert.doesNotThrow(() => checkTestSelection(repository));
   };
   mutate(value => { value.check = value.check.replace('npm run check:test-selection', 'echo optional'); }, /aggregate check/);
-  mutate(value => { value['verify:negative'] = 'node scripts/verify-negative.mjs && node --test scripts/check-hygiene.test.mjs'; }, /unselected persistent test/);
+  mutate(value => { value['verify:negative'] = 'node scripts/verify-negative.mjs && node scripts/run-tests.mjs scripts/check-hygiene.test.mjs'; }, /unselected persistent test/);
   mutate(value => { value['verify:negative'] += ' || true'; }, /invalid or unsafe test target/);
   mutate(value => { value['db:mcp:test'] = 'echo pass'; }, /test runner must execute/);
 }));
@@ -348,32 +348,40 @@ test('safe workflow variants remain accepted', () => fixture(({ repository, writ
   }
 }));
 
-test('every persistent test runner keeps the integrity reporter in each Git state', () => selectionFixture(({ repository, write, run, scripts }) => {
+test('every persistent test runner uses the integrity runner script in each Git state', () => selectionFixture(({ repository, write, run, scripts }) => {
   assert.doesNotThrow(() => checkTestSelection(repository));
-  const reporter = '--test-reporter=./scripts/test-integrity-reporter.mjs ';
-  for (const runner of ['verify:foundation', 'verify:supabase', 'verify:negative', 'db:mcp:test']) {
-    assert.ok(scripts[runner].includes(reporter), `${runner} lacks the integrity reporter`);
-    const candidate = { ...scripts, [runner]: scripts[runner].replace(reporter, '') };
-    write('package.json', JSON.stringify({ scripts: candidate }) + '\n');
-    assert.throws(() => checkTestSelection(repository), new RegExp(`working: test runner must use the integrity reporter: ${runner}`));
-    run(['add', '--', 'package.json']);
-    assert.throws(() => checkTestSelection(repository), new RegExp(`index: test runner must use the integrity reporter: ${runner}`));
-    write('package.json', JSON.stringify({ scripts }) + '\n');
-    run(['add', '--', 'package.json']);
+  const runner = 'node scripts/run-tests.mjs ';
+  for (const name of ['verify:foundation', 'verify:supabase', 'verify:negative', 'db:mcp:test']) {
+    assert.ok(scripts[name].includes(runner), `${name} lacks the integrity runner`);
+    for (const weaker of ['node --test ', 'node --test --test-reporter=./scripts/test-integrity-reporter.mjs ']) {
+      const candidate = { ...scripts, [name]: scripts[name].replace(runner, weaker) };
+      write('package.json', JSON.stringify({ scripts: candidate }) + '\n');
+      assert.throws(() => checkTestSelection(repository), new RegExp(`working: test runner must execute node scripts/run-tests.mjs: ${name}`));
+      run(['add', '--', 'package.json']);
+      assert.throws(() => checkTestSelection(repository), new RegExp(`index: test runner must execute node scripts/run-tests.mjs: ${name}`));
+      write('package.json', JSON.stringify({ scripts }) + '\n');
+      run(['add', '--', 'package.json']);
+      assert.doesNotThrow(() => checkTestSelection(repository));
+    }
+  }
+  for (const [file, message] of [['run-tests', 'test runner script'], ['test-integrity-reporter', 'test integrity reporter']]) {
+    const target = `scripts/${file}.mjs`;
+    rmSync(path.join(repository, target));
+    assert.throws(() => checkTestSelection(repository), new RegExp(`working: missing ${message}`));
+    run(['rm', '--cached', '--quiet', '--', target]);
+    assert.throws(() => checkTestSelection(repository), new RegExp(`(index|working): missing ${message}`));
+    write(target, 'export default async function* () {}\n');
+    run(['add', '--', target]);
     assert.doesNotThrow(() => checkTestSelection(repository));
   }
-  rmSync(path.join(repository, 'scripts/test-integrity-reporter.mjs'));
-  assert.throws(() => checkTestSelection(repository), /working: missing test integrity reporter/);
-  run(['rm', '--cached', '--quiet', '--', 'scripts/test-integrity-reporter.mjs']);
-  assert.throws(() => checkTestSelection(repository), /(index|working): missing test integrity reporter/);
 }));
 
-test('the integrity reporter used by every runner still fails a skipped test and passes an executed one', () => fixture(({ repository, write }) => {
-  const reporter = `--test-reporter=${path.join(root, 'scripts/test-integrity-reporter.mjs')}`;
-  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => name !== 'NODE_TEST_CONTEXT'));
+test('the runner script used by every runner still fails a skipped test and passes an executed one', () => fixture(({ repository, write }) => {
+  const runner = path.join(root, 'scripts/run-tests.mjs');
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^(?:NODE_TEST_CONTEXT|NODE_OPTIONS|npm_config_node_options)$/i.test(name)));
   const execute = source => {
     write('probe.test.mjs', `import { test } from 'node:test';\n${source}`);
-    return spawnSync(process.execPath, ['--test', reporter, 'probe.test.mjs'], { cwd: repository, encoding: 'utf8', env }).status;
+    return spawnSync(process.execPath, [runner, 'probe.test.mjs'], { cwd: repository, encoding: 'utf8', env }).status;
   };
   assert.equal(execute("test('runs', () => {});\n"), 0);
   assert.equal(execute("test('runs', () => {});\ntest.skip('disabled', () => {});\n"), 1);
