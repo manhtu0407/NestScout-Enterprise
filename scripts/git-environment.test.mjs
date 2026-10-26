@@ -116,7 +116,10 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
       assert.ifError(child.error);
       assert.equal(child.status, 0, `${args.join(' ')}\n${child.stdout}${child.stderr}`);
       if (args[0] === '--test') {
-        assert.match(child.stdout, args[1] === 'scripts/check-verification.test.mjs' ? /tests 12\b/ : /tests 48\b/);
+        // Every discovered test must pass; a fixed total would fail whenever coverage is legitimately added.
+        const summary = outcome => Number(new RegExp(`^\\W*${outcome} (\\d+)\\b`, 'm').exec(child.stdout)?.[1]);
+        assert.ok(summary('tests') > 0, 'No tests were executed.');
+        assert.equal(summary('pass'), summary('tests'), 'Every executed test must pass.');
         for (const outcome of ['fail', 'cancelled', 'skipped', 'todo']) assert.match(child.stdout, new RegExp(`${outcome} 0\\b`));
       }
       assert.deepEqual(snapshot(), withLinked, 'Poisoned hygiene checks or fixtures changed the donor repository.');
