@@ -6,7 +6,7 @@ metadata:
   domain: backend
   specialty: edge-http-contracts
   consumer: codex,claude-code
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 # Edge API contracts
 
@@ -39,9 +39,12 @@ mean a review of supplied fixtures, not permission to build an API.
    user identity. A webhook exempt from user JWT checks needs its provider's
    signature/replay verification on the required raw bytes before parsing.
 4. Propagate caller identity into a caller-scoped database client where applicable.
-   A service-role client bypasses RLS, so require a separately justified privileged
-   operation with explicit object authorization. Never trust body-supplied user_id
-   as the authenticated actor or disable JWT checks to hide a 401.
+   Inspect outgoing Authorization and the effective database role rather than
+   inferring bypass from the client initialization key. A request executing as
+   service_role bypasses RLS and needs a separately justified privileged operation
+   with explicit object authorization. Record sanitized role/subject, not bearer
+   values. Never trust body-supplied user_id as the authenticated actor or disable
+   JWT checks to hide a 401.
 5. Map expected errors to the existing stable status/body contract: parsing,
    authentication, forbidden object, conflict, rate limit and dependency failure.
    Keep internal stack traces, credentials and private payloads out of public

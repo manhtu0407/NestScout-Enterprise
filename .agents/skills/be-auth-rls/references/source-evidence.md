@@ -1,6 +1,6 @@
 # Source evidence: be-auth-rls
 
-Reviewed 2026-10-26 (Asia/Saigon). Local package version 1.0.0; adoption mode
+Reviewed 2026-10-26 (Asia/Saigon). Local package version 1.0.1; adoption mode
 **PROJECT_NATIVE**. This records source/static review, not runtime efficacy.
 
 ## Decision and file scope
@@ -23,6 +23,7 @@ Documentation access date is not an immutable upstream revision or SDK pin.
 - [rls](https://supabase.com/docs/guides/database/postgres/row-level-security) — Grants plus RLS, USING/WITH CHECK, JWT metadata and bypass paths.
 - [pgrls](https://www.postgresql.org/docs/17/ddl-rowsecurity.html) — Policy combinations, owner and BYPASSRLS boundaries.
 - [pgviews](https://www.postgresql.org/docs/17/sql-createview.html) — security_invoker view behavior on supported majors.
+- [Effective client authorization](https://supabase.com/kb/troubleshooting/why-is-my-service-role-key-client-getting-rls-errors-or-not-returning-data-7_1K9z) — a user session or explicit Authorization header can change the effective role despite a service-role initialization key. Rechecked 2026-10-26; no credentials or SDK code copied.
 
 References were checked for the stated constraints. PostgreSQL 17 matches the
 inspected local configuration; it is not a probe of a running server. RN/Expo/Kael
