@@ -99,8 +99,9 @@ git config --local core.hooksPath .githooks
 ```
 
 Hooks can be bypassed and are not server-side protection. Pre-commit checks reserved
-files, hygiene, test selection, added source comments, formatting and YAML syntax on
-the staged index, plus existing commit metadata and secrets; commit-msg validates the
+files, hygiene, test selection, added source comments, YAML syntax and basic text
+formatting (changed staged blobs only, not unrelated working-tree edits) on the staged
+index, plus existing commit metadata and secrets; commit-msg validates the
 proposed message; pre-push verifies identity, the pushed remote, URL and ref, that no
 tracked changes separate the working tree from the pushed commit, metadata, the
 aggregate checks and the negative fixture suite. Markdown lint and the generated

@@ -289,6 +289,11 @@ const commentGrammars = [
 
 export const hasCommentGrammar = file => commentGrammars.some(([pattern]) => pattern.test(file));
 
+export const sameCommentGrammar = (first, second) => {
+  const grammar = file => commentGrammars.find(([pattern]) => pattern.test(file))?.[1];
+  return grammar(first) !== undefined && grammar(first) === grammar(second);
+};
+
 export function commentRecords(file, text) {
   const grammar = commentGrammars.find(([pattern]) => pattern.test(file));
   return grammar ? grammar[1](file, text).sort((a, b) => a.start - b.start) : null;

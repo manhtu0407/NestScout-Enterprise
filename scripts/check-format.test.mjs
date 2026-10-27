@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { git } from './repository-files.mjs';
-import { checkFormat, formatViolations } from './check-format.mjs';
+import { checkFormat, checkStagedFormat, formatViolations } from './check-format.mjs';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-format-'));
 after(() => {
@@ -78,4 +78,42 @@ test('failures are capped and name the state, file and line', () => {
     assert.match(error.message, /working scripts\/bad-\d+\.mjs:1: trailing whitespace/);
     return true;
   });
+});
+
+test('the staged gate judges only changed staged blobs, never unrelated working-tree or untracked edits', () => {
+  const { repository, run, write } = fixture();
+  run(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'chore: establish fixture']);
+  assert.doesNotThrow(() => checkStagedFormat(repository));
+  write('scripts/example.mjs', 'export const valid = true; \n');
+  write('docs/untracked.md', '# Title\r\n');
+  assert.doesNotThrow(() => checkStagedFormat(repository));
+  assert.throws(() => checkFormat(repository), /working scripts\/example\.mjs:1: trailing whitespace/);
+  write('scripts/staged.mjs', 'export const staged = true; \n');
+  run(['add', '--', 'scripts/staged.mjs']);
+  write('scripts/staged.mjs', 'export const staged = true;\n');
+  assert.throws(() => checkStagedFormat(repository), /^Error: \.editorconfig violations \(1\):\n {2}index scripts\/staged\.mjs:1: trailing whitespace$/m);
+});
+
+test('the staged gate leaves unchanged and deleted index entries alone and rejects a changed one that is bad', () => {
+  const { repository, run, write } = fixture();
+  write('docs/legacy.md', 'legacy \n');
+  run(['add', '.']);
+  run(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'chore: establish fixture']);
+  assert.doesNotThrow(() => checkStagedFormat(repository));
+  write('docs/other.md', '# Other\n');
+  run(['add', '--', 'docs/other.md']);
+  assert.doesNotThrow(() => checkStagedFormat(repository));
+  run(['rm', '--quiet', '--', 'docs/legacy.md']);
+  assert.doesNotThrow(() => checkStagedFormat(repository));
+  write('docs/crlf.md', '# Title\r\n');
+  run(['add', '--', 'docs/crlf.md']);
+  assert.throws(() => checkStagedFormat(repository), /index docs\/crlf\.md:1: carriage return/);
+});
+
+test('before the first commit every staged file is changed', () => {
+  const { repository, write } = fixture();
+  assert.doesNotThrow(() => checkStagedFormat(repository));
+  write('scripts/bad.mjs', 'const a = 1; \n');
+  git(repository, ['add', '--', 'scripts/bad.mjs']);
+  assert.throws(() => checkStagedFormat(repository), /index scripts\/bad\.mjs:1: trailing whitespace/);
 });

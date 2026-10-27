@@ -156,7 +156,7 @@ test('optional pre-commit runs test selection unconditionally before accepting s
   assert.match(hook, /^#!\/bin\/sh\nset -eu\n/);
   assert.equal(hook.split('\n').filter(line => line === 'node scripts/check-test-selection.mjs').length, 1);
   for (const command of ['npm run check:reserved', 'npm run check:hygiene -- --hook', 'npm run check:metadata', 'npm run scan:secrets',
-    'node scripts/check-comments.mjs --staged', 'node scripts/check-format.mjs', 'node scripts/check-yaml.mjs']) {
+    'node scripts/check-comments.mjs --staged', 'node scripts/check-format.mjs --staged', 'node scripts/check-yaml.mjs']) {
     assert.ok(hook.split('\n').includes(command), 'Existing hook gate missing or masked: ' + command);
   }
 });
@@ -169,7 +169,7 @@ test('real pre-commit rejects unregistered tests and a disabled npm guard withou
     ['check-reserved-files', 'checkReservedFiles'], ['check-hygiene', 'checkHygiene'],
     ['check-test-selection', 'checkTestSelection'], ['check-metadata', 'checkMetadata'],
     ['scan-staged', 'scanStaged'], ['check-comments', 'checkStagedComments'],
-    ['check-format', 'checkFormat'], ['check-yaml', 'checkYaml'],
+    ['check-format', 'checkStagedFormat'], ['check-yaml', 'checkYaml'],
   ];
   for (const [module, callable] of modules) {
     const source = pathToFileURL(path.join(root, 'scripts', module + '.mjs')).href;
@@ -242,7 +242,14 @@ test('real pre-commit rejects unregistered tests and a disabled npm guard withou
   rmSync(path.join(repository, '.github/workflows/probe.yml'));
   write('scripts/tool.mjs', '#!/usr/bin/env node\nexport const tool = 1;\n');
   run(['add', '--', 'scripts/tool.mjs']);
+  write('scripts/accepted.mjs', 'export const accepted = true; \n');
+  write('docs/unrelated.md', 'untracked and unstaged \r\n');
   assert.doesNotThrow(commitWithHook);
+  assert.equal(run(['status', '--porcelain=v1', '--untracked-files=all', '--', 'scripts/accepted.mjs', 'docs/unrelated.md']), ' M scripts/accepted.mjs\n?? docs/unrelated.md\n');
+  assert.equal(readFileSync(path.join(repository, 'scripts/accepted.mjs'), 'utf8'), 'export const accepted = true; \n');
+  assert.equal(readFileSync(path.join(repository, 'docs/unrelated.md'), 'utf8'), 'untracked and unstaged \r\n');
+  run(['add', '--', 'scripts/accepted.mjs']);
+  reject(/index scripts\/accepted\.mjs:1: trailing whitespace/);
 }));
 
 test('real pre-push passes the push target and refs to the metadata guard, then runs the aggregate and negative suites', () => {

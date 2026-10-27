@@ -145,9 +145,11 @@ fixtures use isolated temporary repositories/files. Report exact failures;
 component passes do not turn an aggregate failure into PASS. Add meaningful
 positive and negative tests when changing enforcement.
 
-The optional pre-commit hook runs the staged-content gates and the optional pre-push
-hook verifies the pushed remote and commit, then the aggregate and negative suites.
-Hosted CI runs the comment and formatting gates independently; hooks are bypassable.
+The optional pre-commit hook judges the staged content of the commit being made, not
+unrelated working-tree edits, and the optional pre-push hook verifies the pushed remote
+and commit, then the aggregate and negative suites. Hosted CI runs the comment and
+formatting gates independently; hooks are bypassable. The formatting gate enforces basic
+text formatting only, not clean-code quality.
 
 Test changed behavior and its real consumers proportionately to risk. Do not
 invent absent build/typecheck/unit/e2e commands or demand unrelated database checks.
@@ -178,11 +180,13 @@ hooks and successful workflows alone do not prove server-side enforcement.
   Only technically mandatory directives (a shebang, TypeScript triple-slash
   references, JSX pragmas, the Dependabot version tag on a SHA-pinned action),
   legally required copyright or SPDX notices, the generated
-  `supabase/database.types.ts`, and exceptions the owner approved in the current task
-  and recorded in `repositoryHygiene.commentExceptions` may be added. Never
-  self-approve an exception or add a scanner-disable comment. The checks compare the
-  committed range, staged index and working tree with their bases, so unchanged
-  comments pass and an edited comment counts as new. CONTRIBUTING lists the details.
+  `supabase/database.types.ts`, and exceptions the owner approved by merging them into
+  the trusted baseline's `repositoryHygiene.commentExceptions` may be added. An exception
+  added in the same changeset as its comment never counts. Never self-approve an
+  exception or add a scanner-disable comment. The checks compare every commit of the
+  range, the staged index and the working tree with their bases, so unchanged comments
+  pass, an edited comment counts as new, and a comment removed by a later commit is still
+  reported. CONTRIBUTING lists the details.
 - New source files need one responsibility, a real caller or verification consumer,
   and a location/name consistent with the current module. Use the enforced naming
   categories in CONTRIBUTING; approve a real new module's convention before adding

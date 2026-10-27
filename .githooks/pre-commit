@@ -4,7 +4,7 @@ npm run check:reserved
 npm run check:hygiene -- --hook
 node scripts/check-test-selection.mjs
 node scripts/check-comments.mjs --staged
-node scripts/check-format.mjs
+node scripts/check-format.mjs --staged
 node scripts/check-yaml.mjs
 npm run check:metadata
 npm run scan:secrets

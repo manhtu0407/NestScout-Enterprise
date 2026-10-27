@@ -8,7 +8,7 @@ import { root, toolPath } from './tool-path.mjs';
 import { scanStaged } from './scan-staged.mjs';
 import { checkReservedFiles } from './check-reserved-files.mjs';
 import { checkTestArtifacts } from './check-test-artifacts.mjs';
-import { checkStagedComments } from './check-comments.mjs';
+import { checkStagedComments, checkCommentRevision } from './check-comments.mjs';
 import { checkFormat } from './check-format.mjs';
 import { gitEnvironment } from './git-environment.mjs';
 
@@ -227,6 +227,19 @@ try {
   writeFileSync(policyFile, 'export const value = 1;\n');
   assert.throws(() => checkFormat(policyRepo), /\.editorconfig violations \(1\)/);
   console.log('PASS: staged formatting violation rejected even when working file is clean.');
+  policyGit(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+  writeFileSync(policyFile, 'export const value = 1; // self-approved\n');
+  writeFileSync(path.join(policyRepo, 'package.json'), JSON.stringify({ repositoryHygiene: { commentExceptions: [{ file: 'example.mjs', text: '// self-approved', reason: 'Proposed in the same change.' }] } }) + '\n');
+  policyGit(['add', 'example.mjs', 'package.json']);
+  assert.throws(() => checkStagedComments(policyRepo), /Added source comments are prohibited \(1\)/);
+  policyGit(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'chore: self-approve a comment']);
+  assert.throws(() => checkCommentRevision(policyRepo, 'refs/remotes/origin/main', 'HEAD'), /Added source comments are prohibited \(1\)/);
+  console.log('PASS: comment exception added in the same changeset rejected.');
+  writeFileSync(policyFile, 'export const value = 1;\n');
+  policyGit(['commit', '--quiet', '-a', '-m', 'fix: remove the comment']);
+  assert.equal(execFileSync('git', ['diff', 'refs/remotes/origin/main', 'HEAD', '--', 'example.mjs'], { cwd: policyRepo, env: gitEnvironment(), encoding: 'utf8' }), '');
+  assert.throws(() => checkCommentRevision(policyRepo, 'refs/remotes/origin/main', 'HEAD'), /Added source comments are prohibited \(1\)/);
+  console.log('PASS: comment added by one commit and removed by a later commit rejected.');
 } finally {
   assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
   assert.ok(!lstatSync(directory).isSymbolicLink());

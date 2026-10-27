@@ -10,7 +10,7 @@ import { git } from './repository-files.mjs';
 import { commentRecords, sourceComments, hasCommentGrammar } from './check-hygiene.mjs';
 import {
   addedComments, approvedExceptions, commentCategory, commentViolations, isMandatoryComment, normalizeComment,
-  checkCommentRevision, checkStagedComments, checkWorkingComments, checkComments,
+  checkCommentRevision, checkStagedComments, checkWorkingComments, checkComments, trustedBaseline, trustedExceptions,
 } from './check-comments.mjs';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-comments-'));
@@ -43,7 +43,9 @@ function repositoryFixture(files = {}, { commit = true } = {}) {
 
 const texts = (file, source) => commentRecords(file, source).map(record => record.text);
 const sha = 'a'.repeat(40);
-const exception = (file, text) => ({ file, text, reason: 'Required by a reviewed tool contract.', approval: 'Owner approval recorded in the task Issue.' });
+const exception = (file, text) => ({ file, text, reason: 'Required by a reviewed tool contract.' });
+const revisionPattern = (file, line, rest = '') => new RegExp(`revision [0-9a-f]{12} ${file.replace(/\./g, '\\.')}:${line}${rest}`);
+const range = ['refs/remotes/origin/main', 'HEAD'];
 const manifest = (...entries) => JSON.stringify({ repositoryHygiene: { commentExceptions: entries } }) + '\n';
 
 test('strings, URLs, templates, regular expressions and JSX text are not comments in JavaScript or TypeScript', () => {
@@ -198,10 +200,11 @@ test('owner-approved exceptions are validated, exact, per-file and single-use', 
   assert.deepEqual(approvedExceptions('{}\n', 'index'), []);
   assert.throws(() => approvedExceptions('{', 'index'), /Invalid package.json in index/);
   assert.throws(() => approvedExceptions('{"repositoryHygiene":{"commentExceptions":{}}}', 'index'), /must be an array/);
-  for (const broken of [{ file: 'scripts/a.mjs', text: '// x', reason: 'r' }, { file: 'scripts/a.mjs', text: '// x', approval: 'a' },
-    { file: 'scripts/a.mjs', text: ' ', reason: 'r', approval: 'a' }, { file: 'scripts/a.mjs', reason: 'r', approval: 'a' }, null]) {
-    assert.throws(() => approvedExceptions(manifest(broken), 'index'), /file, text, reason and owner approval/);
+  for (const broken of [{ file: 'scripts/a.mjs', text: '// x' }, { file: 'scripts/a.mjs', text: '// x', reason: ' ' },
+    { file: 'scripts/a.mjs', text: ' ', reason: 'r' }, { file: 'scripts/a.mjs', reason: 'r' }, null]) {
+    assert.throws(() => approvedExceptions(manifest(broken), 'index'), /file, text and reason/);
   }
+  assert.deepEqual(approvedExceptions(manifest({ ...exception('scripts/a.mjs', '// x'), approval: 'self-declared' }), 'index'), [{ file: 'scripts/a.mjs', text: '// x' }]);
   assert.throws(() => approvedExceptions(manifest(exception('Scripts/A.mjs', '// x')), 'index'));
   assert.throws(() => approvedExceptions(manifest(exception('../a.mjs', '// x')), 'index'), /Unsafe repository path/);
   const change = { file: 'scripts/a.mjs', text: 'export const a = 1; // reviewed\n// reviewed\n', baseText: '' };
@@ -228,18 +231,91 @@ test('staged additions fail with a clean working file; working additions fail wh
   assert.doesNotThrow(() => checkComments(repository, {}));
 });
 
-test('committed additions are judged by the net change against the merge base', () => {
+test('every commit in the range is inspected, so a comment removed by a later commit is still reported', () => {
   const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
   write('scripts/example.mjs', 'export const value = 1;\n// TODO: remove\n');
   run(['add', '.']);
   run(['commit', '--quiet', '-m', 'chore: add a note']);
-  assert.throws(() => checkCommentRevision(repository, 'refs/remotes/origin/main', 'HEAD'), /revision scripts\/example\.mjs:2 annotation: \/\/ TODO: remove/);
-  assert.throws(() => checkComments(repository, {}), /Added source comments are prohibited \(1\)/);
+  const introducing = run(['rev-parse', 'HEAD']).trim().slice(0, 12);
+  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 2, ' annotation: // TODO: remove'));
   write('scripts/example.mjs', 'export const value = 1;\n');
   run(['add', '.']);
   run(['commit', '--quiet', '-m', 'fix: remove the note']);
-  assert.doesNotThrow(() => checkCommentRevision(repository, 'refs/remotes/origin/main', 'HEAD'));
+  assert.equal(run(['diff', '--stat', ...range]), '');
+  assert.throws(() => checkCommentRevision(repository, ...range), error => error.message.includes(`revision ${introducing} scripts/example.mjs:2`));
+  assert.throws(() => checkComments(repository, {}), /Added source comments are prohibited \(1\)/);
+  assert.doesNotThrow(() => checkStagedComments(repository));
+  assert.doesNotThrow(() => checkWorkingComments(repository));
+});
+
+test('a range that adds nothing, or whose commits only touch existing comments, passes', () => {
+  const body = 'export const value = 1;\n';
+  const { repository, run, write } = repositoryFixture({ 'scripts/legacy.mjs': `// legacy note\n${body}`, 'scripts/other.mjs': body });
+  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
+  write('scripts/other.mjs', 'export const value = 2;\n');
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'fix: change the value']);
+  write('scripts/legacy.mjs', `  // legacy note\n${body}export const extra = 1;\n`);
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'refactor: touch the legacy file']);
+  write('scripts/legacy.mjs', `export const extra = 1;\n${body}// legacy note\n`);
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'refactor: move the legacy note']);
+  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
   assert.doesNotThrow(() => checkComments(repository, {}));
+});
+
+test('merge commits are judged by what no parent already contains', () => {
+  const body = 'export const value = 1;\n';
+  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': body, 'scripts/shared.mjs': body });
+  write('scripts/example.mjs', 'export const value = 2;\n');
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'fix: change the value']);
+  run(['switch', '--quiet', 'main']);
+  write('scripts/shared.mjs', `// base branch note\n${body}`);
+  write('scripts/other.mjs', `// another base note\n${body}`);
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'chore: advance the base']);
+  run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+  run(['switch', '--quiet', 'claude/comment-fixture']);
+  run(['merge', '--no-ff', '--quiet', '-m', 'Merge branch main into claude/comment-fixture', 'refs/remotes/origin/main']);
+  assert.equal(run(['rev-list', '--parents', '-n', '1', 'HEAD']).trim().split(' ').length, 3);
+  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
+  assert.doesNotThrow(() => checkComments(repository, {}));
+  run(['merge', '--no-ff', '--no-commit', '--quiet', 'HEAD~1']);
+  write('scripts/example.mjs', 'export const value = 2; // slipped into the merge\n');
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'Merge branch fix into claude/comment-fixture']);
+  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 1, ' inline: // slipped into the merge'));
+});
+
+test('a merge of a side branch cannot launder a comment that the side branch added', () => {
+  const body = 'export const value = 1;\n';
+  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': body, 'scripts/side.mjs': body });
+  run(['switch', '--quiet', '-c', 'claude/side']);
+  write('scripts/side.mjs', `${body}// side note\n`);
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'chore: add a side note']);
+  run(['switch', '--quiet', 'claude/comment-fixture']);
+  write('scripts/example.mjs', 'export const value = 2;\n');
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'fix: change the value']);
+  run(['merge', '--no-ff', '--quiet', '-m', 'Merge branch claude/side into claude/comment-fixture', 'claude/side']);
+  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/side.mjs', 2, ' inline: // side note'));
+});
+
+test('a root commit in the range is judged against the empty tree', () => {
+  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
+  run(['switch', '--quiet', '--orphan', 'claude/orphan']);
+  write('scripts/orphan.mjs', 'export const orphan = 1;\n');
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'chore: start unrelated history']);
+  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
+  write('scripts/orphan.mjs', 'export const orphan = 1; // note\n');
+  run(['add', '.']);
+  run(['commit', '--quiet', '--amend', '-m', 'chore: start unrelated history']);
+  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/orphan.mjs', 1, ' inline'));
+  assert.doesNotThrow(() => checkCommentRevision(repository, 'HEAD', 'HEAD'));
 });
 
 test('base-branch comment changes after the fork do not alter the verdict on the proposed revision', () => {
@@ -256,12 +332,12 @@ test('base-branch comment changes after the fork do not alter the verdict on the
   write('scripts/example.mjs', 'export const value = 2;\n');
   run(['add', '.']);
   run(['commit', '--quiet', '-m', 'fix: change the value']);
-  assert.doesNotThrow(() => checkCommentRevision(repository, 'refs/remotes/origin/main', 'HEAD'));
+  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
   assert.doesNotThrow(() => checkComments(repository, {}));
   write('scripts/example.mjs', 'export const value = 2; // narrate\n');
   run(['add', '.']);
   run(['commit', '--quiet', '-m', 'chore: add a note']);
-  assert.throws(() => checkCommentRevision(repository, 'refs/remotes/origin/main', 'HEAD'), error => {
+  assert.throws(() => checkCommentRevision(repository, ...range), error => {
     assert.match(error.message, /scripts\/example\.mjs:1/);
     assert.doesNotMatch(error.message, /legacy|other/);
     return true;
@@ -278,11 +354,32 @@ test('existing comments survive edits and renames; renamed files that gain a com
   run(['add', '.']);
   assert.doesNotThrow(() => checkStagedComments(repository));
   run(['commit', '--quiet', '-m', 'refactor: rename and extend']);
-  assert.doesNotThrow(() => checkCommentRevision(repository, 'refs/remotes/origin/main', 'HEAD'));
+  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
   write('scripts/new-name.mjs', `// legitimate existing note\n${body}\nexport const extra = 99; // explain\n`);
   assert.throws(() => checkWorkingComments(repository), /working tree scripts\/new-name\.mjs:14 inline: \/\/ explain/);
   run(['add', '.']);
   assert.throws(() => checkStagedComments(repository), /index scripts\/new-name\.mjs:14 inline/);
+});
+
+test('renames keep comments only inside the same comment grammar, and generated files stay exempt in every commit', () => {
+  const body = Array.from({ length: 12 }, (_, index) => `export const value${index} = ${index};`).join('\n');
+  const { repository, run, write } = repositoryFixture({
+    'scripts/script.mjs': `// legitimate existing note\n${body}\n`, 'config/settings.yml': '# legitimate existing note\nname: x\n',
+    'supabase/database.types.ts': 'export type Json = string;\n',
+  });
+  run(['mv', 'scripts/script.mjs', 'scripts/renamed.js']);
+  run(['mv', 'config/settings.yml', 'config/settings.yaml']);
+  run(['commit', '--quiet', '-m', 'refactor: rename within the same grammar']);
+  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
+  run(['mv', 'scripts/renamed.js', 'scripts/renamed.ts']);
+  run(['commit', '--quiet', '-m', 'refactor: change the grammar']);
+  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/renamed.ts', 1, ' inline: // legitimate existing note'));
+  run(['reset', '--quiet', '--hard', 'HEAD~1']);
+  write('supabase/database.types.ts', 'export type Json = string; // generated\n');
+  run(['commit', '--quiet', '-a', '-m', 'chore: regenerate the database types']);
+  write('supabase/database.types.ts', 'export type Json = string;\n');
+  run(['commit', '--quiet', '-a', '-m', 'chore: regenerate the database types again']);
+  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
 });
 
 test('new and untracked files are fully inspected, including staged files deleted from the working tree', () => {
@@ -310,23 +407,96 @@ test('the very first commit is inspected against the empty tree', () => {
   assert.throws(() => checkStagedComments(noisy.repository), /index scripts\/example\.mjs:1 inline/);
 });
 
-test('exceptions come from the manifest in the same Git state as the added comment', () => {
+test('an exception added in the same changeset never authorizes its own comment', () => {
+  const entry = exception('scripts/example.mjs', '// reviewed note');
+  const commented = 'export const value = 1; // reviewed note\n';
+  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
+  write('scripts/example.mjs', commented);
+  write('package.json', manifest(entry));
+  assert.throws(() => checkWorkingComments(repository), /working tree scripts\/example\.mjs:1 inline: \/\/ reviewed note/);
+  run(['add', '.']);
+  assert.throws(() => checkStagedComments(repository), /index scripts\/example\.mjs:1 inline: \/\/ reviewed note/);
+  run(['commit', '--quiet', '-m', 'chore: add a self-approved note']);
+  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 1, ' inline: // reviewed note'));
+  assert.throws(() => checkComments(repository, {}), /Added source comments are prohibited \(1\)[^]*trusted baseline \(refs\/remotes\/origin\/main\)/);
+});
+
+test('an exception committed earlier on the same branch is still not trusted', () => {
   const entry = exception('scripts/example.mjs', '// reviewed note');
   const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
-  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n');
-  run(['add', '--', 'scripts/example.mjs']);
   write('package.json', manifest(entry));
-  assert.throws(() => checkStagedComments(repository), /index scripts\/example\.mjs:1/);
-  assert.doesNotThrow(() => checkWorkingComments(repository));
-  run(['add', '--', 'package.json']);
-  write('package.json', '{}\n');
-  assert.doesNotThrow(() => checkStagedComments(repository));
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'chore: record an exception']);
+  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
+  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n');
   assert.throws(() => checkWorkingComments(repository), /working tree scripts\/example\.mjs:1/);
+  run(['add', '.']);
+  assert.throws(() => checkStagedComments(repository), /index scripts\/example\.mjs:1/);
+  run(['commit', '--quiet', '-m', 'chore: add the reviewed note']);
+  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 1));
+});
+
+test('an exception in the trusted baseline authorizes one exact occurrence across the whole range', () => {
+  const { repository, run, write } = repositoryFixture({
+    'scripts/example.mjs': 'export const value = 1;\n', 'scripts/other.mjs': 'export const other = 1;\n',
+    'package.json': manifest(exception('scripts/example.mjs', '// reviewed note')),
+  });
+  assert.deepEqual(trustedExceptions(repository, trustedBaseline(repository)), [{ file: 'scripts/example.mjs', text: '// reviewed note' }]);
+  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n');
+  assert.doesNotThrow(() => checkWorkingComments(repository));
+  run(['add', '.']);
+  assert.doesNotThrow(() => checkStagedComments(repository));
+  run(['commit', '--quiet', '-m', 'chore: add the reviewed note']);
+  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
+  assert.doesNotThrow(() => checkComments(repository, {}));
+  write('scripts/other.mjs', 'export const other = 1; // reviewed note\n');
+  run(['add', '.']);
+  assert.throws(() => checkStagedComments(repository), /index scripts\/other\.mjs:1/);
+  write('scripts/other.mjs', 'export const other = 1;\n');
   write('scripts/example.mjs', 'export const value = 1; // reviewed note\n// reviewed note\n');
-  run(['add', '--', 'scripts/example.mjs']);
-  assert.throws(() => checkStagedComments(repository), /index scripts\/example\.mjs:2/);
-  run(['commit', '--quiet', '-m', 'chore: add a reviewed note']);
-  assert.throws(() => checkCommentRevision(repository, 'refs/remotes/origin/main', 'HEAD'), /revision scripts\/example\.mjs:2/);
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'chore: repeat the note']);
+  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 2));
+  run(['reset', '--quiet', '--hard', 'HEAD~1']);
+  write('scripts/example.mjs', 'export const value = 1;\n');
+  run(['commit', '--quiet', '-a', '-m', 'fix: drop the note']);
+  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n');
+  run(['commit', '--quiet', '-a', '-m', 'chore: add the note again']);
+  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 1));
+});
+
+test('a changeset cannot swap the trusted exception for a different comment', () => {
+  const { repository, run, write } = repositoryFixture({
+    'scripts/example.mjs': 'export const value = 1;\n', 'package.json': manifest(exception('scripts/example.mjs', '// reviewed note')),
+  });
+  write('package.json', manifest(exception('scripts/example.mjs', '// different note')));
+  write('scripts/example.mjs', 'export const value = 1; // different note\n');
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'chore: swap the exception']);
+  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 1, ' inline: // different note'));
+  write('package.json', '{}\n');
+  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n');
+  run(['commit', '--quiet', '-a', '-m', 'chore: remove the exception list']);
+  assert.throws(() => checkCommentRevision(repository, ...range), /revision [0-9a-f]{12} scripts\/example\.mjs:1 inline: \/\/ different note/);
+});
+
+test('without a trusted baseline no exception applies, and a malformed baseline manifest fails loudly', () => {
+  const entry = exception('scripts/example.mjs', '// reviewed note');
+  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n', 'package.json': manifest(entry) });
+  assert.equal(trustedBaseline(repository), run(['rev-parse', 'refs/remotes/origin/main']).trim());
+  run(['update-ref', '-d', 'refs/remotes/origin/main']);
+  assert.equal(trustedBaseline(repository), null);
+  assert.deepEqual(trustedExceptions(repository, null), []);
+  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n');
+  run(['add', '.']);
+  assert.throws(() => checkStagedComments(repository), /index scripts\/example\.mjs:1[^]*trusted baseline \(unavailable\)/);
+  assert.throws(() => checkWorkingComments(repository), /working tree scripts\/example\.mjs:1/);
+  run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+  write('package.json', '{');
+  run(['add', '.']);
+  run(['commit', '--quiet', '-m', 'chore: break the manifest']);
+  run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+  assert.throws(() => checkStagedComments(repository), /Invalid package.json in trusted baseline/);
 });
 
 test('mandatory directives and generated files pass in Git states while prose beside them fails', () => {
@@ -417,7 +587,7 @@ test('package scripts and hooks keep the quality gates direct and unmasked', () 
   assert.ok(checks.indexOf('npm run check:comments') > checks.indexOf('npm run check:hygiene'));
   assert.ok(checks.includes('npm run check:format'));
   const preCommit = readFileSync(path.join(root, '.githooks/pre-commit'), 'utf8').split('\n');
-  for (const command of ['node scripts/check-comments.mjs --staged', 'node scripts/check-format.mjs', 'node scripts/check-yaml.mjs']) {
+  for (const command of ['node scripts/check-comments.mjs --staged', 'node scripts/check-format.mjs --staged', 'node scripts/check-yaml.mjs']) {
     assert.equal(preCommit.filter(line => line === command).length, 1, command);
   }
   assert.equal(readFileSync(path.join(root, '.githooks/pre-push'), 'utf8'),

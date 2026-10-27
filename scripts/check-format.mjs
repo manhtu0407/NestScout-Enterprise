@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { root } from './tool-path.mjs';
-import { repositoryFiles } from './repository-files.mjs';
+import { git, repositoryFiles, indexEntries, readBlobs, checkHookIndex, headRevision } from './repository-files.mjs';
 import { generatedFiles } from './check-hygiene.mjs';
 
 const binaryFile = /\.(?:png|jpe?g|zip|gz|bundle|pdf)$/i;
@@ -26,10 +26,10 @@ export function formatViolations(content) {
   return found;
 }
 
-export function checkFormat(repository = root) {
+function report(files) {
   const problems = [];
   const inspected = new Map();
-  for (const { file, state, content } of repositoryFiles(repository)) {
+  for (const { file, state, content } of files) {
     if (binaryFile.test(file) || generatedFiles.includes(file) || !content.length || inspected.get(file)?.equals(content)) continue;
     inspected.set(file, content);
     for (const problem of formatViolations(content)) problems.push(`${state} ${file}:${problem}`);
@@ -39,8 +39,30 @@ export function checkFormat(repository = root) {
   }
 }
 
+export function checkFormat(repository = root) {
+  report(repositoryFiles(repository));
+}
+
+export function checkStagedFormat(repository = root) {
+  const changed = new Set(git(repository, ['diff-index', '--cached', '--name-only', '--diff-filter=d', '-z', headRevision(repository)]).split('\0').filter(Boolean));
+  const entries = indexEntries(repository).filter(entry => changed.has(entry.file));
+  for (const entry of entries) {
+    if (!['100644', '100755'].includes(entry.mode) || entry.stage !== '0') {
+      throw new Error(`Expected a regular resolved index entry: ${JSON.stringify(entry.file)}`);
+    }
+  }
+  const contents = readBlobs(repository, entries.map(entry => entry.blob));
+  report(entries.map(entry => ({ file: entry.file, state: 'index', content: contents.get(entry.blob) })));
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (process.argv.length !== 2) throw new Error('Use no arguments.');
-  checkFormat();
-  console.log('Index and working text files use UTF-8, LF, a final newline, no trailing whitespace and no tab indentation.');
+  const staged = process.argv[2] === '--staged';
+  if (process.argv.length > 3 || (process.argv.length === 3 && !staged)) throw new Error('Use no arguments or --staged.');
+  if (staged) {
+    checkHookIndex(root);
+    checkStagedFormat();
+  } else checkFormat();
+  console.log(staged
+    ? 'Changed staged text files use UTF-8, LF, a final newline, no trailing whitespace and no tab indentation.'
+    : 'Index and working text files use UTF-8, LF, a final newline, no trailing whitespace and no tab indentation.');
 }

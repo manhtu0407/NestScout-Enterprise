@@ -26,6 +26,19 @@ export function checkHookIndex(repository, environment = process.env) {
   }
 }
 
+export function emptyTree(repository) {
+  return git(repository, ['hash-object', '-t', 'tree', '--stdin'], { input: '' }).trim();
+}
+
+export function headRevision(repository) {
+  try {
+    return git(repository, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']).trim();
+  } catch (error) {
+    if (error.status !== 1) throw error;
+    return emptyTree(repository);
+  }
+}
+
 export function indexEntries(repository) {
   return git(repository, ['ls-files', '--stage', '-z']).split('\0').filter(Boolean).map(entry => {
     const tab = entry.indexOf('\t');
