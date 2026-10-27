@@ -1,5 +1,8 @@
 import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 
+import '@/features/access';
+import '@/features/client';
+import '@/features/worker';
 import { createFakeAccessServices, type FakeOptions } from '@/features/access/testing/fake-access-services';
 
 let mockServices: ReturnType<typeof createFakeAccessServices>['services'];
