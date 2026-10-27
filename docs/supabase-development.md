@@ -38,7 +38,8 @@ npm run db:status
 
 CLI `2.122.0`, MCP SDK `1.32.2`, TOML parser `1.9.1`, and TypeScript `7.0.2` are
 pinned in npm. `supabase/supabase.lock` pins official service images by digest;
-startup uses `--frozen`. No application or hosted deployment dependencies were added.
+startup uses `--frozen`. Application Foundation V2 added the Expo workspace
+dependencies in `apps/mobile`; no hosted deployment dependency exists.
 
 `supabase/config.toml` enables the **experimental managed stack** using Docker.
 This choice followed a disposable Windows proof: the legacy runtime published
@@ -107,8 +108,12 @@ export was performed. Generate future migration names with the pinned CLI.
 
 `supabase/seed.sql` contains no data. Add synthetic fixtures alongside real product
 migrations. `supabase/database.types.ts` is the single generated artifact, from
-local `public`, normalized to LF without trailing whitespace. There is no app
-client to consume it yet. `typecheck:db` checks that artifact only.
+local `public`, normalized to LF without trailing whitespace. The mobile app does not
+import it yet. It has not been regenerated for `worker_access_grants` because the
+pinned images could not be pulled in the authoring environment: run `npm run db:types`
+where the stack starts and commit the result before relying on `db:types:check`. The
+app reads that one table through an untyped boundary with runtime validation until
+then. `typecheck:db` checks that artifact only.
 
 pgTAP inspects actual public RLS, table/column view grants, readable snapshots,
 SECURITY DEFINER EXECUTE (ordinary RPC and hooks separately), and reviewed function

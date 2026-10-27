@@ -250,8 +250,10 @@ are not a substitute for a reviewed design.
 
 Application layout and framework filenames are decided with an approved module.
 Any required naming-check change stays limited to that module's conventions with
-valid and invalid fixtures; existing protections remain intact. This setup adds
-no directories, dependencies, naming exceptions, APIs, interfaces or types.
+valid and invalid fixtures; existing protections remain intact. Engineering Foundation
+V1 added no directories or exceptions; Application Foundation V2 then added `apps/mobile`,
+`services/kael-core` (README only), the empty `docs/processes/` marker and the matching
+narrow path rules with fixtures.
 
 ### Application Foundation decisions
 

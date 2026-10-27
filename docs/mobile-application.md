@@ -75,6 +75,25 @@ phone sign-in is not operable end to end by default. Enabling it needs, in an
 uncommitted local override, `[auth] enable_signup`, `[auth.sms] enable_signup` and
 a provider or a local test configuration; test OTP values must never be committed.
 
+## Timeouts and failure handling
+
+Restoring a stored session, verifying its identity and each capability lookup are
+bounded (8 s, 8 s and 10 s). A session restore that times out opens the guest shell;
+an identity check that times out keeps the stored account in Client, unverified; a
+capability lookup that times out resolves to Client with Worker status unknown, also
+when it was a re-check during Worker mode. Late answers are discarded. Only a 401, 403
+or 404 answer or a missing session ends a stored session; 5xx, 429 and transport
+failures never sign the person out.
+
+## Known dependency advisories
+
+`npm audit` reports five high findings, all inside Expo's own command-line tooling
+(`@expo/cli`, `@expo/code-signing-certificates`, `node-forge`, `zod` 3.x) and the
+`expo` package that depends on them. The Metro iOS development bundle contains none of
+`node-forge`, `zod` or the code-signing package, so they run only on the developer machine. The suggested "fix" is a downgrade to Expo SDK 54 and is rejected; `node-forge`
+has no patched release on npm and `zod` is patched only in 4.x, whose API the Expo
+CLI does not target. Re-run the audit on every Expo SDK patch update.
+
 ## Commands
 
 ```sh

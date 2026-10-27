@@ -1,4 +1,4 @@
-import { isAuthApiError, isAuthRetryableFetchError, type SupabaseClient } from '@supabase/supabase-js';
+import { isAuthApiError, isAuthRetryableFetchError, isAuthSessionMissingError, type SupabaseClient } from '@supabase/supabase-js';
 
 import { classifyAuthError } from './auth-errors';
 import type { AuthGateway, IdentityCheck } from './auth-gateway';
@@ -8,6 +8,15 @@ const eventTypes = {
   TOKEN_REFRESHED: 'refreshed',
   USER_UPDATED: 'updated',
 } as const;
+
+// Only an answer that says the session or account is gone ends the session. Server
+// trouble (5xx, 429) and transport failures leave the stored session alone.
+function classifyIdentityError(error: unknown): IdentityCheck {
+  if (isAuthSessionMissingError(error)) return { status: 'invalid' };
+  if (isAuthRetryableFetchError(error)) return { status: 'unreachable' };
+  if (isAuthApiError(error) && [401, 403, 404].includes(error.status)) return { status: 'invalid' };
+  return { status: 'unreachable' };
+}
 
 export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
   return {
@@ -40,9 +49,7 @@ export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
     async verifyIdentity(): Promise<IdentityCheck> {
       try {
         const { data, error } = await client.auth.getUser();
-        if (error) {
-          return isAuthRetryableFetchError(error) || !isAuthApiError(error) ? { status: 'unreachable' } : { status: 'invalid' };
-        }
+        if (error) return classifyIdentityError(error);
         return { status: 'valid', identity: { userId: data.user.id } };
       } catch {
         return { status: 'unreachable' };

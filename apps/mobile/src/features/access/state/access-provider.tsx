@@ -26,7 +26,9 @@ export type AccessApi = AccessView & {
 
 const AccessContext = createContext<AccessApi | null>(null);
 
-const identityTimeoutMs = 8000;
+// Upper bounds that keep an offline or hanging backend from holding the app on a
+// splash screen or leaving a stale Worker decision in place.
+export const accessTimeouts = { restoreMs: 8000, identityMs: 8000, capabilityMs: 10_000 } as const;
 const resendCooldownMs = 60_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
@@ -65,9 +67,9 @@ export function AccessProvider({ services, children }: { services: AccessService
       if (next === 'active') dispatch({ type: 'recheck_requested' });
     });
     void (async () => {
-      const restored = await auth.restoreSession().catch(() => null);
+      const restored = await withTimeout(auth.restoreSession().catch(() => null), accessTimeouts.restoreMs, null);
       if (!restored) return active && dispatch({ type: 'bootstrapped', userId: null, identity: 'unverified' });
-      const check = await withTimeout(auth.verifyIdentity(), identityTimeoutMs, { status: 'unreachable' as const });
+      const check = await withTimeout(auth.verifyIdentity(), accessTimeouts.identityMs, { status: 'unreachable' as const });
       if (check.status === 'invalid') await auth.signOut();
       if (active) dispatch(identityAction(check, restored.userId));
     })();
@@ -82,7 +84,7 @@ export function AccessProvider({ services, children }: { services: AccessService
   useEffect(() => {
     if (!bootstrapped || userId === null) return;
     let active = true;
-    void capabilities.fetchCapabilities().then((result) => {
+    void withTimeout(capabilities.fetchCapabilities(), accessTimeouts.capabilityMs, { kind: 'error' as const }).then((result) => {
       if (!active) return;
       dispatch({ type: 'capability_received', requestId, userId, result });
       if (result.kind === 'session_invalid') void auth.signOut();

@@ -7,6 +7,7 @@ import type { AccessServices } from '../state/access-provider';
 export type FakeOptions = {
   session?: SessionIdentity | null;
   identityCheck?: IdentityCheck;
+  verifyIdentity?: () => Promise<IdentityCheck>;
   capability?: CapabilityResult | (() => Promise<CapabilityResult>);
   storedMode?: { userId: string; mode: AppMode } | null;
   restore?: () => Promise<SessionIdentity | null>;
@@ -36,7 +37,7 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
       return { ok: true, value: signInIdentity };
     },
     restoreSession: options.restore ?? (async () => options.session ?? null),
-    verifyIdentity: async () => options.identityCheck ?? { status: 'valid', identity: options.session ?? signInIdentity },
+    verifyIdentity: options.verifyIdentity ?? (async () => options.identityCheck ?? { status: 'valid', identity: options.session ?? signInIdentity }),
     async signOut() {
       calls.signOut += 1;
       listener?.({ type: 'signed_out' });

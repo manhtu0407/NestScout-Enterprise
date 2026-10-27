@@ -1,4 +1,4 @@
-import { AuthApiError, AuthRetryableFetchError, type SupabaseClient } from '@supabase/supabase-js';
+import { AuthApiError, AuthRetryableFetchError, AuthSessionMissingError, AuthUnknownError, type SupabaseClient } from '@supabase/supabase-js';
 
 import { createSupabaseAuthGateway } from './supabase-auth-gateway';
 
@@ -50,6 +50,26 @@ describe('supabase auth gateway', () => {
     expect(await check({ data: { user: null }, error: new AuthRetryableFetchError('offline', 0) })).toEqual({ status: 'unreachable' });
     const thrown = createSupabaseAuthGateway(stubClient({ getUser: async () => { throw new TypeError('offline'); } }));
     expect(await thrown.verifyIdentity()).toEqual({ status: 'unreachable' });
+  });
+
+  test.each([
+    [401, 'bad_jwt', 'invalid'],
+    [403, 'user_banned', 'invalid'],
+    [404, 'user_not_found', 'invalid'],
+    [429, 'over_request_rate_limit', 'unreachable'],
+    [500, 'unexpected_failure', 'unreachable'],
+    [502, undefined, 'unreachable'],
+    [503, undefined, 'unreachable'],
+  ] as const)('identity check: HTTP %s (%s) is %s', async (status, code, expected) => {
+    const gateway = createSupabaseAuthGateway(stubClient({ getUser: async () => ({ data: { user: null }, error: new AuthApiError('failed', status, code) }) }));
+    expect(await gateway.verifyIdentity()).toEqual({ status: expected });
+  });
+
+  test('identity check: a missing session is invalid and an unclassified error never ends the session', async () => {
+    const check = (error: Error) => createSupabaseAuthGateway(stubClient({ getUser: async () => ({ data: { user: null }, error }) })).verifyIdentity();
+    expect(await check(new AuthSessionMissingError())).toEqual({ status: 'invalid' });
+    expect(await check(new AuthUnknownError('odd', new Error('cause')))).toEqual({ status: 'unreachable' });
+    expect(await check(new Error('anything else'))).toEqual({ status: 'unreachable' });
   });
 
   test('signs out the local device session', async () => {

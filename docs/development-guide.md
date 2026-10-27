@@ -38,8 +38,9 @@ business permissions and release design are **OUT OF SCOPE**, not foundation blo
 
 The [implementation preparation](architecture.md#entry-into-application-implementation)
 maps current folder responsibilities and the information needed before introducing
-a product module. This setup creates no app or empty module directories and
-installs no product dependencies. Future structure follows real responsibilities,
+a product module. Engineering Foundation V1 created no app or empty module
+directories; Application Foundation V2 added only the mobile workspace and its Expo
+dependencies. Future structure follows real responsibilities,
 consumers and verification under the root policy, rather than importing the
 HomeServices implementation. Pinned tooling currently supports Windows/Linux x64;
 macOS tooling and native iOS execution have not been verified.
@@ -89,10 +90,10 @@ npm run check
 npm run verify:negative
 ```
 
-These Node/npm commands set up repository tooling, not the future application. There is no
-application server, application build, product typecheck, or product unit suite yet.
-Tooling unit tests, database artifact typechecking and disposable local SQL checks
-do exist; use the commands in `package.json`. Tool downloads
+These Node/npm commands set up repository tooling and the mobile workspace. There is
+no application server, native build or release. `npm run check` includes the mobile
+typecheck, lint and unit tests (`check:mobile`); tooling unit tests, database artifact
+typechecking and disposable local SQL checks also exist. Use the commands in `package.json`. Tool downloads
 are version-pinned and SHA-256 checked; dependency installation uses the lockfile.
 
 Optional local hooks (affect only this checkout):

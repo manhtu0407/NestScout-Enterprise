@@ -24,11 +24,11 @@ the wrapper validates Docker, stack identity and loopback bindings. Run the
 than direct CLI commands with target overrides. Never copy hosted credentials or
 raw stack-status JSON into an example, log or fixture.
 
-No `.env.example` is added before an App consumer defines its variable names.
-With that consumer, document each input's name, public/secret classification,
-requiredness, format, source and target. Missing, malformed or mismatched target
-inputs must fail clearly; no default to a hosted project or cross-environment
-fallback. Supply a sanitized example with placeholders only. Local endpoint
+The only example file is `apps/mobile/.env.example`, added with its consumer
+`apps/mobile/src/lib/config.ts`. Each input needs a documented name,
+public/secret classification, requiredness, format, source and target. Missing,
+malformed or mismatched target inputs must fail clearly; no default to a hosted
+project or cross-environment fallback. Examples hold placeholders only. Local endpoint
 discovery must handle dynamic ports. A physical iPhone cannot reach a developer's
 loopback URL: a later device connectivity design needs explicit access boundaries;
 do not weaken the existing binding guard to claim native verification.
@@ -122,10 +122,12 @@ duplicate/concurrency and failure tests at the real boundary as each risk appear
 
 Current executable checks cover repository identity, index/working snapshots,
 secrets, workflows, tests, skill format and isolated local DB metadata. Passing them
-does not establish guest access, OTP delivery, account linking, multi-role
-authorization or native-device behavior. Those are **OUT OF SCOPE** until their
-application consumers are supplied. Hosted CI requires separate owner authority;
-local checks cannot be reported as hosted results.
+does not establish OTP delivery, account linking or native-device behavior, which
+remain **OUT OF SCOPE** until a provider and device path are approved. Guest entry,
+route gating and the Worker grant lookup have mobile unit/navigation tests and
+`worker_access_grants` has pgTAP denial tests, but per-operation Worker authorization
+cannot be tested because no Worker endpoint exists. Hosted CI requires separate owner
+authority; local checks cannot be reported as hosted results.
 
 Official references reviewed for these contracts on 2026-10-27:
 
