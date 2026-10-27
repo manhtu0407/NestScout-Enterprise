@@ -43,8 +43,10 @@
     "db:stop": "node scripts/supabase-local.mjs stop",
     "verify:supabase": "node scripts/run-tests.mjs scripts/supabase-local.test.mjs",
     "typecheck:db": "tsc --noEmit --strict --skipLibCheck supabase/database.types.ts",
-    "verify:foundation": "node scripts/run-tests.mjs scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs scripts/check-skills.test.mjs scripts/test-integrity-reporter.test.mjs",
+    "verify:foundation": "node scripts/run-tests.mjs scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs scripts/check-skills.test.mjs scripts/test-integrity-reporter.test.mjs scripts/review-diff.test.mjs scripts/dead-code-evaluation.test.mjs",
     "agents:evaluate": "node scripts/agent-evaluation.mjs",
+    "health:dead-code": "knip --no-exit-code --no-progress",
+    "health:review-diff": "node scripts/review-diff.mjs",
     "tools:help": "node scripts/tool-help.mjs",
     "tools:trivy:smoke": "node scripts/tool-workflows.mjs trivy",
     "tools:k6:smoke": "node scripts/tool-workflows.mjs k6",
@@ -56,6 +58,7 @@
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
     "acorn": "8.19.0",
+    "knip": "6.42.1",
     "markdownlint-cli2": "0.24.0",
     "smol-toml": "1.9.1",
     "supabase": "2.122.0",
@@ -65,5 +68,22 @@
   "overrides": {
     "katex": "0.18.2",
     "react": "19.3.0"
+  },
+  "knip": {
+    "workspaces": {
+      ".": {
+        "entry": [
+          "scripts/*.test.mjs",
+          "scripts/supabase-mcp.mjs",
+          "scripts/test-integrity-reporter.mjs",
+          "supabase/database.types.ts"
+        ],
+        "project": ["scripts/**/*.mjs", "supabase/**/*.ts"],
+        "ignoreDependencies": ["supabase"]
+      },
+      "apps/mobile": {
+        "ignoreDependencies": ["expo-updates"]
+      }
+    }
   }
 }
