@@ -291,6 +291,22 @@ describe('phone sign-in', () => {
 });
 
 describe('guest protected action', () => {
+  test('a guest draft returns after sign-in without submitting automatically', async () => {
+    await start({ session: null, capability: grant('none') });
+    await heading('NestScout');
+    await fireEvent.changeText(screen.getByLabelText('Guest request draft'), 'A leaking tap');
+    await press('Sign in with phone');
+    await heading('Sign in with your phone');
+    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '0912345678');
+    await press('Send code');
+    await heading('Enter the code');
+    await fireEvent.changeText(screen.getByLabelText('One-time code'), '654321');
+    await press('Verify code');
+    await heading('Client mode');
+    expect(screen.getByLabelText('Service request').props.value).toBe('A leaking tap');
+    expect(screen.queryByText('Request received. Refresh for its current status.')).toBeNull();
+  });
+
   test('requesting the Worker area as a guest signs in, then lands in Client with a notice when ungranted', async () => {
     await start({ session: null, capability: grant('none') });
     await heading('NestScout');

@@ -23,6 +23,8 @@ export type AccessApi = AccessView & {
   recheck(): void;
   setIntent(intent: AppMode | null): void;
   dismissNotice(): void;
+  editGuestDraft(text: string): void;
+  clearGuestDraft(): void;
 };
 
 const AccessContext = createContext<AccessApi | null>(null);
@@ -142,6 +144,8 @@ export function AccessProvider({ services, children }: { services: AccessService
       recheck: () => dispatch({ type: 'recheck_requested' }),
       setIntent: (intent) => dispatch({ type: 'intent_set', intent }),
       dismissNotice: () => dispatch({ type: 'notice_dismissed' }),
+      editGuestDraft: (text) => dispatch({ type: 'guest_draft_edited', text }),
+      clearGuestDraft: () => dispatch({ type: 'guest_draft_cleared' }),
     }),
     [view, requestOtp, verifyOtp, signOut],
   );

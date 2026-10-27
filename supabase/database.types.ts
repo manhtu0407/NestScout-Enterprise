@@ -5,7 +5,205 @@ export type Database = {
 
   "public": {
           Tables: {
-            "worker_access_grants": {
+            "service_cases": {
+                  Row: {
+                    "created_at": string,"id": string,"job_id": string,"kind": string,"opened_by": string,"operation_key": string,"reason": string,"submission_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"job_id": string,"kind": string,"opened_by": string,"operation_key": string,"reason": string,"submission_id"?: string | null
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"job_id"?: string,"kind"?: string,"opened_by"?: string,"operation_key"?: string,"reason"?: string,"submission_id"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_cases_job_id_fkey"
+      columns: ["job_id"]
+isOneToOne: false
+      referencedRelation: "service_jobs"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "service_cases_submission_id_fkey"
+      columns: ["submission_id"]
+isOneToOne: false
+      referencedRelation: "service_submissions"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"service_invitations": {
+                  Row: {
+                    "expires_at": string,"id": string,"quote_id": string,"request_id": string,"state": string,"worker_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "expires_at": string,"id"?: string,"quote_id": string,"request_id": string,"state"?: string,"worker_id": string
+                  }
+                  Update: {
+                    "expires_at"?: string,"id"?: string,"quote_id"?: string,"request_id"?: string,"state"?: string,"worker_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_invitations_quote_id_request_id_fkey"
+      columns: ["quote_id","request_id"]
+isOneToOne: false
+      referencedRelation: "service_quotes"
+      referencedColumns: ["id","request_id"]
+    },{
+      foreignKeyName: "service_invitations_request_id_fkey"
+      columns: ["request_id"]
+isOneToOne: false
+      referencedRelation: "service_requests"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"service_job_events": {
+                  Row: {
+                    "actor_id": string,"created_at": string,"event": string,"id": string,"job_id": string,"version": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "actor_id": string,"created_at"?: string,"event": string,"id"?: string,"job_id": string,"version": number
+                  }
+                  Update: {
+                    "actor_id"?: string,"created_at"?: string,"event"?: string,"id"?: string,"job_id"?: string,"version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_job_events_job_id_fkey"
+      columns: ["job_id"]
+isOneToOne: false
+      referencedRelation: "service_jobs"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"service_job_reports": {
+                  Row: {
+                    "actor_id": string,"created_at": string,"details": string,"id": string,"job_id": string,"kind": string,"report_key": string,"reported_from_version": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "actor_id": string,"created_at"?: string,"details": string,"id"?: string,"job_id": string,"kind": string,"report_key": string,"reported_from_version": number
+                  }
+                  Update: {
+                    "actor_id"?: string,"created_at"?: string,"details"?: string,"id"?: string,"job_id"?: string,"kind"?: string,"report_key"?: string,"reported_from_version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_job_reports_job_id_fkey"
+      columns: ["job_id"]
+isOneToOne: false
+      referencedRelation: "service_jobs"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"service_jobs": {
+                  Row: {
+                    "created_at": string,"id": string,"invitation_id": string,"quote_id": string,"request_id": string,"stage": string,"version": number,"worker_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"invitation_id": string,"quote_id": string,"request_id": string,"stage"?: string,"version"?: number,"worker_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"invitation_id"?: string,"quote_id"?: string,"request_id"?: string,"stage"?: string,"version"?: number,"worker_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_jobs_invitation_id_fkey"
+      columns: ["invitation_id"]
+isOneToOne: true
+      referencedRelation: "service_invitations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "service_jobs_quote_id_request_id_fkey"
+      columns: ["quote_id","request_id"]
+isOneToOne: false
+      referencedRelation: "service_quotes"
+      referencedColumns: ["id","request_id"]
+    },{
+      foreignKeyName: "service_jobs_request_id_fkey"
+      columns: ["request_id"]
+isOneToOne: true
+      referencedRelation: "service_requests"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"service_quotes": {
+                  Row: {
+                    "accepted_at": string | null,"accepted_by": string | null,"amount_minor": number,"currency": string,"expires_at": string,"id": string,"rejected_at": string | null,"rejected_by": string | null,"request_id": string,"scope": string,"version": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"amount_minor": number,"currency": string,"expires_at": string,"id"?: string,"rejected_at"?: string | null,"rejected_by"?: string | null,"request_id": string,"scope": string,"version": number
+                  }
+                  Update: {
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"amount_minor"?: number,"currency"?: string,"expires_at"?: string,"id"?: string,"rejected_at"?: string | null,"rejected_by"?: string | null,"request_id"?: string,"scope"?: string,"version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_quotes_request_id_fkey"
+      columns: ["request_id"]
+isOneToOne: false
+      referencedRelation: "service_requests"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"service_requests": {
+                  Row: {
+                    "created_at": string,"description": string,"id": string,"owner_id": string,"submission_key": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"description": string,"id"?: string,"owner_id"?: string,"submission_key": string
+                  }
+                  Update: {
+                    "created_at"?: string,"description"?: string,"id"?: string,"owner_id"?: string,"submission_key"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"service_scope_changes": {
+                  Row: {
+                    "basis": string,"created_at": string,"currency": string,"decided_at": string | null,"decided_by": string | null,"decided_from_version": number | null,"decision": string,"id": string,"job_id": string,"new_amount_minor": number,"new_scope": string,"old_amount_minor": number,"old_scope": string,"proposal_key": string,"proposed_by": string,"proposed_from_version": number,"rationale": string,"sequence": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "basis": string,"created_at"?: string,"currency": string,"decided_at"?: string | null,"decided_by"?: string | null,"decided_from_version"?: number | null,"decision"?: string,"id"?: string,"job_id": string,"new_amount_minor": number,"new_scope": string,"old_amount_minor": number,"old_scope": string,"proposal_key": string,"proposed_by": string,"proposed_from_version": number,"rationale": string,"sequence": number
+                  }
+                  Update: {
+                    "basis"?: string,"created_at"?: string,"currency"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"decided_from_version"?: number | null,"decision"?: string,"id"?: string,"job_id"?: string,"new_amount_minor"?: number,"new_scope"?: string,"old_amount_minor"?: number,"old_scope"?: string,"proposal_key"?: string,"proposed_by"?: string,"proposed_from_version"?: number,"rationale"?: string,"sequence"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_scope_changes_job_id_fkey"
+      columns: ["job_id"]
+isOneToOne: false
+      referencedRelation: "service_jobs"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"service_submissions": {
+                  Row: {
+                    "created_at": string,"decided_at": string | null,"decided_by": string | null,"decided_from_version": number | null,"decision": string,"decision_reason": string | null,"evidence": string,"id": string,"job_id": string,"submission_key": string,"submitted_by": string,"submitted_from_version": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"decided_from_version"?: number | null,"decision"?: string,"decision_reason"?: string | null,"evidence": string,"id"?: string,"job_id": string,"submission_key": string,"submitted_by": string,"submitted_from_version": number
+                  }
+                  Update: {
+                    "created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"decided_from_version"?: number | null,"decision"?: string,"decision_reason"?: string | null,"evidence"?: string,"id"?: string,"job_id"?: string,"submission_key"?: string,"submitted_by"?: string,"submitted_from_version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_submissions_job_id_fkey"
+      columns: ["job_id"]
+isOneToOne: false
+      referencedRelation: "service_jobs"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"worker_access_grants": {
                   Row: {
                     "granted_at": string,"revoked_at": string | null,"status": string,"user_id": string
                   }
@@ -25,7 +223,55 @@ export type Database = {
             [_ in never]: never
           }
           Functions: {
-            [_ in never]: never
+            "accept_service_invitation":
+{ Args: { "p_invitation_id": string,"p_quote_id": string,"p_quote_version": number }; Returns: string
+                           },
+"accept_service_quote":
+{ Args: { "p_quote_id": string,"p_version": number }; Returns: string
+                           },
+"advance_service_job":
+{ Args: { "p_job_id": string,"p_next": string,"p_version": number }; Returns: number
+                           },
+"decide_service_scope":
+{ Args: { "p_decision": string,"p_job_version": number,"p_proposal_id": string,"p_sequence": number }; Returns: string
+                           },
+"decide_service_submission":
+{ Args: { "p_decision": string,"p_reason": string,"p_submission_id": string,"p_version": number }; Returns: string
+                           },
+"decline_service_invitation":
+{ Args: { "p_invitation_id": string,"p_quote_id": string,"p_quote_version": number }; Returns: string
+                           },
+"kael_read_context":
+{ Args: { "p_kind": string,"p_resource_id": string }; Returns: Json
+                           },
+"open_service_aftercare":
+{ Args: { "p_job_id": string,"p_key": string,"p_reason": string }; Returns: string
+                           },
+"propose_service_scope":
+{ Args: { "p_amount": number,"p_job_id": string,"p_key": string,"p_rationale": string,"p_scope": string,"p_version": number }; Returns: string
+                           },
+"reject_service_quote":
+{ Args: { "p_quote_id": string,"p_version": number }; Returns: string
+                           },
+"report_service_job":
+{ Args: { "p_details": string,"p_job_id": string,"p_key": string,"p_kind": string,"p_version": number }; Returns: string
+                           },
+"submit_service_request":
+{ Args: { "p_description": string,"p_submission_key": string }; Returns: string
+                           },
+"submit_service_work":
+{ Args: { "p_evidence": string,"p_job_id": string,"p_key": string,"p_version": number }; Returns: string
+                           },
+"worker_jobs":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "amount_minor": number,"currency": string,"job_id": string,"scope": string,"stage": string,"version": number
+            }[]
+                           },
+"worker_offers":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "amount_minor": number,"currency": string,"expires_at": string,"invitation_id": string,"quote_id": string,"quote_version": number,"scope": string
+            }[]
+                           }
           }
           Enums: {
             [_ in never]: never
