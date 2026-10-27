@@ -56,11 +56,12 @@ Bootstrap with `npm ci --ignore-scripts`; retain notices/lockfile. No global lin
 Inspect `npm run`, `node --help`, `markdownlint-cli2 --help` from installed package
 context. Native Node test families include test selection, isolation, reporter and
 coverage options; flags depend on installed help. Repository executors own reserved
-files, metadata, hygiene, YAML, secrets, test selection and capability validation.
+files, metadata, hygiene, added source comments, formatting, YAML, secrets, test
+selection and capability validation.
 Do not create duplicate command definitions in a new runner.
 
-Use `lint:markdown`, `lint:yaml`, `check:reserved`, `check:hygiene`, `check:metadata`,
-`check:test-selection`, `check:capabilities`, `verify:foundation`, `verify:supabase`
+Use `lint:markdown`, `lint:yaml`, `check:reserved`, `check:hygiene`, `check:comments`,
+`check:format`, `check:metadata`, `check:test-selection`, `check:capabilities`, `verify:foundation`, `verify:supabase`
 and `verify:negative` as appropriate, then the mandatory aggregate `check` and
 negative suite before delivery. Selected persistent tests retain positive and
 negative assertions; `db:mcp:test` remains a separately prerequisite-dependent

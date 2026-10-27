@@ -450,7 +450,9 @@ test('benchmark CLI accepts delivered README drift before rejecting an unsafe ca
   const checkout = path.join(repository, 'delivery');
   run(['clone', '--quiet', '--no-hardlinks', '--no-checkout', root, checkout]);
   git(checkout, ['checkout', '--quiet', '-b', 'benchmark-fixture', git(root, ['rev-parse', 'HEAD']).trim()]);
-  writeFileSync(path.join(checkout, 'scripts/qa-impact-review-benchmark.mjs'), readFileSync(path.join(root, 'scripts/qa-impact-review-benchmark.mjs')));
+  for (const file of ['scripts/qa-impact-review-benchmark.mjs', 'scripts/fixtures/qa-impact-review-r3-v2.json', 'AGENTS.md']) {
+    writeFileSync(path.join(checkout, file), readFileSync(path.join(root, file)));
+  }
   const before = readFileSync(path.join(checkout, 'README.md'));
   const pack = JSON.parse(readFileSync(path.join(checkout, 'scripts/fixtures/qa-impact-review-r3-v2.json'), 'utf8'));
   assert.notEqual(createHash('sha256').update(before).digest('hex'), pack.sourceFiles['README.md']);
@@ -466,6 +468,26 @@ test('benchmark CLI accepts delivered README drift before rejecting an unsafe ca
   assert.deepEqual(readFileSync(path.join(checkout, 'README.md')), before);
   assert.deepEqual(readdirSync(path.join(repository, 'outside')), ['marker.txt']);
   assert.equal(readFileSync(path.join(repository, 'outside/marker.txt'), 'utf8'), 'preserve\n');
+}));
+
+test('benchmark CLI stops on delivered policy drift while the delivered and preregistered policy pins stay distinct', () => fixture(({ repository, run }) => {
+  const policy = readFileSync(path.join(root, 'AGENTS.md'));
+  const pack = JSON.parse(readFileSync(path.join(root, 'scripts/fixtures/qa-impact-review-r3-v2.json'), 'utf8'));
+  assert.equal(createHash('sha256').update(policy).digest('hex'), pack.deliveredPolicy['AGENTS.md']);
+  assert.equal(createHash('sha256').update(benchmarkSource('AGENTS.md')).digest('hex'), pack.sourceFiles['AGENTS.md']);
+  const checkout = path.join(repository, 'delivery');
+  run(['clone', '--quiet', '--no-hardlinks', '--no-checkout', root, checkout]);
+  git(checkout, ['checkout', '--quiet', '-b', 'benchmark-fixture', git(root, ['rev-parse', 'HEAD']).trim()]);
+  for (const file of ['scripts/qa-impact-review-benchmark.mjs', 'scripts/fixtures/qa-impact-review-r3-v2.json']) {
+    writeFileSync(path.join(checkout, file), readFileSync(path.join(root, file)));
+  }
+  writeFileSync(path.join(checkout, 'AGENTS.md'), Buffer.concat([policy, Buffer.from('Drift.\n')]));
+  const child = spawnSync(process.execPath, ['scripts/qa-impact-review-benchmark.mjs', 'prepare'], {
+    cwd: checkout, env: gitEnvironment(), encoding: 'utf8', timeout: 30000,
+  });
+  assert.ifError(child.error);
+  assert.equal(child.status, 1);
+  assert.match(child.stderr, /Harness policy drift/);
 }));
 
 test('evidence paths reject traversal, platform aliases and ambiguous manifest members', () => fixture(({ repository, write }) => {

@@ -32,6 +32,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Install checksum-verified tools
         run: npm run tools:install
+      - name: Check added source comments on the proposed revision
+        run: npm run check:comments
+      - name: Check the formatting contract
+        run: npm run check:format
       - name: Check hygiene, metadata, documentation, workflows, and secrets
         run: npm run check
       - name: Confirm checks reject invalid fixtures

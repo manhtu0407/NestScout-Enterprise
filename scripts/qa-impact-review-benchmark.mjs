@@ -15,7 +15,6 @@ const pack = JSON.parse(readFileSync(packFile, 'utf8'));
 const sha = value => createHash('sha256').update(value).digest('hex');
 const adapterHash = sha(readFileSync(adapter));
 const packHash = sha(readFileSync(packFile));
-const deliveredPolicySHA256 = '87e2f70fc024f8d9be6523d83f44c0b9840a97f9d669ccd3a2b72276c9dae278';
 const git = (cwd, args, options = {}) => execFileSync('git', args, { cwd, env: gitEnvironment(), encoding: 'utf8', stdio: 'pipe', ...options }).trim();
 const write = (file, content) => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, content); };
 const json = (file, value) => write(file, JSON.stringify(value, null, 2) + '\n');
@@ -173,7 +172,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === adapter) {
   else if (action === 'prepare' && args.length === 0) {
     assert.equal(pack.status, 'DESIGN_ONLY_NO_SCORED_RUNS');
     for (const [file, expected] of Object.entries(pack.harnessFiles)) assert.equal(sha(readFileSync(path.join(root, file))), expected, 'Pinned harness drift');
-    assert.equal(sha(readFileSync(path.join(root, 'AGENTS.md'))), deliveredPolicySHA256, 'Harness policy drift');
+    assert.equal(sha(readFileSync(path.join(root, 'AGENTS.md'))), pack.deliveredPolicy['AGENTS.md'], 'Harness policy drift');
     // The fixture README belongs to the pinned source, independently of the delivered root README.
     benchmarkSource('README.md');
     const before = sourceSnapshot();

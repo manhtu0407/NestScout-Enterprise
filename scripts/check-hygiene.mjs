@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseJavaScript } from 'acorn';
+import { Parser as YamlParser, Scalar, isScalar, parseAllDocuments, visit as visitYaml } from 'yaml';
 import { parse } from 'smol-toml';
 import { API } from 'typescript/unstable/sync';
 import { createVirtualFileSystem } from 'typescript/unstable/fs';
@@ -34,6 +35,8 @@ const approvedLogo = Object.freeze({
   path: 'docs/assets/nestscout-horizon-logo-light.png',
   sha256: 'b4dbdd2eb0c742e36f61b41f87744f32f709cbdfc4441c93f17a494a87fde446',
 });
+
+export const generatedFiles = Object.freeze(['supabase/database.types.ts']);
 
 export function checkPath(file, artifacts = []) {
   if (file.includes('\\') || file.split('/').some(part => !part || part === '.' || part === '..') || /[\u0000-\u001f\u007f]/u.test(file)) {
@@ -82,57 +85,230 @@ export function checkAttribution(text, label) {
   }
 }
 
-export function sourceComments(file, text) {
-  if (/\.(?:[cm]?ts|tsx)$/.test(file)) {
-    const directory = path.resolve(root, '.cache/hygiene-types').replaceAll('\\', '/');
-    const sourcePath = `${directory}/input${file.match(/(?:\.d)?\.(?:[cm]?ts|tsx)$/)[0]}`;
-    const configPath = `${directory}/tsconfig.json`;
-    const fs = createVirtualFileSystem({
-      [sourcePath]: text,
-      [configPath]: JSON.stringify({ compilerOptions: { noLib: true, noResolve: true, jsx: 'preserve' }, files: [sourcePath] }),
+const lineEnd = (text, index) => {
+  const end = text.indexOf('\n', index);
+  return end < 0 ? text.length : end;
+};
+
+const span = (text, start, end) => ({ text: text.slice(start, end), start });
+
+function skipQuoted(text, index, quote, { backslash = false, doubled = false, line = false, stop = text.length } = {}) {
+  for (let cursor = index + 1; cursor < stop; cursor++) {
+    const char = text[cursor];
+    if (line && char === '\n') return cursor;
+    if (backslash && char === '\\') cursor++;
+    else if (char === quote) {
+      if (doubled && text[cursor + 1] === quote) cursor++;
+      else return cursor + 1;
+    }
+  }
+  return stop;
+}
+
+function javaScriptComments(file, text) {
+  const comments = [];
+  try {
+    parseJavaScript(text, {
+      ecmaVersion: 'latest', sourceType: file.endsWith('.cjs') ? 'script' : 'module',
+      onComment: (_block, _value, start, end) => comments.push(span(text, start, end)),
     });
-    const api = new API({ cwd: root, fs });
-    try {
-      const snapshot = api.updateSnapshot({ openProjects: [configPath] });
-      const program = snapshot.getProjects()[0]?.program;
-      const source = program?.getSourceFile(sourcePath);
-      if (!source || program.getSyntacticDiagnostics(sourcePath).length) throw new Error(`Invalid TypeScript syntax in ${file}.`);
-      const literals = [];
-      function visit(node) {
-        if ([SyntaxKind.StringLiteral, SyntaxKind.RegularExpressionLiteral, SyntaxKind.JsxText,
-          SyntaxKind.NoSubstitutionTemplateLiteral, SyntaxKind.TemplateHead, SyntaxKind.TemplateMiddle, SyntaxKind.TemplateTail].includes(node.kind)) {
-          literals.push([node.getStart(source), node.end]);
-        }
-        node.forEachChild(visit);
-      }
-      visit(source);
-      literals.sort((a, b) => a[0] - b[0]);
-      const comments = [];
-      let start = 0;
-      for (const [end, next] of [...literals, [text.length, text.length]]) {
-        const scanner = createScanner(false, source.languageVariant, text, start, end - start);
-        for (let token = scanner.scan(); token !== SyntaxKind.EndOfFile; token = scanner.scan()) {
-          if ([SyntaxKind.SingleLineCommentTrivia, SyntaxKind.MultiLineCommentTrivia].includes(token)) comments.push(scanner.getTokenText());
-        }
-        start = next;
-      }
-      return comments.join('\n');
-    } finally {
-      api.close();
-    }
+  } catch (error) {
+    throw new Error(`Invalid JavaScript in ${file} at ${error.loc?.line}:${error.loc?.column}.`);
   }
-  if (/\.[cm]?js$/.test(file)) {
+  return comments;
+}
+
+function typeScriptComments(file, text) {
+  const directory = path.resolve(root, '.cache/hygiene-types').replaceAll('\\', '/');
+  const sourcePath = `${directory}/input${file.match(/(?:\.d)?\.(?:[cm]?ts|tsx)$/)[0]}`;
+  const configPath = `${directory}/tsconfig.json`;
+  const fs = createVirtualFileSystem({
+    [sourcePath]: text,
+    [configPath]: JSON.stringify({ compilerOptions: { noLib: true, noResolve: true, jsx: 'preserve' }, files: [sourcePath] }),
+  });
+  const api = new API({ cwd: root, fs });
+  try {
+    const snapshot = api.updateSnapshot({ openProjects: [configPath] });
+    const program = snapshot.getProjects()[0]?.program;
+    const source = program?.getSourceFile(sourcePath);
+    if (!source || program.getSyntacticDiagnostics(sourcePath).length) throw new Error(`Invalid TypeScript syntax in ${file}.`);
+    const literals = [];
+    function visit(node) {
+      if ([SyntaxKind.StringLiteral, SyntaxKind.RegularExpressionLiteral, SyntaxKind.JsxText,
+        SyntaxKind.NoSubstitutionTemplateLiteral, SyntaxKind.TemplateHead, SyntaxKind.TemplateMiddle, SyntaxKind.TemplateTail].includes(node.kind)) {
+        literals.push([node.getStart(source), node.end]);
+      }
+      node.forEachChild(visit);
+    }
+    visit(source);
+    literals.sort((a, b) => a[0] - b[0]);
     const comments = [];
-    try {
-      parseJavaScript(text, { ecmaVersion: 'latest', sourceType: file.endsWith('.cjs') ? 'script' : 'module', onComment: (_block, value) => comments.push(value) });
-    } catch (error) {
-      throw new Error(`Invalid JavaScript in ${file} at ${error.loc?.line}:${error.loc?.column}.`);
+    let start = 0;
+    for (const [end, next] of [...literals, [text.length, text.length]]) {
+      const scanner = createScanner(false, source.languageVariant, text, start, end - start);
+      for (let token = scanner.scan(); token !== SyntaxKind.EndOfFile; token = scanner.scan()) {
+        if ([SyntaxKind.SingleLineCommentTrivia, SyntaxKind.MultiLineCommentTrivia].includes(token)) {
+          comments.push({ text: scanner.getTokenText(), start: scanner.getTokenStart() });
+        }
+      }
+      start = next;
     }
-    return comments.join('\n');
+    return comments;
+  } finally {
+    api.close();
   }
-  if (/\.(?:json|jsonc|toml|ya?ml|sql)$/.test(file) || file.startsWith('.githooks/')) {
-    return text.split(/\r?\n/).filter(line => /^\s*(?:#|\/\/|\/\*|\*|--)/.test(line)).join('\n');
+}
+
+function jsoncComments(_file, text) {
+  const found = [];
+  for (let index = 0; index < text.length;) {
+    if (text[index] === '"') {
+      index = skipQuoted(text, index, '"', { backslash: true });
+    } else if (text.startsWith('//', index)) {
+      const end = lineEnd(text, index);
+      found.push(span(text, index, end));
+      index = end;
+    } else if (text.startsWith('/*', index)) {
+      const close = text.indexOf('*/', index + 2);
+      const end = close < 0 ? text.length : close + 2;
+      found.push(span(text, index, end));
+      index = end;
+    } else index++;
   }
+  return found;
+}
+
+const sqlIdentifier = /[\p{L}\p{N}_$]/u;
+const dollarTag = /\$(?:[\p{L}_][\p{L}\p{N}_]*)?\$/uy;
+
+function sqlComments(file, text, from = 0, stop = text.length) {
+  const found = [];
+  for (let index = from; index < stop;) {
+    const char = text[index];
+    if (text.startsWith('--', index)) {
+      const end = Math.min(lineEnd(text, index), stop);
+      found.push(span(text, index, end));
+      index = end;
+    } else if (text.startsWith('/*', index)) {
+      let depth = 1;
+      let end = index + 2;
+      while (end < stop && depth) {
+        if (text.startsWith('/*', end)) {
+          depth++;
+          end += 2;
+        } else if (text.startsWith('*/', end)) {
+          depth--;
+          end += 2;
+        } else end++;
+      }
+      found.push(span(text, index, end));
+      index = end;
+    } else if (char === "'") {
+      const escaped = /[eE]/.test(text[index - 1] ?? '') && !sqlIdentifier.test(text[index - 2] ?? '');
+      index = skipQuoted(text, index, "'", { doubled: true, backslash: escaped, stop });
+    } else if (char === '"') {
+      index = skipQuoted(text, index, '"', { doubled: true, stop });
+    } else if (char === '$' && !sqlIdentifier.test(text[index - 1] ?? '')) {
+      dollarTag.lastIndex = index;
+      const tag = dollarTag.exec(text)?.[0];
+      if (!tag) {
+        index++;
+        continue;
+      }
+      const closing = text.indexOf(tag, index + tag.length);
+      const terminated = closing >= 0 && closing + tag.length <= stop;
+      found.push(...sqlComments(file, text, index + tag.length, terminated ? closing : stop));
+      index = terminated ? closing + tag.length : stop;
+    } else index++;
+  }
+  return found;
+}
+
+function tomlComments(_file, text) {
+  const found = [];
+  for (let index = 0; index < text.length;) {
+    const char = text[index];
+    if (char === '#') {
+      const end = lineEnd(text, index);
+      found.push(span(text, index, end));
+      index = end;
+    } else if (char === '"' || char === "'") {
+      const delimiter = char.repeat(3);
+      if (!text.startsWith(delimiter, index)) {
+        index = skipQuoted(text, index, char, { backslash: char === '"', line: true });
+        continue;
+      }
+      let cursor = index + 3;
+      while (cursor < text.length && !text.startsWith(delimiter, cursor)) cursor += char === '"' && text[cursor] === '\\' ? 2 : 1;
+      cursor = Math.min(cursor + 3, text.length);
+      for (let extra = 0; extra < 2 && text[cursor] === char; extra++) cursor++;
+      index = cursor;
+    } else index++;
+  }
+  return found;
+}
+
+function shellComments(_file, text) {
+  const found = [];
+  for (let index = 0; index < text.length;) {
+    const char = text[index];
+    if (char === '\\') index += 2;
+    else if (char === "'") index = skipQuoted(text, index, "'");
+    else if (char === '"') index = skipQuoted(text, index, '"', { backslash: true });
+    else if (char === '#' && (index === 0 || /[\s;&|()<>]/.test(text[index - 1]))) {
+      const end = lineEnd(text, index);
+      found.push(span(text, index, end));
+      index = end;
+    } else index++;
+  }
+  return found;
+}
+
+function yamlComments(_file, text) {
+  const found = [];
+  const collect = token => {
+    if (Array.isArray(token)) token.forEach(collect);
+    else if (token && typeof token === 'object') {
+      if (token.type === 'comment') found.push({ text: token.source, start: token.offset });
+      for (const key of ['start', 'props', 'sep', 'end', 'items', 'key', 'value']) collect(token[key]);
+    }
+  };
+  for (const token of new YamlParser().parse(text)) collect(token);
+  for (const document of parseAllDocuments(text, { uniqueKeys: false })) {
+    visitYaml(document, {
+      Pair(_key, pair) {
+        const block = isScalar(pair.value) && [Scalar.BLOCK_LITERAL, Scalar.BLOCK_FOLDED].includes(pair.value.type);
+        if (block && isScalar(pair.key) && pair.key.value === 'run' && pair.value.range) {
+          const [start, end] = pair.value.range;
+          for (const record of shellComments('run', text.slice(start, end))) found.push({ text: record.text, start: start + record.start });
+        }
+      },
+    });
+  }
+  return [...new Map(found.map(record => [record.start, record])).values()];
+}
+
+const commentGrammars = [
+  [/\.(?:[cm]?ts|tsx)$/, typeScriptComments], [/\.[cm]?js$/, javaScriptComments], [/\.sql$/, sqlComments],
+  [/\.toml$/, tomlComments], [/\.ya?ml$/, yamlComments], [/\.jsonc$/, jsoncComments], [/^\.githooks\//, shellComments],
+];
+
+export const hasCommentGrammar = file => commentGrammars.some(([pattern]) => pattern.test(file));
+
+export const sameCommentGrammar = (first, second) => {
+  const grammar = file => commentGrammars.find(([pattern]) => pattern.test(file))?.[1];
+  return grammar(first) !== undefined && grammar(first) === grammar(second);
+};
+
+export function commentRecords(file, text) {
+  const grammar = commentGrammars.find(([pattern]) => pattern.test(file));
+  return grammar ? grammar[1](file, text).sort((a, b) => a.start - b.start) : null;
+}
+
+export function sourceComments(file, text) {
+  const records = commentRecords(file, text);
+  if (records) return records.map(record => record.text).join('\n');
+  if (file.endsWith('.json')) return text.split(/\r?\n/).filter(line => /^\s*(?:#|\/\/|\/\*|\*|--)/.test(line)).join('\n');
   return text;
 }
 

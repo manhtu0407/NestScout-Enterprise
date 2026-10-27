@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { root } from './tool-path.mjs';
 import { git } from './repository-files.mjs';
 import { checkAttribution } from './check-hygiene.mjs';
-import { repositoryIdentity } from './verify-repository.mjs';
+import { repositoryIdentity, acceptedOriginUrls } from './verify-repository.mjs';
 
 const slug = '[a-z0-9]+(?:-[a-z0-9]+)*';
 const featureBranch = new RegExp(`^(?:(?:feat|fix|docs|chore)/[1-9][0-9]*-${slug}|(?:codex|claude)/${slug})$`);
@@ -63,31 +63,47 @@ export function checkPullRequest(event) {
   return { base: pr.base.sha, head: pr.head.sha, automation };
 }
 
-export function checkMetadata(repository = root, environment = process.env) {
+export function metadataRange(repository, environment = process.env) {
   if (environment.GITHUB_EVENT_PATH) {
     const event = JSON.parse(readFileSync(environment.GITHUB_EVENT_PATH, 'utf8'));
     if (environment.GITHUB_EVENT_NAME === 'pull_request') {
       const { base, head, automation } = checkPullRequest(event);
       git(repository, ['merge-base', '--is-ancestor', head, 'HEAD']);
-      checkCommitRange(repository, base, head, { automation });
-    } else if (environment.GITHUB_EVENT_NAME === 'push') {
+      return { base, head, automation };
+    }
+    if (environment.GITHUB_EVENT_NAME === 'push') {
       if (event.repository?.id !== repositoryIdentity.id || event.repository?.full_name !== repositoryIdentity.fullName || event.ref !== `refs/heads/${repositoryIdentity.defaultBranch}`
         || !/^[a-f0-9]{40}$/.test(event.before ?? '') || /^0+$/.test(event.before)
         || !/^[a-f0-9]{40}$/.test(event.after ?? '') || git(repository, ['rev-parse', 'HEAD']).trim() !== event.after) {
         throw new Error('Unexpected push event or revision.');
       }
-      checkCommitRange(repository, event.before, event.after);
-    } else throw new Error('Unsupported metadata event; use pull_request or push.');
-  } else {
-    checkBranch(git(repository, ['branch', '--show-current']).trim(), { allowMain: true });
-    git(repository, ['rev-parse', '--verify', 'refs/remotes/origin/main']);
-    checkCommitRange(repository, 'refs/remotes/origin/main', 'HEAD');
+      return { base: event.before, head: event.after };
+    }
+    throw new Error('Unsupported metadata event; use pull_request or push.');
+  }
+  git(repository, ['rev-parse', '--verify', 'refs/remotes/origin/main']);
+  return { base: 'refs/remotes/origin/main', head: 'HEAD' };
+}
+
+export function checkMetadata(repository = root, environment = process.env) {
+  if (!environment.GITHUB_EVENT_PATH) checkBranch(git(repository, ['branch', '--show-current']).trim(), { allowMain: true });
+  const { base, head, automation } = metadataRange(repository, environment);
+  checkCommitRange(repository, base, head, { automation });
+}
+
+export function checkRemote([name, url] = []) {
+  if (name !== 'origin' || !acceptedOriginUrls.has(url)) {
+    throw new Error('Push target must be the origin remote of manhtu0407/NestScout-Enterprise.');
   }
 }
 
-export function checkPush(repository, input) {
+export function checkPush(repository, input, remote) {
   const current = git(repository, ['branch', '--show-current']).trim();
   checkBranch(current);
+  if (remote) checkRemote(remote);
+  if (git(repository, ['status', '--porcelain=v1', '--untracked-files=no', '-z']).length) {
+    throw new Error('Tracked changes exist, so local checks would not describe the pushed commit. Commit them or push from a clean task worktree.');
+  }
   for (const line of input.trim().split('\n').filter(Boolean)) {
     const fields = line.trim().split(/\s+/);
     const [localRef, localSha, remoteRef] = fields;
@@ -104,8 +120,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (mode === '--commit-msg' && file && process.argv.length === 4) {
     const mergeHead = git(root, ['rev-parse', '--git-path', 'MERGE_HEAD']).trim();
     checkMessage(readFileSync(file, 'utf8'), { merge: existsSync(path.resolve(root, mergeHead)) });
-  } else if (mode === '--pre-push' && process.argv.length === 3) checkPush(root, readFileSync(0, 'utf8'));
+  } else if (mode === '--pre-push' && process.argv.length === 5) checkPush(root, readFileSync(0, 'utf8'), process.argv.slice(3));
   else if (mode === undefined) checkMetadata();
-  else throw new Error('Use no arguments, --commit-msg <file>, or --pre-push.');
+  else throw new Error('Use no arguments, --commit-msg <file>, or --pre-push <remote> <url>.');
   console.log('Branch and delivery metadata passed.');
 }

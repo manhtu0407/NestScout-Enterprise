@@ -155,7 +155,8 @@ test('optional pre-commit runs test selection unconditionally before accepting s
   const hook = readFileSync(path.join(root, '.githooks/pre-commit'), 'utf8');
   assert.match(hook, /^#!\/bin\/sh\nset -eu\n/);
   assert.equal(hook.split('\n').filter(line => line === 'node scripts/check-test-selection.mjs').length, 1);
-  for (const command of ['npm run check:reserved', 'npm run check:hygiene -- --hook', 'npm run check:metadata', 'npm run scan:secrets']) {
+  for (const command of ['npm run check:reserved', 'npm run check:hygiene -- --hook', 'npm run check:metadata', 'npm run scan:secrets',
+    'node scripts/check-comments.mjs --staged', 'node scripts/check-format.mjs --staged', 'node scripts/check-yaml.mjs']) {
     assert.ok(hook.split('\n').includes(command), 'Existing hook gate missing or masked: ' + command);
   }
 });
@@ -167,7 +168,8 @@ test('real pre-commit rejects unregistered tests and a disabled npm guard withou
   const modules = [
     ['check-reserved-files', 'checkReservedFiles'], ['check-hygiene', 'checkHygiene'],
     ['check-test-selection', 'checkTestSelection'], ['check-metadata', 'checkMetadata'],
-    ['scan-staged', 'scanStaged'],
+    ['scan-staged', 'scanStaged'], ['check-comments', 'checkStagedComments'],
+    ['check-format', 'checkStagedFormat'], ['check-yaml', 'checkYaml'],
   ];
   for (const [module, callable] of modules) {
     const source = pathToFileURL(path.join(root, 'scripts', module + '.mjs')).href;
@@ -217,4 +219,89 @@ test('real pre-commit rejects unregistered tests and a disabled npm guard withou
   manifest({ ...scripts, 'check:test-selection': 'echo disabled' });
   run(['add', '--', 'package.json']);
   reject(/index: test-selection guard disabled/);
+  manifest();
+  run(['add', '--', 'package.json']);
+  const stageThenRestore = (file, staged, clean) => {
+    write(file, staged);
+    run(['add', '--', file]);
+    write(file, clean);
+  };
+  const unstage = file => run(['rm', '--cached', '--quiet', '--force', '--', file]);
+  stageThenRestore('scripts/narrated.mjs', 'export const value = 1;\n// explain the value\n', 'export const value = 1;\n');
+  reject(/index scripts\/narrated\.mjs:2 inline: \/\/ explain the value/);
+  unstage('scripts/narrated.mjs');
+  stageThenRestore('scripts/suppressed.mjs', 'export const value = 1; // eslint-disable-line\n', 'export const value = 1;\n');
+  reject(/index scripts\/suppressed\.mjs:1 suppression/);
+  unstage('scripts/suppressed.mjs');
+  stageThenRestore('scripts/spaced.mjs', 'export const value = 1; \n', 'export const value = 1;\n');
+  reject(/index scripts\/spaced\.mjs:1: trailing whitespace/);
+  unstage('scripts/spaced.mjs');
+  stageThenRestore('.github/workflows/probe.yml', 'name: first\nname: duplicate\n', 'name: clean\n');
+  reject(/index \.github\/workflows\/probe\.yml: invalid YAML/);
+  unstage('.github/workflows/probe.yml');
+  rmSync(path.join(repository, '.github/workflows/probe.yml'));
+  write('scripts/tool.mjs', '#!/usr/bin/env node\nexport const tool = 1;\n');
+  run(['add', '--', 'scripts/tool.mjs']);
+  write('scripts/accepted.mjs', 'export const accepted = true; \n');
+  write('docs/unrelated.md', 'untracked and unstaged \r\n');
+  assert.doesNotThrow(commitWithHook);
+  assert.equal(run(['status', '--porcelain=v1', '--untracked-files=all', '--', 'scripts/accepted.mjs', 'docs/unrelated.md']), ' M scripts/accepted.mjs\n?? docs/unrelated.md\n');
+  assert.equal(readFileSync(path.join(repository, 'scripts/accepted.mjs'), 'utf8'), 'export const accepted = true; \n');
+  assert.equal(readFileSync(path.join(repository, 'docs/unrelated.md'), 'utf8'), 'untracked and unstaged \r\n');
+  run(['add', '--', 'scripts/accepted.mjs']);
+  reject(/index scripts\/accepted\.mjs:1: trailing whitespace/);
 }));
+
+test('real pre-push passes the push target and refs to the metadata guard, then runs the aggregate and negative suites', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-pre-push-'));
+  const remote = path.join(directory, 'remote.git');
+  const repository = path.join(directory, 'work');
+  const module = lines => lines.join('\n') + '\n';
+  try {
+    mkdirSync(remote);
+    mkdirSync(repository);
+    git(remote, ['init', '--quiet', '--bare']);
+    const run = (args, options) => git(repository, args, options);
+    const write = (file, content) => {
+      mkdirSync(path.dirname(path.join(repository, file)), { recursive: true });
+      writeFileSync(path.join(repository, file), content);
+    };
+    run(['init', '--quiet', '--initial-branch=claude/push-fixture']);
+    run(['config', 'user.name', 'Fixture']);
+    run(['config', 'user.email', 'fixture@example.invalid']);
+    write('.gitignore', '.cache/\n');
+    write('.githooks/pre-push', readFileSync(path.join(root, '.githooks/pre-push')));
+    chmodSync(path.join(repository, '.githooks/pre-push'), 0o755);
+    write('package.json', JSON.stringify({ scripts: {
+      identity: 'node scripts/record.mjs identity', check: 'node scripts/record.mjs check', 'verify:negative': 'node scripts/record.mjs negative',
+    } }) + '\n');
+    write('scripts/record.mjs', module([
+      "import { appendFileSync, mkdirSync } from 'node:fs';", "mkdirSync('.cache', { recursive: true });",
+      "appendFileSync('.cache/calls.log', process.argv.slice(2).join(' ') + '\\n');",
+    ]));
+    write('scripts/check-metadata.mjs', module([
+      "import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';", "mkdirSync('.cache', { recursive: true });",
+      "appendFileSync('.cache/calls.log', ['metadata', ...process.argv.slice(2), readFileSync(0, 'utf8').trim()].join(' ') + '\\n');",
+      "process.exitCode = process.env.FIXTURE_REJECT ? 1 : 0;",
+    ]));
+    run(['add', '.']);
+    run(['commit', '--quiet', '-m', 'chore: establish fixture']);
+    run(['remote', 'add', 'origin', remote]);
+    const head = run(['rev-parse', 'HEAD']).trim();
+    const push = env => run(['-c', 'core.hooksPath=.githooks', 'push', 'origin', 'claude/push-fixture'], { env: { ...process.env, ...env } });
+    const calls = path.join(repository, '.cache/calls.log');
+    const ref = 'refs/heads/claude/push-fixture';
+    const metadata = `metadata --pre-push origin ${remote} ${ref} ${head} ${ref} ${'0'.repeat(40)}\n`;
+    assert.throws(() => push({ FIXTURE_REJECT: '1' }), error => error.status === 1);
+    assert.equal(readFileSync(calls, 'utf8'), `identity\n${metadata}`);
+    assert.equal(git(remote, ['for-each-ref']).trim(), '');
+    rmSync(calls);
+    push({});
+    assert.equal(readFileSync(calls, 'utf8'), `identity\n${metadata}check\nnegative\n`);
+    assert.equal(git(remote, ['rev-parse', ref]).trim(), head);
+  } finally {
+    assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
+    assert.ok(!lstatSync(directory).isSymbolicLink());
+    rmSync(directory, { recursive: true });
+  }
+});

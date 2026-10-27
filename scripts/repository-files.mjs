@@ -26,6 +26,19 @@ export function checkHookIndex(repository, environment = process.env) {
   }
 }
 
+export function emptyTree(repository) {
+  return git(repository, ['hash-object', '-t', 'tree', '--stdin'], { input: '' }).trim();
+}
+
+export function headRevision(repository) {
+  try {
+    return git(repository, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']).trim();
+  } catch (error) {
+    if (error.status !== 1) throw error;
+    return emptyTree(repository);
+  }
+}
+
 export function indexEntries(repository) {
   return git(repository, ['ls-files', '--stage', '-z']).split('\0').filter(Boolean).map(entry => {
     const tab = entry.indexOf('\t');
@@ -34,17 +47,8 @@ export function indexEntries(repository) {
   });
 }
 
-export function repositoryFiles(repository) {
-  const entries = indexEntries(repository);
-  const names = new Set(entries.map(entry => entry.file));
-  for (const file of git(repository, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean)) names.add(file);
-  const files = [];
-  for (const entry of entries) {
-    if (!['100644', '100755'].includes(entry.mode) || entry.stage !== '0') {
-      throw new Error(`Expected a regular resolved index entry: ${JSON.stringify(entry.file)}`);
-    }
-  }
-  const blobs = [...new Set(entries.map(entry => entry.blob))];
+export function readBlobs(repository, objects) {
+  const blobs = [...new Set(objects)];
   const contents = new Map();
   if (blobs.length) {
     const input = blobs.join('\n') + '\n';
@@ -71,6 +75,20 @@ export function repositoryFiles(repository) {
     }
     if (offset !== output.length) throw new Error('Unexpected trailing Git batch data.');
   }
+  return contents;
+}
+
+export function repositoryFiles(repository) {
+  const entries = indexEntries(repository);
+  const names = new Set(entries.map(entry => entry.file));
+  for (const file of git(repository, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean)) names.add(file);
+  const files = [];
+  for (const entry of entries) {
+    if (!['100644', '100755'].includes(entry.mode) || entry.stage !== '0') {
+      throw new Error(`Expected a regular resolved index entry: ${JSON.stringify(entry.file)}`);
+    }
+  }
+  const contents = readBlobs(repository, entries.map(entry => entry.blob));
   for (const entry of entries) files.push({ file: entry.file, state: 'index', content: contents.get(entry.blob) });
   const directories = new Map();
   let workingBytes = 0;
