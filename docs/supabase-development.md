@@ -15,10 +15,11 @@ It is never a local-test fallback or an App configuration source. See the
 
 The local `[auth]` service supports platform tooling; `enable_signup = false`,
 `enable_anonymous_sign_ins = false`, no extra redirects and the loopback `site_url`
-are retained. This is not an implemented App login flow. Guest discovery means
-unauthenticated access to an approved public projection later, not enabling
-anonymous Auth accounts. The phone/OTP direction does not authorize enabling an
-SMS provider, OAuth, signup or a deep link before Application Foundation.
+are retained. Mobile V2 implements the phone OTP client flow, but local signup
+and SMS delivery remain disabled by default; no live OTP round trip is verified.
+Guest discovery means unauthenticated access to an approved public projection
+later, not enabling anonymous Auth accounts. Enabling a provider, OAuth, signup
+or a production deep link requires separate owner approval.
 
 ## Installation and local runtime
 
@@ -95,8 +96,9 @@ print their payloads. HTTP errors and SQL errors must remain failures.
 
 ## Schema and verification limits
 
-`supabase/migrations/` is the sole application schema source; no SQL migrations
-were invented. Hosted history and public relations are empty. Hosted metadata
+`supabase/migrations/` is the sole application schema source; Application
+Foundation V2 adds the technical `worker_access_grants` migration, not a
+business-services schema. Hosted history and public relations are empty. Hosted metadata
 also contains `public.rls_auto_enable()` and `ensure_rls`, absent locally. Their
 definitions match Studio's optional Auto enable RLS template, are owned by
 `postgres`, and are not extension members. The installing actor/mechanism is still

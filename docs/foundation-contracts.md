@@ -9,7 +9,7 @@ environment loader, endpoint, schema, auth provider or additional policy.
 
 | Boundary | Inputs and owner | Behavior / exposure |
 | --- | --- | --- |
-| Repository tooling | `package.json`, lockfile, `scripts/tools.json` | Node 24/npm and pinned tools; no application dotenv inputs |
+| Repository tooling | `package.json`, lockfile, `scripts/tools.json` | Node 24/npm and pinned tools; root tooling does not read application dotenv inputs |
 | Local database/testing | `supabase/config.toml`, image lock and `scripts/supabase-local.mjs` | Checkout + branch identity, dynamic loopback endpoints, local Docker; no linked project or remote fallback |
 | Developer MCP | Existing project-scoped hosted read-only settings and guarded local bridge | Diagnostic tools only; client approval still applies; credentials stay outside Git |
 | Mobile public config | `apps/mobile/src/lib/config.ts`, `apps/mobile/.env.example` | `EXPO_PUBLIC_NESTSCOUT_TARGET=local`, a loopback or private-network API URL and a publishable key; values shipped in the bundle are public, and secret or service_role keys are rejected |
