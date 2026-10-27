@@ -109,11 +109,10 @@ export was performed. Generate future migration names with the pinned CLI.
 `supabase/seed.sql` contains no data. Add synthetic fixtures alongside real product
 migrations. `supabase/database.types.ts` is the single generated artifact, from
 local `public`, normalized to LF without trailing whitespace. The mobile app does not
-import it yet. It has not been regenerated for `worker_access_grants` because the
-pinned images could not be pulled in the authoring environment: run `npm run db:types`
-where the stack starts and commit the result before relying on `db:types:check`. The
-app reads that one table through an untyped boundary with runtime validation until
-then. `typecheck:db` checks that artifact only.
+import it yet. It includes `worker_access_grants`, regenerated with `npm run db:types`
+from the pinned images, and `db:types:check` compares it with the local database. The
+app reads that one table through an untyped boundary with runtime validation until it
+imports the artifact. `typecheck:db` checks that artifact only.
 
 pgTAP inspects actual public RLS, table/column view grants, readable snapshots,
 SECURITY DEFINER EXECUTE (ordinary RPC and hooks separately), and reviewed function
