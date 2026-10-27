@@ -7,7 +7,7 @@ import { after, test } from 'node:test';
 import { parseDocument } from 'yaml';
 import { root } from './tool-path.mjs';
 import { git } from './repository-files.mjs';
-import { commentRecords, sourceComments, hasCommentGrammar } from './check-hygiene.mjs';
+import { checkPath, commentRecords, sourceComments, hasCommentGrammar } from './check-hygiene.mjs';
 import {
   addedComments, approvedExceptions, commentCategory, commentViolations, isMandatoryComment, normalizeComment,
   checkCommentRevision, checkStagedComments, checkWorkingComments, checkComments, trustedBaseline, trustedExceptions,
@@ -499,6 +499,36 @@ test('without a trusted baseline no exception applies, and a malformed baseline 
   assert.throws(() => checkStagedComments(repository), /Invalid package.json in trusted baseline/);
 });
 
+test('approved mobile TypeScript and TSX sources are covered by every comment gate', () => {
+  const screen = 'apps/mobile/src/features/access/screens/example-screen.tsx';
+  const helper = 'apps/mobile/src/lib/example-helper.ts';
+  const testFile = 'apps/mobile/src/lib/example-helper.test.ts';
+  const { repository, run, write } = repositoryFixture({
+    [screen]: 'export const Screen = () => <a href="//x">text</a>; // legacy note\n',
+    [helper]: 'export const value = 1;\n',
+    [testFile]: 'export const checked = 1;\n',
+  });
+  for (const file of [screen, helper, testFile]) {
+    assert.ok(hasCommentGrammar(file), file);
+    assert.doesNotThrow(() => checkPath(file), file);
+  }
+  assert.doesNotThrow(() => checkComments(repository, {}));
+  write(screen, 'export const Screen = () => <a href="//x">text</a>; // legacy note\n// New explanation.\n');
+  write(helper, '/** Documented. */\nexport const value = 1;\n');
+  write(testFile, 'export const checked = 1; // eslint-disable-line\n');
+  assert.throws(() => checkWorkingComments(repository), error => [screen, helper, testFile].every(file => error.message.includes(file)));
+  run(['add', '.']);
+  write(screen, 'export const Screen = () => <a href="//x">text</a>; // legacy note\n');
+  write(helper, 'export const value = 1;\n');
+  write(testFile, 'export const checked = 1;\n');
+  assert.throws(() => checkStagedComments(repository), error => [screen, helper, testFile].every(file => error.message.includes(file)));
+  run(['commit', '--quiet', '-m', 'feat: add mobile comments']);
+  write(screen, 'export const Screen = () => <a href="//x">text</a>; // legacy note\n');
+  run(['add', '.']);
+  run(['commit', '--quiet', '--allow-empty', '-m', 'fix: remove mobile comments']);
+  assert.throws(() => checkCommentRevision(repository, ...range), error => [screen, helper, testFile].every(file => error.message.includes(file)));
+});
+
 test('mandatory directives and generated files pass in Git states while prose beside them fails', () => {
   const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
   write('scripts/tool.mjs', '#!/usr/bin/env node\nexport const tool = 1;\n');
@@ -584,6 +614,9 @@ test('package scripts and hooks keep the quality gates direct and unmasked', () 
   assert.equal(scripts['check:comments'], 'node scripts/check-comments.mjs');
   assert.equal(scripts['check:format'], 'node scripts/check-format.mjs');
   const checks = scripts.check.split(' && ');
+  assert.ok(checks.includes('npm run check:mobile'));
+  assert.equal(scripts['check:mobile'], 'npm run typecheck:mobile && npm run lint:mobile && npm run test:mobile');
+  assert.ok(scripts['verify:negative'].includes('scripts/check-comments.test.mjs scripts/check-format.test.mjs'));
   assert.ok(checks.indexOf('npm run check:comments') > checks.indexOf('npm run check:hygiene'));
   assert.ok(checks.includes('npm run check:format'));
   const preCommit = readFileSync(path.join(root, '.githooks/pre-commit'), 'utf8').split('\n');

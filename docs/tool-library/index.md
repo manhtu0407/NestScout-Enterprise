@@ -3,7 +3,7 @@
 Implementation reference under [AGENTS.md](../../AGENTS.md). Capability does not
 grant execution authority. Start with the native tool that already solves the task,
 inspect its installed-version help, and verify output, exit status and side effects.
-No product application, Kael runtime, mobile target or deployment service is supplied.
+The `apps/mobile` Expo foundation is the only application; no Kael runtime, native build target or deployment service is supplied.
 
 ## Find and select
 

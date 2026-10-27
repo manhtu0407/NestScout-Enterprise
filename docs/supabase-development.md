@@ -2,8 +2,10 @@
 
 Technical setup under the root [engineering policy](../AGENTS.md).
 The owner selected native App development, without Vercel hosting. This repository
-currently contains tooling, with no Expo application, Supabase client, bookings,
-payments, product roles or Kael runtime. Do not import another project's schema.
+contains tooling and the minimal Application Foundation V2 mobile app, whose only
+database object is the technical `worker_access_grants` table. There are no
+bookings, payments, worker onboarding or Kael runtime. Do not import another
+project's schema.
 
 Engineering Foundation V1 uses **Supabase Local for development/testing**, with no
 Staging Project, additional remote environment or Production write/deploy step.
@@ -13,10 +15,11 @@ It is never a local-test fallback or an App configuration source. See the
 
 The local `[auth]` service supports platform tooling; `enable_signup = false`,
 `enable_anonymous_sign_ins = false`, no extra redirects and the loopback `site_url`
-are retained. This is not an implemented App login flow. Guest discovery means
-unauthenticated access to an approved public projection later, not enabling
-anonymous Auth accounts. The phone/OTP direction does not authorize enabling an
-SMS provider, OAuth, signup or a deep link before Application Foundation.
+are retained. Mobile V2 implements the phone OTP client flow, but local signup
+and SMS delivery remain disabled by default; no live OTP round trip is verified.
+Guest discovery means unauthenticated access to an approved public projection
+later, not enabling anonymous Auth accounts. Enabling a provider, OAuth, signup
+or a production deep link requires separate owner approval.
 
 ## Installation and local runtime
 
@@ -36,7 +39,8 @@ npm run db:status
 
 CLI `2.122.0`, MCP SDK `1.32.2`, TOML parser `1.9.1`, and TypeScript `7.0.2` are
 pinned in npm. `supabase/supabase.lock` pins official service images by digest;
-startup uses `--frozen`. No application or hosted deployment dependencies were added.
+startup uses `--frozen`. Application Foundation V2 added the Expo workspace
+dependencies in `apps/mobile`; no hosted deployment dependency exists.
 
 `supabase/config.toml` enables the **experimental managed stack** using Docker.
 This choice followed a disposable Windows proof: the legacy runtime published
@@ -92,8 +96,9 @@ print their payloads. HTTP errors and SQL errors must remain failures.
 
 ## Schema and verification limits
 
-`supabase/migrations/` is the sole application schema source; no SQL migrations
-were invented. Hosted history and public relations are empty. Hosted metadata
+`supabase/migrations/` is the sole application schema source; Application
+Foundation V2 adds the technical `worker_access_grants` migration, not a
+business-services schema. Hosted history and public relations are empty. Hosted metadata
 also contains `public.rls_auto_enable()` and `ensure_rls`, absent locally. Their
 definitions match Studio's optional Auto enable RLS template, are owned by
 `postgres`, and are not extension members. The installing actor/mechanism is still
@@ -105,8 +110,11 @@ export was performed. Generate future migration names with the pinned CLI.
 
 `supabase/seed.sql` contains no data. Add synthetic fixtures alongside real product
 migrations. `supabase/database.types.ts` is the single generated artifact, from
-local `public`, normalized to LF without trailing whitespace. There is no app
-client to consume it yet. `typecheck:db` checks that artifact only.
+local `public`, normalized to LF without trailing whitespace. The mobile app does not
+import it yet. It includes `worker_access_grants`, regenerated with `npm run db:types`
+from the pinned images, and `db:types:check` compares it with the local database. The
+app reads that one table through an untyped boundary with runtime validation until it
+imports the artifact. `typecheck:db` checks that artifact only.
 
 pgTAP inspects actual public RLS, table/column view grants, readable snapshots,
 SECURITY DEFINER EXECUTE (ordinary RPC and hooks separately), and reviewed function
@@ -117,8 +125,10 @@ of definer functions. Exposing additional application schemas requires updating
 the configuration guard and corresponding database checks; `graphql_public` is
 the existing platform GraphQL schema, outside the application type artifact.
 Wrapper tests cover target/environment isolation, locks, diagnostic disclosure,
-image pinning and both client configurations. Empty-schema success does not prove Customer
-A/B, Worker, Admin, payment or Kael isolation: those features are NOT IMPLEMENTED.
+image pinning and both client configurations. `worker_access_grants` has real
+allowed/denied tests in `supabase/tests/database/worker-access-grants.test.sql`
+(anonymous, other-user, self-grant and revocation denials). Customer A/B, Admin,
+payment and Kael isolation are NOT IMPLEMENTED.
 Future application migrations must enable RLS explicitly and supply the feature's
 actual role/grant/policy tests; do not rely on the optional hosted event trigger.
 Do not reuse its names, drop it, or baseline its ownership implicitly. Any decision

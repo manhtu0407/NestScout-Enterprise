@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "NestScout",
+    "slug": "nestscout",
+    "version": "0.0.0",
+    "scheme": "nestscout",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "platforms": ["ios"],
+    "plugins": ["expo-router"]
+  }
+}

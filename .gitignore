@@ -19,3 +19,11 @@ Thumbs.db
 .claude/settings.local.json
 supabase/signing_keys.json
 supabase/backups/
+.expo/
+expo-env.d.ts
+.metro-health-check*
+*.tsbuildinfo
+*.jks
+*.p8
+apps/mobile/ios/
+apps/mobile/android/

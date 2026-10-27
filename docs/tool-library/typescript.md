@@ -26,8 +26,9 @@ Inspect/read-only reporting can disclose local paths. Emit, build/watch and incr
 cache options write files/start watchers. TypeScript's native compiler/API evolves;
 do not assume every JS-era flag or unstable API is present in the installed version.
 
-Select the actual consumer: the existing database artifact uses `typecheck:db`.
-No application tsconfig, React lint stack or empty test app belongs in this task.
+Select the actual consumer: the database artifact uses `typecheck:db` and the mobile
+workspace uses `typecheck:mobile`. Do not add a tsconfig, lint stack or test app
+beyond those consumers.
 For a module error inspect compiler version, manifest, actual import/caller and
 resolution output; repair the owning type or generation step, rerun affected consumers
 and required checks. Never conceal an error with unsafe casts, skip a test or replace
