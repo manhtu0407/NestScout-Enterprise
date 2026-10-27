@@ -83,7 +83,7 @@ Gaps found in the existing workflow, each verified by experiment:
 | --- | --- | --- |
 | Knip 6.42.1 (ISC) | **ADOPT as advisory** | Dev dependency with an exact pin, `npm run health:dead-code`, not part of `check`, not in CI. Runs in about 6 s here. It parses with oxc, so it works beside the root `typescript` 7.0.2. Release 6.42.1 was 8 days old when pinned; 6.43.0 was 3 days old. A scratch install showed 0 advisories. Adds roughly 50 lockfile entries, most of them optional per-platform native bindings, all present in the lockfile for Linux CI |
 | ESLint and TypeScript, existing | **REUSE; no change made** | `strict` and `noUncheckedIndexedAccess` already on. Promotion candidates are listed below |
-| Stryker 10.0.0 (Apache-2.0) | **DEFER** | Pilot on `vietnam-phone.ts` and `route-policy.ts` (125 mutants, perTest coverage, concurrency 2): 96.80% mutation score, 100 killed, 21 timed out, 4 survived, 0 no-coverage, 0 errors, 23 min 41 s. The 4 survivors are all in `vietnam-phone.ts` lines 24 and 30 and are unadjudicated review items, not confirmed test gaps or equivalent mutants: the `startsWith('0')` branch condition and string literal, and the country-code and `MOBILE` type checks. It needs the classic TypeScript API, so it cannot run against the root `typescript` 7.0.2 and was run from the mobile workspace on 6.0.3. Runtime is too high for a per-change gate, and `npm audit` reported 2 moderate transitive advisories in the scratch install. No Stryker dependency or configuration is committed. Revisit as a scheduled advisory job on pure-logic modules only |
+| Stryker 10.0.0 (Apache-2.0) | **DEFER** | Pilot on `vietnam-phone.ts` and `route-policy.ts` (125 mutants, perTest coverage, concurrency 2): 96.80% mutation score, 100 killed, 21 timed out, 4 survived, 0 no-coverage, 0 errors, 23 min 41 s. All 4 survivors and all 21 timeouts were adjudicated (see "Mutation pilot adjudication"): 2 survivors are a real, killable gap in the phone tests, 2 are probably equivalent, and the 21 timeouts are real kills that hang only in the wider suite. It needs the classic TypeScript API, so it cannot run against the root `typescript` 7.0.2 and was run from the mobile workspace on 6.0.3. Runtime is too high for a per-change gate, and `npm audit` reported 2 moderate transitive advisories in the scratch install. No Stryker dependency or configuration is committed. Revisit as a scheduled advisory job on pure-logic modules only |
 | CodeQL | **DEFER; owner decision** | `README.md` states the repository is public with no software license selected. The CodeQL CLI terms grant free CI use only for open source code under an OSI-approved license, so eligibility is unproven. A workflow would also need new permissions. The repository already records CodeQL as unconfigured in the [tool library](tool-library/activation.md) |
 | `thermo-nuclear-code-quality-review` skill | **REUSE, manual only** | Read-only structural review on explicit request, as its own scope says. Its 1,000-line presumptive blocker is not adopted as a gate here |
 | Endor dependency review | NOT RUN | The tooling was not connected; license and advisory review used `npm view` and `npm audit` |
@@ -132,32 +132,55 @@ conscious update.
 
 | Case | Truth | Outcome |
 | --- | --- | --- |
-| Unused file, unused export, unused dependency | defect | TP, TP, TP |
+| Unused file, export, dependency, devDependency, exported type, export re-exported through a barrel | defect | TP, six cases |
 | Unused SQL function | defect | **FN**: SQL is outside the import graph |
-| Router route, type-only import, path alias, literal dynamic `import()`, side-effect registration, jest setup, npm script target, workflow script target, used dependency, SQL function called by RPC name | live | TN, ten cases |
-| Computed-path `import()` | live | **FP** |
+| Unused non-exported function | defect | **FN**: Knip reports exports, not locals |
+| Router route, dynamic route segment, route group, type-only import, path alias, literal dynamic `import()`, literal registry `import()`, `new URL(..., import.meta.url)` worker, side-effect registration, jest setup, npm script target, workflow script target, used dependency, dependency used only by an `app.json` plugin entry, dependency used only as a script binary, barrel export that is imported, SQL function called by RPC name | live | TN, seventeen cases |
+| Computed-path `import()`, computed-path `require()` | live | **FP**, two cases |
 | Custom config plugin referenced only from `app.json` | live | **FP** |
+| Script referenced only from `.mcp.json` arguments | live | **FP** |
+| Script run only by a shell script that a package script calls | live | **FP** |
+| Supabase Edge Function entry, loaded by the runtime | live | **FP** |
 | `expo-updates` reported as unlisted | not needed | **FP** |
+| Export used only by a test file | unknown | not flagged |
+| Module referenced only by `jest.mock` | unknown | export flagged |
 
-That is 3 TP, 3 FP, 1 FN, 10 TN: precision 0.50 and recall 0.75 on 17 hand-labeled
-cases written by the same author as the tool configuration. The sample is far too small
-and too favorable to set a precision threshold, and a threshold was deliberately not
-chosen after seeing it. **Enforcement is NOT_READY; the tool stays advisory.**
+That is 6 TP, 7 FP, 2 FN, 17 TN and 2 unknown: precision 6/13 (0.46) and recall 6/8
+(0.75). The two unknown cases depend on whether test-only use counts as live and are
+excluded from both ratios. All 34 cases are hand-labeled by the author of the tool
+configuration, so they are favorable and small, and a threshold was deliberately not
+chosen after seeing them. Every added runtime-entry reference that is not an import
+(`.mcp.json`, shell, Edge Function, computed `require`) is a false positive, which is
+the dominant risk. **Enforcement is NOT_READY; the tool stays advisory.**
 
 Limits of visibility: SQL and other backend resources, routes consumed by the router,
-configuration-referenced files and computed dynamic paths are not reliably seen. Any
-removal touching those needs manual evidence.
+configuration-referenced files, shell and JSON launch arguments, Edge Function
+entries and computed dynamic paths are not reliably seen. Any removal touching those
+needs manual evidence.
 
 ### Diff reviewer
 
 `scripts/review-diff.mjs` reads a frozen base-to-head diff (resolved SHAs and the merge
 base) and returns a verdict of `PASS`, `FAIL` or `INSUFFICIENT_EVIDENCE` for each of five
 dimensions. `scripts/review-diff.test.mjs` exercises it on isolated temporary
-repositories, never production modules, with 17 tests:
+repositories, never production modules, with 21 tests:
 
 - test weakening: `it.skip`, `it.only` and a node-test `skip` option fail; a deleted test
   file fails; a deleted assertion, an altered expected value and a removed test case
   need justification;
+- skip markers are matched in executable code only. Strings, template text, regular
+  expressions and comments are masked first, using the parsers the hygiene gate already
+  relies on (acorn for JavaScript, the TypeScript native API for TypeScript), so
+  fixture text such as a quoted `it.skip(` is not a disabled test. A real skip beside
+  such a literal, inside a template substitution, with a reason string, with TypeScript
+  annotations or as `describe.only` still fails, and a file that cannot be parsed falls
+  back to the raw count, which can only over-report;
+- registrations: appending an existing test file to a `check`, `verify:` or `check:`
+  script, and extending the assertion that pins that script, is reported as an owner
+  review item and not as a scope failure. Dropping a registered test, appending anything
+  other than a test file (a flag, for example), registering a file that does not exist at
+  the head, or extending the pin assertion with a non-test token still fails or is
+  reported as an altered assertion;
 - controlled behavioral regressions (wrong state transition, changed authorization
   check, broken idempotency) fail through the recorded command results;
 - removals: a still-referenced file or export fails, an unreferenced one is never
@@ -176,6 +199,56 @@ One test records a **known blind spot** deliberately: a behavior change that no
 existing test covers leaves correctness, scope, test integrity and dead-code safety at
 PASS. The overall verdict still cannot reach PASS without an independent code-health
 verdict, which is why that dimension exists.
+
+### Mutation pilot adjudication
+
+The pilot report carried 125 mutants: 100 killed, 21 timed out, 4 survived. The reported
+96.80% is not a quality score and is not used as one.
+
+| Mutants | Location | Finding |
+| --- | --- | --- |
+| Survived: `startsWith('0')` replaced by `true`, and by `startsWith('')` | `vietnam-phone.ts:24` | **Real gap, killable.** The branch only runs for input that matches no earlier prefix. For a 10-digit number with a stray leading digit such as `1350774849` the original returns `invalid_number` and either mutant returns `ok` with `+84350774849`. Across 679,572 generated inputs the mutants differ from the original on 14,351. No existing test pins this input class. No test was added here because mobile access tests are outside this task; the input is the recommended regression case |
+| Survived: country-code check replaced by `false` | `vietnam-phone.ts:30` | **Probably equivalent, unproven.** Every candidate reaching the parser starts with `+84`. In 400,000 parses of `+84` plus random digits the calling code was always `84`, and no input in the 679,572 differed |
+| Survived: `getType() !== 'MOBILE'` replaced by `false` | `vietnam-phone.ts:30` | **Probably equivalent, unproven.** The `libphonenumber-js/mobile` bundle (1.13.15) returned `MOBILE` for all 14,118 valid parses and no other type. A different bundle or version could change this |
+| Timed out, 21 mutants | `route-policy.ts` lines 5 to 26 | **Real kills.** Rerun under Jest outside Stryker, each mutant hangs past a 90 s cap in the 39-test related set, where the unmutated run takes 12 s, so it is not machine load. The dedicated `route-policy.test.ts` kills all 21 by assertion in about 1.3 s each, with 1 to 6 of its 7 tests failing. The hang is non-termination in the surrounding suite, probably a redirect loop in the route guard screens; the loop was not traced |
+
+Consequences: the timeouts are not hidden survivors, but they cost most of the 23
+minutes because every hang runs to the timeout, which is a reason against a per-change
+mutation gate. The two probable equivalents are defensive checks that this dependency
+makes unreachable, and removing them is a separate decision for the owner. Equivalence
+here rests on sampling and was not proven.
+
+### Modified pin assertion
+
+The only existing assertion changed is the exact pin of `verify:foundation` in
+`scripts/git-environment.test.mjs`. It was checked on throwaway copies, with the
+repository untouched. The new expected string is the old string with exactly two
+whitespace-separated tokens appended, `scripts/review-diff.test.mjs` and
+`scripts/dead-code-evaluation.test.mjs`, both present at the head. Running the test's
+`aggregate verification` case against edited manifests:
+
+| Assertion and manifest | Result |
+| --- | --- |
+| new assertion, new manifest | pass |
+| old assertion, new manifest | **fail**, so the edit was required to register any test |
+| new assertion, old manifest | **fail** |
+| old assertion, old manifest | pass |
+| new assertion, any one of the nine registered tests dropped | fail, nine of nine |
+| new assertion, two tests reordered, an extra flag, an unknown extra test, or no tests | fail, four of four |
+
+The pin still rejects every change to the script string, so the original protection
+(no test silently dropped or reordered, no flag added) is intact. This is a single
+author's check of one case, not independent review.
+
+### Platform coverage
+
+Everything was executed on Windows 11 with Node.js 24.19.0. Linux execution was not
+performed: the host has Docker Desktop and a WSL2 Ubuntu distribution, but neither has
+Node.js, and installing it needs a download that was not authorized. What was verified
+statically: `package-lock.json` carries the `linux-x64` bindings for Knip's parser and
+resolver and for the native TypeScript compiler used by the hygiene gate and the
+reviewer. A Linux run needs `npm ci --ignore-scripts` and the two new test files inside a
+`node:24` container, and hosted CI remains the authoritative check.
 
 ## Independent refactor acceptance protocol
 
@@ -220,7 +293,9 @@ Rules that follow from the policy:
 - CI needs no model call and no secret. A second session or another connected agent is
   an optional layer; the deterministic dimensions are reproducible without it.
 
-Heuristics to know: test and assertion counts are matched by pattern, not parsed;
+Heuristics to know: disabled-test and declaration counts run on literal-and-comment-masked
+code, but assertion lines are still matched by pattern on raw lines, so a fixture string
+containing an assertion can only over-report, never hide a loss;
 the high-risk path list encodes the areas the owner asked to protect (access control,
 session storage, routes, migrations and policies, policy and tooling files) and is data
 in `scripts/review-diff.mjs`.
@@ -255,9 +330,10 @@ with positive and negative fixtures:
    is approved and Stryker is compatible with the root TypeScript pin.
 5. CodeQL after the owner selects a license or enables the required GitHub plan, and
    approves its workflow permissions.
-6. Repair the two baseline failures as separate work: the hard-coded child timeout in
-   `git-environment.test.mjs`, and the `core.autocrlf` dependence of
-   `check-format.test.mjs`.
+6. Repair the two baseline failures as separate work if they recur: the hard-coded child
+   timeout in `git-environment.test.mjs`, and the `core.autocrlf` dependence of
+   `check-format.test.mjs`. Both passed on the rebased head (`33a3e10` plus this change)
+   without any edit to those tests, and the cause of the change is not established.
 
 ## Reproduce
 

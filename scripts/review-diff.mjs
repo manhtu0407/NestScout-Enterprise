@@ -2,7 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkAttribution, checkPath } from './check-hygiene.mjs';
+import { parse as parseJavaScript, tokTypes } from 'acorn';
+import { API } from 'typescript/unstable/sync';
+import { createVirtualFileSystem } from 'typescript/unstable/fs';
+import { SyntaxKind } from 'typescript/unstable/ast';
+import { checkAttribution, checkPath, commentRecords } from './check-hygiene.mjs';
 import { git } from './repository-files.mjs';
 import { root } from './tool-path.mjs';
 
@@ -36,6 +40,66 @@ const exportDeclaration = /^export\s+(?:declare\s+)?(?:default\s+)?(?:abstract\s
 const exportList = /^export\s*(?:type\s*)?\{([^}]*)\}/gm;
 
 const count = (text, pattern) => [...text.matchAll(pattern)].length;
+
+const stringKinds = new Set([SyntaxKind.StringLiteral]);
+const literalKinds = new Set([SyntaxKind.RegularExpressionLiteral, SyntaxKind.JsxText, SyntaxKind.NoSubstitutionTemplateLiteral,
+  SyntaxKind.TemplateHead, SyntaxKind.TemplateMiddle, SyntaxKind.TemplateTail]);
+
+function javaScriptLiterals(file, text) {
+  const ranges = [];
+  parseJavaScript(text, {
+    ecmaVersion: 'latest', sourceType: file.endsWith('.cjs') ? 'script' : 'module',
+    onToken: token => {
+      if (token.type === tokTypes.string) ranges.push([token.start + 1, token.end - 1]);
+      else if (token.type === tokTypes.template || token.type === tokTypes.regexp) ranges.push([token.start, token.end]);
+    },
+  });
+  return ranges;
+}
+
+function typeScriptLiterals(file, text) {
+  const directory = path.resolve(root, '.cache/review-diff-types').replaceAll('\\', '/');
+  const sourcePath = `${directory}/input${file.match(/(?:\.d)?\.(?:[cm]?ts|tsx)$/)[0]}`;
+  const configPath = `${directory}/tsconfig.json`;
+  const api = new API({
+    cwd: root,
+    fs: createVirtualFileSystem({
+      [sourcePath]: text,
+      [configPath]: JSON.stringify({ compilerOptions: { noLib: true, noResolve: true, jsx: 'preserve' }, files: [sourcePath] }),
+    }),
+  });
+  try {
+    const program = api.updateSnapshot({ openProjects: [configPath] }).getProjects()[0]?.program;
+    const source = program?.getSourceFile(sourcePath);
+    if (!source || program.getSyntacticDiagnostics(sourcePath).length) throw new Error(`Invalid TypeScript syntax in ${file}.`);
+    const ranges = [];
+    const visit = node => {
+      if (stringKinds.has(node.kind)) ranges.push([node.getStart(source) + 1, node.end - 1]);
+      else if (literalKinds.has(node.kind)) ranges.push([node.getStart(source), node.end]);
+      node.forEachChild(visit);
+    };
+    visit(source);
+    return ranges;
+  } finally {
+    api.close();
+  }
+}
+
+export function executableText(file, text) {
+  const grammar = /\.[cm]?js$/.test(file) ? javaScriptLiterals : /\.(?:[cm]?ts|tsx)$/.test(file) ? typeScriptLiterals : null;
+  if (!grammar) return text;
+  let ranges;
+  try {
+    ranges = [...grammar(file, text), ...commentRecords(file, text).map(record => [record.start, record.start + record.text.length])];
+  } catch {
+    return text;
+  }
+  const characters = text.split('');
+  for (const [start, end] of ranges) {
+    for (let index = start; index < end; index++) if (characters[index] !== '\n' && characters[index] !== '\r') characters[index] = ' ';
+  }
+  return characters.join('');
+}
 const lineSet = text => text.split(/\r?\n/).map(line => line.trim().replace(/\s+/g, ' ')).filter(Boolean);
 
 function multiset(lines) {
@@ -102,6 +166,34 @@ function verdictOf(findings, failed) {
   return { verdict: findings.length ? INSUFFICIENT : PASS, findings };
 }
 
+const existsAt = (repository, revision, file) => {
+  try {
+    git(repository, ['cat-file', '-e', `${revision}:${file}`]);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const commandSegments = value => String(value ?? '').split(' && ').map(segment => segment.trim().split(/\s+/).filter(Boolean)).filter(tokens => tokens.length);
+const sameTokens = (left, right) => left.length === right.length && left.every((token, index) => token === right[index]);
+
+const lineTokens = line => line.split(/[\s'"`();,]+/).filter(Boolean);
+
+function appendedTokens(segment, candidates) {
+  for (const candidate of candidates) {
+    if (candidate.length <= segment.length) continue;
+    const extras = [];
+    let matched = 0;
+    for (const token of candidate) {
+      if (token === segment[matched]) matched++;
+      else extras.push(token);
+    }
+    if (matched === segment.length) return extras;
+  }
+  return null;
+}
+
 function packageChanges(repository, mergeBase, head) {
   const before = JSON.parse(readAt(repository, mergeBase, 'package.json'));
   const after = JSON.parse(readAt(repository, head, 'package.json'));
@@ -109,16 +201,27 @@ function packageChanges(repository, mergeBase, head) {
   const scripts = [...new Set([...Object.keys(before.scripts ?? {}), ...Object.keys(after.scripts ?? {})])]
     .filter(name => before.scripts?.[name] !== after.scripts?.[name]);
   const weakened = [];
+  const registered = [];
   for (const name of scripts) {
-    const segments = value => new Set(String(value ?? '').split(' && '));
-    const kept = segments(after.scripts?.[name]);
-    const dropped = [...segments(before.scripts?.[name])].filter(segment => segment && !kept.has(segment));
-    if (name === 'check' || name.startsWith('verify:') || name.startsWith('check:')) {
-      if (!after.scripts?.[name]) weakened.push(`script ${name} was removed`);
-      else if (dropped.length) weakened.push(`script ${name} no longer runs: ${dropped.join(', ')}`);
+    if (!(name === 'check' || name.startsWith('verify:') || name.startsWith('check:'))) continue;
+    if (!after.scripts?.[name]) {
+      weakened.push(`script ${name} was removed`);
+      continue;
+    }
+    const kept = commandSegments(after.scripts[name]);
+    for (const segment of commandSegments(before.scripts?.[name])) {
+      if (kept.some(candidate => sameTokens(candidate, segment))) continue;
+      const extras = appendedTokens(segment, kept);
+      if (!extras || !extras.every(token => testFile.test(token))) {
+        weakened.push(`script ${name} no longer runs: ${segment.join(' ')}`);
+        continue;
+      }
+      const missing = extras.filter(token => !existsAt(repository, head, token));
+      if (missing.length) weakened.push(`script ${name} registers ${missing.join(', ')}, which does not exist at the head.`);
+      else registered.push({ script: name, files: extras });
     }
   }
-  return { dependencies, scripts, weakened };
+  return { dependencies, scripts, weakened, registered };
 }
 
 function scopeDimension(files, scope, packages) {
@@ -135,6 +238,7 @@ function scopeDimension(files, scope, packages) {
   if (packages) {
     if (packages.dependencies.length) findings.push(`package.json changed ${packages.dependencies.join(', ')}; license, security and compatibility need review.`);
     if (packages.scripts.length) findings.push(`package.json scripts changed: ${packages.scripts.join(', ')}.`);
+    for (const { script, files } of packages.registered) findings.push(`package.json script ${script} registers test file(s) ${files.join(', ')}; owner review must confirm they exist and run.`);
     failed.push(...packages.weakened);
   }
   return verdictOf([...new Set(findings)], [...new Set(failed)]);
@@ -157,13 +261,22 @@ function testDimension(repository, files, mergeBase, head, packages) {
     const after = readAt(repository, head, file.path);
     try { checkAttribution(addedText(before, after), file.path); } catch (error) { failed.push(`${file.path}: ${error.message}`); }
     if (!testFile.test(file.path)) continue;
-    const disabledBefore = count(before, disabledMarker);
-    const disabledAfter = count(after, disabledMarker);
+    const codeBefore = executableText(fromPath, before);
+    const codeAfter = executableText(file.path, after);
+    const disabledBefore = count(codeBefore, disabledMarker);
+    const disabledAfter = count(codeAfter, disabledMarker);
     if (disabledAfter > disabledBefore) failed.push(`${file.path}: disabled tests increased from ${disabledBefore} to ${disabledAfter}.`);
-    const declaredBefore = count(before, testDeclaration);
-    const declaredAfter = count(after, testDeclaration);
+    const declaredBefore = count(codeBefore, testDeclaration);
+    const declaredAfter = count(codeAfter, testDeclaration);
     if (declaredAfter < declaredBefore) findings.push(`${file.path}: test declarations decreased from ${declaredBefore} to ${declaredAfter}.`);
-    const removed = missingLines(before, after, line => assertion.test(line));
+    const added = missingLines(after, before);
+    const removed = [];
+    for (const line of missingLines(before, after, candidate => assertion.test(candidate))) {
+      const extras = added.map(candidate => appendedTokens(lineTokens(line), [lineTokens(candidate)])).find(Boolean);
+      if (!extras?.every(token => testFile.test(token))) removed.push(line);
+      else if (extras.some(token => !existsAt(repository, head, token))) failed.push(`${file.path}: assertion registers a test file that does not exist at the head: ${extras.join(', ')}`);
+      else findings.push(`${file.path}: assertion extended with registered test file(s) ${extras.join(', ')}; owner review must confirm the original protection is intact.`);
+    }
     if (removed.length) findings.push(`${file.path}: ${removed.length} assertion line(s) removed or altered, first: ${removed[0]}`);
   }
   if (packages && packages.dependencies.length === 0 && files.some(file => file.path === 'apps/mobile/package.json')) {

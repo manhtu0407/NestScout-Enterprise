@@ -180,6 +180,122 @@ test('a deliberate test weakening is caught: skipped, deleted, removed or altere
   }
 });
 
+const appendTo = (file, text) => api => api.write(file, baseFiles[file] + text);
+const disabledCount = packet => packet.dimensions.testIntegrity.findings.join('\n');
+
+test('skip markers inside strings, templates and comments are not disabled tests in JavaScript and TypeScript', () => {
+  const javaScript = [
+    "const quoted = \"it.skip('a', () => {}); skip: true\";",
+    "const single = 'describe.only(x)';",
+    "const code = `describe.only('a', () => { it.todo('b'); })`;",
+    "const mixed = `${'x'} test.skip('y') ${single}`;",
+    "/* it.skip('commented') */",
+    "// test.only('commented')",
+    '',
+  ].join('\n');
+  const typed = [
+    "const quoted: string = \"it.skip('a')\";",
+    "const code: string = `describe.only('a') ${quoted} it.todo('b')`;",
+    "/* xit('commented', () => {}) */",
+    '',
+  ].join('\n');
+  for (const [label, mutate] of [
+    ['mjs', appendTo('scripts/order-state.test.mjs', javaScript)],
+    ['ts', appendTo('apps/mobile/src/lib/format-total.test.ts', typed)],
+  ]) {
+    const packet = review(mutate, { scope: ['scripts/**', 'apps/mobile/src/lib/**'] });
+    assert.equal(packet.dimensions.testIntegrity.verdict, PASS, label);
+  }
+});
+
+test('real disabled tests are still caught beside literal fixtures, in code positions, and in unparseable files', () => {
+  const literals = "const fixtureText = \"it.skip('a')\";\n";
+  const cases = [
+    ['real skip beside a literal', appendTo('scripts/order-state.test.mjs', `${literals}test.skip('quote " in the name', () => {});\n`), /from 0 to 1/],
+    ['skip inside a template substitution', appendTo('scripts/order-state.test.mjs', "const run = `${test.skip('n', () => {})}`;\n"), /from 0 to 1/],
+    ['skip with a reason string', appendTo('scripts/order-state.test.mjs', "test('n', { skip: 'later' }, () => {});\n"), /from 0 to 1/],
+    ['typed TypeScript skip', appendTo('apps/mobile/src/lib/format-total.test.ts', `${literals}it.skip('typed', (): void => {});\n`), /from 0 to 1/],
+    ['focused suite', appendTo('apps/mobile/src/lib/format-total.test.ts', "describe.only('focused', () => {});\n"), /from 0 to 1/],
+    ['unparseable file falls back to the raw count', appendTo('scripts/order-state.test.mjs', `${literals}const broken = ;\n`), /from 0 to 1/],
+  ];
+  for (const [label, mutate, pattern] of cases) {
+    const packet = review(mutate, { scope: ['scripts/**', 'apps/mobile/src/lib/**'] });
+    assert.equal(packet.dimensions.testIntegrity.verdict, FAIL, label);
+    assert.match(disabledCount(packet), pattern, label);
+  }
+  const added = review(appendTo('scripts/order-state.test.mjs', `${literals}test.skip('x', () => {});\n`), { scope: ['scripts/**'] });
+  assert.equal(added.dimensions.testIntegrity.findings.filter(line => /disabled tests increased/.test(line)).length, 1);
+});
+
+const registryTests = ['scripts/order-state.test.mjs'];
+const registryManifest = (tests, suffix = '') => `${JSON.stringify({
+  ...JSON.parse(baseFiles['package.json']),
+  scripts: { ...JSON.parse(baseFiles['package.json']).scripts, 'verify:foundation': `node scripts/run-tests.mjs ${tests.join(' ')}${suffix}` },
+}, null, 2)}\n`;
+const registryPin = (tests, suffix = '') => `import assert from 'node:assert/strict';\nimport manifest from '../package.json' with { type: 'json' };\n\nassert.equal(manifest.scripts['verify:foundation'], 'node scripts/run-tests.mjs ${tests.join(' ')}${suffix}');\n`;
+const registryFiles = { 'package.json': registryManifest(registryTests), 'scripts/registry-pin.test.mjs': registryPin(registryTests) };
+const newTest = "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\n\ntest('registered', () => {\n  assert.equal(1, 1);\n});\n";
+const registryReview = (mutate, scopeGlobs = ['package.json', 'scripts/**']) => {
+  const { repository } = fixture(mutate, { files: registryFiles });
+  return reviewDiff({ repository, base: 'main', scope: scopeGlobs });
+};
+
+test('registering an existing new test file in the script and its pin needs owner review but is not a scope violation', () => {
+  const tests = [...registryTests, 'scripts/new-check.test.mjs'];
+  const packet = registryReview(api => {
+    api.write('scripts/new-check.test.mjs', newTest);
+    api.write('package.json', registryManifest(tests));
+    api.write('scripts/registry-pin.test.mjs', registryPin(tests));
+  });
+  assert.equal(packet.dimensions.scope.verdict, INSUFFICIENT);
+  assert.match(packet.dimensions.scope.findings.join('\n'), /registers test file\(s\) scripts\/new-check\.test\.mjs; owner review must confirm/);
+  assert.equal(packet.dimensions.testIntegrity.verdict, INSUFFICIENT);
+  assert.match(packet.dimensions.testIntegrity.findings.join('\n'), /assertion extended with registered test file\(s\) scripts\/new-check\.test\.mjs/);
+  assert.doesNotMatch(packet.dimensions.testIntegrity.findings.join('\n'), /removed or altered/);
+  assert.notEqual(packet.verdict, PASS);
+  assert.notEqual(packet.verdict, FAIL);
+});
+
+test('registration changes that drop, hide or invent a test are scope or test-integrity failures', () => {
+  const extended = [...registryTests, 'scripts/new-check.test.mjs'];
+  const cases = [
+    ['registers a file that does not exist', api => {
+      api.write('package.json', registryManifest([...registryTests, 'scripts/ghost.test.mjs']));
+      api.write('scripts/registry-pin.test.mjs', registryPin([...registryTests, 'scripts/ghost.test.mjs']));
+    }, /does not exist at the head/],
+    ['appends a flag instead of a test file', api => {
+      api.write('package.json', registryManifest(registryTests, ' --passWithNoTests'));
+    }, /script verify:foundation no longer runs/],
+    ['drops an existing registered test', api => {
+      api.write('scripts/new-check.test.mjs', newTest);
+      api.write('package.json', registryManifest(['scripts/new-check.test.mjs']));
+      api.write('scripts/registry-pin.test.mjs', registryPin(['scripts/new-check.test.mjs']));
+    }, /script verify:foundation no longer runs: node scripts\/run-tests\.mjs scripts\/order-state\.test\.mjs/],
+  ];
+  for (const [label, mutate, pattern] of cases) {
+    const packet = registryReview(mutate);
+    assert.equal(packet.dimensions.scope.verdict, FAIL, label);
+    assert.match(packet.dimensions.scope.findings.join('\n'), pattern, label);
+    assert.equal(packet.verdict, FAIL, label);
+  }
+  const ghostPin = registryReview(api => {
+    api.write('scripts/registry-pin.test.mjs', registryPin([...registryTests, 'scripts/ghost.test.mjs']));
+  });
+  assert.equal(ghostPin.dimensions.testIntegrity.verdict, FAIL);
+  assert.match(ghostPin.dimensions.testIntegrity.findings.join('\n'), /does not exist at the head/);
+  const hidden = registryReview(api => {
+    api.write('scripts/registry-pin.test.mjs', registryPin(registryTests, ' --no-fail'));
+  });
+  assert.equal(hidden.dimensions.testIntegrity.verdict, INSUFFICIENT);
+  assert.match(hidden.dimensions.testIntegrity.findings.join('\n'), /1 assertion line\(s\) removed or altered/);
+  const pinOnly = registryReview(api => {
+    api.write('scripts/new-check.test.mjs', newTest);
+    api.write('scripts/registry-pin.test.mjs', registryPin(extended));
+  });
+  assert.equal(pinOnly.dimensions.testIntegrity.verdict, INSUFFICIENT);
+  assert.match(pinOnly.dimensions.testIntegrity.findings.join('\n'), /assertion extended with registered test file\(s\)/);
+});
+
 test('adding a new passing test and leaving existing assertions alone is not a test-integrity finding', () => {
   const packet = review(api => api.write('apps/mobile/src/lib/format-total.test.ts', formatTotalTest.replace('});\n', "  it('formats zero', () => {\n    expect(formatTotal(0)).toBe('d0.00');\n  });\n});\n")));
   assert.equal(packet.dimensions.testIntegrity.verdict, PASS);
