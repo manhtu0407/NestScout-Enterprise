@@ -247,10 +247,9 @@ describe('identity transitions', () => {
     expect(state).toMatchObject({ identity: 'unverified', userId: user, bootstrapped: true });
   });
 
-  test('an invalid getUser answer signs out and requests removal of the stored session', () => {
+  test('an invalid getUser answer signs out', () => {
     const state = checked(restored(), { status: 'invalid' });
-    expect(state).toMatchObject({ userId: null, identity: 'unverified', purgeSession: user, bootstrapped: true });
-    expect(accessReducer(state, { type: 'purge_done' }).purgeSession).toBeNull();
+    expect(state).toMatchObject({ userId: null, identity: 'unverified', bootstrapped: true });
   });
 
   test('a stale or unrequested identity answer is ignored', () => {

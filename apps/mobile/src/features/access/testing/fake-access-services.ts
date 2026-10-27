@@ -14,8 +14,6 @@ export type FakeOptions = {
   issuedCode?: string;
   signInIdentity?: SessionIdentity;
   requestOtp?: () => Promise<AuthOutcome>;
-  // Held by every session removal, to simulate Auth finishing it late.
-  removalGate?: () => Promise<void>;
 };
 
 // Controllable stand-ins for Supabase Auth and the capability table, used only
@@ -25,10 +23,15 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
   let stored = options.storedMode ?? null;
   const issuedCode = options.issuedCode ?? '654321';
   const signInIdentity = options.signInIdentity ?? { userId: 'user-a' };
-  const calls = { requestOtp: [] as string[], verifyOtp: [] as string[], verifyIdentity: 0, signOut: 0, discard: [] as string[], capability: 0, cleared: 0, signals: [] as AbortSignal[] };
+  const calls = { requestOtp: [] as string[], verifyOtp: [] as string[], verifyIdentity: 0, signOut: 0, capability: 0, cleared: 0, signals: [] as AbortSignal[] };
 
-  // The user the device session currently belongs to, as the real client would hold it.
-  let current = options.session?.userId ?? null;
+  // The device session as the real client holds it. A new sign-in or a token refresh is
+  // a new session even for the same account, which is what removal must tell apart.
+  let sequence = 0;
+  let current: { userId: string; id: number } | null = options.session ? { userId: options.session.userId, id: ++sequence } : null;
+  const establish = (userId: string) => {
+    current = { userId, id: ++sequence };
+  };
 
   const auth: AuthGateway = {
     async requestOtp(phone) {
@@ -38,27 +41,30 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
     async verifyOtp(phone, code) {
       calls.verifyOtp.push(code);
       if (code !== issuedCode) return { ok: false, failure: 'invalid_code' };
-      current = signInIdentity.userId;
+      establish(signInIdentity.userId);
       listener?.({ type: 'signed_in', identity: signInIdentity });
       return { ok: true, value: signInIdentity };
     },
     restoreSession: options.restore ?? (async () => options.session ?? null),
-    verifyIdentity() {
+    async verifyIdentity() {
       calls.verifyIdentity += 1;
-      if (options.verifyIdentity) return options.verifyIdentity();
-      return Promise.resolve(options.identityCheck ?? { status: 'valid', identity: options.session ?? signInIdentity });
+      const judged = current;
+      const check = options.verifyIdentity
+        ? await options.verifyIdentity()
+        : (options.identityCheck ?? { status: 'valid', identity: options.session ?? signInIdentity });
+      if (check.status !== 'invalid') return check;
+      // Like the real gateway: the refused session is removed and announced before the
+      // answer returns, but only while it is still the stored one. A session that
+      // replaced it was not judged, so the answer does not apply and nothing is removed.
+      if (current !== judged) return { status: 'unreachable' };
+      if (current !== null) {
+        current = null;
+        listener?.({ type: 'signed_out' });
+      }
+      return check;
     },
     async signOut() {
       calls.signOut += 1;
-      await options.removalGate?.();
-      current = null;
-      listener?.({ type: 'signed_out' });
-      return { ok: true, value: undefined };
-    },
-    async discardSession(userId) {
-      calls.discard.push(userId);
-      await options.removalGate?.();
-      if (current !== userId) return { ok: true, value: undefined };
       current = null;
       listener?.({ type: 'signed_out' });
       return { ok: true, value: undefined };
@@ -93,5 +99,12 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
   };
 
   const services: AccessServices = { auth, capabilities, preferredMode };
-  return { services, calls, emit: (event: AuthEvent) => listener?.(event), storedMode: () => stored };
+  // Delivers an event the way the SDK does: after the stored session has changed.
+  function emit(event: AuthEvent) {
+    if (event.type === 'signed_out') current = null;
+    else if (event.type !== 'updated') establish(event.identity.userId);
+    listener?.(event);
+  }
+
+  return { services, calls, emit, storedMode: () => stored };
 }

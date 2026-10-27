@@ -37,7 +37,7 @@ const resendCooldownMs = 60_000;
 export function AccessProvider({ services, children }: { services: AccessServices; children: ReactNode }) {
   const { auth, capabilities, preferredMode } = services;
   const [state, dispatch] = useReducer(accessReducer, initialAccessState);
-  const { userId, requestId, bootstrapped, preferenceLoaded, selectedMode, otpPhone, identityPending, identityRequest, purgeSession } = state;
+  const { userId, requestId, bootstrapped, preferenceLoaded, selectedMode, otpPhone, identityPending, identityRequest } = state;
 
   // Session events and the stored-session restore. Events only forward values: they
   // describe a claim, and the identity check below is what verifies it.
@@ -63,8 +63,9 @@ export function AccessProvider({ services, children }: { services: AccessService
     };
   }, [auth]);
 
-  // Server-side identity check (getUser). Unreachable and unknown outcomes keep the
-  // session but leave the identity unverified.
+  // Server-side identity check (getUser). A refused session is removed by the gateway
+  // before the answer returns. Unreachable and unknown outcomes keep the session but
+  // leave the identity unverified.
   useEffect(() => {
     if (!identityPending) return;
     let active = true;
@@ -75,15 +76,6 @@ export function AccessProvider({ services, children }: { services: AccessService
       active = false;
     };
   }, [auth, identityPending, identityRequest]);
-
-  // Removes a session the server rejected. It runs from state and names the account, so
-  // a superseded check cannot sign out a newer session and a late removal cannot end an
-  // account that signed in after the check.
-  useEffect(() => {
-    if (purgeSession === null) return;
-    void auth.discardSession(purgeSession);
-    dispatch({ type: 'purge_done' });
-  }, [auth, purgeSession]);
 
   // Authoritative capability lookup; a newer request supersedes (and aborts) older ones.
   useEffect(() => {

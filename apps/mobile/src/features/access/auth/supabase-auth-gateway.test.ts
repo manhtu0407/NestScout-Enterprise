@@ -43,64 +43,29 @@ describe('supabase auth gateway', () => {
     expect(await failed.restoreSession()).toBeNull();
   });
 
-  test('identity verification separates a rejected session from an unreachable server', async () => {
-    const check = (result: unknown) => createSupabaseAuthGateway(stubClient({ getUser: async () => result })).verifyIdentity();
-    expect(await check({ data: { user: { id: 'user-a' } }, error: null })).toEqual({ status: 'valid', identity: { userId: 'user-a' } });
-    expect(await check({ data: { user: null }, error: new AuthApiError('invalid JWT', 401, 'bad_jwt') })).toEqual({ status: 'invalid' });
-    expect(await check({ data: { user: null }, error: new AuthRetryableFetchError('offline', 0) })).toEqual({ status: 'unreachable' });
-    const thrown = createSupabaseAuthGateway(stubClient({ getUser: async () => { throw new TypeError('offline'); } }));
+  // Classification, removal and replacement are covered against the real Auth client in
+  // supabase-auth-gateway-sdk.test.ts; these cover what that server cannot produce.
+  test('identity check: an unreadable stored session or a thrown error is unreachable', async () => {
+    const readFailure = createSupabaseAuthGateway(stubClient({ getSession: async () => ({ data: { session: null }, error: new AuthRetryableFetchError('offline', 0) }) }));
+    expect(await readFailure.verifyIdentity()).toEqual({ status: 'unreachable' });
+    const unknownFailure = createSupabaseAuthGateway(stubClient({ getSession: async () => ({ data: { session: null }, error: new AuthUnknownError('odd', new Error('cause')) }) }));
+    expect(await unknownFailure.verifyIdentity()).toEqual({ status: 'unreachable' });
+    const missing = createSupabaseAuthGateway(stubClient({ getSession: async () => ({ data: { session: null }, error: new AuthSessionMissingError() }) }));
+    expect(await missing.verifyIdentity()).toEqual({ status: 'invalid' });
+    const thrown = createSupabaseAuthGateway(stubClient({ getSession: () => Promise.reject(new Error('storage')) }));
     expect(await thrown.verifyIdentity()).toEqual({ status: 'unreachable' });
   });
 
-  test.each([
-    [403, 'bad_jwt', 'invalid'],
-    [401, 'bad_jwt', 'invalid'],
-    [403, 'session_expired', 'invalid'],
-    [403, 'session_not_found', 'invalid'],
-    [403, 'user_not_found', 'invalid'],
-    [403, 'user_banned', 'invalid'],
-    [400, 'refresh_token_not_found', 'invalid'],
-    [400, 'refresh_token_already_used', 'invalid'],
-    // Same statuses, different reasons: not evidence that the session is dead.
-    [403, 'not_admin', 'unreachable'],
-    [403, 'insufficient_aal', 'unreachable'],
-    [403, 'captcha_failed', 'unreachable'],
-    [403, 'phone_provider_disabled', 'unreachable'],
-    [403, undefined, 'unreachable'],
-    [404, undefined, 'unreachable'],
-    [404, 'identity_not_found', 'unreachable'],
-    [401, undefined, 'unreachable'],
-    [429, 'over_request_rate_limit', 'unreachable'],
-    [500, 'unexpected_failure', 'unreachable'],
-    [502, undefined, 'unreachable'],
-    [503, undefined, 'unreachable'],
-  ] as const)('identity check: HTTP %s (%s) is %s', async (status, code, expected) => {
-    const gateway = createSupabaseAuthGateway(stubClient({ getUser: async () => ({ data: { user: null }, error: new AuthApiError('failed', status, code) }) }));
-    expect(await gateway.verifyIdentity()).toEqual({ status: expected });
-  });
-
-  test('identity check: a missing session is invalid and an unclassified error never ends the session', async () => {
-    const check = (error: Error) => createSupabaseAuthGateway(stubClient({ getUser: async () => ({ data: { user: null }, error }) })).verifyIdentity();
-    expect(await check(new AuthSessionMissingError())).toEqual({ status: 'invalid' });
-    expect(await check(new AuthUnknownError('odd', new Error('cause')))).toEqual({ status: 'unreachable' });
-    expect(await check(new Error('anything else'))).toEqual({ status: 'unreachable' });
-  });
-
-  test.each([
-    ['an empty success payload', { data: {}, error: null }],
-    ['a null user without an error', { data: { user: null }, error: null }],
-    ['a null payload', { data: null, error: null }],
-    ['a user without an id', { data: { user: {} }, error: null }],
-    ['a non-string id', { data: { user: { id: 42 } }, error: null }],
-    ['an empty id', { data: { user: { id: '' } }, error: null }],
-  ])('identity check: %s is never a verified identity', async (_name, result) => {
-    const gateway = createSupabaseAuthGateway(stubClient({ getUser: async () => result }));
+  test('identity check: a refused session that cannot be removed leaves the answer unapplied', async () => {
+    const session = { data: { session: { access_token: 'token-1' } }, error: null };
+    const gateway = createSupabaseAuthGateway(stubClient({
+      getSession: async () => session,
+      getUser: async () => ({ data: { user: null }, error: new AuthApiError('invalid JWT', 403, 'bad_jwt') }),
+      signOut: async () => {
+        throw new Error('keychain');
+      },
+    }));
     expect(await gateway.verifyIdentity()).toEqual({ status: 'unreachable' });
-  });
-
-  test('identity check: a rejected promise and a thrown error are unreachable', async () => {
-    const rejected = createSupabaseAuthGateway(stubClient({ getUser: () => Promise.reject(new Error('boom')) }));
-    expect(await rejected.verifyIdentity()).toEqual({ status: 'unreachable' });
   });
 
   test('restore reports an unverified claim only and ignores a malformed stored session', async () => {
@@ -125,43 +90,6 @@ describe('supabase auth gateway', () => {
     const signOut = jest.fn(async () => ({ error: null }));
     expect(await createSupabaseAuthGateway(stubClient({ signOut })).signOut()).toEqual({ ok: true, value: undefined });
     expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
-  });
-
-  describe('discardSession', () => {
-    const discard = (getSession: () => unknown, signOut = jest.fn(async (): Promise<{ error: Error | null }> => ({ error: null }))) => ({
-      signOut,
-      run: () => createSupabaseAuthGateway(stubClient({ getSession: async () => getSession(), signOut })).discardSession('user-a'),
-    });
-
-    test('removes the local session while it still belongs to the account', async () => {
-      const { run, signOut } = discard(() => ({ data: { session: { user: { id: 'user-a' } } }, error: null }));
-      expect(await run()).toEqual({ ok: true, value: undefined });
-      expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
-    });
-
-    test.each([
-      ['a different account now holds the session', { data: { session: { user: { id: 'user-b' } } }, error: null }],
-      ['the client already dropped the session', { data: { session: null }, error: null }],
-    ])('does nothing when %s', async (_name, result) => {
-      const { run, signOut } = discard(() => result);
-      expect(await run()).toEqual({ ok: true, value: undefined });
-      expect(signOut).not.toHaveBeenCalled();
-    });
-
-    test('reports failures without removing a session it could not identify', async () => {
-      const unreadable = discard(() => ({ data: { session: null }, error: new AuthRetryableFetchError('offline', 0) }));
-      expect(await unreadable.run()).toEqual({ ok: false, failure: 'network' });
-      expect(unreadable.signOut).not.toHaveBeenCalled();
-      const thrown = discard(() => {
-        throw new TypeError('storage');
-      });
-      expect(await thrown.run()).toEqual({ ok: false, failure: 'network' });
-      const failing = discard(
-        () => ({ data: { session: { user: { id: 'user-a' } } }, error: null }),
-        jest.fn(async () => ({ error: new AuthRetryableFetchError('offline', 0) })),
-      );
-      expect(await failing.run()).toEqual({ ok: false, failure: 'network' });
-    });
   });
 
   test('forwards auth events as values and unsubscribes on request', () => {

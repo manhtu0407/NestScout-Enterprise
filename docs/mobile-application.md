@@ -70,13 +70,27 @@ repeats the checks. Every identity check and capability lookup carries a request
 an answer for a superseded request, another account or a signed-out state is dropped.
 A lookup the backend refuses with an authentication error withdraws verification and
 asks `getUser()` again instead of signing out directly; only `getUser()` can end a
-session. A session the server proves dead is removed from the device from reducer
-state through `discardSession(userId)`, which signs out locally only while the client
-still holds a session for that account. The SDK's `signOut` acts on whatever session
-exists when it runs, so a generic sign-out issued for a dead session could end an
-account that signed in before it ran; the owner check removes that case. The check and
-the sign-out are two SDK calls, so a sub-millisecond window remains in which a new
-session could still be removed.
+session.
+
+The gateway judges one session and removes that same session. `verifyIdentity()`
+reads the stored session once and sends that session's access token to `getUser()`.
+When the server refuses it, the gateway reads the stored session again and signs out
+locally only if its access token is still the refused one; it announces the removal
+(`SIGNED_OUT`) before the answer returns. If a different session is stored by then (the
+same account signed in again, another account signed in, or the token was refreshed),
+that session was not judged: it is left alone and the answer is `unreachable`, so
+nothing is authorized or removed and the next check judges the new session. A refusal
+is never keyed on the account id, because two sessions of one account are different
+sessions.
+
+This is not atomic and the SDK offers nothing that would make it so. The client is
+created without the optional lock, `signOut()` removes whichever session is stored when
+it finishes, and it waits for a server request (`/logout`) before removing anything.
+A session established between the comparison and that removal, including during the
+request, is therefore still removed with the refused one. The outcome fails closed (the
+user is signed out and signs in again) and is pinned by tests that name it as a known
+limit. The SDK's own `getUser()` also removes the stored session when the server says
+`session_not_found`, whichever session that is.
 
 The grant table is deliberately minimal: user id, `active`/`revoked` status and
 timestamps. Only trusted backend operators (`postgres`, `service_role`) can write
@@ -149,12 +163,13 @@ discarded by request id and cannot change state.
 | --- | --- | --- |
 | Reducer and route policy (`access-reducer.test.ts`, `route-policy.test.ts`) | Identity transitions, request ids, Worker predicate | Unit |
 | Provider (`access-provider*.test.tsx`) | Event ordering, deferred promises, fake timers, account switches, late answers, aborts | Unit with fake gateway |
-| Gateway and repository tests | Error-code matrices against real `@supabase/supabase-js` error classes and PostgREST response shapes | Unit against stubbed clients |
+| `supabase-auth-gateway-sdk.test.ts` | The real Auth client against a scripted Auth server and in-memory storage: error classification on SDK-produced errors, removal of a refused session, replacement before and after the comparison | Unit against the real SDK, scripted server |
+| Other gateway and repository tests | OTP contract, event forwarding and PostgREST response shapes | Unit against stubbed clients |
 | `chunked-storage.test.ts` | Fault injection at every store call, restart, corruption, concurrency | Unit against an in-memory keychain |
 | `navigation.test.tsx` | Real Expo Router tree through `renderRouter` with fake services | Component integration |
 | `supabase/tests/database/worker-access-grants.test.sql` | RLS, grants, revocation, anonymous and cross-account denial | pgTAP, runs only on the canonical stack |
 
-Not covered: a real Auth or PostgREST service, a real Keychain, a native iOS build or
+Not covered: a real Auth or PostgREST service (the scripted server above is not one), a real Keychain, a native iOS build or
 device, and real SMS delivery. Metro serving the bundle proves bundling only.
 
 ## Known dependency advisories

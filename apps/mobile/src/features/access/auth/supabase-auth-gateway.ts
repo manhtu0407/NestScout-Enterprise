@@ -38,6 +38,27 @@ function identityOf(user: unknown): SessionIdentity | null {
 }
 
 export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
+  // The SDK cannot remove "this session only": signOut() removes whichever session is
+  // stored when it finishes. The stored session is therefore compared with the refused
+  // token first, and a session that replaced it (a new sign-in or a token refresh) is
+  // left alone, because this answer was not about it.
+  // The comparison and the removal are two SDK calls and the SDK exposes no lock or
+  // compare-and-remove, so this is not atomic: signOut() waits for a server request
+  // before it removes anything, and a session established during that request is
+  // removed with the refused one.
+  async function removeRefusedSession(refusedToken: string): Promise<IdentityCheck> {
+    const { data, error } = await client.auth.getSession();
+    if (error) return classifyIdentityError(error);
+    const current = data?.session;
+    if (!current) return { status: 'invalid' };
+    if (current.access_token !== refusedToken) return { status: 'unreachable' };
+    // Revoking a token the server already refused is moot, and the SDK removes the
+    // local session even when that request fails. A session that cannot be removed
+    // throws, which leaves the answer unapplied and the check to be repeated.
+    await client.auth.signOut({ scope: 'local' });
+    return { status: 'invalid' };
+  }
+
   return {
     async requestOtp(phoneE164) {
       try {
@@ -70,10 +91,21 @@ export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
 
     async verifyIdentity(): Promise<IdentityCheck> {
       try {
-        const { data, error } = await client.auth.getUser();
-        if (error) return classifyIdentityError(error);
-        const identity = identityOf(data?.user);
-        return identity ? { status: 'valid', identity } : { status: 'unreachable' };
+        // The answer must concern one known session. getUser() without a token reads the
+        // stored session itself, which leaves open which session was judged, so the
+        // session is read once here and its access token is the one sent to the server.
+        const { data: stored, error: storedError } = await client.auth.getSession();
+        if (storedError) return classifyIdentityError(storedError);
+        const checked = stored?.session;
+        if (!checked) return { status: 'invalid' };
+
+        const { data, error } = await client.auth.getUser(checked.access_token);
+        if (!error) {
+          const identity = identityOf(data?.user);
+          return identity ? { status: 'valid', identity } : { status: 'unreachable' };
+        }
+        const check = classifyIdentityError(error);
+        return check.status === 'invalid' ? await removeRefusedSession(checked.access_token) : check;
       } catch {
         return { status: 'unreachable' };
       }
@@ -84,21 +116,6 @@ export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
         // The local session is removed even when revoking the server session fails.
         const { error } = await client.auth.signOut({ scope: 'local' });
         return error ? { ok: false, failure: classifyAuthError(error) } : { ok: true, value: undefined };
-      } catch {
-        return { ok: false, failure: 'network' };
-      }
-    },
-
-    async discardSession(userId) {
-      try {
-        // signOut acts on whichever session the client holds when it runs, so the
-        // owner is checked first. A session that the client already dropped (a
-        // refresh failure or session_not_found removes it) needs no further action.
-        const { data, error } = await client.auth.getSession();
-        if (error) return { ok: false, failure: classifyAuthError(error) };
-        if (data?.session?.user?.id !== userId) return { ok: true, value: undefined };
-        const result = await client.auth.signOut({ scope: 'local' });
-        return result.error ? { ok: false, failure: classifyAuthError(result.error) } : { ok: true, value: undefined };
       } catch {
         return { ok: false, failure: 'network' };
       }

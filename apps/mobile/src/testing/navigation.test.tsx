@@ -47,7 +47,7 @@ describe('cold start', () => {
   test('a session the server rejects falls back to the guest shell', async () => {
     const fake = await start({ session: user, identityCheck: { status: 'invalid' } });
     expect(await heading('NestScout')).toBeTruthy();
-    expect(fake.calls.discard).toEqual(['user-a']);
+    expect(fake.calls.signOut).toBe(0);
   });
 
   test('an unreachable server keeps the account in Client without Worker access', async () => {
