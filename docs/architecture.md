@@ -1,7 +1,8 @@
 # Application direction and architecture decisions
 
-Status: **DIRECTION CONFIRMED; IMPLEMENTATION DETAILS PROPOSED**. The owner approved
-the direction below on 2026-10-25. This setup records decisions and implementation
+Status: **ENGINEERING FOUNDATION V1; APPLICATION IMPLEMENTATION OUT OF SCOPE**.
+The owner confirmed the direction on 2026-10-25 and refined the decisions below
+on 2026-10-27. This document records decisions and implementation
 prerequisites; it authorizes no application scaffold, business schema or release.
 The root [AGENTS.md](../AGENTS.md) remains the sole repository-wide engineering policy.
 
@@ -18,11 +19,14 @@ configuration, credentials and data are not inherited by this repository.
 | --- | --- | --- |
 | Mobile framework | Expo and React Native | SDK version, compatible dependency pins and application layout |
 | Language | TypeScript for application code; JavaScript/ESM for suitable configuration and tooling | App compiler, lint and test configuration |
-| Backend | Supabase | Business schema, product auth, access matrix and hosted environment boundaries |
-| Product areas | Clients and Workers; Admin remains a future direction | BPMN, detailed workflows and interface design |
+| Backend | Supabase; backend enforces authorization | Business schema and operation-level access matrix |
+| App and discovery | One App for Clients and Workers; guests explore before signing in | Owner-supplied App structure, public discovery data and workflows |
+| Identity and roles | One account may hold multiple roles | Role assignment/revocation, Worker eligibility and capability rules; Admin is future scope |
+| Authentication | Vietnamese phone number + OTP first; Google/Facebook are future secondary methods | SMS provider, identity linking, sessions and runtime implementation |
+| Development/testing | Isolated Supabase Local; no Staging Project | Production release design at the Deploy phase; no hosted writes now |
 | Kael | Kael Service Operator | BPMN, permissions, tools, AI provider and runtime contracts |
 | Platform and testing | iOS first; TestFlight is the later testing channel | Owner setup, signing, build provider and distribution; Android deferred |
-| Visibility | Keep this repository public; the owner decides when to change it | Licensing; any later visibility change |
+| Visibility | Keep this repository public until the Deploy phase; the owner decides any change | Licensing; Deploy-phase visibility decision |
 
 No interface design is approved yet. TestFlight setup and builds are deferred, and
 the Kael name alone defines no operating permissions. Earlier ADR recommendations
@@ -30,7 +34,8 @@ below remain proposals wherever they go beyond these confirmed decisions.
 
 ## Inspected implementation
 
-The setup baseline is `26a5e0546cd6150380078589d1df7b2aa96b5371`: Node 24/npm
+The Engineering Foundation V1 audit baseline is main
+`98187746fc67ea64848a544b4a938e4c643a807e` (2026-10-27): Node 24/npm
 engineering tooling, isolated Supabase development and generated database types.
 There is no product app, business schema, product auth or runtime Kael agent.
 The existing native tooling installer supports Windows/Linux x64; macOS tooling
@@ -50,8 +55,11 @@ simple. Workspaces support real shared consumers but add dependency/build graph
 maintenance. Multiple repositories improve access separation and independent
 release cadence at the cost of versioned contracts and coordinated changes.
 
-**Confirmed:** Expo and React Native are selected. The SDK version and application
-layout remain pending; no app directory or npm workspace is approved by this setup.
+**Confirmed:** One Expo/React Native App serves Clients and Workers, with discovery
+available before sign-in. An account may hold multiple roles; selecting an App
+mode grants no permissions. The backend evaluates each operation's authorization.
+The owner will supply the App structure separately. The SDK version remains
+pending; no app directory or npm workspace is approved by this setup.
 
 **Recommendation:** Keep one repository initially. Select the supported Expo
 SDK/toolchain and review compatible dependency pins before scaffolding.
@@ -70,7 +78,8 @@ Tooling checks do not become product checks merely by sharing CI.
 **Reversibility:** Moderate; extracting packages later is straightforward if module
 APIs stay explicit. Cross-repository moves require history/access/CI review.
 
-**Dependencies / status:** Framework and language direction **CONFIRMED**. SDK,
+**Dependencies / status:** One App, guest discovery, multiple roles per account,
+framework and language direction **CONFIRMED**. SDK,
 application package-manager configuration and layout remain **PROPOSED**. Existing
 repository tooling continues to use npm. The first scaffold needs its own approved
 scope, real commands and consumers.
@@ -88,21 +97,28 @@ environments supports reproducible tests and bounded access but needs environmen
 ownership and promotion procedures. Preview branches add compute, retention and
 cleanup costs; they are optional, not an assumed requirement.
 
-**Recommendation:** Retain the verified local workflow; propose distinct staging
-and Production projects with separate secret/config ownership and no implicit
-fallback between targets. Do not provision them now. Version schema changes only
+**Confirmed:** Development and testing use isolated Supabase Local. No Staging
+Project or additional remote environment is planned for Engineering Foundation V1.
+Existing hosted read-only developer MCP is diagnostic access, not an application
+environment or a development/test fallback. Production writes and deployment are
+outside this task. This supersedes the earlier recommendation for distinct hosted
+staging and Production projects.
+
+Version future schema changes only
 through canonical migrations, test compatibility/role denials and approve hosted
 promotion separately. Reconcile the existing hosted RLS event hook before deciding
 whether migrations manage it. Keep one generated database type artifact per approved
 schema contract rather than handwritten duplicate table types.
 
-Application clients may hold public configuration/publishable keys; privileged
-credentials belong in an approved trusted execution boundary. Enforce Customer
-ownership, Worker assignments and Admin powers at the data/API boundary, with
-authenticated cross-user/role denial tests. User-editable claims and hidden screens
-are insufficient authorization. Select direct Supabase access versus a trusted
-service per operation; sensitive orchestration needs a trusted boundary, not a
-generic backend added before requirements exist.
+The [foundation contracts](foundation-contracts.md) define environment/data
+classification, guest and multi-role boundaries, and API conventions for later
+consumers. Phone + OTP for Vietnamese numbers is the primary authentication
+direction; Google/Facebook remain future secondary methods. This decision enables
+no provider, signup flow, OAuth callback or session runtime now. Discovery without
+sign-in does not require creating anonymous Auth accounts. Application Foundation
+will define the public projection and actual operation permissions before exposing
+data. Select direct Supabase access versus a trusted service per operation; sensitive
+orchestration needs a trusted boundary, not a generic backend before requirements.
 
 Kael runtime access must be separate from developer MCP: bounded role-specific
 tools, validated target/input/output, audit, budgets and human approval for sensitive
@@ -119,8 +135,9 @@ checks cannot prove product authorization or financial correctness.
 compatible migrations and roll-forward fixes. Provider adapters are easier to replace
 when domain contracts do not expose vendor-specific state.
 
-**Dependencies / status:** Supabase direction and the name Kael Service Operator
-are **CONFIRMED**. The environment, role/access matrix, hosted hook disposition,
+**Dependencies / status:** Supabase Local, no Staging Project, backend authorization,
+multiple roles per account, phone/OTP direction and the name Kael Service Operator
+are **CONFIRMED**. The operation-level access matrix, hosted hook disposition,
 sensitive-action list, data retention and AI runtime remain **PROPOSED**. Detailed
 workflow and Kael behavior await the owner's BPMN before implementation planning.
 
@@ -177,8 +194,9 @@ product code has not been introduced.
 | Keep public tooling and create a private product repository | Separate public foundation from confidential product | Duplicate maintenance/contract/version coordination; private enforcement and CI plan still need explicit validation |
 | Private repository with an appropriate paid plan | Confidential source with eligible private governance features | Owner-approved recurring cost, plan/feature/security entitlement review required |
 
-**Confirmed:** Keep this repository public. The owner will decide when to change it
-to private; this setup makes no visibility, license, plan or repository change.
+**Confirmed:** Keep this repository public until the Deploy phase. The owner will
+decide visibility then; there is no automatic switch to private. This setup makes
+no visibility, license, plan or repository change.
 Current public visibility does not authorize publishing otherwise out-of-scope
 code, data or credentials.
 
@@ -230,10 +248,25 @@ Any required naming-check change stays limited to that module's conventions with
 valid and invalid fixtures; existing protections remain intact. This setup adds
 no directories, dependencies, naming exceptions, APIs, interfaces or types.
 
-The first scaffold checklist includes supported runtime pins, reproducible install,
-real lint/typecheck/test/native build commands and evidence for the actual platform.
-macOS/native iOS support remains an explicit verification gap. Feature schemas,
-auth and Kael need approved BPMN-derived contracts and negative tests. Resolve
-release configuration before signed distribution. Setup acceptance does not claim
-application, native-device, Production or disaster recovery readiness, and does
-not authorize closing the application-planning Issue.
+### Application Foundation decisions
+
+These items are **OUT OF SCOPE** for Engineering Foundation V1, not blockers to its
+delivery. They are resolved with the owner's App structure and concrete consumers:
+
+- Expo SDK/pins, App layout/navigation, strict compiler/lint configuration and real
+  lint/typecheck/unit/native build commands; macOS/iOS verification on a supported host.
+- Guest discovery projection and sign-in transitions; multi-role capability matrix,
+  role assignment/revocation, Worker eligibility and denied-operation tests.
+- Vietnamese phone normalization/validation, SMS provider and cost/rate limits,
+  OTP expiry/replay/attempt handling, account recovery, session storage/refresh,
+  logout and future OAuth identity linking/deep links. Phone possession is not
+  Worker qualification or business authorization.
+- BPMN-derived schemas, operation contracts, concurrency/idempotency requirements and
+  real grant/RLS tests; Kael permissions/providers only with an approved runtime scope.
+- Later TestFlight signing/build ownership, release configuration and Deploy-phase
+  visibility, Production access, monitoring and recovery decisions.
+
+The [foundation contracts](foundation-contracts.md) supply the starting boundaries;
+they implement no endpoints or auth behavior. Setup acceptance makes no application,
+native-device, Production or disaster recovery readiness claim and does not close
+the application-planning Issue.

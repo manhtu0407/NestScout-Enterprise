@@ -5,6 +5,19 @@ The owner selected native App development, without Vercel hosting. This reposito
 currently contains tooling, with no Expo application, Supabase client, bookings,
 payments, product roles or Kael runtime. Do not import another project's schema.
 
+Engineering Foundation V1 uses **Supabase Local for development/testing**, with no
+Staging Project, additional remote environment or Production write/deploy step.
+The existing hosted read-only MCP connection below remains diagnostic access.
+It is never a local-test fallback or an App configuration source. See the
+[environment and security contracts](foundation-contracts.md).
+
+The local `[auth]` service supports platform tooling; `enable_signup = false`,
+`enable_anonymous_sign_ins = false`, no extra redirects and the loopback `site_url`
+are retained. This is not an implemented App login flow. Guest discovery means
+unauthenticated access to an approved public projection later, not enabling
+anonymous Auth accounts. The phone/OTP direction does not authorize enabling an
+SMS provider, OAuth, signup or a deep link before Application Foundation.
+
 ## Installation and local runtime
 
 Use Node 24 and an installed, running local Docker engine:
