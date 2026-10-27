@@ -236,8 +236,8 @@ server-controlled technical grant rather than onboarding or qualification; rows 
 provisioned and revoked only by `postgres` and `service_role`.
 
 Source files carry no explanatory comments; rationale lives in this document.
-The root policy permits useful invariant comments and the owner requires none, so
-the difference is reported for a separate policy decision rather than reconciled here.
+The root policy requires zero source comments, and `check:comments` enforces it over
+the complete delivered state.
 
 ## Test coverage
 

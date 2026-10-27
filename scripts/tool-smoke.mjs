@@ -96,7 +96,6 @@ export function smoke({ context, image, builder, run = probe, environment = proc
     if (!imageId.test(builtImage.Id)) throw new Error('INVALID_BUILT_IMAGE');
     assertOwned(builtImage, owner, builtImage.Id, 'image');
     steps.push('buildx-scratch-build');
-    // Mark the exact unique name before create: a timed-out client may leave the container behind.
     created = true;
     const id = command(['container', 'create', '--name', owner, '--label', `${label}=${owner}`, '--pull', 'never',
       '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
@@ -124,7 +123,6 @@ export function smoke({ context, image, builder, run = probe, environment = proc
       ['container', composed, composeOwner, composeOwner], ['image', built, tag, owner]]) {
       if (!attempted) continue;
       try {
-        // Listing uses exact equality after parsing; an inspect failure never authorizes removal.
         const names = command([type, 'ls', ...(type === 'container' ? ['--all'] : []), '--format', type === 'container' ? '{{.Names}}' : '{{.Repository}}:{{.Tag}}']).split('\n');
         if (!names.includes(reference)) continue;
         const object = inspect(type, reference);

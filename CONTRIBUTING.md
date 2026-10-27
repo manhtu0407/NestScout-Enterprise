@@ -82,6 +82,13 @@ outside Git. Both index and working manifests must match their own bytes. Review
 licensing, provenance and publication authority; a hash cannot establish them.
 The reader caps each index/working snapshot at 128 MiB (unique blobs for the index).
 
+The owner-approved logo `docs/assets/nestscout-horizon-logo-light.png` is the unchanged
+`04_android/play_store_512x512.png` from the owner-supplied
+`NestScout_Horizon_Restored_Asset_Pack_v1.zip` (archive SHA-256
+`d845aa9bf8795ff8ab7f57c17edd29a05fe6e7ba558c80c0d2ede25d0ee65064`). `check:hygiene`
+pins the file to SHA-256 `b4dbdd2eb0c742e36f61b41f87744f32f709cbdfc4441c93f17a494a87fde446`
+in the index and working tree; replacing it needs the owner's approval of a new asset.
+
 Artifact inspection never rewrites inputs or extracts archive paths to disk. Supported
 PDFs use classic xref tables, one trailer and an Info dictionary. Title/Author strings
 are decoded from literal/hex strings and indirect references, including octal escapes,
@@ -116,7 +123,7 @@ text, dollar-quoted delimiters, block scalars and URL fragments (YAML uses the `
 parser's syntax tree). JSON files receive line-leading checks; Markdown
 and legal/contributor records receive signature-line checks. Known AI trailers,
 promotional signatures, explicit role signatures and AI self-introductions fail.
-Existing comments are never deleted automatically. Reviewers must still assess
+The checkers never rewrite files. Reviewers must still assess
 arbitrary claims and paraphrases, legitimate provenance, actual authorship and
 authorization. A justified exception needs a narrow reviewed rule and positive/negative
 fixtures, not a scanner-disable comment or an entire excluded directory. Factual human
@@ -140,67 +147,56 @@ an Issue or PR still requires separate owner authorization.
 
 ## Source comments and formatting
 
-Do not add comments to source or executable configuration files: no explanatory or
-inline notes, block or documentation comments, `TODO`/`FIXME`/`HACK` annotations, or
-lint/typecheck suppression directives. Express intent through names, types, tests and
-structure. `npm run check:comments` compares each proposed state with its base and
-fails on any comment that the base does not already contain in the same file:
+Source and executable configuration files carry zero comments: no explanatory or inline
+notes, block or documentation comments (including AI-generated JSDoc), `TODO`/`FIXME`/`HACK`
+annotations, commented-out code, AI-generated notes, or lint/typecheck suppression
+directives. Express intent through names, types, tests and structure, and record
+rationale, decisions and asset provenance in existing documentation. The rule applies
+to every file, old or new. `npm run check:comments` judges the complete delivered state
+and fails on any comment that is not listed below:
 
-- Every commit of the committed range (`origin/main` to `HEAD`, or the exact pull request
-  or push range in hosted CI) is compared with its own parent, so a comment that one
-  commit adds and a later commit removes is still reported, naming the introducing commit.
-  Fix it in the commit that adds it; on an unpublished task branch that means amending or
-  reordering before publication, never rewriting published history without owner
-  authority.
-- A merge commit is judged by what none of its parents already contain: content that
-  arrives from another parent, such as the base branch, is baseline content, while a
-  comment first appearing in the merge itself (for example in a conflict resolution) is
-  reported. Commits reachable from the range's base are never inspected, so existing
-  history stays valid.
-- A root commit is compared with the empty tree.
-- The staged index is compared with `HEAD` and the working tree with `HEAD`. The staged
-  index is judged on its own blobs, so a clean working file cannot hide a staged comment.
+- The committed tree at `HEAD`, which in hosted CI is the exact checkout under test.
+- The staged index, judged on its own blobs, so a clean working file cannot hide a
+  staged comment.
+- The working tree, including untracked files that are not ignored.
 
-Unchanged, moved and reindented comments pass, and an edited comment counts as new.
-Renamed files keep their comments only when the old and new names use the same comment
-inspector (for example `.mjs` to `.cjs`, or `.yml` to `.yaml`); a rename across inspectors
-such as `.mjs` to `.ts` treats every comment as new. The exempt generated file
-`supabase/database.types.ts` is skipped in every commit.
+There is no baseline: a comment already present on `main` is reported exactly like a
+new one, and neither the base branch nor the history of the branch is consulted. The
+checkout is judged as delivered, so a comment that one commit adds and a later commit
+removes leaves a clean delivered state, while a branch whose tip still carries any
+comment fails. Renames, moves, reindentation and edits never carry a comment forward.
+The generated `supabase/database.types.ts` is skipped.
 
 Only these pass automatically:
 
-- Technically mandatory directives: a leading shebang line, TypeScript triple-slash
-  `reference` and `amd-*` directives before any code, JSX pragmas (`@jsx`, `@jsxFrag`,
-  `@jsxImportSource`, `@jsxRuntime`), and the version tag (for example `# v7` or
-  `# v7.1.2`) that Dependabot maintains after a full-SHA `uses:` pin in workflow YAML.
+- Technically mandatory directives: a leading shebang line (the three `.githooks/`
+  scripts need it to run), TypeScript triple-slash `reference` and `amd-*` directives
+  before any code, JSX pragmas (`@jsx`, `@jsxFrag`, `@jsxImportSource`, `@jsxRuntime`),
+  and the version tag (for example `# v7` or `# v7.1.2`) that Dependabot maintains
+  after a full-SHA `uses:` pin in workflow YAML. `.github/dependabot.yml` enables the
+  `github-actions` ecosystem, which reads that tag.
 - Legally required notices: `Copyright <year> <holder>` and
   `SPDX-License-Identifier: <expression>`.
 - The machine-generated `supabase/database.types.ts`, which `db:types:check` verifies
   by regeneration.
 
-Anything else needs the owner's explicit approval, and that approval is the owner's
-decision to merge a `package.json` change into the trusted baseline, not a string in the
-proposed change. `repositoryHygiene.commentExceptions` entries (`file`, `text` with the
-exact comment, and `reason`) are read only from the trusted baseline: `origin/main`
-locally, and the pull request base or the push's previous commit in hosted CI. An
-exception added or edited in the same changeset, in an earlier commit of the same branch,
-in the staged index or in the working tree authorizes nothing, and with no trusted
-baseline available no exception applies. The comment can therefore be added only after
-a change containing just the exception has been merged. Each baseline entry authorizes
-one occurrence in that file across the whole range, and suppression directives are never
-treated as mandatory. Agents never self-approve an exception. The checker, its tests and
-the workflow are themselves part of the proposed change, so changes to them need the
-owner's review, and a `Copyright` or `SPDX-License-Identifier` line is accepted by form
-only; reviewers must still judge that a new legal notice is genuine. A new source
-language needs a comment inspector in `scripts/check-hygiene.mjs` in the same change as
-its naming rule.
+No exception mechanism exists. `repositoryHygiene.commentExceptions` is rejected in
+`package.json`, suppression directives are never mandatory, and agents never add a
+scanner-disable comment. A `Copyright` or `SPDX-License-Identifier` line is accepted by
+form only; reviewers must still judge that a new legal notice is genuine, and a legal
+notice, security control or asset provenance record is never deleted to satisfy this
+rule. Move provenance into documentation instead. The checker, its tests and the
+workflow are part of any proposed change, so changes to them need the owner's review.
+A new source language needs a comment inspector in `scripts/check-hygiene.mjs` in the
+same change as its naming rule.
 
 The gate inspects JavaScript, TypeScript, SQL, YAML (including shell inside `run:` block
-scalars), TOML, JSONC and the `.githooks/` scripts. Markdown, JSON data and plain
-configuration files such as `.gitignore` are not source files for it, and embedded
-languages other than workflow `run:` shell (for example a `github-script` body) are not
-parsed. It cannot recognize narrative that is moved into strings, identifiers or
-documentation, so human review of usefulness and provenance still applies.
+scalars), TOML, JSONC, the `.githooks/` scripts, and the line-comment forms of
+`.gitignore`, `.gitattributes`, `.editorconfig` and `.env.example`. Markdown and JSON
+data are not source files for it, and embedded languages other than workflow `run:`
+shell (for example a `github-script` body) are not parsed. It cannot recognize
+narrative that is moved into strings, identifiers or documentation, so human review of
+usefulness and provenance still applies.
 
 `npm run check:format` is a check-only `.editorconfig` gate over the index and working
 files: UTF-8 without a byte order mark, LF line endings, a final newline, no trailing
@@ -215,13 +211,14 @@ The optional pre-commit hook judges the content being committed: it runs
 `check-comments.mjs --staged`, `check-format.mjs --staged` and `check-yaml.mjs` directly
 with Node beside the existing gates. The comment and formatting gates read Git objects
 only, so unrelated unstaged or untracked edits neither block the commit nor are touched;
-the working tree is judged at pre-push and in hosted CI. The other pre-commit gates keep
-their existing scopes. The pre-push hook also
+the staged comment gate inspects every staged source blob, not only the changed ones.
+The working tree and the committed tree are judged at pre-push and in hosted CI. The
+other pre-commit gates keep their existing scopes. The pre-push hook also
 verifies that the push goes to `origin` at this repository's URL, refuses staged or
 unstaged tracked changes so that local results describe the pushed commit, and runs
 `npm run check` and `npm run verify:negative`. Hosted CI runs `check:comments` and
 `check:format` as separate steps of the existing `Repository checks` job before the
-aggregate, on the exact pull request or push range; branch protection and triggers are
+aggregate, on the delivered checkout; branch protection and triggers are
 unchanged. Local hooks remain bypassable, so the hosted steps are the independent gate.
 
 ## Open and review a PR
