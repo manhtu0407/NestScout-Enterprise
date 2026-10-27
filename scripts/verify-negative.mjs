@@ -8,7 +8,7 @@ import { root, toolPath } from './tool-path.mjs';
 import { scanStaged } from './scan-staged.mjs';
 import { checkReservedFiles } from './check-reserved-files.mjs';
 import { checkTestArtifacts } from './check-test-artifacts.mjs';
-import { checkStagedComments, checkCommentRevision } from './check-comments.mjs';
+import { checkStagedComments, checkCommittedComments, checkComments } from './check-comments.mjs';
 import { checkFormat } from './check-format.mjs';
 import { gitEnvironment } from './git-environment.mjs';
 
@@ -145,7 +145,6 @@ try {
   }, /Competing agent instruction file/);
   reservedCase('reject root policy case rename in index', ({ git }) => git(['mv', 'AGENTS.md', 'agents.md']), /Competing agent instruction file/);
   reservedCase('reject root policy case rename only on disk', ({ repository }) => {
-    // Two renames work even on case-insensitive filesystems.
     renameSync(path.join(repository, 'AGENTS.md'), path.join(repository, 'policy.tmp'));
     renameSync(path.join(repository, 'policy.tmp'), path.join(repository, 'agents.md'));
   }, /Competing agent instruction file|Required regular root file/);
@@ -188,7 +187,6 @@ try {
   const workflow = path.join(directory, 'invalid.yml');
   writeFileSync(workflow, 'name: Invalid\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n        unknown-property: invalid\n');
   mustReject(toolPath('actionlint'), ['-shellcheck=', '-pyflakes=', workflow], 'Actionlint');
-  // Synthetic shape only. No real credential is used or printed.
   const token = ['gh', 'p_', 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'].join('');
   assert.match(token, /^ghp_[A-Za-z0-9]{36}$/);
   writeFileSync(path.join(directory, 'synthetic.txt'), `token=${token}\n`);
@@ -220,26 +218,29 @@ try {
   writeFileSync(policyFile, 'export const value = 1; // narrate\n');
   policyGit(['add', 'example.mjs']);
   writeFileSync(policyFile, 'export const value = 1;\n');
-  assert.throws(() => checkStagedComments(policyRepo), /Added source comments are prohibited \(1\)/);
+  assert.throws(() => checkStagedComments(policyRepo), /Source comments are prohibited \(1\)/);
   console.log('PASS: staged source comment rejected even when working file is clean.');
   writeFileSync(policyFile, 'export const value = 1; \n');
   policyGit(['add', 'example.mjs']);
   writeFileSync(policyFile, 'export const value = 1;\n');
   assert.throws(() => checkFormat(policyRepo), /\.editorconfig violations \(1\)/);
   console.log('PASS: staged formatting violation rejected even when working file is clean.');
-  policyGit(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+  const commit = message => policyGit(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-a', '-m', message]);
   writeFileSync(policyFile, 'export const value = 1; // self-approved\n');
   writeFileSync(path.join(policyRepo, 'package.json'), JSON.stringify({ repositoryHygiene: { commentExceptions: [{ file: 'example.mjs', text: '// self-approved', reason: 'Proposed in the same change.' }] } }) + '\n');
   policyGit(['add', 'example.mjs', 'package.json']);
-  assert.throws(() => checkStagedComments(policyRepo), /Added source comments are prohibited \(1\)/);
-  policyGit(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'chore: self-approve a comment']);
-  assert.throws(() => checkCommentRevision(policyRepo, 'refs/remotes/origin/main', 'HEAD'), /Added source comments are prohibited \(1\)/);
-  console.log('PASS: comment exception added in the same changeset rejected.');
+  assert.throws(() => checkStagedComments(policyRepo), /Source comments are prohibited \(2\)/);
+  console.log('PASS: comment exception declared in the same changeset rejected.');
+  commit('chore: add a comment');
+  policyGit(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+  assert.throws(() => checkCommittedComments(policyRepo), /Source comments are prohibited \(2\)/);
+  console.log('PASS: comment already present in the trusted baseline rejected.');
   writeFileSync(policyFile, 'export const value = 1;\n');
-  policyGit(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-a', '-m', 'fix: remove the comment']);
-  assert.equal(execFileSync('git', ['diff', 'refs/remotes/origin/main', 'HEAD', '--', 'example.mjs'], { cwd: policyRepo, env: gitEnvironment(), encoding: 'utf8' }), '');
-  assert.throws(() => checkCommentRevision(policyRepo, 'refs/remotes/origin/main', 'HEAD'), /Added source comments are prohibited \(1\)/);
-  console.log('PASS: comment added by one commit and removed by a later commit rejected.');
+  writeFileSync(path.join(policyRepo, 'package.json'), '{}\n');
+  assert.throws(() => checkComments(policyRepo), /HEAD example\.mjs:1 inline/);
+  commit('fix: remove the comment');
+  assert.doesNotThrow(() => checkComments(policyRepo));
+  console.log('PASS: complete state accepted once every comment is removed.');
 } finally {
   assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
   assert.ok(!lstatSync(directory).isSymbolicLink());

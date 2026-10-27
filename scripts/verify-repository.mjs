@@ -21,7 +21,6 @@ export function verifyRepository() {
   }
   const repo = JSON.parse(run('gh', ['api', `repos/${expected}`]));
   const user = JSON.parse(run('gh', ['api', 'user']));
-  // The owner explicitly approved making this exact repository public on 2026-10-24.
   if (repo.id !== repositoryIdentity.id || repo.full_name !== expected || repo.private !== repositoryIdentity.private || repo.default_branch !== repositoryIdentity.defaultBranch) {
     throw new Error('Repository identity, visibility, or default branch changed; investigate before writing.');
   }

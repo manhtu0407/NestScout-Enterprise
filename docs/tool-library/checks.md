@@ -56,7 +56,7 @@ Bootstrap with `npm ci --ignore-scripts`; retain notices/lockfile. No global lin
 Inspect `npm run`, `node --help`, `markdownlint-cli2 --help` from installed package
 context. Native Node test families include test selection, isolation, reporter and
 coverage options; flags depend on installed help. Repository executors own reserved
-files, metadata, hygiene, added source comments, formatting, YAML, secrets, test
+files, metadata, hygiene, source comments, formatting, YAML, secrets, test
 selection and capability validation.
 Do not create duplicate command definitions in a new runner.
 

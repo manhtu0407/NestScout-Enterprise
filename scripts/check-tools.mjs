@@ -11,8 +11,6 @@ import { parseDocument } from 'yaml';
 
 const run = (name, args) => execFileSync(toolPath(name), args, { cwd: root, env: secretScanEnvironment(), stdio: 'inherit' });
 
-// Hosted workflows run with repository credentials, so their trust boundary is checked in every Git state:
-// only reviewed triggers, no write tokens, and immutable action references.
 const trustedTriggers = new Set(['pull_request', 'push', 'workflow_dispatch', 'workflow_call']);
 const pinnedAction = /^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_./-]+)?@[a-f0-9]{40}|docker:\/\/\S+@sha256:[a-f0-9]{64}|\.\/\S+)$/;
 const readOnly = value => value === 'read-all' || (value && typeof value === 'object' && !Array.isArray(value)
@@ -78,7 +76,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   } else if (mode === 'secrets') {
     scanStaged(root);
     run('gitleaks', ['git', ...secretScanOptions, '--log-opts=--all', root]);
-    // Also cover staged and uncommitted files; never scan node_modules or tool caches.
     const files = git(root, ['ls-files', '--cached', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
     const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-secret-scan-'));
     try {
@@ -91,7 +88,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
           if (!lstatSync(source).isFile()) throw new Error(`Only regular files may be scanned: ${file}`);
           copyFileSync(source, destination);
         } catch (error) {
-          if (error.code !== 'ENOENT') throw error; // Deleted tracked files have no working copy.
+          if (error.code !== 'ENOENT') throw error;
         }
       }
       run('gitleaks', ['dir', ...secretScanOptions, directory]);

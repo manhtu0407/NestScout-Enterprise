@@ -9,8 +9,8 @@ import { root } from './tool-path.mjs';
 import { git } from './repository-files.mjs';
 import { checkPath, commentRecords, sourceComments, hasCommentGrammar } from './check-hygiene.mjs';
 import {
-  addedComments, approvedExceptions, commentCategory, commentViolations, isMandatoryComment, normalizeComment,
-  checkCommentRevision, checkStagedComments, checkWorkingComments, checkComments, trustedBaseline, trustedExceptions,
+  commentCategory, commentViolations, isMandatoryComment, normalizeComment,
+  checkCommittedComments, checkStagedComments, checkWorkingComments, checkComments,
 } from './check-comments.mjs';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-comments-'));
@@ -35,18 +35,13 @@ function repositoryFixture(files = {}, { commit = true } = {}) {
   if (commit) {
     run(['add', '.']);
     run(['commit', '--quiet', '-m', 'chore: establish fixture']);
-    run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
-    run(['switch', '--quiet', '-c', 'claude/comment-fixture']);
   }
   return { repository, run, write };
 }
 
 const texts = (file, source) => commentRecords(file, source).map(record => record.text);
 const sha = 'a'.repeat(40);
-const exception = (file, text) => ({ file, text, reason: 'Required by a reviewed tool contract.' });
-const revisionPattern = (file, line, rest = '') => new RegExp(`revision [0-9a-f]{12} ${file.replace(/\./g, '\\.')}:${line}${rest}`);
-const range = ['refs/remotes/origin/main', 'HEAD'];
-const manifest = (...entries) => JSON.stringify({ repositoryHygiene: { commentExceptions: entries } }) + '\n';
+const violations = (file, text, label = 'index') => commentViolations([{ file, text }], label);
 
 test('strings, URLs, templates, regular expressions and JSX text are not comments in JavaScript or TypeScript', () => {
   const cases = [
@@ -110,8 +105,22 @@ test('TOML, JSONC and shell comments exclude strings, parameters and word-intern
   assert.deepEqual(texts('.githooks/example', '#!/bin/sh\nset -eu\necho "# x" \'# y\' $# ${#1} a#b\nrun # real\n'), ['#!/bin/sh', '# real']);
 });
 
+test('ignore, attributes, editor and environment example files only comment at a line start or after whitespace', () => {
+  assert.deepEqual(texts('.gitignore', '# note\n\\#literal\nname#tag\n  # indented\ndist/\n'), ['# note', '# indented']);
+  assert.deepEqual(texts('supabase/.gitignore', '.branches\n# note\r\n'), ['# note']);
+  assert.deepEqual(texts('.gitattributes', '* text=auto eol=lf\n# note\n*.png binary\n'), ['# note']);
+  assert.deepEqual(texts('.editorconfig', '; semicolon\n# hash\n[*]\nindent_style = space ; value\nroot = true\n'), ['; semicolon', '# hash']);
+  assert.deepEqual(texts('apps/mobile/.env.example', 'A=1 # trailing\nB="x # y"\nC=a#b\n# whole\nD=https://example.invalid/#f\n'), ['# trailing', '# whole']);
+  for (const file of ['.gitignore', 'supabase/.gitignore', '.gitattributes', '.editorconfig', '.env.example', 'apps/mobile/.env.example']) {
+    assert.equal(hasCommentGrammar(file), true, file);
+    assert.equal(sourceComments(file, '# AI note\nplain\n'), '# AI note\nplain\n', file);
+  }
+  const source = '# note\ndist/\n';
+  for (const record of commentRecords('.gitignore', source)) assert.equal(source.slice(record.start, record.start + record.text.length), record.text);
+});
+
 test('only files with a comment grammar are inspected; JSON keeps its line-leading fallback', () => {
-  for (const file of ['README.md', 'package.json', 'docs/guide.md', 'scripts/tools.json']) {
+  for (const file of ['README.md', 'package.json', 'docs/guide.md', 'scripts/tools.json', 'apps/mobile/app.json']) {
     assert.equal(commentRecords(file, '// text\n'), null, file);
     assert.equal(hasCommentGrammar(file), false, file);
   }
@@ -122,19 +131,8 @@ test('only files with a comment grammar are inspected; JSON keeps its line-leadi
   assert.equal(sourceComments('docs/guide.md', 'plain prose\n'), 'plain prose\n');
 });
 
-test('existing, moved and reindented comments are not additions; edited and duplicated ones are', () => {
-  const base = 'const a = 1; // keep\n/**\n * Doc\n */\nfunction f() {}\n';
-  assert.deepEqual(addedComments('input.mjs', base, base), []);
-  assert.deepEqual(addedComments('input.mjs', base, 'function f() {}\n  /**\n   * Doc\n   */\nconst a = 1; // keep\n'), []);
-  assert.deepEqual(addedComments('input.mjs', base, 'const a = 1; // keep\n'), []);
-  assert.deepEqual(addedComments('input.mjs', base, ''), []);
-  assert.deepEqual(addedComments('input.mjs', base, base.replace('// keep', '// keep!')).map(record => record.text), ['// keep!']);
-  assert.deepEqual(addedComments('input.mjs', base, `${base}// keep\n`).map(record => record.text), ['// keep']);
-  assert.deepEqual(addedComments('input.mjs', '', base).map(record => record.text), ['// keep', '/**\n * Doc\n */']);
+test('every comment category is reported with its class and position', () => {
   assert.equal(normalizeComment('  /**\n   * Doc\n   */ '), '/** * Doc */');
-});
-
-test('every added comment category is reported with its class', () => {
   for (const [text, category] of [['// TODO: later', 'annotation'], ['/* FIXME */', 'annotation'], ['// HACK around', 'annotation'],
     ['// @ts-ignore', 'suppression'], ['// @ts-expect-error: reason', 'suppression'], ['// @ts-nocheck', 'suppression'],
     ['/* eslint-disable no-console */', 'suppression'], ['// eslint-disable-next-line', 'suppression'],
@@ -142,7 +140,7 @@ test('every added comment category is reported with its class', () => {
     ['/** Returns the value. */', 'documentation'], ['/* block */', 'block'], ['// inline', 'inline']]) {
     assert.equal(commentCategory(text), category, text);
     const file = text.startsWith('#') ? 'config.yml' : 'scripts/example.mjs';
-    const found = commentViolations([{ file, text: `export const value = 1;\n${text}\n`, baseText: 'export const value = 1;\n' }], [], 'index');
+    const found = violations(file, `export const value = 1;\n${text}\n`);
     assert.equal(found.length, 1, text);
     assert.match(found[0], new RegExp(`^index ${file.replace('.', '\\.')}:2 ${category}: `));
   }
@@ -185,348 +183,198 @@ test('technically mandatory and legal comments pass narrowly; prose and suppress
     ['module.mjs', '/* Copyright 2026 Example\n * All rights reserved. */\n', [false]],
     ['types.ts', '// @ts-ignore\nexport {};\n', [false]],
     ['module.mjs', '/* eslint-disable */\nexport {};\n', [false]],
+    ['.gitignore', '#!/bin/sh\n', [false]],
+    ['.editorconfig', '# v7\n', [false]],
   ]) assert.deepEqual(verdicts(file, source), expected, `${file}: ${source}`);
 });
 
 test('generated database types are the only exact-path generated exception', () => {
-  const change = file => [{ file, text: 'export type Json = string; // generated note\n', baseText: '' }];
-  assert.deepEqual(commentViolations(change('supabase/database.types.ts'), [], 'index'), []);
-  assert.equal(commentViolations(change('supabase/other.types.ts'), [], 'index').length, 1);
-  assert.equal(commentViolations(change('src/database.types.ts'), [], 'index').length, 1);
+  const source = 'export type Json = string; // generated note\n';
+  assert.deepEqual(violations('supabase/database.types.ts', source), []);
+  assert.equal(violations('supabase/other.types.ts', source).length, 1);
+  assert.equal(violations('src/database.types.ts', source).length, 1);
 });
 
-test('owner-approved exceptions are validated, exact, per-file and single-use', () => {
-  assert.deepEqual(approvedExceptions(null, 'index'), []);
-  assert.deepEqual(approvedExceptions('{}\n', 'index'), []);
-  assert.throws(() => approvedExceptions('{', 'index'), /Invalid package.json in index/);
-  assert.throws(() => approvedExceptions('{"repositoryHygiene":{"commentExceptions":{}}}', 'index'), /must be an array/);
-  for (const broken of [{ file: 'scripts/a.mjs', text: '// x' }, { file: 'scripts/a.mjs', text: '// x', reason: ' ' },
-    { file: 'scripts/a.mjs', text: ' ', reason: 'r' }, { file: 'scripts/a.mjs', reason: 'r' }, null]) {
-    assert.throws(() => approvedExceptions(manifest(broken), 'index'), /file, text and reason/);
+test('comment exceptions are unsupported in every state, so the manifest cannot approve a comment', () => {
+  assert.deepEqual(violations('package.json', '{}\n'), []);
+  assert.deepEqual(violations('package.json', '{ "repositoryHygiene": { "artifacts": [] } }\n'), []);
+  assert.deepEqual(violations('package.json', '{'), []);
+  assert.equal(violations('package.json', '{ "repositoryHygiene": { "commentExceptions": [] } }\n').length, 1);
+  assert.match(violations('package.json', '{ "repositoryHygiene": { "commentExceptions": [{}] } }\n')[0], /commentExceptions: exceptions are not supported/);
+  assert.deepEqual(violations('apps/mobile/package.json', '{ "repositoryHygiene": { "commentExceptions": [] } }\n'), []);
+});
+
+const formats = [
+  ['scripts/example.mjs', 'export const value = 1;\n', 'export const value = 1; // note\n', 'inline'],
+  ['scripts/example.mjs', 'export const value = 1;\n', '/** Returns the value. */\nexport const value = 1;\n', 'documentation'],
+  ['scripts/example.cjs', 'module.exports = 1;\n', 'module.exports = 1; /* note */\n', 'block'],
+  ['src/example.ts', 'export const value: number = 1;\n', '// TODO: later\nexport const value: number = 1;\n', 'annotation'],
+  ['src/example.tsx', 'export const View = () => <a href="//x">text</a>;\n', 'export const View = () => <a href="//x">text</a>; // @ts-ignore\n', 'suppression'],
+  ['src/types.d.ts', 'declare const x: string;\n', 'declare const x: string; // note\n', 'inline'],
+  ['db/query.sql', 'select 1;\n', 'select 1; -- note\n', 'inline'],
+  ['db/query.sql', 'select 1;\n', '/* note */ select 1;\n', 'block'],
+  ['config/settings.toml', 'key = "# kept"\n', 'key = "# kept" # note\n', 'inline'],
+  ['config/settings.yml', 'key: "# kept"\n', 'key: "# kept" # note\n', 'inline'],
+  ['config/settings.yaml', 'key: 1\n', '# note\nkey: 1\n', 'inline'],
+  ['config/settings.jsonc', '{ "a": "// kept" }\n', '{ "a": "// kept" } // note\n', 'inline'],
+  ['.githooks/pre-commit', '#!/bin/sh\nset -eu\nnpm test\n', '#!/bin/sh\nset -eu\n# note\nnpm test\n', 'inline'],
+  ['.github/workflows/probe.yml', 'jobs:\n  a:\n    steps:\n      - run: |\n          npm ci\n', 'jobs:\n  a:\n    steps:\n      - run: |\n          npm ci # note\n', 'inline'],
+  ['.gitattributes', '* text=auto\n', '# note\n* text=auto\n', 'inline'],
+  ['supabase/.gitignore', '.temp\n', '# note\n.temp\n', 'inline'],
+  ['.editorconfig', 'root = true\n', '; note\nroot = true\n', 'inline'],
+  ['apps/mobile/.env.example', 'A=1\n', 'A=1 # note\n', 'inline'],
+];
+
+test('every supported format accepts its clean form and reports the comment it gains with the right class', () => {
+  for (const [file, clean, dirty, category] of formats) {
+    const label = `${file} (${category})`;
+    assert.deepEqual(violations(file, clean), [], label);
+    const found = violations(file, dirty);
+    assert.equal(found.length, 1, label);
+    assert.match(found[0], new RegExp(`^index ${file.replace(/[.\\/]/g, '\\$&')}:\\d+ ${category}: `), label);
   }
-  assert.deepEqual(approvedExceptions(manifest({ ...exception('scripts/a.mjs', '// x'), approval: 'self-declared' }), 'index'), [{ file: 'scripts/a.mjs', text: '// x' }]);
-  assert.throws(() => approvedExceptions(manifest(exception('Scripts/A.mjs', '// x')), 'index'));
-  assert.throws(() => approvedExceptions(manifest(exception('../a.mjs', '// x')), 'index'), /Unsafe repository path/);
-  const change = { file: 'scripts/a.mjs', text: 'export const a = 1; // reviewed\n// reviewed\n', baseText: '' };
-  const [approved] = approvedExceptions(manifest(exception('scripts/a.mjs', '//   reviewed ')), 'index');
-  assert.equal(commentViolations([change], [approved], 'index').length, 1);
-  assert.equal(commentViolations([change], [approved, approved], 'index').length, 0);
-  assert.equal(commentViolations([change], approvedExceptions(manifest(exception('scripts/b.mjs', '// reviewed')), 'index'), 'index').length, 2);
-  assert.equal(commentViolations([change], approvedExceptions(manifest(exception('scripts/a.mjs', '// reviewed later')), 'index'), 'index').length, 2);
 });
 
-test('staged additions fail with a clean working file; working additions fail while unstaged', () => {
-  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
-  assert.doesNotThrow(() => checkComments(repository, {}));
-  write('scripts/example.mjs', 'export const value = 1; // narrate\n');
-  assert.throws(() => checkWorkingComments(repository), /working tree scripts\/example\.mjs:1 inline: \/\/ narrate/);
+test('every supported format is rejected in the working tree, staged index and committed tree when it gains a comment', () => {
+  const unique = formats.filter(([file], index) => formats.findIndex(item => item[0] === file) === index);
+  const { repository, run, write } = repositoryFixture(Object.fromEntries(unique.map(([file, clean]) => [file, clean])));
+  const count = new RegExp(`Source comments are prohibited \\(${unique.length}\\)`);
+  assert.doesNotThrow(() => checkComments(repository));
+  for (const [file, , dirty] of unique) write(file, dirty);
+  assert.throws(() => checkWorkingComments(repository), count);
+  assert.throws(() => checkComments(repository), /working tree /);
   assert.doesNotThrow(() => checkStagedComments(repository));
-  assert.throws(() => checkComments(repository, {}), /working tree scripts\/example\.mjs:1/);
-  run(['add', '--', 'scripts/example.mjs']);
-  write('scripts/example.mjs', 'export const value = 1;\n');
-  assert.throws(() => checkStagedComments(repository), /index scripts\/example\.mjs:1 inline: \/\/ narrate/);
+  run(['add', '.']);
+  for (const [file, clean] of unique) write(file, clean);
+  assert.throws(() => checkStagedComments(repository), count);
   assert.doesNotThrow(() => checkWorkingComments(repository));
-  assert.throws(() => checkComments(repository, {}), /index scripts\/example\.mjs:1/);
-  run(['add', '--', 'scripts/example.mjs']);
-  assert.doesNotThrow(() => checkComments(repository, {}));
+  run(['commit', '--quiet', '-m', 'chore: add notes']);
+  assert.throws(() => checkCommittedComments(repository), count);
+  run(['add', '.']);
+  assert.doesNotThrow(() => checkStagedComments(repository));
+  run(['commit', '--quiet', '-m', 'fix: remove notes']);
+  assert.doesNotThrow(() => checkComments(repository));
 });
 
-test('every commit in the range is inspected, so a comment removed by a later commit is still reported', () => {
+test('comments already present in the committed baseline are reported in every state', () => {
+  const { repository, run, write } = repositoryFixture({ 'scripts/legacy.mjs': '// legacy note\nexport const value = 1;\n', 'db/old.sql': 'select 1; -- legacy\n' });
+  assert.throws(() => checkCommittedComments(repository), /Source comments are prohibited \(2\)/);
+  assert.throws(() => checkStagedComments(repository), /index scripts\/legacy\.mjs:1 inline: \/\/ legacy note/);
+  assert.throws(() => checkWorkingComments(repository), /working tree db\/old\.sql:1 inline: -- legacy/);
+  run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+  assert.throws(() => checkComments(repository), /HEAD scripts\/legacy\.mjs:1/);
+  write('scripts/legacy.mjs', '  // legacy note\nexport const value = 1;\nexport const extra = 1;\n');
+  assert.throws(() => checkWorkingComments(repository), /working tree scripts\/legacy\.mjs:1/);
+});
+
+test('a manifest that declares comment exceptions approves nothing, whether staged, working or already committed', () => {
+  const manifest = JSON.stringify({ repositoryHygiene: { commentExceptions: [{ file: 'scripts/a.mjs', text: '// reviewed', reason: 'Reviewed.' }] } }) + '\n';
+  const { repository, run, write } = repositoryFixture({ 'scripts/a.mjs': 'export const a = 1;\n' });
+  write('scripts/a.mjs', 'export const a = 1; // reviewed\n');
+  write('package.json', manifest);
+  assert.throws(() => checkWorkingComments(repository), /Source comments are prohibited \(2\)/);
+  run(['add', '.']);
+  assert.throws(() => checkStagedComments(repository), /Source comments are prohibited \(2\)/);
+  run(['commit', '--quiet', '-m', 'chore: declare an exception']);
+  run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+  assert.throws(() => checkCommittedComments(repository), /scripts\/a\.mjs:1 inline: \/\/ reviewed/);
+  assert.throws(() => checkCommittedComments(repository), /package\.json repositoryHygiene\.commentExceptions/);
+});
+
+test('history is not judged: a comment added by one commit and removed by a later one leaves a clean delivered state', () => {
   const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
   write('scripts/example.mjs', 'export const value = 1;\n// TODO: remove\n');
   run(['add', '.']);
   run(['commit', '--quiet', '-m', 'chore: add a note']);
-  const introducing = run(['rev-parse', 'HEAD']).trim().slice(0, 12);
-  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 2, ' annotation: // TODO: remove'));
+  assert.throws(() => checkComments(repository), /HEAD scripts\/example\.mjs:2 annotation: \/\/ TODO: remove/);
   write('scripts/example.mjs', 'export const value = 1;\n');
   run(['add', '.']);
   run(['commit', '--quiet', '-m', 'fix: remove the note']);
-  assert.equal(run(['diff', '--stat', ...range]), '');
-  assert.throws(() => checkCommentRevision(repository, ...range), error => error.message.includes(`revision ${introducing} scripts/example.mjs:2`));
-  assert.throws(() => checkComments(repository, {}), /Added source comments are prohibited \(1\)/);
-  assert.doesNotThrow(() => checkStagedComments(repository));
-  assert.doesNotThrow(() => checkWorkingComments(repository));
+  assert.doesNotThrow(() => checkComments(repository));
 });
 
-test('a range that adds nothing, or whose commits only touch existing comments, passes', () => {
-  const body = 'export const value = 1;\n';
-  const { repository, run, write } = repositoryFixture({ 'scripts/legacy.mjs': `// legacy note\n${body}`, 'scripts/other.mjs': body });
-  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
-  write('scripts/other.mjs', 'export const value = 2;\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'fix: change the value']);
-  write('scripts/legacy.mjs', `  // legacy note\n${body}export const extra = 1;\n`);
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'refactor: touch the legacy file']);
-  write('scripts/legacy.mjs', `export const extra = 1;\n${body}// legacy note\n`);
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'refactor: move the legacy note']);
-  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
-  assert.doesNotThrow(() => checkComments(repository, {}));
-});
-
-test('merge commits are judged by what no parent already contains', () => {
-  const body = 'export const value = 1;\n';
-  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': body, 'scripts/shared.mjs': body });
-  write('scripts/example.mjs', 'export const value = 2;\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'fix: change the value']);
-  run(['switch', '--quiet', 'main']);
-  write('scripts/shared.mjs', `// base branch note\n${body}`);
-  write('scripts/other.mjs', `// another base note\n${body}`);
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'chore: advance the base']);
-  run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
-  run(['switch', '--quiet', 'claude/comment-fixture']);
-  run(['merge', '--no-ff', '--quiet', '-m', 'Merge branch main into claude/comment-fixture', 'refs/remotes/origin/main']);
-  assert.equal(run(['rev-list', '--parents', '-n', '1', 'HEAD']).trim().split(' ').length, 3);
-  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
-  assert.doesNotThrow(() => checkComments(repository, {}));
-  run(['merge', '--no-ff', '--no-commit', '--quiet', 'HEAD~1']);
-  write('scripts/example.mjs', 'export const value = 2; // slipped into the merge\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'Merge branch fix into claude/comment-fixture']);
-  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 1, ' inline: // slipped into the merge'));
-});
-
-test('a merge of a side branch cannot launder a comment that the side branch added', () => {
-  const body = 'export const value = 1;\n';
-  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': body, 'scripts/side.mjs': body });
-  run(['switch', '--quiet', '-c', 'claude/side']);
-  write('scripts/side.mjs', `${body}// side note\n`);
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'chore: add a side note']);
-  run(['switch', '--quiet', 'claude/comment-fixture']);
-  write('scripts/example.mjs', 'export const value = 2;\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'fix: change the value']);
-  run(['merge', '--no-ff', '--quiet', '-m', 'Merge branch claude/side into claude/comment-fixture', 'claude/side']);
-  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/side.mjs', 2, ' inline: // side note'));
-});
-
-test('a root commit in the range is judged against the empty tree', () => {
+test('staged additions fail with a clean working file; working additions fail while unstaged', () => {
   const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
-  run(['switch', '--quiet', '--orphan', 'claude/orphan']);
-  write('scripts/orphan.mjs', 'export const orphan = 1;\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'chore: start unrelated history']);
-  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
-  write('scripts/orphan.mjs', 'export const orphan = 1; // note\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '--amend', '-m', 'chore: start unrelated history']);
-  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/orphan.mjs', 1, ' inline'));
-  assert.doesNotThrow(() => checkCommentRevision(repository, 'HEAD', 'HEAD'));
-});
-
-test('base-branch comment changes after the fork do not alter the verdict on the proposed revision', () => {
-  const { repository, run, write } = repositoryFixture({
-    'scripts/example.mjs': 'export const value = 1;\n', 'scripts/legacy.mjs': '// legacy note\nexport const legacy = 1;\n',
-  });
-  run(['switch', '--quiet', 'main']);
-  write('scripts/legacy.mjs', 'export const legacy = 1;\n');
-  write('scripts/other.mjs', '// base branch note\nexport const other = 2;\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'chore: advance the base']);
-  run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
-  run(['switch', '--quiet', 'claude/comment-fixture']);
-  write('scripts/example.mjs', 'export const value = 2;\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'fix: change the value']);
-  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
-  assert.doesNotThrow(() => checkComments(repository, {}));
-  write('scripts/example.mjs', 'export const value = 2; // narrate\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'chore: add a note']);
-  assert.throws(() => checkCommentRevision(repository, ...range), error => {
-    assert.match(error.message, /scripts\/example\.mjs:1/);
-    assert.doesNotMatch(error.message, /legacy|other/);
-    return true;
-  });
-});
-
-test('existing comments survive edits and renames; renamed files that gain a comment fail', () => {
-  const body = Array.from({ length: 12 }, (_, index) => `export const value${index} = ${index};`).join('\n');
-  const { repository, run, write } = repositoryFixture({ 'scripts/old-name.mjs': `// legitimate existing note\n${body}\n` });
-  run(['mv', 'scripts/old-name.mjs', 'scripts/new-name.mjs']);
+  assert.doesNotThrow(() => checkComments(repository));
+  write('scripts/example.mjs', 'export const value = 1; // narrate\n');
+  assert.throws(() => checkWorkingComments(repository), /working tree scripts\/example\.mjs:1 inline: \/\/ narrate/);
   assert.doesNotThrow(() => checkStagedComments(repository));
+  assert.throws(() => checkComments(repository), /working tree scripts\/example\.mjs:1/);
+  run(['add', '--', 'scripts/example.mjs']);
+  write('scripts/example.mjs', 'export const value = 1;\n');
+  assert.throws(() => checkStagedComments(repository), /index scripts\/example\.mjs:1 inline: \/\/ narrate/);
   assert.doesNotThrow(() => checkWorkingComments(repository));
-  write('scripts/new-name.mjs', `// legitimate existing note\n${body}\nexport const extra = 99;\n`);
-  run(['add', '.']);
-  assert.doesNotThrow(() => checkStagedComments(repository));
-  run(['commit', '--quiet', '-m', 'refactor: rename and extend']);
-  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
-  write('scripts/new-name.mjs', `// legitimate existing note\n${body}\nexport const extra = 99; // explain\n`);
-  assert.throws(() => checkWorkingComments(repository), /working tree scripts\/new-name\.mjs:14 inline: \/\/ explain/);
-  run(['add', '.']);
-  assert.throws(() => checkStagedComments(repository), /index scripts\/new-name\.mjs:14 inline/);
+  assert.throws(() => checkComments(repository), /index scripts\/example\.mjs:1/);
+  run(['add', '--', 'scripts/example.mjs']);
+  assert.doesNotThrow(() => checkComments(repository));
 });
 
-test('renames keep comments only inside the same comment grammar, and generated files stay exempt in every commit', () => {
-  const body = Array.from({ length: 12 }, (_, index) => `export const value${index} = ${index};`).join('\n');
-  const { repository, run, write } = repositoryFixture({
-    'scripts/script.mjs': `// legitimate existing note\n${body}\n`, 'config/settings.yml': '# legitimate existing note\nname: x\n',
-    'supabase/database.types.ts': 'export type Json = string;\n',
-  });
-  run(['mv', 'scripts/script.mjs', 'scripts/renamed.js']);
-  run(['mv', 'config/settings.yml', 'config/settings.yaml']);
-  run(['commit', '--quiet', '-m', 'refactor: rename within the same grammar']);
-  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
-  run(['mv', 'scripts/renamed.js', 'scripts/renamed.ts']);
-  run(['commit', '--quiet', '-m', 'refactor: change the grammar']);
-  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/renamed.ts', 1, ' inline: // legitimate existing note'));
-  run(['reset', '--quiet', '--hard', 'HEAD~1']);
-  write('supabase/database.types.ts', 'export type Json = string; // generated\n');
-  run(['commit', '--quiet', '-a', '-m', 'chore: regenerate the database types']);
-  write('supabase/database.types.ts', 'export type Json = string;\n');
-  run(['commit', '--quiet', '-a', '-m', 'chore: regenerate the database types again']);
-  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
+test('the staged gate reads only Git objects, so unrelated working edits neither block nor are touched', () => {
+  const { repository, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
+  write('scripts/example.mjs', 'export const value = 1; // unstaged\n');
+  write('scripts/untracked.mjs', '// untracked\n');
+  assert.doesNotThrow(() => checkStagedComments(repository));
+  assert.throws(() => checkWorkingComments(repository), error => /scripts\/example\.mjs:1/.test(error.message) && /scripts\/untracked\.mjs:1/.test(error.message));
 });
 
 test('new and untracked files are fully inspected, including staged files deleted from the working tree', () => {
   const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
-  write('scripts/untracked.mjs', 'export const a = "// fine"; /* not fine */\n');
-  assert.throws(() => checkWorkingComments(repository), /working tree scripts\/untracked\.mjs:1 block: \/\* not fine \*\//);
+  write('scripts/added.mjs', 'export const added = 1; // brand new\n');
+  assert.throws(() => checkWorkingComments(repository), /working tree scripts\/added\.mjs:1 inline: \/\/ brand new/);
   assert.doesNotThrow(() => checkStagedComments(repository));
-  run(['add', '--', 'scripts/untracked.mjs']);
-  rmSync(path.join(repository, 'scripts/untracked.mjs'));
-  assert.throws(() => checkStagedComments(repository), /index scripts\/untracked\.mjs:1 block/);
+  run(['add', '--', 'scripts/added.mjs']);
+  rmSync(path.join(repository, 'scripts/added.mjs'));
+  assert.throws(() => checkStagedComments(repository), /index scripts\/added\.mjs:1 inline: \/\/ brand new/);
   assert.doesNotThrow(() => checkWorkingComments(repository));
-  run(['rm', '--cached', '--quiet', '--', 'scripts/untracked.mjs']);
-  write('scripts/clean.mjs', 'export const a = "// fine";\n');
-  write('docs/guide.md', 'Prose with // slashes and <!-- markup -->.\n');
-  write('scripts/data.json', '{"a": "// fine"}\n');
-  assert.doesNotThrow(() => checkComments(repository, {}));
+  write('scripts/example.mjs', 'export const value = 1;\n');
+  run(['rm', '--cached', '--quiet', '--', 'scripts/added.mjs']);
+  assert.doesNotThrow(() => checkComments(repository));
 });
 
-test('the very first commit is inspected against the empty tree', () => {
-  const clean = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' }, { commit: false });
-  clean.run(['add', '.']);
-  assert.doesNotThrow(() => checkStagedComments(clean.repository));
-  const noisy = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1; // note\n' }, { commit: false });
-  noisy.run(['add', '.']);
-  assert.throws(() => checkStagedComments(noisy.repository), /index scripts\/example\.mjs:1 inline/);
-});
-
-test('an exception added in the same changeset never authorizes its own comment', () => {
-  const entry = exception('scripts/example.mjs', '// reviewed note');
-  const commented = 'export const value = 1; // reviewed note\n';
-  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
-  write('scripts/example.mjs', commented);
-  write('package.json', manifest(entry));
-  assert.throws(() => checkWorkingComments(repository), /working tree scripts\/example\.mjs:1 inline: \/\/ reviewed note/);
-  run(['add', '.']);
-  assert.throws(() => checkStagedComments(repository), /index scripts\/example\.mjs:1 inline: \/\/ reviewed note/);
-  run(['commit', '--quiet', '-m', 'chore: add a self-approved note']);
-  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 1, ' inline: // reviewed note'));
-  assert.throws(() => checkComments(repository, {}), /Added source comments are prohibited \(1\)[^]*trusted baseline \(refs\/remotes\/origin\/main\)/);
-});
-
-test('an exception committed earlier on the same branch is still not trusted', () => {
-  const entry = exception('scripts/example.mjs', '// reviewed note');
-  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n' });
-  write('package.json', manifest(entry));
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'chore: record an exception']);
-  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
-  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n');
+test('the very first commit and an unborn branch are judged against the delivered state', () => {
+  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1; // first\n' }, { commit: false });
   assert.throws(() => checkWorkingComments(repository), /working tree scripts\/example\.mjs:1/);
+  assert.doesNotThrow(() => checkCommittedComments(repository));
+  assert.doesNotThrow(() => checkStagedComments(repository));
   run(['add', '.']);
   assert.throws(() => checkStagedComments(repository), /index scripts\/example\.mjs:1/);
-  run(['commit', '--quiet', '-m', 'chore: add the reviewed note']);
-  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 1));
-});
-
-test('an exception in the trusted baseline authorizes one exact occurrence across the whole range', () => {
-  const { repository, run, write } = repositoryFixture({
-    'scripts/example.mjs': 'export const value = 1;\n', 'scripts/other.mjs': 'export const other = 1;\n',
-    'package.json': manifest(exception('scripts/example.mjs', '// reviewed note')),
-  });
-  assert.deepEqual(trustedExceptions(repository, trustedBaseline(repository)), [{ file: 'scripts/example.mjs', text: '// reviewed note' }]);
-  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n');
-  assert.doesNotThrow(() => checkWorkingComments(repository));
-  run(['add', '.']);
-  assert.doesNotThrow(() => checkStagedComments(repository));
-  run(['commit', '--quiet', '-m', 'chore: add the reviewed note']);
-  assert.doesNotThrow(() => checkCommentRevision(repository, ...range));
-  assert.doesNotThrow(() => checkComments(repository, {}));
-  write('scripts/other.mjs', 'export const other = 1; // reviewed note\n');
-  run(['add', '.']);
-  assert.throws(() => checkStagedComments(repository), /index scripts\/other\.mjs:1/);
-  write('scripts/other.mjs', 'export const other = 1;\n');
-  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n// reviewed note\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'chore: repeat the note']);
-  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 2));
-  run(['reset', '--quiet', '--hard', 'HEAD~1']);
   write('scripts/example.mjs', 'export const value = 1;\n');
-  run(['commit', '--quiet', '-a', '-m', 'fix: drop the note']);
-  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n');
-  run(['commit', '--quiet', '-a', '-m', 'chore: add the note again']);
-  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 1));
+  run(['add', '.']);
+  assert.doesNotThrow(() => checkComments(repository));
 });
 
-test('a changeset cannot swap the trusted exception for a different comment', () => {
-  const { repository, run, write } = repositoryFixture({
-    'scripts/example.mjs': 'export const value = 1;\n', 'package.json': manifest(exception('scripts/example.mjs', '// reviewed note')),
-  });
-  write('package.json', manifest(exception('scripts/example.mjs', '// different note')));
-  write('scripts/example.mjs', 'export const value = 1; // different note\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'chore: swap the exception']);
-  assert.throws(() => checkCommentRevision(repository, ...range), revisionPattern('scripts/example.mjs', 1, ' inline: // different note'));
-  write('package.json', '{}\n');
-  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n');
-  run(['commit', '--quiet', '-a', '-m', 'chore: remove the exception list']);
-  assert.throws(() => checkCommentRevision(repository, ...range), /revision [0-9a-f]{12} scripts\/example\.mjs:1 inline: \/\/ different note/);
-});
-
-test('without a trusted baseline no exception applies, and a malformed baseline manifest fails loudly', () => {
-  const entry = exception('scripts/example.mjs', '// reviewed note');
-  const { repository, run, write } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1;\n', 'package.json': manifest(entry) });
-  assert.equal(trustedBaseline(repository), run(['rev-parse', 'refs/remotes/origin/main']).trim());
-  run(['update-ref', '-d', 'refs/remotes/origin/main']);
-  assert.equal(trustedBaseline(repository), null);
-  assert.deepEqual(trustedExceptions(repository, null), []);
-  write('scripts/example.mjs', 'export const value = 1; // reviewed note\n');
-  run(['add', '.']);
-  assert.throws(() => checkStagedComments(repository), /index scripts\/example\.mjs:1[^]*trusted baseline \(unavailable\)/);
-  assert.throws(() => checkWorkingComments(repository), /working tree scripts\/example\.mjs:1/);
-  run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
-  write('package.json', '{');
-  run(['add', '.']);
-  run(['commit', '--quiet', '-m', 'chore: break the manifest']);
-  run(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
-  assert.throws(() => checkStagedComments(repository), /Invalid package.json in trusted baseline/);
+test('renaming a file, even across comment grammars, never launders its comments', () => {
+  const { repository, run } = repositoryFixture({ 'scripts/example.mjs': 'export const value = 1; // kept\n' });
+  run(['mv', 'scripts/example.mjs', 'scripts/renamed.mjs']);
+  assert.throws(() => checkStagedComments(repository), /index scripts\/renamed\.mjs:1 inline: \/\/ kept/);
+  run(['mv', 'scripts/renamed.mjs', 'scripts/renamed.ts']);
+  assert.throws(() => checkStagedComments(repository), /index scripts\/renamed\.ts:1 inline: \/\/ kept/);
 });
 
 test('approved mobile TypeScript and TSX sources are covered by every comment gate', () => {
   const screen = 'apps/mobile/src/features/access/screens/example-screen.tsx';
   const helper = 'apps/mobile/src/lib/example-helper.ts';
   const testFile = 'apps/mobile/src/lib/example-helper.test.ts';
-  const { repository, run, write } = repositoryFixture({
-    [screen]: 'export const Screen = () => <a href="//x">text</a>; // legacy note\n',
+  const clean = {
+    [screen]: 'export const Screen = () => <a href="//x">text</a>;\n',
     [helper]: 'export const value = 1;\n',
     [testFile]: 'export const checked = 1;\n',
-  });
+  };
+  const { repository, run, write } = repositoryFixture(clean);
   for (const file of [screen, helper, testFile]) {
     assert.ok(hasCommentGrammar(file), file);
     assert.doesNotThrow(() => checkPath(file), file);
   }
-  assert.doesNotThrow(() => checkComments(repository, {}));
-  write(screen, 'export const Screen = () => <a href="//x">text</a>; // legacy note\n// New explanation.\n');
+  assert.doesNotThrow(() => checkComments(repository));
+  write(screen, 'export const Screen = () => <a href="//x">text</a>; // note\n');
   write(helper, '/** Documented. */\nexport const value = 1;\n');
   write(testFile, 'export const checked = 1; // eslint-disable-line\n');
   assert.throws(() => checkWorkingComments(repository), error => [screen, helper, testFile].every(file => error.message.includes(file)));
   run(['add', '.']);
-  write(screen, 'export const Screen = () => <a href="//x">text</a>; // legacy note\n');
-  write(helper, 'export const value = 1;\n');
-  write(testFile, 'export const checked = 1;\n');
+  for (const [file, text] of Object.entries(clean)) write(file, text);
   assert.throws(() => checkStagedComments(repository), error => [screen, helper, testFile].every(file => error.message.includes(file)));
   run(['commit', '--quiet', '-m', 'feat: add mobile comments']);
-  write(screen, 'export const Screen = () => <a href="//x">text</a>; // legacy note\n');
-  run(['add', '.']);
-  run(['commit', '--quiet', '--allow-empty', '-m', 'fix: remove mobile comments']);
-  assert.throws(() => checkCommentRevision(repository, ...range), error => [screen, helper, testFile].every(file => error.message.includes(file)));
+  assert.throws(() => checkCommittedComments(repository), error => [screen, helper, testFile].every(file => error.message.includes(file)));
 });
 
 test('mandatory directives and generated files pass in Git states while prose beside them fails', () => {
@@ -534,9 +382,12 @@ test('mandatory directives and generated files pass in Git states while prose be
   write('scripts/tool.mjs', '#!/usr/bin/env node\nexport const tool = 1;\n');
   write('supabase/database.types.ts', 'export type Json = string; // generated\n');
   write('.github/workflows/ci.yml', `steps:\n  - uses: actions/checkout@${sha} # v7\n`);
+  write('.githooks/pre-commit', '#!/bin/sh\nset -eu\n');
   run(['add', '.']);
   assert.doesNotThrow(() => checkStagedComments(repository));
   assert.doesNotThrow(() => checkWorkingComments(repository));
+  run(['commit', '--quiet', '-m', 'chore: add mandatory directives']);
+  assert.doesNotThrow(() => checkComments(repository));
   write('scripts/tool.mjs', '#!/usr/bin/env node\n// explain the tool\nexport const tool = 1;\n');
   write('supabase/other.ts', 'export type Json = string; // not generated\n');
   assert.throws(() => checkWorkingComments(repository), error => /scripts\/tool\.mjs:2 inline/.test(error.message) && /supabase\/other\.ts:1/.test(error.message));
@@ -566,15 +417,25 @@ test('invalid UTF-8 and malformed sources fail instead of being skipped', () => 
   assert.throws(() => checkStagedComments(repository), /Invalid JavaScript in scripts\/example\.mjs/);
 });
 
-test('comment gates run for the real repository sources without crashing and treat unchanged content as clean', () => {
+test('the delivered repository sources contain no prohibited comment and only the verified mandatory ones', () => {
   const files = git(root, ['ls-files', '-z']).split('\0').filter(file => file && hasCommentGrammar(file));
   assert.ok(files.length > 40);
+  const mandatory = [];
   for (const file of files) {
     const text = readFileSync(path.join(root, file), 'utf8');
-    assert.deepEqual(addedComments(file, text, text), [], file);
-    const records = commentRecords(file, text);
-    for (const record of records) assert.equal(text.slice(record.start, record.start + record.text.length), record.text, file);
+    assert.deepEqual(violations(file, text, 'repository'), [], file);
+    for (const record of commentRecords(file, text)) {
+      assert.equal(text.slice(record.start, record.start + record.text.length), record.text, file);
+      if (isMandatoryComment(file, record.text, text, record.start)) mandatory.push({ file, text: record.text });
+    }
   }
+  assert.ok(mandatory.length > 0);
+  for (const { file, text } of mandatory) {
+    const hook = /^\.githooks\/[a-z-]+$/.test(file) && /^#!\/bin\/sh$/.test(text);
+    const dependabot = /^\.github\/workflows\/[a-z-]+\.yml$/.test(file) && /^# v\d+(?:\.\d+){0,2}$/.test(text);
+    assert.ok(hook || dependabot, `Unexpected mandatory comment ${file}: ${text}`);
+  }
+  assert.deepEqual(violations('package.json', readFileSync(path.join(root, 'package.json'), 'utf8'), 'repository'), []);
 });
 
 test('command line entry points reject unsupported arguments', () => {
@@ -604,6 +465,7 @@ test('hosted CI runs the comment and formatting gates unconditionally before the
     assert.equal(steps[index].if, undefined);
     assert.equal(steps[index]['continue-on-error'], undefined);
   }
+  assert.ok(workflow.jobs['supabase-local'], 'The Supabase local verification job is missing.');
   assert.deepEqual(workflow.on.pull_request.types, ['opened', 'synchronize', 'reopened', 'edited', 'ready_for_review']);
   assert.deepEqual(workflow.on.push.branches, ['main']);
   assert.deepEqual(workflow.permissions, { contents: 'read' });

@@ -96,7 +96,6 @@ export function trivySmoke() {
       assert.equal(findings.length > 0, negative);
       results.push({ command: ['trivy', ...args], exit: negative ? 7 : 0, findings: findings.length });
     }
-    // A disposable Docker archive exercises the image parser without a registry or daemon.
     const archiveRoot = path.join(directory, 'image');
     mkdirSync(archiveRoot);
     writeFileSync(path.join(archiveRoot, 'config.json'), JSON.stringify({ architecture: 'amd64', os: 'linux', config: { User: '65532' }, rootfs: { type: 'layers', diff_ids: [] } }));

@@ -64,7 +64,6 @@ export async function withCache(task, action, base = root) {
   try { writeFileSync(lock, JSON.stringify({ pid: process.pid }), { flag: 'wx' }); }
   catch (error) { if (error.code === 'EEXIST') fail('CACHE_BUSY'); throw error; }
   try {
-    // Refuse substituted descendants before the scanner can follow them or cleanup can remove them.
     for (const relative of ['cache', 'cache/db', 'home', 'empty']) {
       const folder = path.join(directory, relative);
       const stat = lstatSync(folder, { throwIfNoEntry: false });
@@ -89,7 +88,6 @@ export async function boundedProcess(executable, args, options = {}) {
       condition = reason;
       clearTimeout(timer);
       child.kill('SIGTERM');
-      // A scanner may handle SIGTERM; keep the failure cause and bound its grace period.
       forceTimer = setTimeout(() => child.kill('SIGKILL'), terminationGrace);
     }
     function collect(key, data) {
@@ -222,7 +220,6 @@ export async function trivyAdvisories(action, task) {
 }
 
 export async function osvSource(task) {
-  // This workflow is deliberately Linux-only; do not retry the Windows blocked executable.
   if (process.platform !== 'linux' || process.arch !== 'x64') fail('BLOCKED_HOST_POLICY: OSV source workflow requires authorized native Linux x64');
   return await withCache(task, async directory => {
     const options = invocation(directory);

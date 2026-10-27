@@ -10,7 +10,6 @@ export function checkReservedFiles(repository = root) {
   for (const file of new Set(files)) {
     if (file === 'AGENTS.md') continue;
     const name = path.posix.basename(file);
-    // Match known instruction basenames, not arbitrary dotted technical filenames.
     if (/^(agents(?:\.override)?|claude(?:\.local)?)\.md$/i.test(name)
       || /^(docs\/ai-working-guide\.md|\.github\/copilot-instructions\.md)$/i.test(file)
       || /^(\.claude\/rules|\.github\/instructions)\//i.test(file)) {
@@ -21,7 +20,6 @@ export function checkReservedFiles(repository = root) {
     }
   }
 
-  // Git's ignorecase can hide a working-tree-only case rename on Windows.
   const rootNames = readdirSync(repository);
   for (const file of ['AGENTS.md', 'README.md']) {
     if (!rootNames.includes(file) || !lstatSync(path.join(repository, file)).isFile()) {

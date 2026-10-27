@@ -103,7 +103,7 @@ git config --local core.hooksPath .githooks
 ```
 
 Hooks can be bypassed and are not server-side protection. Pre-commit checks reserved
-files, hygiene, test selection, added source comments, YAML syntax and basic text
+files, hygiene, test selection, source comments (every staged source blob), YAML syntax and basic text
 formatting (changed staged blobs only, not unrelated working-tree edits) on the staged
 index, plus existing commit metadata and secrets; commit-msg validates the
 proposed message; pre-push verifies identity, the pushed remote, URL and ref, that no
@@ -159,8 +159,8 @@ validation and full-scope fixtures from
 and the separation between checks and enforced merge gates from
 [GitHub rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
 It retains NestScout's ESM, kebab names, two-space indentation and current modules.
-Comments explaining security, races, compatibility, legal constraints or contracts
-remain legitimate; their usefulness is a human review decision.
+Source files carry no explanatory comments: security, race, compatibility and contract
+rationale lives in names, types, tests and this documentation, and legal notices stay.
 
 The hygiene reader uses Git batch reads for unique index blobs, checks working files
 separately, and reuses content inspection only when bytes for the same path are equal.
