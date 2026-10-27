@@ -3,8 +3,6 @@ import { Stack } from 'expo-router';
 import { canEnterArea } from '../routing/route-policy';
 import { useAccess } from '../state/access-provider';
 
-// Client-side route protection only; unreachable areas fall back to the entry
-// route, which redirects to the destination the current access state allows.
 export function AccessStack() {
   const access = useAccess();
   return (

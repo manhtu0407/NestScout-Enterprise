@@ -263,7 +263,6 @@ describe('session rejection (ACCESS-07)', () => {
       capability: { kind: 'unauthenticated' },
       storedMode: workerPreference,
     });
-    // The lookup was rejected, so the account is not trusted until getUser answers; it did.
     expect(fake.calls.verifyIdentity).toBeGreaterThanOrEqual(2);
     expect(fake.calls.signOut).toBe(0);
     expect(latest.canUseWorker).toBe(false);

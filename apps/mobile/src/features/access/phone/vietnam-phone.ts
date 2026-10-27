@@ -5,8 +5,6 @@ export type PhoneResult = { ok: true; e164: string } | { ok: false; reason: Phon
 
 const compact = /^\+?\d+$/;
 
-// Accepts the 0..., 84..., 0084... and +84... presentations of a Vietnamese
-// mobile number and returns the single +84 E.164 form.
 export function normalizeVietnamPhone(input: string): PhoneResult {
   const text = input.trim();
   if (!text) return { ok: false, reason: 'empty' };
@@ -28,7 +26,6 @@ export function normalizeVietnamPhone(input: string): PhoneResult {
   } else {
     return { ok: false, reason: 'invalid_number' };
   }
-  // A trunk "0" after the country code (+840...) is a malformed presentation.
   const parsed = candidate.startsWith('+840') ? undefined : parsePhoneNumberFromString(candidate);
   if (!parsed || parsed.countryCallingCode !== '84' || !parsed.isValid() || parsed.getType() !== 'MOBILE') {
     return { ok: false, reason: 'invalid_number' };
@@ -36,7 +33,6 @@ export function normalizeVietnamPhone(input: string): PhoneResult {
   return { ok: true, e164: parsed.number };
 }
 
-// Display form that never reveals the full number.
 export function maskPhone(e164: string): string {
   return `+84 ••• ••• ${e164.slice(-3)}`;
 }

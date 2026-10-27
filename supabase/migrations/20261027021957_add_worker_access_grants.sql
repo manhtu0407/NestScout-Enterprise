@@ -1,7 +1,3 @@
--- Server-controlled technical grant that lets one authenticated account enter
--- Worker mode. It is not worker onboarding, qualification or verification.
--- Rows are provisioned and revoked only by trusted backend operators
--- (postgres, service_role); clients may read solely their own row.
 create table public.worker_access_grants (
   user_id uuid primary key references auth.users (id) on delete cascade,
   status text not null default 'active' check (status in ('active', 'revoked')),

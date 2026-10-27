@@ -12,5 +12,4 @@ const keychain: KeyValueStore = {
   deleteItemAsync: (key) => SecureStore.deleteItemAsync(key, options),
 };
 
-// The single persistence backend for the auth session and the mode preference.
 export const deviceStorage = createChunkedStorage(keychain);

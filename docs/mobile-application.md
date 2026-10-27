@@ -12,7 +12,10 @@ Expo SDK 58 (React Native 0.88, React 19.3.0, Expo Router 58) with TypeScript
 strict mode, installed through the single root npm workspace and lockfile. Direct
 dependencies are pinned exactly. The workspace uses the Expo SDK's TypeScript 6
 while the repository tooling keeps the native-port TypeScript 7; the mobile ESLint
-configuration redirects only its own process to TypeScript 6 for typescript-eslint.
+configuration redirects only its own process to TypeScript 6 for typescript-eslint:
+the repository root's TypeScript 7 exposes no JavaScript compiler API, and the parser and
+import resolver are nested under `eslint-config-expo`, so a module hook resolves those
+three specifiers before `eslint-config-expo` is imported.
 The root `overrides` entry for `react` keeps a single React copy for the test renderer.
 
 ## Ownership
@@ -92,6 +95,29 @@ user is signed out and signs in again) and is pinned by tests that name it as a 
 limit. The SDK's own `getUser()` also removes the stored session when the server says
 `session_not_found`, whichever session that is.
 
+### Sign-out
+
+Access state follows the stored session, not the outcome of the sign-out call. The
+gateway calls `signOut({ scope: 'local' })`, and the SDK announces `SIGNED_OUT` only
+after it has removed the session from storage; the provider enters the guest state
+when it receives that event and not before. `AccessApi.signOut()` returns the gateway
+outcome without changing state.
+
+The pinned SDK returns from `signOut()` before removing anything when it cannot load
+the stored session: with an expired access token and no connectivity, the refresh
+fails with a retryable error, the SDK retries with backoff for roughly 25 seconds, and
+then returns an error with the session still stored and no event. In that case the
+account stays signed in, `SignOutControl` shows "Could not sign out" and the button
+works as the retry. The SDK also caches a failed refresh for 60 seconds, so a retry
+inside that window fails at once and a later one succeeds once connectivity is back.
+While offline with an expired token the device therefore cannot be signed out; this
+is the SDK's behavior, and the app does not delete the stored session behind the SDK's
+back. When the SDK removes the session but the server cannot be told (`/logout` fails),
+the event still fires, the app is signed out and the server-side session lapses on its
+own; the call's error is not shown because the screen that would show it is gone. A
+refused session whose removal returns an error is reported as `unreachable`, never as
+removed.
+
 The grant table is deliberately minimal: user id, `active`/`revoked` status and
 timestamps. Only trusted backend operators (`postgres`, `service_role`) can write
 it; `anon` has no access and an authenticated user can read only their own row.
@@ -132,7 +158,10 @@ same store and is bound to one user id; it is cleared on sign-out.
 
 ## Configuration
 
-Copy `apps/mobile/.env.example` to an ignored `.env` in `apps/mobile`. The target
+Copy `apps/mobile/.env.example` to an ignored `.env` in `apps/mobile`. Everything in
+it is bundled into the app and readable by anyone who installs it: never put a secret
+key, `service_role` key, SMS, AI or signing credential there. The URL and publishable
+key come from the local stack (`npm run db:status`). The target
 must be `local`, the API URL a loopback or private-network origin and the key a
 publishable (or local anon) key; secret and service_role keys are rejected.
 Loopback ports are dynamic (`npm run db:status`). A physical iPhone cannot reach a
@@ -157,39 +186,104 @@ when a newer lookup supersedes it). `getUser()`, `getSession()` and keychain rea
 no cancellation, so they may complete after the app moved on; their results are
 discarded by request id and cannot change state.
 
+## Gateway and source conventions
+
+The `AuthGateway` is the seam between access state and the Supabase Auth client.
+Tokens never cross it. `IdentityCheck` has three answers: `valid`; `invalid`, meaning
+the server refused the stored session and it is already removed from the device;
+`unreachable`, meaning no answer applies to the stored session (offline, server error,
+unrecognised error, or the session was replaced while the check ran), so nothing is
+authorized and nothing is removed. `restoreSession()` reads storage without asking the
+server and is an unverified claim. `verifyOtp` treats the session returned by the Auth
+server for the code just confirmed as a verified login. Auth state callbacks only
+forward values, because calling Auth methods inside them can deadlock. `getUser()`
+without a token reads the stored session itself, which leaves open which session was
+judged, so the gateway reads the session once and sends its access token. Error codes
+follow the [Supabase Auth error codes](https://supabase.com/docs/guides/auth/debugging/error-codes) and the
+[PostgREST error semantics](https://docs.postgrest.org/en/stable/references/errors.html).
+
+Identity is `verified` only after the Auth server confirmed the account in this run.
+Every reducer reset moves both request counters so answers to earlier checks and
+lookups cannot be applied to the state that replaced them. A Worker request, whether
+from the button or from a pre-login intent, is answered only after the lookup and the
+identity check have both settled, and is granted only when both allow it. An auth event
+that already named a session wins over the slower restore, and a stored preference
+cannot override a backend answer that already denied Worker. Route policy and the
+protected stack are navigation control only; every future Worker operation must be
+authorized by the backend.
+
+Deliberate failure handling, none of which affects what a reader or an authorization
+decision sees: mode-preference writes and clears are cosmetic and their failures are
+ignored; removal of superseded keychain chunks is best effort; an unreadable saved
+preference resolves to no preference; a corrupt manifest is reported to the caller as
+`StorageIntegrityError`. The checksum guards against truncated or altered chunks and
+is not a security control. Distinct keys cannot collide because every character outside
+`[A-Za-z0-9]` is encoded as `_<hex>_`. Chunks of a slot are written in ascending order
+and deleted from the highest index so they stay contiguous if a delete fails midway; an
+unreadable manifest is replaced, a failed read is not, so a transient keychain error
+never discards a value that may still be intact; removal deletes the manifest first and
+then sweeps both slots even when a manifest was lost.
+
+Other contracts: `withDeadline` resolves with its fallback when the operation throws,
+rejects or does not settle in time and cancels the request only through `onTimeout`;
+callers discard late results by their own request identity. Phone numbers accept the
+`0…`, `84…`, `0084…` and `+84…` presentations, reject a trunk `0` after the country
+code (`+840…`), and are displayed masked. Auth failure messages are never forwarded
+because they may repeat the phone number. The client accepts only loopback and
+private-network Supabase origins, never defaults to a hosted project, and Expo inlines
+only literal `process.env.EXPO_PUBLIC_*` references. `worker_access_grants` is a
+server-controlled technical grant rather than onboarding or qualification; rows are
+provisioned and revoked only by `postgres` and `service_role`.
+
+Source files carry no explanatory comments; rationale lives in this document.
+The root policy permits useful invariant comments and the owner requires none, so
+the difference is reported for a separate policy decision rather than reconciled here.
+
 ## Test coverage
 
 | Layer | Evidence | Kind |
 | --- | --- | --- |
 | Reducer and route policy (`access-reducer.test.ts`, `route-policy.test.ts`) | Identity transitions, request ids, Worker predicate | Unit |
 | Provider (`access-provider*.test.tsx`) | Event ordering, deferred promises, fake timers, account switches, late answers, aborts | Unit with fake gateway |
-| `supabase-auth-gateway-sdk.test.ts` | The real Auth client against a scripted Auth server and in-memory storage: error classification on SDK-produced errors, removal of a refused session, replacement before and after the comparison | Unit against the real SDK, scripted server |
+| `supabase-auth-gateway-sdk.test.tsx` | The real Auth client against a scripted Auth server and in-memory storage: error classification on SDK-produced errors, removal of a refused session, replacement before and after the comparison, sign-out with an expired token while offline, the retry cooldown, and the provider over the real gateway and restart. Nothing in it is evidence about the hosted or local Auth service | Unit against the real SDK, scripted server |
 | Other gateway and repository tests | OTP contract, event forwarding and PostgREST response shapes | Unit against stubbed clients |
 | `chunked-storage.test.ts` | Fault injection at every store call, restart, corruption, concurrency | Unit against an in-memory keychain |
 | `navigation.test.tsx` | Real Expo Router tree through `renderRouter` with fake services | Component integration |
 | `supabase/tests/database/worker-access-grants.test.sql` | RLS, grants, revocation, anonymous and cross-account denial | pgTAP, runs only on the canonical stack |
+
+`navigation.test.tsx` imports the feature modules at the top of the file so that the
+one-time module loading and, on a cold Jest cache, Babel transformation of the route tree
+happen while the suite loads and not inside the first test's 5 second limit. Before this
+the first test timed out when the suite ran from a cold cache on a CPU-starved core
+(11.4 s on two of two runs) and passed in 2.9 s with it; the sporadic timeout seen on an
+initial run is consistent with that cause.
 
 Not covered: a real Auth or PostgREST service (the scripted server above is not one), a real Keychain, a native iOS build or
 device, and real SMS delivery. Metro serving the bundle proves bundling only.
 
 ## Known dependency advisories
 
-`npm audit` reports five high findings, all in Expo's command-line tooling, which runs
-on developer machines and is not part of the Metro iOS bundle (verified for
-`node-forge`, `zod` and the code-signing package). They reduce to two advisories:
+`npm audit` reports three high findings, all in Expo's command-line tooling, which
+runs on developer machines and is not part of the iOS bundle: an `expo export
+--platform ios` bundle on 2026-10-27 contained no `node-forge`, `zod` or `@expo/cli`
+strings, and `npm ls --omit=dev` reaches them only through `expo` → `@expo/cli`. One advisory was resolved on 2026-10-27 by a lockfile-only update of
+`node-forge` from 1.4.0 to 1.4.1 inside the existing `^1.4.0` ranges of `@expo/cli`
+and `@expo/code-signing-certificates` (GHSA-86w9-cpqp-85rv; the 1.4.1 tarball adds the
+canonical DigestInfo check to RSA PKCS#1 v1.5 verification and nothing else of
+consequence, and its integrity matches the registry). That release is hours old, so a
+review of it before relying on it is reasonable.
 
 | Advisory | Package and path | Range | Patched | Preconditions | Assessment |
 | --- | --- | --- | --- | --- | --- |
-| GHSA-86w9-cpqp-85rv | `node-forge` 1.4.0 via `@expo/cli` and `@expo/code-signing-certificates` | `<=1.4.0` | none published | Verifying attacker-supplied RSA PKCS#1 v1.5 signatures | Not used by app code; relevant only if Expo code-signing tooling verifies untrusted signatures. `expo-updates` is not installed |
 | GHSA-mrhx-c7xc-m3w5 | `zod` 3.25.76 nested in `@expo/cli` | `<4.6.6` | 4.6.6 (4.x only) | Large arrays without length bounds reaching a schema | Memory exhaustion of a developer tool process; advisory text describes the 4.x code path, so applicability to 3.25.76 is unconfirmed |
 
-The three remaining findings (`@expo/cli`, `@expo/code-signing-certificates`, `expo`)
-are only chains to those two. `npm audit fix --force` proposes Expo SDK 54, a major
-downgrade of the whole app stack, and overriding `zod` to a different major inside the
-CLI is untested; neither is applied. The residual risk is **unresolved and requires
-owner acceptance**; it is not accepted by the agent. Mitigations: run Expo tooling
-only on trusted developer machines and CI, never feed it untrusted certificates, and
-re-run `npm audit` on every Expo SDK patch update.
+The other two findings (`@expo/cli`, `expo`) are only chains to that advisory.
+`@expo/cli` requires `zod@^3.25.76`, and no 3.x release is patched. `npm audit fix
+--force` proposes Expo SDK 54, a major downgrade of the whole app stack, and overriding
+`zod` to a different major inside the CLI is untested; neither is applied. The
+residual risk is **unresolved and requires owner acceptance**; it is not accepted by
+the agent. Mitigations: run Expo tooling only on trusted developer machines and CI,
+and re-run `npm audit` on every Expo SDK patch update.
 
 ## Commands
 

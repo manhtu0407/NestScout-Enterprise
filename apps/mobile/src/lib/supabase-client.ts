@@ -7,7 +7,6 @@ import { deviceStorage } from './device-storage';
 
 let client: SupabaseClient | undefined;
 
-// The only Supabase client: publishable key, session kept in the keychain.
 export function getSupabaseClient(): SupabaseClient {
   if (!client) {
     const config = loadConfig();

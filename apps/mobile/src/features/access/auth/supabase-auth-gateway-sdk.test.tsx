@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { act, render, screen } from '@testing-library/react-native';
-import { createElement, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Text } from 'react-native';
 
 import type { AuthEvent } from './auth-gateway';
@@ -29,7 +29,6 @@ function createAuthServer() {
   let offline = false;
   let refreshRefused = false;
   let logoutAnswer: (() => Response) | undefined;
-  // Replaces the answer of GET /user for every token that is not already rejected.
   let userAnswer: ((token: string | null) => Response | Promise<Response>) | undefined;
   let issued = 0;
   let nextUser = 'user-a';
@@ -89,7 +88,6 @@ function createAuthServer() {
       userAnswer = answer;
     },
     json,
-    // The SDK issues requests from promise chains, so a test waits for a request to appear.
     async seen(predicate: (request: Request) => boolean) {
       for (let attempt = 0; attempt < 200; attempt++) {
         if (requests.some(predicate)) return;
@@ -181,9 +179,6 @@ describe('identity answers about the stored session', () => {
     expect(harness.server.requests).toHaveLength(0);
   });
 
-  // Statuses and codes come back through the SDK, so the classifier is exercised on the
-  // error objects the SDK really produces. 'removedByGateway' counts the local sign-out
-  // request that follows a refusal; session_not_found is removed by the SDK itself.
   test.each([
     [403, 'bad_jwt', 'invalid', 1],
     [401, 'bad_jwt', 'invalid', 1],
@@ -193,7 +188,6 @@ describe('identity answers about the stored session', () => {
     [403, 'user_banned', 'invalid', 1],
     [400, 'refresh_token_not_found', 'invalid', 1],
     [400, 'refresh_token_already_used', 'invalid', 1],
-    // Same statuses, different reasons: not evidence that the session is dead.
     [403, 'not_admin', 'unreachable', 0],
     [403, 'insufficient_aal', 'unreachable', 0],
     [403, 'captcha_failed', 'unreachable', 0],
@@ -255,12 +249,9 @@ describe('removing a refused session', () => {
     await harness.client.auth.signOut({ scope: 'local' });
     harness.server.gates.user.release();
     expect(await answer).toEqual({ status: 'invalid' });
-    // Only the explicit sign-out above reached the server.
     expect(harness.server.logouts()).toHaveLength(1);
   });
 
-  // Replacement BEFORE the stored session is compared with the refused token. This is
-  // the same-account case that an account-keyed removal got wrong.
   test.each([
     ['the same account signs in again', 'user-a'],
     ['another account signs in', 'user-b'],
@@ -301,10 +292,6 @@ describe('removing a refused session', () => {
     expect(harness.server.logouts()).toHaveLength(0);
   });
 
-  // Replacement AFTER the comparison. The SDK has no lock and no compare-and-remove, and
-  // signOut() removes whichever session is stored when it finishes, so these two windows
-  // are NOT closed. The tests pin the SDK behaviour so a change in it is noticed; they do
-  // not endorse the outcome, which fails closed: the user is signed out and signs in again.
   describe('known SDK limit: replacement after the comparison', () => {
     test('between the comparison and the start of signOut(), the new session is signed out and revoked', async () => {
       const harness = await start();
@@ -422,7 +409,7 @@ describe('the access state follows the stored session when signing out', () => {
     useEffect(() => {
       latest = access;
     });
-    return createElement(Text, { testID: 'phase' }, access.phase);
+    return <Text testID="phase">{access.phase}</Text>;
   }
 
   const capabilities: CapabilityRepository = { fetchCapabilities: async () => ({ kind: 'resolved', worker: 'none' }) };
@@ -431,7 +418,11 @@ describe('the access state follows the stored session when signing out', () => {
   const flush = () => act(async () => void (await jest.advanceTimersByTimeAsync(1)));
 
   async function openApp(harness: ReturnType<typeof createHarness>) {
-    await render(createElement(AccessProvider, { services: { auth: harness.gateway, capabilities, preferredMode }, children: createElement(Probe) }));
+    await render(
+      <AccessProvider services={{ auth: harness.gateway, capabilities, preferredMode }}>
+        <Probe />
+      </AccessProvider>,
+    );
     await flush();
   }
 

@@ -138,12 +138,10 @@ describe('interrupted replacement', () => {
       await storage.setItem('k', newValue).catch(() => undefined);
       inject(null);
 
-      // Restart: a fresh instance over the same backing items.
       const restarted = createChunkedStorage(store, 16);
       const read = await restarted.getItem('k');
       expect([oldValue, newValue]).toContain(read);
 
-      // The store must stay writable and consistent afterwards.
       await restarted.setItem('k', newValue);
       expect(await restarted.getItem('k')).toBe(newValue);
       expect(data.size).toBeGreaterThan(0);
@@ -155,7 +153,6 @@ describe('interrupted replacement', () => {
     const storage = createChunkedStorage(store, 16);
     await storage.setItem('k', oldValue);
     resetOperations();
-    // Reads: 1 manifest read. Chunk writes follow; fail on the second chunk write.
     inject({ at: 3, mode: 'reject' });
     await expect(storage.setItem('k', newValue)).rejects.toThrow('keychain failure');
     inject(null);

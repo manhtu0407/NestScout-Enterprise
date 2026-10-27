@@ -23,7 +23,6 @@ export function SignOutControl() {
   );
 }
 
-// Offered only to an account whose backend grant is currently active.
 export function ModeSwitchControl({ target }: { target: AppMode }) {
   const access = useAccess();
   if (target === 'worker' && !access.canUseWorker) return null;

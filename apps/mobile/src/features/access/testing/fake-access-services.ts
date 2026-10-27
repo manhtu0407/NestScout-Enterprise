@@ -17,8 +17,6 @@ export type FakeOptions = {
   signOut?: () => Promise<AuthOutcome>;
 };
 
-// Controllable stand-ins for Supabase Auth and the capability table, used only
-// by tests; the production gateway and repository are never replaced at runtime.
 export function createFakeAccessServices(options: FakeOptions = {}) {
   let listener: ((event: AuthEvent) => void) | undefined;
   let stored = options.storedMode ?? null;
@@ -26,8 +24,6 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
   const signInIdentity = options.signInIdentity ?? { userId: 'user-a' };
   const calls = { requestOtp: [] as string[], verifyOtp: [] as string[], verifyIdentity: 0, signOut: 0, capability: 0, cleared: 0, signals: [] as AbortSignal[] };
 
-  // The device session as the real client holds it. A new sign-in or a token refresh is
-  // a new session even for the same account, which is what removal must tell apart.
   let sequence = 0;
   let current: { userId: string; id: number } | null = options.session ? { userId: options.session.userId, id: ++sequence } : null;
   const establish = (userId: string) => {
@@ -54,9 +50,6 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
         ? await options.verifyIdentity()
         : (options.identityCheck ?? { status: 'valid', identity: options.session ?? signInIdentity });
       if (check.status !== 'invalid') return check;
-      // Like the real gateway: the refused session is removed and announced before the
-      // answer returns, but only while it is still the stored one. A session that
-      // replaced it was not judged, so the answer does not apply and nothing is removed.
       if (current !== judged) return { status: 'unreachable' };
       if (current !== null) {
         current = null;
@@ -103,7 +96,6 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
   };
 
   const services: AccessServices = { auth, capabilities, preferredMode };
-  // Delivers an event the way the SDK does: after the stored session has changed.
   function emit(event: AuthEvent) {
     if (event.type === 'signed_out') current = null;
     else if (event.type !== 'updated') establish(event.identity.userId);

@@ -2,8 +2,6 @@ import type { AccessView } from '../state/access-reducer';
 
 export type RouteArea = 'guest' | 'auth' | 'client' | 'worker';
 
-// Navigation control only. Every future Worker operation must still be
-// authorized by the backend; this policy never substitutes for that.
 export function canEnterArea(view: AccessView, area: RouteArea): boolean {
   switch (area) {
     case 'guest':

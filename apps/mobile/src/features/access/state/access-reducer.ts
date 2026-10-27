@@ -9,19 +9,13 @@ type CapabilityState =
   | { status: 'resolved'; worker: WorkerGrant; refreshing: boolean }
   | { status: 'error'; refreshing: boolean };
 
-// Identity is "verified" only after the Auth server confirmed the account in this
-// run: getUser() answered for the same user, or an OTP confirmation returned a
-// session. A session read from storage, and any auth event, is only a claim and
-// leaves the identity "unverified" until a check answers.
 export type AccessState = {
   bootstrapped: boolean;
   userId: string | null;
   identity: 'verified' | 'unverified';
-  // Identifies the identity check whose answer may still be applied.
   identityRequest: number;
   identityPending: boolean;
   capability: CapabilityState;
-  // Identifies the capability lookup whose answer may still be applied.
   requestId: number;
   preferenceLoaded: boolean;
   selectedMode: AppMode;
@@ -29,7 +23,6 @@ export type AccessState = {
   notice: AccessNotice | null;
   intent: AppMode | null;
   otpPhone: string | null;
-  // Earliest time a new code may be requested, set from server outcomes.
   resendAvailableAt: number | null;
 };
 
@@ -68,8 +61,6 @@ export const initialAccessState: AccessState = {
   resendAvailableAt: null,
 };
 
-// Every reset moves both request counters so that answers to earlier checks and
-// lookups can never be applied to the state that replaced them.
 function reset(state: AccessState, userId: string | null, identity: AccessState['identity'], keep: Partial<AccessState> = {}): AccessState {
   return {
     ...initialAccessState,
@@ -100,8 +91,6 @@ function wantsWorker(state: AccessState): boolean {
   return state.pendingMode === 'worker' || state.intent === 'worker';
 }
 
-// A Worker request (button or pre-login intent) is answered only once the lookup and
-// the identity check have both settled, and is granted only when both allow it.
 function settleWorkerRequest(state: AccessState): AccessState {
   if (!wantsWorker(state) || state.identityPending) return state;
   const { capability } = state;
@@ -120,7 +109,6 @@ export function accessReducer(state: AccessState, action: AccessAction): AccessS
   switch (action.type) {
     case 'restore_settled':
       if (action.userId === null) return state.userId === null ? { ...state, bootstrapped: true } : state;
-      // An auth event that already named a session wins over the slower restore.
       if (state.userId !== null) return state;
       return withIdentityCheck({ ...state, userId: action.userId, identity: 'unverified', requestId: state.requestId + 1 });
 
@@ -154,7 +142,6 @@ export function accessReducer(state: AccessState, action: AccessAction): AccessS
       if (action.requestId !== state.requestId || action.userId !== state.userId) return state;
       const { result } = action;
       if (result.kind === 'unauthenticated') {
-        // The token was refused: nothing is trusted until getUser answers again.
         const next: AccessState = {
           ...state,
           identity: 'unverified',
@@ -183,7 +170,6 @@ export function accessReducer(state: AccessState, action: AccessAction): AccessS
 
     case 'preference_loaded':
       if (action.userId !== state.userId || state.preferenceLoaded) return state;
-      // A stored preference cannot override a backend answer that already denied Worker.
       return {
         ...state,
         preferenceLoaded: true,
@@ -228,9 +214,6 @@ export type AccessView = {
   resendAvailableAt: number | null;
 };
 
-// Worker needs ALL of: a verified identity, a resolved active backend grant for that
-// account, and a Worker selection. Every other state, including a failed lookup or an
-// unverified identity, resolves to Client. The selected mode is a preference only.
 export function deriveAccess(state: AccessState): AccessView {
   const { capability } = state;
   const verified = state.identity === 'verified';

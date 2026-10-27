@@ -5,7 +5,6 @@ const src = path.resolve(__dirname, '..');
 const features = ['access', 'client', 'worker', 'shared'] as const;
 type Feature = (typeof features)[number];
 
-// Which other features each feature may import (through its public index only).
 const allowed: Record<Feature, Feature[]> = {
   access: ['shared'],
   client: ['access', 'shared'],

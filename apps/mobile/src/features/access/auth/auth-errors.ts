@@ -4,8 +4,6 @@ import type { AuthFailure } from './auth-gateway';
 
 type ErrorLike = { code?: string; status?: number; name?: string };
 
-// Maps Supabase Auth failures to safe categories; messages are never forwarded
-// because they may repeat the phone number.
 export function classifyAuthError(error: ErrorLike): AuthFailure {
   if (isAuthRetryableFetchError(error as never) || error.name === 'AuthRetryableFetchError') return 'network';
   switch (error.code) {

@@ -26,7 +26,6 @@ const fixedPaths = new Set([
 ]);
 const word = '[a-z0-9]+(?:-[a-z0-9]+)*';
 const segments = `(?:${word}/)*`;
-// Expo Router route groups such as (guest) exist only under src/app, which holds thin route files and layouts.
 const mobileSource = `apps/mobile/src/${segments}`;
 const disposable = /^(?:todo|notes|plan|report|handoff|session-summary|debug|scratch)(?:[-.]|$)/i;
 // Owner-supplied NestScout_Horizon_Restored_Asset_Pack_v1.zip, unchanged 04_android/play_store_512x512.png.
@@ -47,7 +46,6 @@ export function checkPath(file, artifacts = []) {
     }
     return;
   }
-  // The process-document folder stays empty until the owner supplies approved content.
   if (file.startsWith('docs/processes/')) throw new Error(`docs/processes must contain only an empty .gitkeep: ${JSON.stringify(file)}`);
   const name = path.posix.basename(file);
   if (disposable.test(name)) throw new Error(`Disposable document/source name: ${JSON.stringify(file)}`);

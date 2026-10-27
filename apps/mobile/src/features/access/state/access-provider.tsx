@@ -27,10 +27,6 @@ export type AccessApi = AccessView & {
 
 const AccessContext = createContext<AccessApi | null>(null);
 
-// Upper bounds that keep an offline or hanging backend from holding the app on a
-// splash screen or leaving a stale Worker decision in place. Only the capability
-// lookup is cancelled at its deadline (AbortSignal); Auth calls and storage reads
-// cannot be aborted, so those are abandoned and their late answers discarded.
 export const accessTimeouts = { restoreMs: 8000, identityMs: 8000, capabilityMs: 10_000, preferenceMs: 5000 } as const;
 const resendCooldownMs = 60_000;
 
@@ -39,8 +35,6 @@ export function AccessProvider({ services, children }: { services: AccessService
   const [state, dispatch] = useReducer(accessReducer, initialAccessState);
   const { userId, requestId, bootstrapped, preferenceLoaded, selectedMode, otpPhone, identityPending, identityRequest } = state;
 
-  // Session events and the stored-session restore. Events only forward values: they
-  // describe a claim, and the identity check below is what verifies it.
   useEffect(() => {
     let active = true;
     const unsubscribe = auth.subscribe((event) => {
@@ -63,9 +57,6 @@ export function AccessProvider({ services, children }: { services: AccessService
     };
   }, [auth]);
 
-  // Server-side identity check (getUser). A refused session is removed by the gateway
-  // before the answer returns. Unreachable and unknown outcomes keep the session but
-  // leave the identity unverified.
   useEffect(() => {
     if (!identityPending) return;
     let active = true;
@@ -77,7 +68,6 @@ export function AccessProvider({ services, children }: { services: AccessService
     };
   }, [auth, identityPending, identityRequest]);
 
-  // Authoritative capability lookup; a newer request supersedes (and aborts) older ones.
   useEffect(() => {
     if (!bootstrapped || userId === null) return;
     let active = true;
@@ -111,7 +101,6 @@ export function AccessProvider({ services, children }: { services: AccessService
     };
   }, [preferredMode, userId, bootstrapped]);
 
-  // Cosmetic preference: losing a write only costs the remembered mode.
   useEffect(() => {
     if (userId === null || !preferenceLoaded) return;
     void preferredMode.save(userId, selectedMode).catch(() => undefined);

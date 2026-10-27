@@ -17,8 +17,6 @@ type RawConfig = {
   supabaseKey: string | undefined;
 };
 
-// Loopback and private-network hosts only: the foundation talks to an isolated
-// local Supabase stack and never defaults to a hosted project.
 const privateHost =
   /^(?:localhost|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})$/;
 
@@ -59,7 +57,6 @@ export function parseConfig(raw: RawConfig): AppConfig {
   return { target: 'local', supabaseUrl: url.origin, supabasePublishableKey: key };
 }
 
-// Expo inlines only literal process.env.EXPO_PUBLIC_* references.
 export function loadConfig(): AppConfig {
   return parseConfig({
     target: process.env.EXPO_PUBLIC_NESTSCOUT_TARGET,

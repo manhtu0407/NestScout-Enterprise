@@ -10,8 +10,6 @@ export type PreferredModeStore = {
   clear(): Promise<void>;
 };
 
-// A presentation preference only. It is bound to one account and never read as
-// authorization: the backend capability check still gates Worker mode.
 export function createPreferredModeStore(storage: AsyncStringStorage): PreferredModeStore {
   return {
     async load(userId) {

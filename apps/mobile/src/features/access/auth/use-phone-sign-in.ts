@@ -33,8 +33,6 @@ export type PhoneSignIn = {
   cancel(): void;
 };
 
-// Drives the request/verify screens: one request in flight at a time, no state
-// updates after unmount, and nothing about the phone or code is logged.
 export function usePhoneSignIn(): PhoneSignIn {
   const access = useAccess();
   const [busy, setBusy] = useState(false);

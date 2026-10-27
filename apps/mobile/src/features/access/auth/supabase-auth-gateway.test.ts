@@ -43,8 +43,6 @@ describe('supabase auth gateway', () => {
     expect(await failed.restoreSession()).toBeNull();
   });
 
-  // Classification, removal and replacement are covered against the real Auth client in
-  // supabase-auth-gateway-sdk.test.ts; these cover what that server cannot produce.
   test('identity check: an unreadable stored session or a thrown error is unreachable', async () => {
     const readFailure = createSupabaseAuthGateway(stubClient({ getSession: async () => ({ data: { session: null }, error: new AuthRetryableFetchError('offline', 0) }) }));
     expect(await readFailure.verifyIdentity()).toEqual({ status: 'unreachable' });
