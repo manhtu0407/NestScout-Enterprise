@@ -127,6 +127,43 @@ describe('supabase auth gateway', () => {
     expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
 
+  describe('discardSession', () => {
+    const discard = (getSession: () => unknown, signOut = jest.fn(async (): Promise<{ error: Error | null }> => ({ error: null }))) => ({
+      signOut,
+      run: () => createSupabaseAuthGateway(stubClient({ getSession: async () => getSession(), signOut })).discardSession('user-a'),
+    });
+
+    test('removes the local session while it still belongs to the account', async () => {
+      const { run, signOut } = discard(() => ({ data: { session: { user: { id: 'user-a' } } }, error: null }));
+      expect(await run()).toEqual({ ok: true, value: undefined });
+      expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
+    });
+
+    test.each([
+      ['a different account now holds the session', { data: { session: { user: { id: 'user-b' } } }, error: null }],
+      ['the client already dropped the session', { data: { session: null }, error: null }],
+    ])('does nothing when %s', async (_name, result) => {
+      const { run, signOut } = discard(() => result);
+      expect(await run()).toEqual({ ok: true, value: undefined });
+      expect(signOut).not.toHaveBeenCalled();
+    });
+
+    test('reports failures without removing a session it could not identify', async () => {
+      const unreadable = discard(() => ({ data: { session: null }, error: new AuthRetryableFetchError('offline', 0) }));
+      expect(await unreadable.run()).toEqual({ ok: false, failure: 'network' });
+      expect(unreadable.signOut).not.toHaveBeenCalled();
+      const thrown = discard(() => {
+        throw new TypeError('storage');
+      });
+      expect(await thrown.run()).toEqual({ ok: false, failure: 'network' });
+      const failing = discard(
+        () => ({ data: { session: { user: { id: 'user-a' } } }, error: null }),
+        jest.fn(async () => ({ error: new AuthRetryableFetchError('offline', 0) })),
+      );
+      expect(await failing.run()).toEqual({ ok: false, failure: 'network' });
+    });
+  });
+
   test('forwards auth events as values and unsubscribes on request', () => {
     let handler: (event: string, session: unknown) => void = () => undefined;
     const unsubscribe = jest.fn();

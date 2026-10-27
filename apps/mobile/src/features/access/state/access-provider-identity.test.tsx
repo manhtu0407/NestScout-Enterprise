@@ -215,6 +215,26 @@ describe('late and superseded answers (ACCESS-06)', () => {
     expect(latest.identity).toBe('verified');
   });
 
+  test('a late removal of a dead session cannot sign out an account that signed in meanwhile', async () => {
+    const gate = deferred<void>();
+    const fake = await mount({
+      session: { userId: 'user-a' },
+      identityCheck: { status: 'invalid' },
+      removalGate: () => gate.promise,
+      signInIdentity: { userId: 'user-b' },
+      capability: active,
+    });
+    expect(phase()).toBe('guest:checking:unverified');
+    await act(async () => void (await latest.requestOtp('+84912345678')));
+    await act(async () => void (await latest.verifyOtp('654321')));
+    expect(latest.userId).toBe('user-b');
+    await act(async () => gate.resolve());
+    await settle();
+    expect(latest.userId).toBe('user-b');
+    expect(phase()).toBe('client:authorized:verified');
+    expect(fake.calls.signOut).toBe(0);
+  });
+
   test('foreground resume repeated while pending does not stack lookups into a stale grant', async () => {
     const pending = [deferred<CapabilityResult>(), deferred<CapabilityResult>(), deferred<CapabilityResult>()];
     let call = 0;
@@ -232,7 +252,8 @@ describe('session rejection (ACCESS-07)', () => {
   test('an invalid getUser answer ends the session and signs out once', async () => {
     const fake = await mount({ session: { userId: 'user-a' }, identityCheck: { status: 'invalid' }, capability: active, storedMode: workerPreference });
     expect(phase()).toBe('guest:checking:unverified');
-    expect(fake.calls.signOut).toBe(1);
+    expect(fake.calls.discard).toEqual(['user-a']);
+    expect(fake.calls.signOut).toBe(0);
   });
 
   test('a rejected access token on the lookup re-verifies identity instead of signing out directly', async () => {
@@ -252,7 +273,8 @@ describe('session rejection (ACCESS-07)', () => {
     await act(async () => latest.recheck());
     await act(async () => latest.recheck());
     expect(phase()).toBe('guest:checking:unverified');
-    expect(fake.calls.signOut).toBe(1);
+    expect(fake.calls.discard).toEqual(['user-a']);
+    expect(fake.calls.signOut).toBe(0);
   });
 
   test('a rejected token while the server is unreachable keeps the session but not Worker', async () => {

@@ -71,7 +71,12 @@ an answer for a superseded request, another account or a signed-out state is dro
 A lookup the backend refuses with an authentication error withdraws verification and
 asks `getUser()` again instead of signing out directly; only `getUser()` can end a
 session. A session the server proves dead is removed from the device from reducer
-state, so a superseded check can never sign out a newer session.
+state through `discardSession(userId)`, which signs out locally only while the client
+still holds a session for that account. The SDK's `signOut` acts on whatever session
+exists when it runs, so a generic sign-out issued for a dead session could end an
+account that signed in before it ran; the owner check removes that case. The check and
+the sign-out are two SDK calls, so a sub-millisecond window remains in which a new
+session could still be removed.
 
 The grant table is deliberately minimal: user id, `active`/`revoked` status and
 timestamps. Only trusted backend operators (`postgres`, `service_role`) can write

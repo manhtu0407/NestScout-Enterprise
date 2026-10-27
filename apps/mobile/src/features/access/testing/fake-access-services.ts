@@ -14,6 +14,8 @@ export type FakeOptions = {
   issuedCode?: string;
   signInIdentity?: SessionIdentity;
   requestOtp?: () => Promise<AuthOutcome>;
+  // Held by every session removal, to simulate Auth finishing it late.
+  removalGate?: () => Promise<void>;
 };
 
 // Controllable stand-ins for Supabase Auth and the capability table, used only
@@ -23,7 +25,10 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
   let stored = options.storedMode ?? null;
   const issuedCode = options.issuedCode ?? '654321';
   const signInIdentity = options.signInIdentity ?? { userId: 'user-a' };
-  const calls = { requestOtp: [] as string[], verifyOtp: [] as string[], verifyIdentity: 0, signOut: 0, capability: 0, cleared: 0, signals: [] as AbortSignal[] };
+  const calls = { requestOtp: [] as string[], verifyOtp: [] as string[], verifyIdentity: 0, signOut: 0, discard: [] as string[], capability: 0, cleared: 0, signals: [] as AbortSignal[] };
+
+  // The user the device session currently belongs to, as the real client would hold it.
+  let current = options.session?.userId ?? null;
 
   const auth: AuthGateway = {
     async requestOtp(phone) {
@@ -33,6 +38,7 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
     async verifyOtp(phone, code) {
       calls.verifyOtp.push(code);
       if (code !== issuedCode) return { ok: false, failure: 'invalid_code' };
+      current = signInIdentity.userId;
       listener?.({ type: 'signed_in', identity: signInIdentity });
       return { ok: true, value: signInIdentity };
     },
@@ -44,6 +50,16 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
     },
     async signOut() {
       calls.signOut += 1;
+      await options.removalGate?.();
+      current = null;
+      listener?.({ type: 'signed_out' });
+      return { ok: true, value: undefined };
+    },
+    async discardSession(userId) {
+      calls.discard.push(userId);
+      await options.removalGate?.();
+      if (current !== userId) return { ok: true, value: undefined };
+      current = null;
       listener?.({ type: 'signed_out' });
       return { ok: true, value: undefined };
     },

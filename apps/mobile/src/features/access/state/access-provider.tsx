@@ -76,11 +76,12 @@ export function AccessProvider({ services, children }: { services: AccessService
     };
   }, [auth, identityPending, identityRequest]);
 
-  // Removes a session the server rejected. Runs from state so that a check which has
-  // since been superseded can never sign out a newer session.
+  // Removes a session the server rejected. It runs from state and names the account, so
+  // a superseded check cannot sign out a newer session and a late removal cannot end an
+  // account that signed in after the check.
   useEffect(() => {
-    if (!purgeSession) return;
-    void auth.signOut();
+    if (purgeSession === null) return;
+    void auth.discardSession(purgeSession);
     dispatch({ type: 'purge_done' });
   }, [auth, purgeSession]);
 

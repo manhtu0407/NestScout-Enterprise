@@ -97,7 +97,7 @@ describe('access provider lifecycle', () => {
       capability: { kind: 'unauthenticated' },
     });
     await waitFor(() => expect(phase()).toBe('guest:checking'));
-    expect(fake.calls.signOut).toBe(1);
+    expect(fake.calls.discard).toEqual(['user-a']);
   });
 
   test('resuming with no session does nothing', async () => {

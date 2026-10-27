@@ -89,6 +89,21 @@ export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
       }
     },
 
+    async discardSession(userId) {
+      try {
+        // signOut acts on whichever session the client holds when it runs, so the
+        // owner is checked first. A session that the client already dropped (a
+        // refresh failure or session_not_found removes it) needs no further action.
+        const { data, error } = await client.auth.getSession();
+        if (error) return { ok: false, failure: classifyAuthError(error) };
+        if (data?.session?.user?.id !== userId) return { ok: true, value: undefined };
+        const result = await client.auth.signOut({ scope: 'local' });
+        return result.error ? { ok: false, failure: classifyAuthError(result.error) } : { ok: true, value: undefined };
+      } catch {
+        return { ok: false, failure: 'network' };
+      }
+    },
+
     subscribe(listener) {
       // The callback only forwards a value: calling Auth methods inside it can deadlock.
       const { data } = client.auth.onAuthStateChange((event, session) => {

@@ -31,8 +31,8 @@ export type AccessState = {
   otpPhone: string | null;
   // Earliest time a new code may be requested, set from server outcomes.
   resendAvailableAt: number | null;
-  // Set when the stored session was proven dead and must be removed from the device.
-  purgeSession: boolean;
+  // The account whose stored session was proven dead and must be removed from the device.
+  purgeSession: string | null;
 };
 
 export type SessionEventType = 'signed_in' | 'refreshed' | 'updated';
@@ -69,7 +69,7 @@ export const initialAccessState: AccessState = {
   intent: null,
   otpPhone: null,
   resendAvailableAt: null,
-  purgeSession: false,
+  purgeSession: null,
 };
 
 // Every reset moves both request counters so that answers to earlier checks and
@@ -143,13 +143,13 @@ export function accessReducer(state: AccessState, action: AccessAction): AccessS
     case 'identity_checked': {
       if (!state.identityPending || action.request !== state.identityRequest || state.userId === null) return state;
       const { check } = action;
-      if (check.status === 'invalid') return { ...signedOut(state), purgeSession: true };
+      if (check.status === 'invalid') return { ...signedOut(state), purgeSession: state.userId };
       const verified = check.status === 'valid' && check.identity.userId === state.userId;
       return settleWorkerRequest({ ...state, bootstrapped: true, identity: verified ? 'verified' : 'unverified', identityPending: false });
     }
 
     case 'purge_done':
-      return { ...state, purgeSession: false };
+      return { ...state, purgeSession: null };
 
     case 'recheck_requested': {
       if (state.userId === null || !state.bootstrapped) return state;

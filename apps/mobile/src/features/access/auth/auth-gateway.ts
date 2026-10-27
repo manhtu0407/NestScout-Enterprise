@@ -27,6 +27,9 @@ export type AuthGateway = {
   restoreSession(): Promise<SessionIdentity | null>;
   verifyIdentity(): Promise<IdentityCheck>;
   signOut(): Promise<AuthOutcome>;
+  // Removes the device session only while it still belongs to `userId`, so removing a
+  // dead session can never end a different account that signed in in the meantime.
+  discardSession(userId: string): Promise<AuthOutcome>;
   subscribe(listener: (event: AuthEvent) => void): () => void;
   setForeground(active: boolean): void;
 };
