@@ -4,7 +4,10 @@ Persistency on the tenth times...!
 
 Public, new NestScout repository. The Delivery Project remains private. This repository contains development
 workflow and security tooling. The confirmed product direction is Expo/React Native,
-TypeScript and Supabase, without Vercel; no product application is implemented.
+TypeScript and Supabase, without Vercel. Application Foundation V2 added a minimal
+Expo mobile app (guest entry, phone OTP sign-in, Client/Worker mode gates); no
+business features, Kael runtime or release exist. See the
+[mobile application guide](mobile-application.md).
 
 ## Repository identity
 
@@ -28,9 +31,9 @@ Deploy-phase owner decision. Development/testing use Supabase Local, without a
 Staging Project or Production writes.
 
 The [foundation contracts](foundation-contracts.md) describe environment inputs,
-security boundaries and API conventions. There is no application environment loader
-or `.env.example` yet: the tooling needs no dotenv file, and the App's variable
-names/storage belong to its real consumer. Missing App structure, BPMN, UI, SDK,
+security boundaries and API conventions. The repository tooling needs no dotenv
+file; the mobile app's public variables are documented in `apps/mobile/.env.example`
+and the [mobile application guide](mobile-application.md). Missing BPMN, UI design,
 business permissions and release design are **OUT OF SCOPE**, not foundation blockers.
 
 The [implementation preparation](architecture.md#entry-into-application-implementation)

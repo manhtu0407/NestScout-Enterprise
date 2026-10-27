@@ -1,9 +1,11 @@
 # Application direction and architecture decisions
 
-Status: **ENGINEERING FOUNDATION V1; APPLICATION IMPLEMENTATION OUT OF SCOPE**.
-The owner confirmed the direction on 2026-10-25 and refined the decisions below
-on 2026-10-27. This document records decisions and implementation
-prerequisites; it authorizes no application scaffold, business schema or release.
+Status: **ENGINEERING FOUNDATION V1 plus APPLICATION FOUNDATION V2 (entry, phone
+sign-in and mode gates only)**. The owner confirmed the direction on 2026-10-25 and
+refined the decisions below on 2026-10-27. This document records decisions and
+implementation prerequisites; it authorizes no business schema, release or Kael
+runtime. The implemented V2 scope is described in
+[the mobile application guide](mobile-application.md).
 The root [AGENTS.md](../AGENTS.md) remains the sole repository-wide engineering policy.
 
 ## Confirmed product direction
@@ -37,7 +39,10 @@ below remain proposals wherever they go beyond these confirmed decisions.
 The Engineering Foundation V1 audit baseline is main
 `98187746fc67ea64848a544b4a938e4c643a807e` (2026-10-27): Node 24/npm
 engineering tooling, isolated Supabase development and generated database types.
-There is no product app, business schema, product auth or runtime Kael agent.
+At that baseline there was no product app, business schema, product auth or
+runtime Kael agent; Application Foundation V2 later added the minimal mobile app,
+phone sign-in and one technical Worker access grant, still with no business
+schema and no Kael runtime.
 The existing native tooling installer supports Windows/Linux x64; macOS tooling
 and native iOS execution have not been verified. Reinspect the implementation
 before a later application task; this baseline is not a product-readiness claim.

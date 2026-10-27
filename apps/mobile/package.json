@@ -1,0 +1,50 @@
+{
+  "name": "@nestscout/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "description": "NestScout Expo application: guest entry, phone OTP sign-in and Client/Worker mode gates.",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "jest --ci",
+    "verify:sdk": "expo install --check"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.118.0",
+    "expo": "58.0.19",
+    "expo-constants": "58.0.13",
+    "expo-linking": "58.0.14",
+    "expo-router": "58.0.26",
+    "expo-secure-store": "58.0.2",
+    "expo-status-bar": "58.0.4",
+    "libphonenumber-js": "1.13.15",
+    "react": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-safe-area-context": "5.10.1",
+    "react-native-screens": "4.30.0",
+    "react-native-url-polyfill": "4.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react-native": "14.1.0",
+    "@types/jest": "30.0.0",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "eslint": "9.39.5",
+    "eslint-config-expo": "58.0.4",
+    "jest": "30.5.2",
+    "jest-expo": "58.0.12",
+    "typescript": "6.0.3"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    },
+    "testMatch": [
+      "<rootDir>/src/**/*.test.ts",
+      "<rootDir>/src/**/*.test.tsx"
+    ]
+  }
+}

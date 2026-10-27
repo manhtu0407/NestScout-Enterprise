@@ -21,9 +21,13 @@ const fixedPaths = new Set([
   '.github/dependabot.yml', '.githooks/pre-commit', '.githooks/commit-msg', '.githooks/pre-push',
   'supabase/.gitignore', 'supabase/config.toml', 'supabase/database.types.ts',
   'supabase/seed.sql', 'supabase/supabase.lock', 'supabase/migrations/.gitkeep',
+  'apps/mobile/package.json', 'apps/mobile/app.json', 'apps/mobile/tsconfig.json', 'apps/mobile/eslint.config.mjs',
+  'apps/mobile/.env.example', 'docs/processes/.gitkeep',
 ]);
 const word = '[a-z0-9]+(?:-[a-z0-9]+)*';
 const segments = `(?:${word}/)*`;
+// Expo Router route groups such as (guest) exist only under src/app, which holds thin route files and layouts.
+const mobileSource = `apps/mobile/src/${segments}`;
 const disposable = /^(?:todo|notes|plan|report|handoff|session-summary|debug|scratch)(?:[-.]|$)/i;
 // Owner-supplied NestScout_Horizon_Restored_Asset_Pack_v1.zip, unchanged 04_android/play_store_512x512.png.
 // Archive SHA-256: d845aa9bf8795ff8ab7f57c17edd29a05fe6e7ba558c80c0d2ede25d0ee65064.
@@ -43,6 +47,8 @@ export function checkPath(file, artifacts = []) {
     }
     return;
   }
+  // The process-document folder stays empty until the owner supplies approved content.
+  if (file.startsWith('docs/processes/')) throw new Error(`docs/processes must contain only an empty .gitkeep: ${JSON.stringify(file)}`);
   const name = path.posix.basename(file);
   if (disposable.test(name)) throw new Error(`Disposable document/source name: ${JSON.stringify(file)}`);
   if (new RegExp(`^scripts/${segments}${word}(?:(?:\\.integration)?\\.(?:test|spec))?\\.mjs$`).test(file)
@@ -51,6 +57,8 @@ export function checkPath(file, artifacts = []) {
     || new RegExp(`^\\.github/(?:workflows/|ISSUE_TEMPLATE/)${word}\\.yml$`).test(file)
     || new RegExp(`^supabase/migrations/[0-9]{14}_[a-z0-9]+(?:_[a-z0-9]+)*\\.sql$`).test(file)
     || new RegExp(`^supabase/tests/database/${segments}${word}\\.test\\.sql$`).test(file)
+    || new RegExp(`^apps/mobile/src/app/(?:(?:${word}|\\(${word}\\))/)*(?:${word}|_layout)\\.tsx$`).test(file)
+    || (!file.startsWith('apps/mobile/src/app/') && new RegExp(`^${mobileSource}${word}(?:\\.test)?\\.tsx?$`).test(file))
     || new RegExp(`^(?:${word}/)+(?:README\\.md|LICENSE|NOTICE|AUTHORS|CONTRIBUTORS\\.md)$`).test(file)
     || new RegExp(`^\\.(?:agents|claude)/skills/${word}/(?:SKILL\\.md|references/${word}\\.md)$`).test(file)) return;
   throw new Error(`No approved naming convention for path: ${JSON.stringify(file)}`);
@@ -188,6 +196,9 @@ export function checkHygiene(repository = root) {
         }
         inspected.set(file, content);
         continue;
+      }
+      if (file === 'docs/processes/.gitkeep' && content.length !== 0) {
+        throw new Error(`docs/processes/.gitkeep must be exactly 0 bytes: ${state}`);
       }
       if (hasArtifactSignature(content)) throw new Error(`PDF/ZIP content requires its registered artifact extension: ${state} ${file}`);
       const text = new TextDecoder('utf-8', { fatal: true }).decode(content);
