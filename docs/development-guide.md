@@ -99,11 +99,16 @@ git config --local core.hooksPath .githooks
 ```
 
 Hooks can be bypassed and are not server-side protection. Pre-commit checks reserved
-files, hygiene, existing commit metadata and secrets; commit-msg validates the proposed
-message; pre-push verifies identity, the actual pushed ref, metadata and aggregate
-checks. Secret checks retain staged-blob, history and working-file scans. Keep local
-secrets in ignored files. `npm run verify:negative` includes deterministic positive
-and negative hygiene/metadata fixtures in isolated temporary Git repositories.
+files, hygiene, test selection, added source comments, formatting and YAML syntax on
+the staged index, plus existing commit metadata and secrets; commit-msg validates the
+proposed message; pre-push verifies identity, the pushed remote, URL and ref, that no
+tracked changes separate the working tree from the pushed commit, metadata, the
+aggregate checks and the negative fixture suite. Markdown lint and the generated
+database type check read working-tree files, so they run at pre-push and in CI rather
+than as staged-content pre-commit gates. Secret checks retain staged-blob, history and
+working-file scans. Keep local secrets in ignored files. `npm run verify:negative`
+includes deterministic positive and negative hygiene, metadata, comment and
+formatting fixtures in isolated temporary Git repositories.
 
 `npm run check` also runs `verify:foundation`, retaining backup/restore and agent
 evaluation harness regression tests. Its Git environment integration test runs the
@@ -189,7 +194,8 @@ registrations. It rejects filters, globs, masked failures and disabled mandatory
 commands. Discovery includes both test/spec suffixes even when a path violates
 the naming policy; runner targets must pass the canonical hygiene path check.
 The optional pre-commit hook invokes the guard directly with Node so replacing
-its npm entry with a no-op cannot disable that hook gate. It retains the existing
+its npm entry with a no-op cannot disable that hook gate; the comment, formatting and
+YAML gates are invoked the same way. It retains the existing
 hygiene, metadata and secret checks. Hooks can be bypassed; pre-push and CI also
 run the aggregate. Registration proves selection, not assertion quality or agent
 intent.

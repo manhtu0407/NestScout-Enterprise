@@ -12,7 +12,7 @@ import { git, repositoryFiles, blobByteLimit } from './repository-files.mjs';
 import { checkPath, checkAttribution, checkHygiene, sourceComments } from './check-hygiene.mjs';
 import { inspectArtifact, artifactLimits } from './inspect-artifact.mjs';
 import { scanStaged } from './scan-staged.mjs';
-import { checkBranch, checkMessage, checkMetadata, checkPullRequest, checkCommitRange, checkPush } from './check-metadata.mjs';
+import { checkBranch, checkMessage, checkMetadata, checkPullRequest, checkCommitRange, checkPush, checkRemote, metadataRange } from './check-metadata.mjs';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-hygiene-'));
 after(() => {
@@ -530,4 +530,57 @@ test('actual optional commit-msg hook accepts human metadata and rejects an AI t
     const result = spawnSync('git', ['-c', 'core.hooksPath=.githooks', 'hook', 'run', 'commit-msg', '--', message], { cwd: root, env: gitEnvironment(), encoding: 'utf8' });
     assert.equal(result.status, expected, result.stderr);
   }
+});
+
+const acceptedRemote = ['origin', 'https://github.com/manhtu0407/NestScout-Enterprise.git'];
+function pushFixture() {
+  const context = fixture();
+  context.run(['commit', '--quiet', '--allow-empty', '-m', 'chore: valid candidate']);
+  const head = context.run(['rev-parse', 'HEAD']).trim();
+  const ref = 'refs/heads/codex/hygiene-fixture';
+  return { ...context, head, line: `${ref} ${head} ${ref} ${'0'.repeat(40)}\n` };
+}
+
+test('pre-push accepts only the origin remote of this repository, by name and exact URL', () => {
+  const { repository, line } = pushFixture();
+  for (const url of ['https://github.com/manhtu0407/NestScout-Enterprise.git', 'https://github.com/manhtu0407/NestScout-Enterprise',
+    'git@github.com:manhtu0407/NestScout-Enterprise.git']) {
+    assert.doesNotThrow(() => checkPush(repository, line, ['origin', url]), url);
+  }
+  for (const remote of [['upstream', acceptedRemote[1]], ['origin', 'https://github.com/other/NestScout-Enterprise.git'],
+    ['origin', 'https://github.com/manhtu0407/NestScout-Enterprise-fork.git'], ['origin', `${acceptedRemote[1]}/`],
+    ['origin', 'http://github.com/manhtu0407/NestScout-Enterprise.git'], [acceptedRemote[1], acceptedRemote[1]], ['origin'], []]) {
+    assert.throws(() => checkPush(repository, line, remote), /Push target must be the origin remote/, JSON.stringify(remote));
+  }
+  assert.throws(() => checkRemote(), /Push target must be the origin remote/);
+});
+
+test('pre-push refuses staged or unstaged tracked changes that local checks would not describe, but not untracked files', () => {
+  const { repository, run, write, line } = pushFixture();
+  write('scripts/untracked.mjs', 'export const untracked = true;\n');
+  assert.doesNotThrow(() => checkPush(repository, line, acceptedRemote));
+  write('scripts/example.mjs', 'export const valid = false;\n');
+  assert.throws(() => checkPush(repository, line, acceptedRemote), /Tracked changes exist/);
+  run(['add', '--', 'scripts/example.mjs']);
+  assert.throws(() => checkPush(repository, line, acceptedRemote), /Tracked changes exist/);
+  write('scripts/example.mjs', 'export const valid = true;\n');
+  run(['add', '--', 'scripts/example.mjs']);
+  assert.doesNotThrow(() => checkPush(repository, line, acceptedRemote));
+});
+
+test('metadata ranges expose the exact local and hosted revisions that the quality gates inspect', () => {
+  const { repository, run } = fixture();
+  assert.deepEqual(metadataRange(repository, {}), { base: 'refs/remotes/origin/main', head: 'HEAD' });
+  const base = run(['rev-parse', 'HEAD']).trim();
+  run(['commit', '--quiet', '--allow-empty', '-m', 'chore: valid candidate']);
+  const head = run(['rev-parse', 'HEAD']).trim();
+  const file = path.join(directory, 'range-event.json');
+  const event = pullRequest(base, head);
+  writeFileSync(file, JSON.stringify(event));
+  assert.deepEqual(metadataRange(repository, { GITHUB_EVENT_PATH: file, GITHUB_EVENT_NAME: 'pull_request' }), { base, head, automation: false });
+  writeFileSync(file, JSON.stringify({ repository: event.repository, ref: 'refs/heads/main', before: base, after: head }));
+  assert.deepEqual(metadataRange(repository, { GITHUB_EVENT_PATH: file, GITHUB_EVENT_NAME: 'push' }), { base: base, head });
+  assert.throws(() => metadataRange(repository, { GITHUB_EVENT_PATH: file, GITHUB_EVENT_NAME: 'schedule' }), /Unsupported metadata event/);
+  run(['update-ref', '-d', 'refs/remotes/origin/main']);
+  assert.throws(() => metadataRange(repository, {}));
 });

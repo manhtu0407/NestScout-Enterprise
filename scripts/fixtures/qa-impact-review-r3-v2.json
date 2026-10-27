@@ -15,6 +15,9 @@
     ".agents/skills/skill-lifecycle/SKILL.md": "d251fd2a322c91960d7f34cae710a005fe71cb30b06f0652861b1c12df8ef3d5",
     ".agents/skills/skill-lifecycle/references/adoption-review.md": "9163d9dd8155c1696e5dbaaffeff1fa33eea824e27d5bcdab178d60190284e3d"
   },
+  "deliveredPolicy": {
+    "AGENTS.md": "71be4b7a531996b4456c475e563cd2bbc6d007444c8ed3b51b29b1dffb62961b"
+  },
   "families": {
     "records": {
       "file": "scripts/repository-files.mjs",

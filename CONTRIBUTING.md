@@ -107,15 +107,17 @@ parsed with Acorn so test strings and regular expressions are not treated as com
 TypeScript (`.ts`, `.mts`, `.cts`, declarations and `.tsx`) uses the pinned compiler's
 native syntax tree to exclude literal/JSX text spans, then its scanner to collect
 inline and multiline comments, including comments inside type-only declarations.
-This does not expand the approved repository filename categories. Other configuration
-formats receive line-leading comment checks; Markdown
+This does not expand the approved repository filename categories. SQL, YAML, TOML,
+JSONC and the `.githooks/` shell scripts use lexical comment scanners that skip quoted
+text, dollar-quoted delimiters, block scalars and URL fragments (YAML uses the `yaml`
+parser's syntax tree). JSON files receive line-leading checks; Markdown
 and legal/contributor records receive signature-line checks. Known AI trailers,
 promotional signatures, explicit role signatures and AI self-introductions fail.
-There is no blanket comment ban or automatic deletion. Reviewers must assess narrative
-or redundant comments, arbitrary claims and paraphrases, useful technical comments,
-legitimate provenance, actual authorship and authorization. A justified exception
-needs a narrow reviewed rule and positive/negative fixtures, not a scanner-disable
-comment or an entire excluded directory. Factual human trailers remain accepted.
+Existing comments are never deleted automatically. Reviewers must still assess
+arbitrary claims and paraphrases, legitimate provenance, actual authorship and
+authorization. A justified exception needs a narrow reviewed rule and positive/negative
+fixtures, not a scanner-disable comment or an entire excluded directory. Factual human
+trailers remain accepted.
 
 `check:metadata` checks local commits absent from `origin/main`; fetch that ref before
 checking. CI checks every commit in the event's exact range and the current PR title,
@@ -132,6 +134,60 @@ deletions; exceptional operations still need the owner's explicit authorization.
 The referenced Issue must actually cover the change. The static guard checks reference
 syntax, not GitHub existence or relevance; do not reuse an unrelated Issue. Creating
 an Issue or PR still requires separate owner authorization.
+
+## Source comments and formatting
+
+Do not add comments to source or executable configuration files: no explanatory or
+inline notes, block or documentation comments, `TODO`/`FIXME`/`HACK` annotations, or
+lint/typecheck suppression directives. Express intent through names, types, tests and
+structure. `npm run check:comments` compares each proposed state with its base and
+fails on any comment that the base does not already contain in the same file: the
+committed range (merge base to `HEAD`, or the exact pull request or push range in
+hosted CI), the staged index against `HEAD`, and the working tree against `HEAD`.
+Unchanged, moved and reindented comments pass, renamed files keep their comments, and an
+edited comment counts as new. The staged index is judged on its own blobs, so a clean
+working file cannot hide a staged comment.
+
+Only these pass automatically:
+
+- Technically mandatory directives: a leading shebang line, TypeScript triple-slash
+  `reference` and `amd-*` directives before any code, JSX pragmas (`@jsx`, `@jsxFrag`,
+  `@jsxImportSource`, `@jsxRuntime`), and the version tag (for example `# v7` or
+  `# v7.1.2`) that Dependabot maintains after a full-SHA `uses:` pin in workflow YAML.
+- Legally required notices: `Copyright <year> <holder>` and
+  `SPDX-License-Identifier: <expression>`.
+- The machine-generated `supabase/database.types.ts`, which `db:types:check` verifies
+  by regeneration.
+
+Anything else needs the owner's explicit approval, recorded in the reviewed
+`package.json` manifest as `repositoryHygiene.commentExceptions` entries with `file`,
+`text` (the exact comment), `reason` and `approval`. Each entry authorizes one
+occurrence in that file, in the Git state where it appears. Agents never add their own
+exception, and suppression directives are never treated as mandatory. A new source
+language needs a comment inspector in `scripts/check-hygiene.mjs` in the same change as
+its naming rule.
+
+The gate inspects JavaScript, TypeScript, SQL, YAML (including shell inside `run:` block
+scalars), TOML, JSONC and the `.githooks/` scripts. Markdown, JSON data and plain
+configuration files such as `.gitignore` are not source files for it, and embedded
+languages other than workflow `run:` shell (for example a `github-script` body) are not
+parsed. It cannot recognize narrative that is moved into strings, identifiers or
+documentation, so human review of usefulness and provenance still applies.
+
+`npm run check:format` is a check-only `.editorconfig` gate over the index and working
+files: UTF-8 without a byte order mark, LF line endings, a final newline, no trailing
+whitespace and no tab indentation. Indent width is not enforced. Binary types, empty
+placeholder files and the generated database types are skipped. It never rewrites files;
+fix the reported lines and rerun.
+
+The optional pre-commit hook runs `check-comments.mjs --staged`, `check-format.mjs` and
+`check-yaml.mjs` directly with Node beside the existing gates. The pre-push hook also
+verifies that the push goes to `origin` at this repository's URL, refuses staged or
+unstaged tracked changes so that local results describe the pushed commit, and runs
+`npm run check` and `npm run verify:negative`. Hosted CI runs `check:comments` and
+`check:format` as separate steps of the existing `Repository checks` job before the
+aggregate, on the exact pull request or push range; branch protection and triggers are
+unchanged. Local hooks remain bypassable, so the hosted steps are the independent gate.
 
 ## Open and review a PR
 

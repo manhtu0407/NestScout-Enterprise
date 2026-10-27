@@ -9,12 +9,15 @@ export const repositoryIdentity = Object.freeze({
   fullName: 'manhtu0407/NestScout-Enterprise', id: 1432052547,
   account: 'manhtu0407', defaultBranch: 'main', private: false,
 });
+export const acceptedOriginUrls = new Set([
+  `https://github.com/${repositoryIdentity.fullName}.git`, `https://github.com/${repositoryIdentity.fullName}`,
+  `git@github.com:${repositoryIdentity.fullName}.git`,
+]);
 export function verifyRepository() {
   const expected = repositoryIdentity.fullName;
-  const accepted = new Set([`https://github.com/${expected}.git`, `https://github.com/${expected}`, `git@github.com:${expected}.git`]);
   for (const direction of [[], ['--push']]) {
     const urls = run('git', ['remote', 'get-url', ...direction, '--all', 'origin']).split(/\r?\n/);
-    if (urls.some(url => !accepted.has(url))) throw new Error('Unexpected origin URL; stop before any remote write.');
+    if (urls.some(url => !acceptedOriginUrls.has(url))) throw new Error('Unexpected origin URL; stop before any remote write.');
   }
   const repo = JSON.parse(run('gh', ['api', `repos/${expected}`]));
   const user = JSON.parse(run('gh', ['api', 'user']));

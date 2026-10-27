@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
 npm run identity
-node scripts/check-metadata.mjs --pre-push
+node scripts/check-metadata.mjs --pre-push "$@"
 npm run check
+npm run verify:negative

@@ -8,6 +8,8 @@ import { root, toolPath } from './tool-path.mjs';
 import { scanStaged } from './scan-staged.mjs';
 import { checkReservedFiles } from './check-reserved-files.mjs';
 import { checkTestArtifacts } from './check-test-artifacts.mjs';
+import { checkStagedComments } from './check-comments.mjs';
+import { checkFormat } from './check-format.mjs';
 import { gitEnvironment } from './git-environment.mjs';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-negative-'));
@@ -205,6 +207,26 @@ try {
   writeFileSync(path.join(stagedRepo, 'example.txt'), 'clean again\n');
   assert.throws(() => scanStaged(stagedRepo, 'pipe'), error => error.status === 1 && !(String(error.stdout) + String(error.stderr)).includes(token));
   console.log('PASS: staged secret rejected even when working file is clean.');
+  const policyRepo = path.join(directory, 'policy-regression');
+  mkdirSync(policyRepo);
+  const policyGit = args => execFileSync('git', args, { cwd: policyRepo, env: gitEnvironment(), stdio: 'pipe' });
+  const policyFile = path.join(policyRepo, 'example.mjs');
+  policyGit(['init', '--quiet']);
+  writeFileSync(policyFile, 'export const value = 1;\n');
+  policyGit(['add', 'example.mjs']);
+  policyGit(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'clean baseline']);
+  assert.doesNotThrow(() => checkStagedComments(policyRepo));
+  assert.doesNotThrow(() => checkFormat(policyRepo));
+  writeFileSync(policyFile, 'export const value = 1; // narrate\n');
+  policyGit(['add', 'example.mjs']);
+  writeFileSync(policyFile, 'export const value = 1;\n');
+  assert.throws(() => checkStagedComments(policyRepo), /Added source comments are prohibited \(1\)/);
+  console.log('PASS: staged source comment rejected even when working file is clean.');
+  writeFileSync(policyFile, 'export const value = 1; \n');
+  policyGit(['add', 'example.mjs']);
+  writeFileSync(policyFile, 'export const value = 1;\n');
+  assert.throws(() => checkFormat(policyRepo), /\.editorconfig violations \(1\)/);
+  console.log('PASS: staged formatting violation rejected even when working file is clean.');
 } finally {
   assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
   assert.ok(!lstatSync(directory).isSymbolicLink());

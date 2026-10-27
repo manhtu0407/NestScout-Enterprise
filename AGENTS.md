@@ -64,6 +64,7 @@ import architecture, commands, credentials, or conventions from another reposito
 | Tool pins/hashes, shared paths, installation | `scripts/tools.json`, `scripts/tool-path.mjs`, `scripts/install-tools.mjs` |
 | Identity and reserved-file checks | `scripts/verify-repository.mjs`, `scripts/check-reserved-files.mjs` |
 | Naming, attribution and Git metadata | `scripts/check-hygiene.mjs`, `scripts/check-metadata.mjs` |
+| Source comment policy and formatting | `scripts/check-hygiene.mjs` (comment extraction), `scripts/check-comments.mjs`, `scripts/check-format.mjs` |
 | Index and working-file inspection | `scripts/repository-files.mjs` |
 | Secret scanning, including staged blobs | `scripts/check-tools.mjs`, `scripts/scan-staged.mjs` |
 | YAML validation and invalid-fixture verification | `scripts/check-yaml.mjs`, `scripts/verify-negative.mjs` |
@@ -138,11 +139,15 @@ checksum-verified tools. Native tooling currently supports Windows/Linux x64.
 Setup is not a read-only check or a choice of application stack.
 
 Run `npm run check` and `npm run verify:negative` before delivery. The aggregate
-checks reserved files, hygiene, metadata, Markdown, YAML, workflows, secrets and
-local Supabase contracts/types. Existing negative
+checks reserved files, hygiene, added source comments, formatting, metadata, Markdown,
+YAML, workflows, secrets and local Supabase contracts/types. Existing negative
 fixtures use isolated temporary repositories/files. Report exact failures;
 component passes do not turn an aggregate failure into PASS. Add meaningful
 positive and negative tests when changing enforcement.
+
+The optional pre-commit hook runs the staged-content gates and the optional pre-push
+hook verifies the pushed remote and commit, then the aggregate and negative suites.
+Hosted CI runs the comment and formatting gates independently; hooks are bypassable.
 
 Test changed behavior and its real consumers proportionately to risk. Do not
 invent absent build/typecheck/unit/e2e commands or demand unrelated database checks.
@@ -163,9 +168,21 @@ hooks and successful workflows alone do not prove server-side enforcement.
 
 - Follow `.editorconfig` and `.gitattributes`: UTF-8, LF, final newline, two-space
   indentation, no trailing whitespace. Keep code/dependency changes focused.
-- Do not add unsolicited author/AI credits, narration comments, or TODO/NOTES/PLAN/
-  report files. Preserve legal notices and comments explaining useful invariants
-  or non-obvious reasons.
+- Do not add unsolicited author/AI credits or TODO/NOTES/PLAN/report files. Preserve
+  existing legal notices and comments explaining useful invariants or non-obvious
+  reasons; never delete or rewrite them to satisfy the source comment rule.
+- Source comments: do not add comments to source or executable configuration files.
+  That excludes explanatory or inline notes, block and documentation comments
+  (including AI-generated JSDoc), TODO/FIXME/HACK annotations and lint or typecheck
+  suppression directives. Express intent through names, types, tests and structure.
+  Only technically mandatory directives (a shebang, TypeScript triple-slash
+  references, JSX pragmas, the Dependabot version tag on a SHA-pinned action),
+  legally required copyright or SPDX notices, the generated
+  `supabase/database.types.ts`, and exceptions the owner approved in the current task
+  and recorded in `repositoryHygiene.commentExceptions` may be added. Never
+  self-approve an exception or add a scanner-disable comment. The checks compare the
+  committed range, staged index and working tree with their bases, so unchanged
+  comments pass and an edited comment counts as new. CONTRIBUTING lists the details.
 - New source files need one responsibility, a real caller or verification consumer,
   and a location/name consistent with the current module. Use the enforced naming
   categories in CONTRIBUTING; approve a real new module's convention before adding

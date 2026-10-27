@@ -172,7 +172,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === adapter) {
   else if (action === 'prepare' && args.length === 0) {
     assert.equal(pack.status, 'DESIGN_ONLY_NO_SCORED_RUNS');
     for (const [file, expected] of Object.entries(pack.harnessFiles)) assert.equal(sha(readFileSync(path.join(root, file))), expected, 'Pinned harness drift');
-    assert.equal(sha(readFileSync(path.join(root, 'AGENTS.md'))), pack.sourceFiles['AGENTS.md'], 'Harness policy drift');
+    assert.equal(sha(readFileSync(path.join(root, 'AGENTS.md'))), pack.deliveredPolicy['AGENTS.md'], 'Harness policy drift');
     // The fixture README belongs to the pinned source, independently of the delivered root README.
     benchmarkSource('README.md');
     const before = sourceSnapshot();

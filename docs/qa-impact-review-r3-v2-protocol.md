@@ -83,7 +83,9 @@ node scripts/qa-impact-review-benchmark.mjs prepare
 Run from a checkout containing the delivery commit, with Node 24 and Git available,
 and the pinned source Git objects present. No network, npm install, new package or
 API key is needed. Both root files and the imported harness/shared helpers must
-match their pinned hashes; drift stops preparation. Case modules, original notices,
+match their pinned hashes; drift stops preparation. The delivered root policy is pinned
+separately as `deliveredPolicy` and is re-pinned only with an owner-approved policy edit;
+the preregistered source pins stay unchanged. Case modules, original notices,
 policy, README and the unchanged existing lifecycle files are read from the pin,
 not an uncommitted source variant. Do not copy all research docs or expected labels
 into the model checkout. The ordinary harness arithmetic example remains outside

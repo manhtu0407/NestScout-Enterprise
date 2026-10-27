@@ -6,7 +6,7 @@ import { root } from './tool-path.mjs';
 
 const runners = ['verify:foundation', 'verify:supabase', 'verify:negative', 'db:mcp:test'];
 const requiredChecks = [
-  'check:reserved', 'check:hygiene', 'check:metadata', 'lint:markdown',
+  'check:reserved', 'check:hygiene', 'check:comments', 'check:format', 'check:metadata', 'lint:markdown',
   'lint:yaml', 'lint:workflows', 'scan:secrets', 'verify:supabase',
   'typecheck:db', 'verify:foundation', 'check:test-selection', 'check:capabilities',
 ];
