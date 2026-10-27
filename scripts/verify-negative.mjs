@@ -236,7 +236,7 @@ try {
   assert.throws(() => checkCommentRevision(policyRepo, 'refs/remotes/origin/main', 'HEAD'), /Added source comments are prohibited \(1\)/);
   console.log('PASS: comment exception added in the same changeset rejected.');
   writeFileSync(policyFile, 'export const value = 1;\n');
-  policyGit(['commit', '--quiet', '-a', '-m', 'fix: remove the comment']);
+  policyGit(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-a', '-m', 'fix: remove the comment']);
   assert.equal(execFileSync('git', ['diff', 'refs/remotes/origin/main', 'HEAD', '--', 'example.mjs'], { cwd: policyRepo, env: gitEnvironment(), encoding: 'utf8' }), '');
   assert.throws(() => checkCommentRevision(policyRepo, 'refs/remotes/origin/main', 'HEAD'), /Added source comments are prohibited \(1\)/);
   console.log('PASS: comment added by one commit and removed by a later commit rejected.');
