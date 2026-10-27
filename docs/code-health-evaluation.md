@@ -242,13 +242,24 @@ author's check of one case, not independent review.
 
 ### Platform coverage
 
-Everything was executed on Windows 11 with Node.js 24.19.0. Linux execution was not
-performed: the host has Docker Desktop and a WSL2 Ubuntu distribution, but neither has
-Node.js, and installing it needs a download that was not authorized. What was verified
-statically: `package-lock.json` carries the `linux-x64` bindings for Knip's parser and
-resolver and for the native TypeScript compiler used by the hygiene gate and the
-reviewer. A Linux run needs `npm ci --ignore-scripts` and the two new test files inside a
-`node:24` container, and hosted CI remains the authoritative check.
+Measured on Windows 11 with Node.js 24.19.0, and again on Linux in a
+`node:24-bookworm` container (Node.js 24.22.1, npm 11.19.1, x86_64) built from a Git
+bundle of the full history, so no Windows `node_modules` were reused. On Linux,
+`npm ci --ignore-scripts`, `npm run tools:install`, the two evaluator test files (25
+tests), `npm run check` (foundation 114 tests, mobile 272), `npm run verify:negative`
+(151) and `npm run health:dead-code` all passed, and the dead-code items match
+Windows.
+
+The first Linux pass found a real defect in this change: `review-diff.mjs` located the
+npm CLI only in the Windows layout, so recorded commands failed whenever it was not
+started through npm. It now also looks in the Linux layout, with a regression test that
+clears `npm_execpath`. Two other first-pass failures were environmental: `npm run
+identity` needs the `gh` CLI and the GitHub API, and was not run on Linux; three
+benchmark tests need a pinned commit that exists only outside `origin/main`, which a
+history-limited clone lacks. Hosted CI checks out with full history.
+
+Not covered: macOS, arm64, a real GitHub-hosted runner, and the native device. Hosted CI
+remains the authoritative check.
 
 ## Independent refactor acceptance protocol
 
