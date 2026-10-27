@@ -1,3 +1,4 @@
+import { workflowErrorFrom } from '@/features/shared';
 import { authenticatedRequest } from '@/lib/authenticated-rest';
 
 export type ServiceRequest = { id: string; description: string; created_at: string };
@@ -31,7 +32,7 @@ export async function submitRequest(userId: string, key: string, description: st
     signal,
     body: JSON.stringify({ p_submission_key: key, p_description: description }),
   });
-  if (!response.ok) throw new Error('Submission outcome unavailable');
+  if (!response.ok) throw await workflowErrorFrom(response);
   const result: unknown = await response.json();
   if (typeof result !== 'string') throw new Error('Invalid submission response');
   return result;
@@ -58,7 +59,7 @@ export async function acceptQuote(userId: string, quoteId: string, version: numb
     signal,
     body: JSON.stringify({ p_quote_id: quoteId, p_version: version }),
   });
-  if (!response.ok) throw new Error('Acceptance outcome unavailable');
+  if (!response.ok) throw await workflowErrorFrom(response);
   const result: unknown = await response.json();
   if (result !== quoteId) throw new Error('Invalid acceptance response');
   return result;
@@ -68,7 +69,7 @@ export async function rejectQuote(userId: string, quoteId: string, version: numb
   const response = await authenticatedRequest(userId, 'rpc/reject_service_quote', {
     method: 'POST', signal, body: JSON.stringify({ p_quote_id: quoteId, p_version: version }),
   });
-  if (!response.ok) throw new Error('Rejection outcome unavailable');
+  if (!response.ok) throw await workflowErrorFrom(response);
   const result: unknown = await response.json();
   if (result !== quoteId) throw new Error('Invalid rejection response');
   return result;

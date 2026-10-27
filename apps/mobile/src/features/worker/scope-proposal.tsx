@@ -2,7 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import { useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 
-import { ActionButton, BodyText, ErrorText } from '@/features/shared';
+import { ActionButton, BodyText, DraftRecovery, ErrorText, failureMessage, isDefinitiveFailure, useDraftRecovery } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
 import { proposeScope, type Job } from './worker-repository';
@@ -17,6 +17,7 @@ export function ScopeProposal({ userId, job, hasPending, onRefresh }: {
   const [rationale, setRationale] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   const [ready, setReady] = useState(false);
+  const { attempt, unreadable, setUnreadable, retry } = useDraftRecovery();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const active = useRef(true);
@@ -26,6 +27,7 @@ export function ScopeProposal({ userId, job, hasPending, onRefresh }: {
 
   useEffect(() => {
     active.current = true;
+    setUnreadable(false);
     deviceStorage.getItem(storageKey).then((raw) => {
       if (!active.current) return;
       if (raw !== null) {
@@ -45,13 +47,28 @@ export function ScopeProposal({ userId, job, hasPending, onRefresh }: {
       }
       setReady(true);
     }).catch(() => {
-      if (active.current) setMessage('Could not read the pending scope proposal on this device.');
+      if (active.current) {
+        setUnreadable(true);
+        setMessage('Could not read the pending scope proposal on this device.');
+      }
     });
     return () => {
       active.current = false;
       controller.current?.abort();
     };
-  }, [storageKey]);
+  }, [storageKey, attempt, setUnreadable]);
+
+  const discardSaved = () => {
+    void deviceStorage.removeItem(storageKey).then(() => {
+      if (!active.current) return;
+      setUnreadable(false);
+      setPending(null);
+      setMessage(null);
+      setReady(true);
+    }, () => {
+      if (active.current) setMessage('Could not discard the saved draft on this device.');
+    });
+  };
 
   const submit = async () => {
     if (!ready || running.current || (hasPending && !pending)) return;
@@ -79,8 +96,11 @@ export function ScopeProposal({ userId, job, hasPending, onRefresh }: {
         setRationale('');
         setMessage('Fixture proposal recorded. Refresh to see the current Customer decision.');
       }
-    } catch {
-      if (active.current) setMessage('Proposal was not confirmed. Retry the same terms or refresh the job.');
+    } catch (error) {
+      if (active.current && isDefinitiveFailure(error)) {
+        await deviceStorage.removeItem(storageKey).then(() => { if (active.current) setPending(null); }, () => undefined);
+      }
+      if (active.current) setMessage(failureMessage(error, 'Proposal was not confirmed. Retry the same terms or refresh the job.'));
     } finally {
       running.current = false;
       if (active.current) {
@@ -99,6 +119,7 @@ export function ScopeProposal({ userId, job, hasPending, onRefresh }: {
       <TextInput accessibilityLabel="Reason for change" value={rationale} onChangeText={setRationale} editable={ready && !pending && !busy && !hasPending} multiline maxLength={4000} />
       <ActionButton secondary label={pending ? 'Retry scope proposal' : 'Propose scope change'} onPress={() => void submit()}
         disabled={!ready || (!pending && (hasPending || job.stage !== 'working'))} busy={busy} />
+      {unreadable ? <DraftRecovery onRetry={() => { setMessage(null); retry(); }} onDiscard={discardSaved} /> : null}
       {message ? <ErrorText>{message}</ErrorText> : null}
     </>
   );

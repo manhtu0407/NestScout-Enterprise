@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
-import { ActionButton, BodyText, ErrorText, KaelStatus, type JobReport, type ScopeChange } from '@/features/shared';
+import { ActionButton, BodyText, ErrorText, KaelStatus, failureMessage, type JobReport, type ScopeChange } from '@/features/shared';
 
 import { acceptOffer, advanceJob, declineOffer, readWorkerSnapshot, type Job, type Offer } from './worker-repository';
 import { WorkSubmission } from './work-submission';
@@ -82,8 +82,8 @@ export function WorkerJobs({ userId }: { userId: string }) {
     try {
       await operation(controller.signal);
       if (mounted.current) setMessage('Action recorded. Refreshing the current state.');
-    } catch {
-      if (mounted.current) setMessage('The action was not confirmed. Refresh the current state before retrying.');
+    } catch (error) {
+      if (mounted.current) setMessage(failureMessage(error, 'The action was not confirmed. Refresh the current state before retrying.'));
     } finally {
       running.current = false;
       if (mounted.current) {
@@ -123,9 +123,10 @@ export function WorkerJobs({ userId }: { userId: string }) {
           ) : null}
           {job.stage === 'arrived' && reports.some((report) => report.job_id === job.job_id && report.kind === 'customer_absent')
             ? <BodyText>A no-answer report needs an approved recovery process before work can start.</BodyText> : null}
-          {job.stage !== 'paused' && job.stage !== 'completed' ? (
+          {['assigned', 'en_route', 'arrived', 'working'].includes(job.stage) ? (
             <ActionButton secondary label="Pause for safety" disabled={busy} onPress={() => void run((signal) => advanceJob(userId, job, 'paused', signal))} />
-          ) : job.stage === 'paused' ? <BodyText>Work is paused. Recovery requires an approved safety process.</BodyText> : null}
+          ) : job.stage === 'paused' ? <BodyText>Work is paused. Recovery requires an approved safety process.</BodyText>
+            : job.stage === 'submitted' ? <BodyText>Waiting for the Customer to review the submitted work.</BodyText> : null}
           <ScopeProposal userId={userId} job={job} hasPending={changes.some((change) => change.job_id === job.job_id && change.decision === 'pending')} onRefresh={() => void reload()} />
           <WorkSubmission userId={userId} job={job} scopePending={changes.some((change) => change.job_id === job.job_id && change.decision === 'pending')} onSettled={() => void reload()} />
           <WorkerReport userId={userId} job={job} onRefresh={() => void reload()} />

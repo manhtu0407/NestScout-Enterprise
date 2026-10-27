@@ -254,6 +254,15 @@ test('real local Auth and REST enforce participant ownership', { timeout: 240000
       assert.notEqual(fakePayment.status, 200);
       const privateCase = await call(`/rest/v1/service_cases?job_id=eq.${job}&select=id`, users[1].token);
       assert.deepEqual(await privateCase.json(), []);
+      for (const token of [users[0].token, users[1].token]) {
+        for (const column of ['decision_reason', 'decided_by', 'submission_key', '*']) {
+          const denied = await call(`/rest/v1/service_submissions?job_id=eq.${job}&select=${encodeURIComponent(column)}`, token);
+          assert.equal(denied.status, 403);
+        }
+        const visible = await call(`/rest/v1/service_submissions?job_id=eq.${job}&select=id,decision,correction_note`, token);
+        assert.equal(visible.status, 200);
+        assert.equal((await visible.json()).length, 1);
+      }
       const context = await rpc(users[0].token, 'kael_read_context', { p_kind: 'customer_request', p_resource_id: requestId });
       assert.equal(context.status, 200);
       assert.equal((await context.json()).state, 'request_received');

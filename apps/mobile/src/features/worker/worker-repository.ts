@@ -1,5 +1,5 @@
 import { authenticatedRequest } from '@/lib/authenticated-rest';
-import { readJobReports, readScopeChanges, type JobReport, type ScopeChange } from '@/features/shared';
+import { readJobReports, readScopeChanges, workflowErrorFrom, type JobReport, type ScopeChange } from '@/features/shared';
 
 export type Offer = {
   invitation_id: string;
@@ -22,7 +22,7 @@ export type Job = {
 
 async function rpc(userId: string, name: string, body: object, signal: AbortSignal): Promise<unknown> {
   const response = await authenticatedRequest(userId, `rpc/${name}`, { method: 'POST', signal, body: JSON.stringify(body) });
-  if (!response.ok) throw new Error('Worker operation unavailable');
+  if (!response.ok) throw await workflowErrorFrom(response);
   return response.json();
 }
 

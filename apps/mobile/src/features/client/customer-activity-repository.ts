@@ -1,5 +1,5 @@
 import { authenticatedRequest } from '@/lib/authenticated-rest';
-import { readJobReports, readScopeChanges, type JobReport, type ScopeChange } from '@/features/shared';
+import { readJobReports, readScopeChanges, workflowErrorFrom, type JobReport, type ScopeChange } from '@/features/shared';
 
 export type CustomerJob = { id: string; request_id: string; stage: string; version: number };
 export type Submission = { id: string; job_id: string; evidence: string; decision: string };
@@ -57,7 +57,7 @@ export async function readCustomerActivity(userId: string, requestIds: string[],
 
 async function rpc(userId: string, name: string, body: object, signal: AbortSignal): Promise<void> {
   const response = await authenticatedRequest(userId, `rpc/${name}`, { method: 'POST', signal, body: JSON.stringify(body) });
-  if (!response.ok) throw new Error('Decision unavailable');
+  if (!response.ok) throw await workflowErrorFrom(response);
   const result: unknown = await response.json();
   if (typeof result !== 'string') throw new Error('Invalid result');
 }

@@ -2,7 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import { useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 
-import { ActionButton, BodyText, ErrorText } from '@/features/shared';
+import { ActionButton, BodyText, DraftRecovery, ErrorText, failureMessage, isDefinitiveFailure, useDraftRecovery } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
 import { submitWork, type Job } from './worker-repository';
@@ -13,6 +13,7 @@ export function WorkSubmission({ userId, job, scopePending = false, onSettled }:
   const [evidence, setEvidence] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   const [ready, setReady] = useState(false);
+  const { attempt, unreadable, setUnreadable, retry } = useDraftRecovery();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const active = useRef(true);
@@ -22,6 +23,7 @@ export function WorkSubmission({ userId, job, scopePending = false, onSettled }:
 
   useEffect(() => {
     active.current = true;
+    setUnreadable(false);
     deviceStorage.getItem(storageKey).then((raw) => {
       if (!active.current) return;
       if (raw !== null) {
@@ -39,13 +41,28 @@ export function WorkSubmission({ userId, job, scopePending = false, onSettled }:
       }
       setReady(true);
     }).catch(() => {
-      if (active.current) setMessage('Could not read the pending work submission on this device.');
+      if (active.current) {
+        setUnreadable(true);
+        setMessage('Could not read the pending work submission on this device.');
+      }
     });
     return () => {
       active.current = false;
       controller.current?.abort();
     };
-  }, [storageKey]);
+  }, [storageKey, attempt, setUnreadable]);
+
+  const discardSaved = () => {
+    void deviceStorage.removeItem(storageKey).then(() => {
+      if (!active.current) return;
+      setUnreadable(false);
+      setPending(null);
+      setMessage(null);
+      setReady(true);
+    }, () => {
+      if (active.current) setMessage('Could not discard the saved draft on this device.');
+    });
+  };
 
   const submit = async () => {
     if (!ready || inFlight.current || (scopePending && !pending)) return;
@@ -70,8 +87,11 @@ export function WorkSubmission({ userId, job, scopePending = false, onSettled }:
         setEvidence('');
         setMessage('Work submission recorded. Refresh for the current Customer decision. Payment is not configured.');
       }
-    } catch {
-      if (active.current) setMessage('Submission was not confirmed. Retry the same evidence or refresh the job.');
+    } catch (error) {
+      if (active.current && isDefinitiveFailure(error)) {
+        await deviceStorage.removeItem(storageKey).then(() => { if (active.current) setPending(null); }, () => undefined);
+      }
+      if (active.current) setMessage(failureMessage(error, 'Submission was not confirmed. Retry the same evidence or refresh the job.'));
     } finally {
       inFlight.current = false;
       if (active.current) {
@@ -89,6 +109,7 @@ export function WorkSubmission({ userId, job, scopePending = false, onSettled }:
       <TextInput accessibilityLabel="Work evidence" value={evidence} onChangeText={setEvidence}
         editable={ready && !pending && !busy && !scopePending} multiline maxLength={4000} />
       <ActionButton label={pending ? 'Retry work submission' : 'Submit work'} onPress={() => void submit()} disabled={!ready || (!pending && (job.stage !== 'working' || scopePending))} busy={busy} />
+      {unreadable ? <DraftRecovery onRetry={() => { setMessage(null); retry(); }} onDiscard={discardSaved} /> : null}
       {message ? <ErrorText>{message}</ErrorText> : null}
     </>
   );

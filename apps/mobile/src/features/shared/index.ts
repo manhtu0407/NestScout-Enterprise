@@ -5,3 +5,6 @@ export { Screen } from './ui/screen';
 export { BodyText, ErrorText, Heading } from './ui/text';
 export { readScopeChanges, type ScopeChange } from './scope-changes';
 export { readJobReports, type JobReport } from './job-reports';
+export { DraftRecovery } from './ui/draft-recovery';
+export { useDraftRecovery } from './use-draft-recovery';
+export { WorkflowError, workflowErrorFrom, failureMessage, isDefinitiveFailure } from './workflow-error';

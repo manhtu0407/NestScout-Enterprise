@@ -2,7 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 
-import { ActionButton, BodyText, ErrorText, type JobReport, type ScopeChange } from '@/features/shared';
+import { ActionButton, BodyText, DraftRecovery, ErrorText, failureMessage, useDraftRecovery, type JobReport, type ScopeChange } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
 import { decideScope, decideSubmission, openAftercare, type CustomerJob, type Submission, type SupportCase } from './customer-activity-repository';
@@ -21,6 +21,7 @@ export function CustomerJobActivity({ userId, job, submissions, cases, changes =
   const [reason, setReason] = useState('');
   const [pendingCase, setPendingCase] = useState<PendingCase | null>(null);
   const [ready, setReady] = useState(false);
+  const { attempt, unreadable, setUnreadable, retry } = useDraftRecovery();
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const active = useRef(true);
@@ -30,6 +31,7 @@ export function CustomerJobActivity({ userId, job, submissions, cases, changes =
 
   useEffect(() => {
     active.current = true;
+    setUnreadable(false);
     deviceStorage.getItem(storageKey).then((raw) => {
       if (!active.current) return;
       if (raw !== null) {
@@ -43,13 +45,28 @@ export function CustomerJobActivity({ userId, job, submissions, cases, changes =
       }
       setReady(true);
     }).catch(() => {
-      if (active.current) setMessage('Could not read the pending support case on this device.');
+      if (active.current) {
+        setUnreadable(true);
+        setMessage('Could not read the pending support case on this device.');
+      }
     });
     return () => {
       active.current = false;
       controller.current?.abort();
     };
-  }, [storageKey]);
+  }, [storageKey, attempt, setUnreadable]);
+
+  const discardSaved = () => {
+    void deviceStorage.removeItem(storageKey).then(() => {
+      if (!active.current) return;
+      setUnreadable(false);
+      setPendingCase(null);
+      setMessage(null);
+      setReady(true);
+    }, () => {
+      if (active.current) setMessage('Could not discard the saved draft on this device.');
+    });
+  };
 
   const run = async (operation: (signal: AbortSignal) => Promise<void>, success: string) => {
     if (running.current) return;
@@ -61,8 +78,8 @@ export function CustomerJobActivity({ userId, job, submissions, cases, changes =
     try {
       await operation(request.signal);
       if (active.current) setMessage(success);
-    } catch {
-      if (active.current) setMessage('The result was not confirmed. Refresh before trying again.');
+    } catch (error) {
+      if (active.current) setMessage(failureMessage(error, 'The result was not confirmed. Refresh before trying again.'));
     } finally {
       running.current = false;
       if (active.current) {
@@ -113,7 +130,7 @@ export function CustomerJobActivity({ userId, job, submissions, cases, changes =
       {changes.map((change) => (
         <Fragment key={change.id}>
           <BodyText>{`Fixture scope change ${change.sequence}: ${change.old_scope} (${change.old_amount_minor} VND) → ${change.new_scope} (${change.new_amount_minor} VND); difference ${change.new_amount_minor - change.old_amount_minor} VND. ${change.rationale}. Status: ${change.decision}`}</BodyText>
-          {change.decision === 'pending' && job.stage === 'working' ? (
+          {change.decision === 'pending' && (job.stage === 'working' || job.stage === 'paused') ? (
             <>
               <ActionButton label="Approve fixture scope" disabled={busy} onPress={() => decideChange(change, 'approved')} />
               <ActionButton secondary label="Reject fixture scope" disabled={busy} onPress={() => decideChange(change, 'rejected')} />
@@ -135,6 +152,7 @@ export function CustomerJobActivity({ userId, job, submissions, cases, changes =
       {(job.stage === 'completed' || pendingCase) ? (
         <ActionButton secondary label={pendingCase ? 'Retry support case' : 'Open support case'} disabled={busy || !ready} onPress={aftercare} />
       ) : null}
+      {unreadable ? <DraftRecovery onRetry={() => { setMessage(null); retry(); }} onDiscard={discardSaved} /> : null}
       {message ? <ErrorText>{message}</ErrorText> : null}
     </>
   );

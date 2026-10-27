@@ -2,7 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import { useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 
-import { ActionButton, BodyText, ErrorText, type JobReport } from '@/features/shared';
+import { ActionButton, BodyText, DraftRecovery, ErrorText, failureMessage, isDefinitiveFailure, useDraftRecovery, type JobReport } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
 import { reportJob, type Job } from './worker-repository';
@@ -13,6 +13,7 @@ export function WorkerReport({ userId, job, onRefresh }: { userId: string; job: 
   const [details, setDetails] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   const [ready, setReady] = useState(false);
+  const { attempt, unreadable, setUnreadable, retry } = useDraftRecovery();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const active = useRef(true);
@@ -22,6 +23,7 @@ export function WorkerReport({ userId, job, onRefresh }: { userId: string; job: 
 
   useEffect(() => {
     active.current = true;
+    setUnreadable(false);
     deviceStorage.getItem(storageKey).then((raw) => {
       if (!active.current) return;
       if (raw !== null) {
@@ -38,13 +40,28 @@ export function WorkerReport({ userId, job, onRefresh }: { userId: string; job: 
       }
       setReady(true);
     }).catch(() => {
-      if (active.current) setMessage('Could not read the pending report on this device.');
+      if (active.current) {
+        setUnreadable(true);
+        setMessage('Could not read the pending report on this device.');
+      }
     });
     return () => {
       active.current = false;
       controller.current?.abort();
     };
-  }, [storageKey]);
+  }, [storageKey, attempt, setUnreadable]);
+
+  const discardSaved = () => {
+    void deviceStorage.removeItem(storageKey).then(() => {
+      if (!active.current) return;
+      setUnreadable(false);
+      setPending(null);
+      setMessage(null);
+      setReady(true);
+    }, () => {
+      if (active.current) setMessage('Could not discard the saved draft on this device.');
+    });
+  };
 
   const submit = async (kind: JobReport['kind']) => {
     if (!ready || running.current) return;
@@ -69,8 +86,11 @@ export function WorkerReport({ userId, job, onRefresh }: { userId: string; job: 
         setDetails('');
         setMessage('Report recorded. No automatic fee, cancellation or rescheduling was applied.');
       }
-    } catch {
-      if (active.current) setMessage('Report was not confirmed. Retry the same details or refresh the job.');
+    } catch (error) {
+      if (active.current && isDefinitiveFailure(error)) {
+        await deviceStorage.removeItem(storageKey).then(() => { if (active.current) setPending(null); }, () => undefined);
+      }
+      if (active.current) setMessage(failureMessage(error, 'Report was not confirmed. Retry the same details or refresh the job.'));
     } finally {
       running.current = false;
       if (active.current) {
@@ -88,6 +108,7 @@ export function WorkerReport({ userId, job, onRefresh }: { userId: string; job: 
       <TextInput accessibilityLabel="Report details" value={details} onChangeText={setDetails} editable={ready && !pending && !busy} multiline maxLength={4000} />
       <ActionButton secondary label={pending ? 'Retry report' : kind === 'delay' ? 'Report delay' : 'Report no answer'}
         disabled={!ready} busy={busy} onPress={() => void submit(kind)} />
+      {unreadable ? <DraftRecovery onRetry={() => { setMessage(null); retry(); }} onDiscard={discardSaved} /> : null}
       {message ? <ErrorText>{message}</ErrorText> : null}
     </>
   );

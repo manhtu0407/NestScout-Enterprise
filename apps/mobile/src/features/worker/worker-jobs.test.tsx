@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
+import { WorkflowError } from '@/features/shared';
+
 import { acceptOffer, advanceJob, declineOffer, readWorkerSnapshot } from './worker-repository';
 import { WorkerJobs } from './worker-jobs';
 
@@ -58,4 +60,23 @@ test('late offers for a previous account are discarded', async () => {
   await render(<WorkerJobs userId="worker-b" />);
   await act(async () => finish({ offers: [offer], jobs: [], changes: [], reports: [] }));
   expect(screen.queryByText(/Offer: Replace part/)).toBeNull();
+});
+
+test('a job awaiting Customer review offers no pause that would strand it', async () => {
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [{ ...job, stage: 'submitted' }], changes: [], reports: [] });
+  await render(<WorkerJobs userId="worker-a" />);
+  await screen.findByText(/stage: submitted/);
+  expect(screen.queryByRole('button', { name: 'Pause for safety' })).toBeNull();
+  expect(screen.getByText('Waiting for the Customer to review the submitted work.')).toBeTruthy();
+});
+
+test('a stale version and a wrong-role refusal are explained differently from a lost connection', async () => {
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [job], changes: [], reports: [] });
+  jest.mocked(advanceJob).mockRejectedValueOnce(new WorkflowError('stale')).mockRejectedValueOnce(new WorkflowError('forbidden'));
+  await render(<WorkerJobs userId="worker-a" />);
+  await screen.findByText(/stage: working/);
+  await fireEvent.press(screen.getByRole('button', { name: 'Pause for safety' }));
+  await screen.findByText(/changed after it was loaded/);
+  await fireEvent.press(screen.getByRole('button', { name: 'Pause for safety' }));
+  await screen.findByText('This action is not available for your account or this item.');
 });

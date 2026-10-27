@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
+import { WorkflowError } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
 import { decideScope, decideSubmission, openAftercare, type CustomerJob, type Submission } from './customer-activity-repository';
@@ -62,4 +63,20 @@ test('Customer sees both fixture scopes and approves the exact version', async (
   await fireEvent.press(screen.getByRole('button', { name: 'Approve fixture scope' }));
   await screen.findByText('Fixture scope decision recorded. No payment is configured.');
   expect(decideScope).toHaveBeenCalledWith('customer-a', 'change', 7, 3, 'approved', expect.anything());
+});
+
+test('a proposal left pending by a safety pause can still be decided', async () => {
+  jest.mocked(decideScope).mockResolvedValue();
+  const change = { id: 'change', job_id: 'job', sequence: 1, old_scope: 'Old', old_amount_minor: 100,
+    new_scope: 'New', new_amount_minor: 150, currency: 'VND' as const, rationale: 'Fixture', decision: 'pending' as const };
+  await render(<CustomerJobActivity userId="customer-a" job={{ ...submitted, stage: 'paused', version: 8 }} submissions={[]} cases={[]} changes={[change]} onRefresh={() => undefined} />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Reject fixture scope' }));
+  await waitFor(() => expect(decideScope).toHaveBeenCalledWith('customer-a', 'change', 8, 1, 'rejected', expect.anything()));
+});
+
+test('a stale decision is reported as changed rather than as an unknown result', async () => {
+  jest.mocked(decideSubmission).mockRejectedValue(new WorkflowError('stale'));
+  await render(<CustomerJobActivity userId="customer-a" job={submitted} submissions={[evidence]} cases={[]} onRefresh={() => undefined} />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Accept submitted work' }));
+  await screen.findByText(/changed after it was loaded/);
 });

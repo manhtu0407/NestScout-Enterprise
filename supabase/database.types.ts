@@ -33,14 +33,14 @@ isOneToOne: false
                   ]
                 },"service_invitations": {
                   Row: {
-                    "expires_at": string,"id": string,"quote_id": string,"request_id": string,"state": string,"worker_id": string
+                    "basis": string,"expires_at": string,"id": string,"quote_id": string,"request_id": string,"state": string,"worker_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "expires_at": string,"id"?: string,"quote_id": string,"request_id": string,"state"?: string,"worker_id": string
+                    "basis"?: string,"expires_at": string,"id"?: string,"quote_id": string,"request_id": string,"state"?: string,"worker_id": string
                   }
                   Update: {
-                    "expires_at"?: string,"id"?: string,"quote_id"?: string,"request_id"?: string,"state"?: string,"worker_id"?: string
+                    "basis"?: string,"expires_at"?: string,"id"?: string,"quote_id"?: string,"request_id"?: string,"state"?: string,"worker_id"?: string
                   }
                   Relationships: [
                     {
@@ -131,14 +131,14 @@ isOneToOne: true
                   ]
                 },"service_quotes": {
                   Row: {
-                    "accepted_at": string | null,"accepted_by": string | null,"amount_minor": number,"currency": string,"expires_at": string,"id": string,"rejected_at": string | null,"rejected_by": string | null,"request_id": string,"scope": string,"version": number
+                    "accepted_at": string | null,"accepted_by": string | null,"amount_minor": number,"basis": string,"currency": string,"expires_at": string,"id": string,"rejected_at": string | null,"rejected_by": string | null,"request_id": string,"scope": string,"version": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "accepted_at"?: string | null,"accepted_by"?: string | null,"amount_minor": number,"currency": string,"expires_at": string,"id"?: string,"rejected_at"?: string | null,"rejected_by"?: string | null,"request_id": string,"scope": string,"version": number
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"amount_minor": number,"basis"?: string,"currency": string,"expires_at": string,"id"?: string,"rejected_at"?: string | null,"rejected_by"?: string | null,"request_id": string,"scope": string,"version": number
                   }
                   Update: {
-                    "accepted_at"?: string | null,"accepted_by"?: string | null,"amount_minor"?: number,"currency"?: string,"expires_at"?: string,"id"?: string,"rejected_at"?: string | null,"rejected_by"?: string | null,"request_id"?: string,"scope"?: string,"version"?: number
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"amount_minor"?: number,"basis"?: string,"currency"?: string,"expires_at"?: string,"id"?: string,"rejected_at"?: string | null,"rejected_by"?: string | null,"request_id"?: string,"scope"?: string,"version"?: number
                   }
                   Relationships: [
                     {
@@ -185,14 +185,14 @@ isOneToOne: false
                   ]
                 },"service_submissions": {
                   Row: {
-                    "created_at": string,"decided_at": string | null,"decided_by": string | null,"decided_from_version": number | null,"decision": string,"decision_reason": string | null,"evidence": string,"id": string,"job_id": string,"submission_key": string,"submitted_by": string,"submitted_from_version": number
+                    "correction_note": string | null,"created_at": string,"decided_at": string | null,"decided_by": string | null,"decided_from_version": number | null,"decision": string,"decision_reason": string | null,"evidence": string,"id": string,"job_id": string,"submission_key": string,"submitted_by": string,"submitted_from_version": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"decided_from_version"?: number | null,"decision"?: string,"decision_reason"?: string | null,"evidence": string,"id"?: string,"job_id": string,"submission_key": string,"submitted_by": string,"submitted_from_version": number
+                    "correction_note"?: string | null,"created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"decided_from_version"?: number | null,"decision"?: string,"decision_reason"?: string | null,"evidence": string,"id"?: string,"job_id": string,"submission_key": string,"submitted_by": string,"submitted_from_version": number
                   }
                   Update: {
-                    "created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"decided_from_version"?: number | null,"decision"?: string,"decision_reason"?: string | null,"evidence"?: string,"id"?: string,"job_id"?: string,"submission_key"?: string,"submitted_by"?: string,"submitted_from_version"?: number
+                    "correction_note"?: string | null,"created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"decided_from_version"?: number | null,"decision"?: string,"decision_reason"?: string | null,"evidence"?: string,"id"?: string,"job_id"?: string,"submission_key"?: string,"submitted_by"?: string,"submitted_from_version"?: number
                   }
                   Relationships: [
                     {

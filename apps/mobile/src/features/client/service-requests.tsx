@@ -2,7 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 
-import { ActionButton, BodyText, ErrorText, KaelStatus } from '@/features/shared';
+import { ActionButton, BodyText, DraftRecovery, ErrorText, KaelStatus, failureMessage, useDraftRecovery } from '@/features/shared';
 
 import { clearPendingRequest, loadPendingRequest, savePendingRequest, type PendingRequest } from './pending-request-store';
 import { CustomerJobActivity } from './customer-job-activity';
@@ -13,6 +13,7 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
   const [description, setDescription] = useState(guestDraft ?? '');
   const [pending, setPending] = useState<PendingRequest | null>(null);
   const [storageReady, setStorageReady] = useState(false);
+  const { attempt, unreadable, setUnreadable, retry } = useDraftRecovery();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [quotes, setQuotes] = useState<ServiceQuote[]>([]);
   const [activity, setActivity] = useState<CustomerActivity>({ jobs: [], submissions: [], cases: [], changes: [], reports: [] });
@@ -47,6 +48,7 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
     let storageActive = true;
     const controller = new AbortController();
     reloadController.current = controller;
+    setUnreadable(false);
     loadPendingRequest(userId).then(
       (item) => {
         if (!storageActive) return;
@@ -55,7 +57,10 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
         setStorageReady(true);
       },
       () => {
-        if (storageActive) setMessage('Could not read the pending request on this device.');
+        if (storageActive) {
+          setUnreadable(true);
+          setMessage('Could not read the pending request on this device.');
+        }
       },
     );
     readRequests(userId, controller.signal).then(async (requestResult) => ({
@@ -80,7 +85,19 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
       reloadController.current?.abort();
       submitController.current?.abort();
     };
-  }, [userId]);
+  }, [userId, attempt, setUnreadable]);
+
+  const discardSaved = () => {
+    void clearPendingRequest(userId).then(() => {
+      if (!mounted.current) return;
+      setUnreadable(false);
+      setPending(null);
+      setMessage(null);
+      setStorageReady(true);
+    }, () => {
+      if (mounted.current) setMessage('Could not discard the saved draft on this device.');
+    });
+  };
 
   const submit = async () => {
     if (inFlight.current || !storageReady) return;
@@ -106,8 +123,8 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
       setDescription('');
       setMessage('Request received. Refresh for its current status.');
       await reload();
-    } catch {
-      if (mounted.current) setMessage('The outcome is unknown. Retry the same request to check safely.');
+    } catch (error) {
+      if (mounted.current) setMessage(failureMessage(error, 'The outcome is unknown. Retry the same request to check safely.'));
     } finally {
       inFlight.current = false;
       if (mounted.current) setBusy(false);
@@ -127,8 +144,8 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
       if (mounted.current) setMessage(decision === 'accept'
         ? 'The displayed quote was accepted. Payment is not configured; check assignment separately.'
         : 'The displayed quote was rejected.');
-    } catch {
-      if (mounted.current) setMessage('The quote decision was not confirmed. Refresh before trying again.');
+    } catch (error) {
+      if (mounted.current) setMessage(failureMessage(error, 'The quote decision was not confirmed. Refresh before trying again.'));
     } finally {
       inFlight.current = false;
       if (mounted.current) {
@@ -151,6 +168,7 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
         placeholder="Describe the problem"
       />
       <ActionButton label={pending ? 'Retry request' : 'Submit request'} onPress={() => void submit()} busy={busy} disabled={!storageReady} />
+      {unreadable ? <DraftRecovery onRetry={() => { setMessage(null); retry(); }} onDiscard={discardSaved} /> : null}
       {message ? <ErrorText>{message}</ErrorText> : null}
       <ActionButton secondary label="Refresh requests" onPress={() => void reload()} />
       {requests.map((request) => (

@@ -57,8 +57,10 @@ select is(public.kael_read_context('customer_request', '10000000-0000-4000-8000-
   '{"status":"rate_limited"}'::jsonb, 'Tool budget fails closed');
 reset role;
 
-select is((select count(*)::integer from nestscout_private.kael_tool_audit where actor_id='00000000-0000-4000-8000-0000000000a1'),
+select is((select count(*)::integer from nestscout_private.kael_tool_audit where actor_id='00000000-0000-4000-8000-0000000000a1' and outcome <> 'rate_limited'),
   20, 'Allowed and unavailable tool calls are audited within the budget');
+select is((select count(*)::integer from nestscout_private.kael_tool_audit where outcome='rate_limited'), 1,
+  'A rate-limited call is audited once');
 select is((select count(*)::integer from nestscout_private.kael_tool_audit where outcome='unavailable'), 5,
   'Unavailable calls are recorded without source text');
 

@@ -350,14 +350,14 @@ Auth and use a restricted private function when transaction authority is needed.
 | Accept or reject quote | Owner; current quote, exact version and server expiry | Actor and decision time recorded; exact replay returns the quote |
 | Accept invitation | Invited Worker; current grant, fixture eligibility, accepted exact quote and unexpired invitation | Request lock and unique job permit one winner; replay returns that job |
 | Decline invitation | Invited Worker; current grant, fixture eligibility, exact quote and expiry | Decline recorded; replay returns the invitation; no rematching starts |
-| Advance or pause work | Assigned Worker; current grant, fixture eligibility, job version and legal stage | Job and versioned event commit together; identical replay returns its original version |
+| Advance or pause work | Assigned Worker; current grant, fixture eligibility, job version and legal stage; pause only before submission | Job and versioned event commit together; identical replay returns its original version; a submitted job cannot be paused, and a paused job leaves only through an approved safety process |
 | Report delay or no answer | Assigned Worker; grant, fixture eligibility, stage and version | Report, version and event commit together; key binds details; no automatic fee or schedule change |
 | Propose fixture scope | Assigned Worker; grant, fixture eligibility, working job and version | Immutable old/new terms, rationale and event; key binds payload |
-| Decide fixture scope | Owner; exact proposal sequence and job version | Decision and event commit together; original quote stays unchanged |
+| Decide fixture scope | Owner; exact proposal sequence and job version; job working or paused | Decision and event commit together; original quote stays unchanged; a safety pause never leaves a proposal undecidable |
 | Submit work | Assigned Worker; grant, fixture eligibility, working stage, version and no pending scope | Evidence, submission and event commit together; key binds version and evidence |
-| Accept, request correction or dispute | Owner; pending submission, job version and required reason | One decision and event; dispute creates a separate case; exact replay is safe |
+| Accept, request correction or dispute | Owner; pending submission, job version and required reason | One decision and event; dispute creates a separate case; exact replay is safe; only the correction note is Worker-readable and the private reason is not exposed to any client |
 | Open aftercare | Owner; completed job and case key | Linked case created once without changing the job or event history |
-| Read Kael context | Owner of request or currently eligible assigned Worker | Redacted deterministic projection; allowed and unavailable calls audited within a per-minute budget |
+| Read Kael context | Owner of request or currently eligible assigned Worker | Redacted deterministic projection; allowed and unavailable calls audited within a per-minute budget; the first rate-limited call in each minute is audited |
 
 No endpoint confirms payment. A quote, work submission, acceptance, support case
 or status explanation cannot establish settlement. No model provider,
@@ -381,6 +381,7 @@ status tool is unavailable.
 | create_scope_change migration | Exact versioned fixture scope proposals and decisions | Scope pgTAP and integrated Customer/Worker scenario |
 | add_workflow_responses migration | Quote rejection and invitation decline | Workflow response pgTAP |
 | create_job_reports migration | Stage-guarded Worker reports with no financial or scheduling effect | Report pgTAP and participant projections |
+| close_workflow_audit_gaps migration | Pause that cannot strand a decision, column-restricted submission reads, fixture provenance on quotes and invitations, audited rate limits | Audit-gap pgTAP, Kael pgTAP and Auth/REST race |
 | Supabase database tests and local integration test | Database ACL and real transaction/API evidence | Canonical isolated stack and test runner |
 | Supabase generated database types | CLI-generated public schema artifact | Local type generation and drift check |
 | Mobile package manifest and lockfile | Pinned native UUID source for durable operation keys | Expo compatibility and mobile checks |

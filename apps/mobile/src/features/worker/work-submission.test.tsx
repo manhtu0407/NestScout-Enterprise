@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
+import { WorkflowError } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
 import { submitWork, type Job } from './worker-repository';
@@ -39,4 +40,39 @@ test('failed secure storage prevents work submission', async () => {
   await screen.findByText('Could not read the pending work submission on this device.');
   expect(screen.getByRole('button', { name: 'Submit work' })).toBeDisabled();
   expect(submitWork).not.toHaveBeenCalled();
+});
+
+test('an unreadable draft can be re-read without losing the saved retry key', async () => {
+  const saved = JSON.stringify({ key: '00000000-0000-4000-8000-000000000456', version: 4, evidence: 'Saved evidence' });
+  jest.mocked(deviceStorage.getItem).mockRejectedValueOnce(new Error('locked')).mockResolvedValue(saved);
+  await render(<WorkSubmission userId="worker-a" job={job} onSettled={() => undefined} />);
+  await screen.findByText('Could not read the pending work submission on this device.');
+  expect(screen.getByRole('button', { name: 'Submit work' })).toBeDisabled();
+  await fireEvent.press(screen.getByRole('button', { name: 'Retry reading saved draft' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Retry work submission' })).toBeEnabled());
+  expect(screen.getByLabelText('Work evidence').props.value).toBe('Saved evidence');
+  expect(deviceStorage.removeItem).not.toHaveBeenCalled();
+});
+
+test('a corrupt draft is removed only after an explicit discard', async () => {
+  jest.mocked(deviceStorage.getItem).mockResolvedValue('{not json');
+  await render(<WorkSubmission userId="worker-a" job={job} onSettled={() => undefined} />);
+  await screen.findByText('Could not read the pending work submission on this device.');
+  expect(deviceStorage.removeItem).not.toHaveBeenCalled();
+  jest.mocked(deviceStorage.getItem).mockResolvedValue(null);
+  await fireEvent.press(screen.getByRole('button', { name: 'Discard saved draft' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Submit work' })).toBeEnabled());
+  expect(deviceStorage.removeItem).toHaveBeenCalledTimes(1);
+});
+
+test('a definitive refusal releases the retry key and keeps the typed evidence', async () => {
+  jest.mocked(submitWork).mockRejectedValueOnce(new WorkflowError('stale'));
+  await render(<WorkSubmission userId="worker-a" job={job} onSettled={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Submit work' })).toBeEnabled());
+  await fireEvent.changeText(screen.getByLabelText('Work evidence'), 'Repaired tap');
+  await fireEvent.press(screen.getByRole('button', { name: 'Submit work' }));
+  await screen.findByText(/changed after it was loaded/);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Submit work' })).toBeEnabled());
+  expect(deviceStorage.removeItem).toHaveBeenCalledTimes(1);
+  expect(screen.getByLabelText('Work evidence').props.value).toBe('Repaired tap');
 });

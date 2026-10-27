@@ -108,3 +108,14 @@ test('Customer can reject the displayed quote without accepting it', async () =>
   expect(rejectQuote).toHaveBeenCalledWith('customer-a', 'quote-a', 2, expect.anything());
   expect(acceptQuote).not.toHaveBeenCalled();
 });
+
+test('unreadable pending storage can be re-read and restores the saved key', async () => {
+  const item = { key: '00000000-0000-4000-8000-000000000456', description: 'Pending repair' };
+  jest.mocked(loadPendingRequest).mockRejectedValueOnce(new Error('locked')).mockResolvedValue(item);
+  await render(<ServiceRequests userId="customer-a" />);
+  await screen.findByText('Could not read the pending request on this device.');
+  await fireEvent.press(screen.getByRole('button', { name: 'Retry reading saved draft' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Retry request' })).toBeEnabled());
+  expect(screen.getByLabelText('Service request').props.value).toBe('Pending repair');
+  expect(submit).not.toHaveBeenCalled();
+});
