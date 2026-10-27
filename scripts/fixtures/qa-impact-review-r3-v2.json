@@ -3,15 +3,15 @@
   "sourceRevision": "e977bd0e77d0e5c8750e537dda00c551e6ddc365",
   "candidateRevision": null,
   "sourceFiles": {
-    "AGENTS.md": "c07a90de4aff0227ac6ac8690f2e0bc7f5b45abddc24978189f978bb43bb5106",
+    "AGENTS.md": "f0e5cb0771d4d983edc7ef92cd3fb4f1e69452184ceee39247f9fd7b9d749ee5",
     "README.md": "00b64290164de84d5333b3f2a9f1e348e6a2686a88b9abd729fbfbdfe9660e3e",
     "scripts/repository-files.mjs": "477f0d51ac69a7e91c668687ec6476d49d3474842322b424572ba42814bfa873",
-    "scripts/git-environment.mjs": "55a0e843f6fb32b1f2725c3d4c094d72029036d1cc7724080166112ea041e9c3",
+    "scripts/git-environment.mjs": "fae21f1e80505ac83c68e2d92d55ec857777c9df5d63dc3402e3c08a7da5cf28",
     "scripts/tool-path.mjs": "a596c5a3f1d7a97a27f13614dfee5f038d2b4f1883b70ddd874fcc35c7fd298b",
     "scripts/tools.json": "3ed90394253b6c82a7dfb559e2774c78349508a468bacc155084515bdaac039a",
-    "scripts/backup.mjs": "4aeba0b18c15ca49cd497b45877f60e228b5a452cd1453dc3f96eb98ca6f00d4",
+    "scripts/backup.mjs": "18ae7658738bd826e4ea59fe59730e02ace8209a87e3394b058f683db77150cf",
     "scripts/check-test-artifacts.mjs": "bc326ec631c2c0fe24730091c8387b414ab7d220b853946b5b578e569f1aab47",
-    "scripts/scan-staged.mjs": "aedab1b319a5dd2991ca6ea85c3db94d012315e28941a77c7107cca31e513e7e",
+    "scripts/scan-staged.mjs": "ee5fb5d55787e54f35d1192cb80079084b1d84292d4f73262c773ae90d2e1dd9",
     ".agents/skills/skill-lifecycle/SKILL.md": "d251fd2a322c91960d7f34cae710a005fe71cb30b06f0652861b1c12df8ef3d5",
     ".agents/skills/skill-lifecycle/references/adoption-review.md": "9163d9dd8155c1696e5dbaaffeff1fa33eea824e27d5bcdab178d60190284e3d"
   },
@@ -222,7 +222,7 @@
   "status": "DESIGN_ONLY_NO_SCORED_RUNS",
   "harnessFiles": {
     "scripts/agent-evaluation.mjs": "33e8c1279bd6847c8462151768f28c135af927c2623d51c67f81d92351ba7a98",
-    "scripts/git-environment.mjs": "55a0e843f6fb32b1f2725c3d4c094d72029036d1cc7724080166112ea041e9c3",
+    "scripts/git-environment.mjs": "fae21f1e80505ac83c68e2d92d55ec857777c9df5d63dc3402e3c08a7da5cf28",
     "scripts/tool-path.mjs": "a596c5a3f1d7a97a27f13614dfee5f038d2b4f1883b70ddd874fcc35c7fd298b",
     "scripts/tools.json": "3ed90394253b6c82a7dfb559e2774c78349508a468bacc155084515bdaac039a"
   },
