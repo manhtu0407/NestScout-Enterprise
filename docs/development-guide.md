@@ -4,7 +4,10 @@ Persistency on the tenth times...!
 
 Public, new NestScout repository. The Delivery Project remains private. This repository contains development
 workflow and security tooling. The confirmed product direction is Expo/React Native,
-TypeScript and Supabase, without Vercel; no product application is implemented.
+TypeScript and Supabase, without Vercel. Application Foundation V2 added a minimal
+Expo mobile app (guest entry, phone OTP sign-in, Client/Worker mode gates); no
+business features, Kael runtime or release exist. See the
+[mobile application guide](mobile-application.md).
 
 ## Repository identity
 
@@ -28,15 +31,16 @@ Deploy-phase owner decision. Development/testing use Supabase Local, without a
 Staging Project or Production writes.
 
 The [foundation contracts](foundation-contracts.md) describe environment inputs,
-security boundaries and API conventions. There is no application environment loader
-or `.env.example` yet: the tooling needs no dotenv file, and the App's variable
-names/storage belong to its real consumer. Missing App structure, BPMN, UI, SDK,
+security boundaries and API conventions. The repository tooling needs no dotenv
+file; the mobile app's public variables are documented in `apps/mobile/.env.example`
+and the [mobile application guide](mobile-application.md). Missing BPMN, UI design,
 business permissions and release design are **OUT OF SCOPE**, not foundation blockers.
 
 The [implementation preparation](architecture.md#entry-into-application-implementation)
 maps current folder responsibilities and the information needed before introducing
-a product module. This setup creates no app or empty module directories and
-installs no product dependencies. Future structure follows real responsibilities,
+a product module. Engineering Foundation V1 created no app or empty module
+directories; Application Foundation V2 added only the mobile workspace and its Expo
+dependencies. Future structure follows real responsibilities,
 consumers and verification under the root policy, rather than importing the
 HomeServices implementation. Pinned tooling currently supports Windows/Linux x64;
 macOS tooling and native iOS execution have not been verified.
@@ -86,10 +90,10 @@ npm run check
 npm run verify:negative
 ```
 
-These Node/npm commands set up repository tooling, not the future application. There is no
-application server, application build, product typecheck, or product unit suite yet.
-Tooling unit tests, database artifact typechecking and disposable local SQL checks
-do exist; use the commands in `package.json`. Tool downloads
+These Node/npm commands set up repository tooling and the mobile workspace. There is
+no application server, native build or release. `npm run check` includes the mobile
+typecheck, lint and unit tests (`check:mobile`); tooling unit tests, database artifact
+typechecking and disposable local SQL checks also exist. Use the commands in `package.json`. Tool downloads
 are version-pinned and SHA-256 checked; dependency installation uses the lockfile.
 
 Optional local hooks (affect only this checkout):

@@ -9,10 +9,10 @@ environment loader, endpoint, schema, auth provider or additional policy.
 
 | Boundary | Inputs and owner | Behavior / exposure |
 | --- | --- | --- |
-| Repository tooling | `package.json`, lockfile, `scripts/tools.json` | Node 24/npm and pinned tools; no application dotenv inputs |
+| Repository tooling | `package.json`, lockfile, `scripts/tools.json` | Node 24/npm and pinned tools; root tooling does not read application dotenv inputs |
 | Local database/testing | `supabase/config.toml`, image lock and `scripts/supabase-local.mjs` | Checkout + branch identity, dynamic loopback endpoints, local Docker; no linked project or remote fallback |
 | Developer MCP | Existing project-scoped hosted read-only settings and guarded local bridge | Diagnostic tools only; client approval still applies; credentials stay outside Git |
-| Future mobile public config | App-owned configuration consumer, supplied with the App structure | Explicit target and matching API URL/public key; values shipped in the bundle are public |
+| Mobile public config | `apps/mobile/src/lib/config.ts`, `apps/mobile/.env.example` | `EXPO_PUBLIC_NESTSCOUT_TARGET=local`, a loopback or private-network API URL and a publishable key; values shipped in the bundle are public, and secret or service_role keys are rejected |
 | Future trusted execution | Operation owner, only when a real service is approved | Privileged/provider credentials stay outside clients and Git; never inferred from developer MCP access |
 | Hosted environments | Owner at the Deploy phase | No Staging Project or additional remote environment; no Production writes/deploy in this foundation |
 
@@ -24,11 +24,11 @@ the wrapper validates Docker, stack identity and loopback bindings. Run the
 than direct CLI commands with target overrides. Never copy hosted credentials or
 raw stack-status JSON into an example, log or fixture.
 
-No `.env.example` is added before an App consumer defines its variable names.
-With that consumer, document each input's name, public/secret classification,
-requiredness, format, source and target. Missing, malformed or mismatched target
-inputs must fail clearly; no default to a hosted project or cross-environment
-fallback. Supply a sanitized example with placeholders only. Local endpoint
+The only example file is `apps/mobile/.env.example`, added with its consumer
+`apps/mobile/src/lib/config.ts`. Each input needs a documented name,
+public/secret classification, requiredness, format, source and target. Missing,
+malformed or mismatched target inputs must fail clearly; no default to a hosted
+project or cross-environment fallback. Examples hold placeholders only. Local endpoint
 discovery must handle dynamic ports. A physical iPhone cannot reach a developer's
 loopback URL: a later device connectivity design needs explicit access boundaries;
 do not weaken the existing binding guard to claim native verification.
@@ -71,7 +71,9 @@ market. Application Foundation defines validation and normalization to `+84` E.1
 form before identity lookup, preserving a single canonical identity across input
 formats. It also defines abuse/rate limits, expiry/replay handling, phone-change
 reverification, recovery and account linking. No guessed phone regex, SMS traffic,
-OTP fixture credentials or role entitlement is implemented here. Google/Facebook
+OTP fixture credentials or role entitlement is implemented. The mobile app calls
+the Supabase Auth phone API with the normalized number; SMS delivery needs an
+owner-approved provider, so it is not configured. Google/Facebook
 remain later secondary methods; they must link through the approved account model,
 not silently create a separate account or grant a Worker capability.
 
@@ -120,10 +122,12 @@ duplicate/concurrency and failure tests at the real boundary as each risk appear
 
 Current executable checks cover repository identity, index/working snapshots,
 secrets, workflows, tests, skill format and isolated local DB metadata. Passing them
-does not establish guest access, OTP delivery, account linking, multi-role
-authorization or native-device behavior. Those are **OUT OF SCOPE** until their
-application consumers are supplied. Hosted CI requires separate owner authority;
-local checks cannot be reported as hosted results.
+does not establish OTP delivery, account linking or native-device behavior, which
+remain **OUT OF SCOPE** until a provider and device path are approved. Guest entry,
+route gating and the Worker grant lookup have mobile unit/navigation tests and
+`worker_access_grants` has pgTAP denial tests, but per-operation Worker authorization
+cannot be tested because no Worker endpoint exists. Hosted CI requires separate owner
+authority; local checks cannot be reported as hosted results.
 
 Official references reviewed for these contracts on 2026-10-27:
 

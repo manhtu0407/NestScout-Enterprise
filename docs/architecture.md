@@ -1,9 +1,11 @@
 # Application direction and architecture decisions
 
-Status: **ENGINEERING FOUNDATION V1; APPLICATION IMPLEMENTATION OUT OF SCOPE**.
-The owner confirmed the direction on 2026-10-25 and refined the decisions below
-on 2026-10-27. This document records decisions and implementation
-prerequisites; it authorizes no application scaffold, business schema or release.
+Status: **ENGINEERING FOUNDATION V1 plus APPLICATION FOUNDATION V2 (entry, phone
+sign-in and mode gates only)**. The owner confirmed the direction on 2026-10-25 and
+refined the decisions below on 2026-10-27. This document records decisions and
+implementation prerequisites; it authorizes no business schema, release or Kael
+runtime. The implemented V2 scope is described in
+[the mobile application guide](mobile-application.md).
 The root [AGENTS.md](../AGENTS.md) remains the sole repository-wide engineering policy.
 
 ## Confirmed product direction
@@ -17,12 +19,12 @@ configuration, credentials and data are not inherited by this repository.
 
 | Decision | Confirmed direction | Still pending |
 | --- | --- | --- |
-| Mobile framework | Expo and React Native | SDK version, compatible dependency pins and application layout |
-| Language | TypeScript for application code; JavaScript/ESM for suitable configuration and tooling | App compiler, lint and test configuration |
+| Mobile framework | Expo SDK 58 and React Native in `apps/mobile` | Native iOS build and device verification |
+| Language | Strict TypeScript for the mobile app; JavaScript/ESM for tooling | Native build verification |
 | Backend | Supabase; backend enforces authorization | Business schema and operation-level access matrix |
 | App and discovery | One App for Clients and Workers; guests explore before signing in | Owner-supplied App structure, public discovery data and workflows |
 | Identity and roles | One account may hold multiple roles | Role assignment/revocation, Worker eligibility and capability rules; Admin is future scope |
-| Authentication | Vietnamese phone number + OTP first; Google/Facebook are future secondary methods | SMS provider, identity linking, sessions and runtime implementation |
+| Authentication | Vietnamese phone number + OTP client integration; Google/Facebook are future methods | SMS provider, live Auth/OTP verification and identity linking |
 | Development/testing | Isolated Supabase Local; no Staging Project | Production release design at the Deploy phase; no hosted writes now |
 | Kael | Kael Service Operator | BPMN, permissions, tools, AI provider and runtime contracts |
 | Platform and testing | iOS first; TestFlight is the later testing channel | Owner setup, signing, build provider and distribution; Android deferred |
@@ -37,10 +39,22 @@ below remain proposals wherever they go beyond these confirmed decisions.
 The Engineering Foundation V1 audit baseline is main
 `98187746fc67ea64848a544b4a938e4c643a807e` (2026-10-27): Node 24/npm
 engineering tooling, isolated Supabase development and generated database types.
-There is no product app, business schema, product auth or runtime Kael agent.
+At that baseline there was no product app, business schema, product auth or
+runtime Kael agent; Application Foundation V2 later added the minimal mobile app,
+phone sign-in and one technical Worker access grant, still with no business
+schema and no Kael runtime.
 The existing native tooling installer supports Windows/Linux x64; macOS tooling
 and native iOS execution have not been verified. Reinspect the implementation
 before a later application task; this baseline is not a product-readiness claim.
+
+Application Foundation V2 access model: authentication, capability and presentation
+mode are separate. Worker mode renders only for an identity the Auth server verified
+in this run (`getUser()` or an interactive OTP confirmation, never a stored session or
+an auth event alone), a current backend grant for that exact account, and a Worker
+selection. Unreachable or unrecognised answers fail closed to Client. Navigation
+guards are not authorization; Worker operations need their own server-side checks.
+Details, error classification, storage guarantees, tested and untested layers are in
+the [mobile application guide](mobile-application.md).
 
 ## ADR 001 — Repository and development boundaries
 
@@ -58,36 +72,35 @@ release cadence at the cost of versioned contracts and coordinated changes.
 **Confirmed:** One Expo/React Native App serves Clients and Workers, with discovery
 available before sign-in. An account may hold multiple roles; selecting an App
 mode grants no permissions. The backend evaluates each operation's authorization.
-The owner will supply the App structure separately. The SDK version remains
-pending; no app directory or npm workspace is approved by this setup.
+Application Foundation V2 approved `apps/mobile`, Expo SDK 58, a root npm
+workspace and the four feature boundaries (`client`, `worker`, `shared`,
+`access`). The owner will supply the remaining product screens and workflows.
 
-**Recommendation:** Keep one repository initially. Select the supported Expo
-SDK/toolchain and review compatible dependency pins before scaffolding.
-Add a shared package only when two real consumers justify it. Separate business
-capabilities behind module APIs within the app first; do not create empty packages.
-Use TypeScript strict mode, existing two-space/LF conventions, exact direct dependency
-pins and a reviewed lockfile. Select formatter/linter versions for the actual SDK;
-do not install them for an absent app. Tests belong with their owning boundary;
-integration tests assert real consumer contracts, and regression fixtures stay
-versioned. Match names to the framework and domain instead of imposing a new taxonomy.
+**Recommendation:** Retain the approved single-app npm workspace. Add a shared
+package only when two real consumers justify it; do not create empty packages.
+Keep business capabilities behind owned feature module APIs. The implemented Expo
+scaffold uses strict TypeScript, mobile lint/unit tests and exact dependency pins
+with one root lockfile. Tests belong with their owning boundary; integration tests
+assert real consumer contracts and regression fixtures stay versioned. Match names
+to the framework and domain instead of imposing a new taxonomy.
 
-**Consequences:** Fewer release/version boundaries now; an app-specific lint,
-typecheck, unit and native build baseline must be added with the first scaffold.
-Tooling checks do not become product checks merely by sharing CI.
+**Consequences:** Fewer release/version boundaries now. Mobile lint, typecheck and
+unit tests are present; native iOS builds and live OTP delivery remain unverified.
+Tooling checks do not become device or production checks merely by sharing CI.
 
 **Reversibility:** Moderate; extracting packages later is straightforward if module
 APIs stay explicit. Cross-repository moves require history/access/CI review.
 
-**Dependencies / status:** One App, guest discovery, multiple roles per account,
-framework and language direction **CONFIRMED**. SDK,
-application package-manager configuration and layout remain **PROPOSED**. Existing
-repository tooling continues to use npm. The first scaffold needs its own approved
-scope, real commands and consumers.
+**Dependencies / status:** One App, guest entry, multiple roles per account,
+Expo SDK 58, strict TypeScript and the npm workspace are **IMPLEMENTED** at technical
+foundation scope. Native build/release, business flows, SMS delivery and Kael
+runtime remain **NOT IMPLEMENTED or NOT VERIFIED** as applicable.
 
 ## ADR 002 — Environment, data and AI trust boundaries
 
 **Context:** Local disposable stacks and hosted read-only developer MCP exist.
-Product roles, policies, business migrations and Kael tools do not.
+Business role eligibility, operation-level authorizations, business migrations
+and Kael tools do not. One technical Worker access grant with RLS exists.
 
 **Alternatives:** Shared hosted development; isolated local development plus
 separate hosted staging/Production; Supabase preview branches per change.
@@ -245,28 +258,29 @@ are not a substitute for a reviewed design.
 
 Application layout and framework filenames are decided with an approved module.
 Any required naming-check change stays limited to that module's conventions with
-valid and invalid fixtures; existing protections remain intact. This setup adds
-no directories, dependencies, naming exceptions, APIs, interfaces or types.
+valid and invalid fixtures; existing protections remain intact. Engineering Foundation
+V1 added no directories or exceptions; Application Foundation V2 then added `apps/mobile`,
+`services/kael-core` (README only), the empty `docs/processes/` marker and the matching
+narrow path rules with fixtures.
 
 ### Application Foundation decisions
 
-These items are **OUT OF SCOPE** for Engineering Foundation V1, not blockers to its
-delivery. They are resolved with the owner's App structure and concrete consumers:
+Engineering Foundation V1 did not include application code. Application Foundation V2
+subsequently added Expo/mobile scaffolding, guest and OTP client entry, separated
+Client/Worker presentation, a technical Worker access grant with real local RLS tests,
+and mobile lint/typecheck/unit checks. See the
+[mobile application guide](mobile-application.md) for precise verified limits.
 
-- Expo SDK/pins, App layout/navigation, strict compiler/lint configuration and real
-  lint/typecheck/unit/native build commands; macOS/iOS verification on a supported host.
-- Guest discovery projection and sign-in transitions; multi-role capability matrix,
-  role assignment/revocation, Worker eligibility and denied-operation tests.
-- Vietnamese phone normalization/validation, SMS provider and cost/rate limits,
-  OTP expiry/replay/attempt handling, account recovery, session storage/refresh,
-  logout and future OAuth identity linking/deep links. Phone possession is not
-  Worker qualification or business authorization.
-- BPMN-derived schemas, operation contracts, concurrency/idempotency requirements and
-  real grant/RLS tests; Kael permissions/providers only with an approved runtime scope.
-- Later TestFlight signing/build ownership, release configuration and Deploy-phase
-  visibility, Production access, monitoring and recovery decisions.
+The following remain for separate owner-approved implementation:
 
-The [foundation contracts](foundation-contracts.md) supply the starting boundaries;
-they implement no endpoints or auth behavior. Setup acceptance makes no application,
-native-device, Production or disaster recovery readiness claim and does not close
-the application-planning Issue.
+- Native iOS build, TestFlight, device Keychain and live Auth/SMS round-trip checks.
+- Guest discovery projection, Worker onboarding, service workflows, operation-specific
+  authorization and the owner's BPMN/process contracts.
+- OTP provider/cost decisions, production rate limits/recovery, account linking and
+  future secondary identity methods.
+- Kael permissions, tools, providers, memory and runtime execution.
+- Deploy-phase visibility, Production access, monitoring and recovery decisions.
+
+The [foundation contracts](foundation-contracts.md) define trust and environment
+boundaries; they are not substitutes for the implemented Auth/RLS checks. Foundation
+acceptance does not imply native-device, production or disaster-recovery readiness.

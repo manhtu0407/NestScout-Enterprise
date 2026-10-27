@@ -51,12 +51,15 @@ and resolve them within approved scope; do not silently bypass controls.
 
 ## Architecture and investigation
 
-The inspected repository contains development tooling, not an application stack.
-`package.json` and `package-lock.json` define npm tooling on Node.js 24. Isolated
-Supabase development tooling, generated database types and database tests are
-present. Product apps, native targets, Kael runtime and product deployment targets
-are NOT PRESENT IN INSPECTED SCOPE. Reinspect as the repository evolves; do not
-import architecture, commands, credentials, or conventions from another repository.
+The inspected repository contains Node.js 24/npm engineering tooling and the
+approved `apps/mobile` Expo/React Native Application Foundation V2 workspace.
+Its implemented scope is guest entry, phone OTP client integration and Client/Worker
+mode gates, not home-service business workflows. Isolated Supabase Local tooling,
+generated types and database tests support the technical `worker_access_grants`
+table. Native iOS builds and real SMS delivery are NOT VERIFIED. A standalone API
+server, Kael runtime and production deployment targets are NOT PRESENT. Reinspect
+the repository as it evolves; do not import architecture, commands, credentials,
+or conventions from another repository.
 
 | Concern | Canonical owner |
 | --- | --- |

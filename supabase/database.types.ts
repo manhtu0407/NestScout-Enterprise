@@ -5,7 +5,21 @@ export type Database = {
 
   "public": {
           Tables: {
-            [_ in never]: never
+            "worker_access_grants": {
+                  Row: {
+                    "granted_at": string,"revoked_at": string | null,"status": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "granted_at"?: string,"revoked_at"?: string | null,"status"?: string,"user_id": string
+                  }
+                  Update: {
+                    "granted_at"?: string,"revoked_at"?: string | null,"status"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                }
           }
           Views: {
             [_ in never]: never

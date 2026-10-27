@@ -58,7 +58,7 @@ jobs:
         env:
           CHECK_STATUS: ${{ job.status }}
         run: |
-          printf '## Repository checks\nStatus: %s\n\nApplication tests/build: OUT OF SCOPE (no application implemented).\n' "$CHECK_STATUS" >> "$GITHUB_STEP_SUMMARY"
+          printf '## Repository checks\nStatus: %s\n\nMobile typecheck, lint and unit tests run inside npm run check; native iOS builds, device runs and phone OTP delivery are OUT OF SCOPE for CI.\n' "$CHECK_STATUS" >> "$GITHUB_STEP_SUMMARY"
           printf 'Status checks alone do not enforce branch protection; repository rules must be configured separately.\n' >> "$GITHUB_STEP_SUMMARY"
 
   supabase-local:

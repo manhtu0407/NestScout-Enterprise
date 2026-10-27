@@ -40,7 +40,7 @@ Do not change account-wide budgets or payment methods as part of repo maintenanc
 
 ## Version and release procedure
 
-No product release exists. Use semantic versioning once an application is added:
+No product release exists, and the mobile app is an unreleased foundation. Use semantic versioning once an application is released:
 MAJOR for incompatible public changes, MINOR for compatible capability, PATCH for fixes.
 Do not create tags or releases to imply an application is ready today.
 

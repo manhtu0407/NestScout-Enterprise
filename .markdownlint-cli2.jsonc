@@ -1,4 +1,4 @@
 {
-  "globs": ["**/*.md", "!node_modules/**", "!.cache/**"],
+  "globs": ["**/*.md", "!**/node_modules/**", "!.cache/**"],
   "config": { "default": true, "MD013": false, "MD024": { "siblings_only": true } }
 }

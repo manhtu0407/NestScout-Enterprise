@@ -116,6 +116,56 @@ test('unknown architecture, case variants, scratch names, archives and unsafe pa
     }
   }
 });
+test('approved Expo application, Kael boundary and empty process paths pass', () => {
+  for (const file of ['apps/mobile/package.json', 'apps/mobile/app.json', 'apps/mobile/tsconfig.json',
+    'apps/mobile/eslint.config.mjs', 'apps/mobile/.env.example',
+    'apps/mobile/src/app/_layout.tsx', 'apps/mobile/src/app/index.tsx', 'apps/mobile/src/app/(guest)/explore.tsx',
+    'apps/mobile/src/app/(auth)/phone.tsx', 'apps/mobile/src/lib/config.ts', 'apps/mobile/src/lib/config.test.ts',
+    'apps/mobile/src/theme/palette.ts', 'apps/mobile/src/features/access/index.ts',
+    'apps/mobile/src/features/access/state/access-provider.tsx', 'apps/mobile/src/features/access/state/access-provider.test.tsx',
+    'apps/mobile/src/testing/navigation.test.tsx', 'services/kael-core/README.md', 'docs/processes/.gitkeep']) {
+    assert.doesNotThrow(() => checkPath(file), file);
+  }
+});
+test('unapproved application, native, service and process paths still fail', () => {
+  for (const file of ['apps/mobile/src/app/navigation.test.tsx', 'apps/mobile/src/app/helper.ts', 'apps/mobile/src/app/Explore.tsx',
+    'apps/mobile/src/app/(guest)/Explore.tsx', 'apps/mobile/src/App.tsx', 'apps/mobile/src/features/Access/index.ts',
+    'apps/mobile/src/features/access/Foo.tsx', 'apps/mobile/src/features/access/report.ts', 'apps/mobile/src/features/(group)/x.ts',
+    'apps/mobile/src/(guest)/_layout.tsx', 'apps/mobile/src/lib/script.js', 'apps/mobile/src/lib/types.d.ts',
+    'apps/mobile/assets/icon.png', 'apps/mobile/babel.config.js', 'apps/mobile/metro.config.js', 'apps/mobile/package-lock.json',
+    'apps/mobile/.env', 'apps/mobile/.env.local', 'apps/mobile/ios/Podfile', 'apps/mobile/android/build.gradle',
+    'apps/api/index.ts', 'packages/shared/index.ts', 'services/kael-core/server.ts', 'services/kael-core/package.json',
+    'services/kael-core/agent.mjs', 'process.bpmn', 'docs/order.bpmn']) {
+    assert.throws(() => checkPath(file), /No approved naming convention|Disposable document\/source name/, file);
+  }
+  for (const file of ['docs/processes/order.bpmn', 'docs/processes/README.md', 'docs/processes/flow.md',
+    'docs/processes/booking/.gitkeep', 'docs/processes/.gitkeep.md']) {
+    assert.throws(() => checkPath(file), /docs\/processes must contain only an empty \.gitkeep/, file);
+  }
+});
+test('the process folder marker must be empty in working files and staged blobs', () => {
+  const { repository, write, run } = fixture();
+  write('docs/processes/.gitkeep', '');
+  assert.doesNotThrow(() => checkHygiene(repository));
+  run(['add', '--', 'docs/processes/.gitkeep']);
+  assert.doesNotThrow(() => checkHygiene(repository));
+  write('docs/processes/.gitkeep', '\n');
+  assert.throws(() => checkHygiene(repository), /exactly 0 bytes: working/);
+  run(['add', '--', 'docs/processes/.gitkeep']);
+  write('docs/processes/.gitkeep', '');
+  assert.throws(() => checkHygiene(repository), /exactly 0 bytes: index/);
+  run(['rm', '--cached', '--force', '--', 'docs/processes/.gitkeep']);
+  write('docs/processes/order.bpmn', '<definitions/>\n');
+  assert.throws(() => checkHygiene(repository), /docs\/processes must contain only/);
+});
+test('application source comments receive the same attribution checks', () => {
+  const { repository, write } = fixture();
+  write('apps/mobile/src/lib/example.ts', 'export const text = "Generated with Claude Code";\n// Keep the key public-only.\n');
+  assert.doesNotThrow(() => checkHygiene(repository));
+  write('apps/mobile/src/lib/example.ts', '// Generated with Claude Code\nexport const value = 1;\n');
+  assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+});
+
 test('only the owner-approved logo path accepts the byte-preserved source image', () => {
   const { repository, write, run } = fixture();
   const file = 'docs/assets/nestscout-horizon-logo-light.png';

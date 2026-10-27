@@ -55,6 +55,8 @@ in the existing module. Do not add a source file merely to split a short functio
 | Node ESM tooling and tests | `scripts/<kebab-name>.mjs`, optional `.test`, `.spec`, `.integration.test`, `.integration.spec` suffix; lowercase kebab directories |
 | Tool data | `scripts/<kebab-name>.json` in lowercase kebab directories |
 | Technical documentation | `docs/<kebab-name>.md`; dotted technical names such as `claude.architecture.md` remain valid |
+| Mobile application | `apps/mobile/{package,app,tsconfig}.json`, `eslint.config.mjs`, `.env.example`; `apps/mobile/src/**/<kebab-name>[.test].ts[x]`; routes `apps/mobile/src/app/**/<kebab-name>.tsx`, `_layout.tsx` and `(group)` directories only under `src/app` |
+| Empty process folder | `docs/processes/.gitkeep`, exactly 0 bytes; nothing else may live in `docs/processes/` |
 | Workflows and Issue Forms | `.github/workflows/<kebab-name>.yml`, `.github/ISSUE_TEMPLATE/<kebab-name>.yml` |
 | Supabase migrations | `supabase/migrations/<14-digit-timestamp>_<snake_case_name>.sql` |
 | Database tests | `supabase/tests/database/<kebab-name>.test.sql`, optionally in kebab directories |
@@ -67,7 +69,8 @@ as a complete hyphen/dot-delimited prefix are rejected. Existing required names 
 exact exemptions, not folder-wide exclusions. For a genuinely required new framework
 filename, generated artifact, fixture format, dependency snapshot or module convention,
 review its purpose and add the smallest tested path rule in the same change. There
-is no application naming policy until an application/module is approved.
+is no naming policy for application modules beyond the rows above; assets, native
+folders, extra configuration files and other services need their own reviewed rules.
 
 Disposable evidence belongs in ignored task-owned `.cache/` directories or outside
 the checkout. Forced staging still fails. Permanent PDF/ZIP input is accepted only
