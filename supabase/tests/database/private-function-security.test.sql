@@ -25,5 +25,23 @@ $$, 'Only reviewed private operations are callable by authenticated users');
 select ok(not has_schema_privilege('anon','nestscout_private','usage'), 'Anonymous users cannot use the private schema');
 select ok(not has_function_privilege('authenticated','nestscout_private.lock_current_worker()','execute'),
   'Worker lock helper is not a client operation');
+select is_empty($$
+  select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname in ('public','nestscout_private') and p.proname ~* '(pay|paid|settle|refund|webhook)'
+$$, 'No payment, settlement, refund or provider callback function exists');
+
+select is_empty($$
+  select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+  where n.nspname in ('public','nestscout_private') and c.relkind in ('r','v','m','p')
+    and c.relname ~* '(pay|paid|settle|refund|webhook|ledger)'
+$$, 'No payment or ledger relation exists to be set by a client');
+
+select is_empty($$
+  select a.attrelid::regclass::text || '.' || a.attname from pg_attribute a
+  join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
+  where n.nspname in ('public','nestscout_private') and c.relkind in ('r','v','m','p')
+    and a.attnum > 0 and not a.attisdropped and a.attname ~* '(^|_)(paid|payment|settled)(_|$)'
+$$, 'No work or job row carries a paid or settled flag');
+
 select * from finish();
 rollback;
