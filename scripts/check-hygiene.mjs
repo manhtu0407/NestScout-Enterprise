@@ -1,16 +1,12 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse as parseJavaScript } from 'acorn';
 import { parse } from 'smol-toml';
-import { API } from 'typescript/unstable/sync';
-import { createVirtualFileSystem } from 'typescript/unstable/fs';
-import { createScanner } from 'typescript/unstable/ast/scanner';
-import { SyntaxKind } from 'typescript/unstable/ast';
 import { root } from './tool-path.mjs';
 import { repositoryFiles, checkHookIndex } from './repository-files.mjs';
 import { checkTestArtifacts } from './check-test-artifacts.mjs';
 import { inspectArtifact, hasArtifactSignature } from './inspect-artifact.mjs';
+import { commentSpans, hasCommentRule } from './source-comments.mjs';
 
 const fixedPaths = new Set([
   'AGENTS.md', 'README.md', 'CONTRIBUTING.md', 'SECURITY.md',
@@ -25,8 +21,6 @@ const fixedPaths = new Set([
 const word = '[a-z0-9]+(?:-[a-z0-9]+)*';
 const segments = `(?:${word}/)*`;
 const disposable = /^(?:todo|notes|plan|report|handoff|session-summary|debug|scratch)(?:[-.]|$)/i;
-// Owner-supplied NestScout_Horizon_Restored_Asset_Pack_v1.zip, unchanged 04_android/play_store_512x512.png.
-// Archive SHA-256: d845aa9bf8795ff8ab7f57c17edd29a05fe6e7ba558c80c0d2ede25d0ee65064.
 const approvedLogo = Object.freeze({
   path: 'docs/assets/nestscout-horizon-logo-light.png',
   sha256: 'b4dbdd2eb0c742e36f61b41f87744f32f709cbdfc4441c93f17a494a87fde446',
@@ -76,58 +70,11 @@ export function checkAttribution(text, label) {
   }
 }
 
-export function sourceComments(file, text) {
-  if (/\.(?:[cm]?ts|tsx)$/.test(file)) {
-    const directory = path.resolve(root, '.cache/hygiene-types').replaceAll('\\', '/');
-    const sourcePath = `${directory}/input${file.match(/(?:\.d)?\.(?:[cm]?ts|tsx)$/)[0]}`;
-    const configPath = `${directory}/tsconfig.json`;
-    const fs = createVirtualFileSystem({
-      [sourcePath]: text,
-      [configPath]: JSON.stringify({ compilerOptions: { noLib: true, noResolve: true, jsx: 'preserve' }, files: [sourcePath] }),
-    });
-    const api = new API({ cwd: root, fs });
-    try {
-      const snapshot = api.updateSnapshot({ openProjects: [configPath] });
-      const program = snapshot.getProjects()[0]?.program;
-      const source = program?.getSourceFile(sourcePath);
-      if (!source || program.getSyntacticDiagnostics(sourcePath).length) throw new Error(`Invalid TypeScript syntax in ${file}.`);
-      const literals = [];
-      function visit(node) {
-        if ([SyntaxKind.StringLiteral, SyntaxKind.RegularExpressionLiteral, SyntaxKind.JsxText,
-          SyntaxKind.NoSubstitutionTemplateLiteral, SyntaxKind.TemplateHead, SyntaxKind.TemplateMiddle, SyntaxKind.TemplateTail].includes(node.kind)) {
-          literals.push([node.getStart(source), node.end]);
-        }
-        node.forEachChild(visit);
-      }
-      visit(source);
-      literals.sort((a, b) => a[0] - b[0]);
-      const comments = [];
-      let start = 0;
-      for (const [end, next] of [...literals, [text.length, text.length]]) {
-        const scanner = createScanner(false, source.languageVariant, text, start, end - start);
-        for (let token = scanner.scan(); token !== SyntaxKind.EndOfFile; token = scanner.scan()) {
-          if ([SyntaxKind.SingleLineCommentTrivia, SyntaxKind.MultiLineCommentTrivia].includes(token)) comments.push(scanner.getTokenText());
-        }
-        start = next;
-      }
-      return comments.join('\n');
-    } finally {
-      api.close();
-    }
-  }
-  if (/\.[cm]?js$/.test(file)) {
-    const comments = [];
-    try {
-      parseJavaScript(text, { ecmaVersion: 'latest', sourceType: file.endsWith('.cjs') ? 'script' : 'module', onComment: (_block, value) => comments.push(value) });
-    } catch (error) {
-      throw new Error(`Invalid JavaScript in ${file} at ${error.loc?.line}:${error.loc?.column}.`);
-    }
-    return comments.join('\n');
-  }
-  if (/\.(?:json|jsonc|toml|ya?ml|sql)$/.test(file) || file.startsWith('.githooks/')) {
-    return text.split(/\r?\n/).filter(line => /^\s*(?:#|\/\/|\/\*|\*|--)/.test(line)).join('\n');
-  }
-  return text;
+export function checkNoComments(file, text) {
+  const spans = commentSpans(file, text);
+  if (spans.length === 0) return;
+  const lines = spans.map(item => text.slice(0, item.offset).split('\n').length);
+  throw new Error(`Prohibited source comment in ${file} at line ${lines.join(', ')}. Remove the comment; AGENTS.md prohibits source comments.`);
 }
 
 function parseConfiguration(parser, text, label) {
@@ -184,7 +131,10 @@ export function checkHygiene(repository = root) {
       }
       if (/\.(?:pdf|zip)$/.test(file)) {
         for (const record of inspectArtifact(file, content)) {
-          checkAttribution(record.metadata ? record.text : sourceComments(record.file, record.text), `${state} ${file}/${record.file}`);
+          const label = `${state} ${file}/${record.file}`;
+          if (record.metadata) checkAttribution(record.text, label);
+          else if (hasCommentRule(record.file)) checkNoComments(record.file, record.text);
+          else checkAttribution(record.text, label);
         }
         inspected.set(file, content);
         continue;
@@ -201,7 +151,8 @@ export function checkHygiene(repository = root) {
         const attribution = parseConfiguration(JSON.parse, text, `${state} ${file}`).attribution;
         if (attribution !== false && (attribution?.commit !== '' || attribution?.pr !== '' || attribution?.sessionUrl !== false)) throw new Error(`Claude attribution must be disabled in ${state}.`);
       }
-      checkAttribution(sourceComments(file, text), `${state} ${file}`);
+      checkNoComments(file, text);
+      if (/\.md$/.test(file)) checkAttribution(text, `${state} ${file}`);
       inspected.set(file, content);
     }
   }
@@ -211,5 +162,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (process.argv.length === 3 && process.argv[2] === '--hook') checkHookIndex(root);
   else if (process.argv.length !== 2) throw new Error('Use no arguments or --hook.');
   checkHygiene();
-  console.log('Repository paths, index/working content and attribution settings passed. Comment usefulness requires review.');
+  console.log('Repository paths, index/working content, attribution settings and the zero-comment source policy passed.');
 }

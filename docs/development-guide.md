@@ -110,16 +110,19 @@ Project/user/managed/CLI precedence and arbitrary model behavior require separat
 runtime verification; file presence and schema acceptance do not prove effective
 loading or complete behavioral compliance. No Git author identity is changed.
 
-The implementation adapts project-local consistency and technical comment guidance
-from [VS Code](https://github.com/microsoft/vscode/wiki/Coding-Guidelines) and
-[Google](https://google.github.io/styleguide/jsguide.html), shared upload/commit
+The implementation adapts project-local consistency guidance from
+[VS Code](https://github.com/microsoft/vscode/wiki/Coding-Guidelines) and
+[Google](https://google.github.io/styleguide/jsguide.html) except for the comment policy:
+NestScout prohibits all source comments (AGENTS.md, zero-comment policy), so explanations
+belong in tests, names, Issues, PR descriptions and Markdown documentation. Shared upload/commit
 validation and full-scope fixtures from
 [Chromium presubmits](https://www.chromium.org/developers/how-tos/depottools/presubmit-scripts/),
 and the separation between checks and enforced merge gates from
 [GitHub rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
 It retains NestScout's ESM, kebab names, two-space indentation and current modules.
-Comments explaining security, races, compatibility, legal constraints or contracts
-remain legitimate; their usefulness is a human review decision.
+Source comments are prohibited in every supported format, including comments that explain
+security, races, compatibility, legal constraints or contracts. The check is mechanical
+through `scripts/source-comments.mjs`; the one permitted first-line exception is a shebang.
 
 The hygiene reader uses Git batch reads for unique index blobs, checks working files
 separately, and reuses content inspection only when bytes for the same path are equal.

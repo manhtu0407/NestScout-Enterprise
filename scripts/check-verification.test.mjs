@@ -218,7 +218,6 @@ test('mutation examples reject unapproved delivery metadata while accepting legi
 
 test('staged secret mutations are detected with clean or absent working copies', () => fixture(({ repository, write, run }) => {
   const file = 'scripts/secret-fixture.json';
-  // Keep the fixture valid for github-pat rather than relying on generic-rule fallback.
   const token = ['gh', 'p_', 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'].join('');
   assert.match(token, /^ghp_[A-Za-z0-9]{36}$/);
   const detection = spawnSync(toolPath('gitleaks'), ['stdin', '--no-banner', '--redact', '--report-format', 'json', '--report-path', '-'], {
@@ -241,7 +240,6 @@ test('staged secret mutations are detected with clean or absent working copies',
   assert.doesNotThrow(() => scanStaged(repository, 'pipe'));
 }));
 
-// Synthetic credential shape and suppression marker are assembled so this file is not itself a finding or a suppression.
 const syntheticToken = () => ['gh', 'p_', 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'].join('');
 const suppression = ['gitleaks', ':', 'allow'].join('');
 const suppressed = (token, style) => ({
@@ -311,10 +309,10 @@ const unsafeWorkflowMutations = {
   'top-level write permission': text => text.replace('contents: read', 'contents: write'),
   'missing top-level permissions': text => text.replace('permissions:\n  contents: read\n\n', ''),
   'job-level write permission': text => text.replace('    timeout-minutes: 10\n', '    timeout-minutes: 10\n    permissions:\n      pull-requests: write\n'),
-  'mutable action tag': text => text.replaceAll('actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6', 'actions/checkout@v6'),
-  'mutable action branch': text => text.replace('actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6', 'actions/setup-node@main'),
+  'mutable action tag': text => text.replaceAll('actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803', 'actions/checkout@v6'),
+  'mutable action branch': text => text.replace('actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38', 'actions/setup-node@main'),
   'abbreviated action SHA': text => text.replace('actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803', 'actions/checkout@d23441a'),
-  'unpinned Docker action': text => text.replace('actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6', 'docker://alpine:3'),
+  'unpinned Docker action': text => text.replace('actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38', 'docker://alpine:3'),
   'unpinned reusable workflow': text => text.replace('    runs-on: ubuntu-24.04\n', '    uses: owner/repo/.github/workflows/x.yml@v1\n'),
 };
 
@@ -494,7 +492,6 @@ test('evidence CLI refuses ancestor junctions, leaf links and linked mapping inp
   for (const target of [link, path.join(link, 'package')]) {
     assert.throws(() => evidencePath(target, 'directory'), /symlink\/junction forbidden/);
   }
-  // A junction at a manifest leaf must also be refused before JSON parsing.
   symlinkSync(path.join(outside, 'package'), path.join(repository, 'package/sanitized-manifest.json'), kind);
   const cli = (args, expected) => {
     const result = spawnSync(process.execPath, [path.join(root, 'scripts/qa-impact-review-evidence.mjs'), ...args],
@@ -574,7 +571,6 @@ test('task-local evidence mappings sanitize Windows, Linux and macOS profiles wi
     'E:/Users/Synthetic Windows2/repo', 'E:/Users/Other/repo']) {
     assert.throws(() => sanitizer.text(value), /Unmapped private path\/identifier/);
   }
-  // Regex syntax inside a profile name is literal, and a lone POSIX prefix must construct a valid pattern.
   assert.equal(evidenceSanitizer({ profilePrefixes: ['/home/a.b+c'] }).text('/home/a.b+c/x'), '<USER_HOME>/x');
   assert.throws(() => evidenceSanitizer({ profilePrefixes: ['/home/a.b+c'] }).text('/home/aXb+c/x'), /Unmapped private path\/identifier/);
 });
@@ -616,11 +612,9 @@ test('evidence audit rejects payload tampering, extra or missing files, broken l
   };
   const reset = () => { rmSync(directory, { recursive: true }); mkdirSync(directory); };
   try {
-    // Reference: every earlier integrity gate passes, so a wrong ledger is the first rejection.
     let { manifest, pinned } = build({ ledgerValue: {} });
     await assert.rejects(audit(manifest, pinned), /Derived command ledger mismatch/);
     reset();
-    // A correct ledger proceeds beyond every static gate into replay, which needs the unavailable raw answers.
     ({ manifest, pinned } = build());
     await assert.rejects(audit(manifest, pinned), error => !/ledger mismatch|integrity|linkage|allow-list|inventory/.test(error.message));
     reset();
@@ -661,7 +655,6 @@ test('evidence audit rejects payload tampering, extra or missing files, broken l
     await assert.rejects(audit(manifest, pinned), /Raw-to-sanitized hash linkage/);
     reset();
 
-    // Command text changed between start and completion is rejected by the derived-ledger construction itself.
     ({ manifest, pinned } = build());
     const altered = trace.replace('"command":"x","exit_code"', '"command":"z","exit_code"');
     for (const id of ids) put(`${id}/trace.jsonl`, altered);

@@ -92,8 +92,8 @@ need review; a tool named in Creator/Producer is not automatically an authorship
 ZIP32 supports stored/deflated entries and data descriptors, with at most 1,000 entries,
 8 MiB per expanded entry and 32 MiB total expansion. Local/central headers, sizes, CRCs,
 non-overlap, safe paths, file/directory collisions, case aliases and symlink modes are
-checked. UTF-8 text entries use the existing signature/comment rules; embedded PDFs
-receive the metadata check. ZIP comments are checked, and Gitleaks scans one archive
+checked. UTF-8 text entries in a registered source format follow the zero-comment rule
+and other text entries receive attribution checks; embedded PDFs receive the metadata check. ZIP comments are checked, and Gitleaks scans one archive
 level in index/history/working scans. Nested archives, encryption, ZIP64, alternate
 Unicode path/comment fields, unsupported binary/entry formats and misleading PDF/ZIP
 extensions fail closed. Only timestamp and Unix UID/GID extra fields are accepted.
@@ -102,20 +102,22 @@ is made. Unsupported owner inputs need a reviewed compatible inspection path; do
 strip metadata, rewrite archives or bypass checks to make them pass.
 
 `check:hygiene` inspects resolved regular index blobs and tracked/unignored working
-files separately, including renamed and force-added files. JavaScript comments are
-parsed with Acorn so test strings and regular expressions are not treated as comments.
-TypeScript (`.ts`, `.mts`, `.cts`, declarations and `.tsx`) uses the pinned compiler's
-native syntax tree to exclude literal/JSX text spans, then its scanner to collect
-inline and multiline comments, including comments inside type-only declarations.
-This does not expand the approved repository filename categories. Other configuration
-formats receive line-leading comment checks; Markdown
-and legal/contributor records receive signature-line checks. Known AI trailers,
+files separately, including renamed and force-added files. It enforces the zero-comment
+source policy in AGENTS.md on every non-Markdown text file. `scripts/source-comments.mjs`
+locates comments with a parser or lexer for each format: JavaScript with Acorn, TypeScript
+with the pinned compiler's native scanner, YAML with the `yaml` CST, TOML, SQL (including
+nested block comments and dollar quotes), JSON/JSONC, shell hooks, gitignore, gitattributes
+and EditorConfig. Comment-like text inside strings, regular expressions, template and JSX
+literals, YAML block scalars and quoted values is not a violation. A file in a format
+without a registered rule fails closed as an unsupported source format, so a new format
+needs a reviewed, tested rule before it is accepted. Markdown is documentation outside the
+source-comment rule and still receives signature-line checks, as do legal and contributor
+records. The only permitted syntax is a shebang on a file's first line. Known AI trailers,
 promotional signatures, explicit role signatures and AI self-introductions fail.
-There is no blanket comment ban or automatic deletion. Reviewers must assess narrative
-or redundant comments, arbitrary claims and paraphrases, useful technical comments,
-legitimate provenance, actual authorship and authorization. A justified exception
-needs a narrow reviewed rule and positive/negative fixtures, not a scanner-disable
-comment or an entire excluded directory. Factual human trailers remain accepted.
+Any future exception needs an owner-approved, reviewed rule in `scripts/source-comments.mjs`
+with positive and negative cases in `scripts/check-hygiene.test.mjs`. A scanner-disable
+comment, an excluded directory or a reviewer's judgment about usefulness is not an
+exception. Factual human trailers remain accepted.
 
 `check:metadata` checks local commits absent from `origin/main`; fetch that ref before
 checking. CI checks every commit in the event's exact range and the current PR title,

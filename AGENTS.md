@@ -3,7 +3,7 @@
 ## Authority and navigation
 
 This root `AGENTS.md` is the single authoritative repository-wide engineering
-policy for Codex and Claude Code. Higher-priority runtime instructions and the
+policy for Codex, Claude Code and every other coding agent. Higher-priority runtime instructions and the
 human's explicit task scope take precedence. Procedures and references explain
 how to do work; they do not create another AI policy or grant additional authority.
 
@@ -64,6 +64,7 @@ import architecture, commands, credentials, or conventions from another reposito
 | Tool pins/hashes, shared paths, installation | `scripts/tools.json`, `scripts/tool-path.mjs`, `scripts/install-tools.mjs` |
 | Identity and reserved-file checks | `scripts/verify-repository.mjs`, `scripts/check-reserved-files.mjs` |
 | Naming, attribution and Git metadata | `scripts/check-hygiene.mjs`, `scripts/check-metadata.mjs` |
+| Zero-comment source policy and per-format comment parsing | `scripts/source-comments.mjs`, enforced by `scripts/check-hygiene.mjs` |
 | Index and working-file inspection | `scripts/repository-files.mjs` |
 | Secret scanning, including staged blobs | `scripts/check-tools.mjs`, `scripts/scan-staged.mjs` |
 | YAML validation and invalid-fixture verification | `scripts/check-yaml.mjs`, `scripts/verify-negative.mjs` |
@@ -163,9 +164,15 @@ hooks and successful workflows alone do not prove server-side enforcement.
 
 - Follow `.editorconfig` and `.gitattributes`: UTF-8, LF, final newline, two-space
   indentation, no trailing whitespace. Keep code/dependency changes focused.
-- Do not add unsolicited author/AI credits, narration comments, or TODO/NOTES/PLAN/
-  report files. Preserve legal notices and comments explaining useful invariants
-  or non-obvious reasons.
+- Zero-comment source policy: source code, scripts, tests, SQL, configuration and
+  hook files contain no comments of any kind. This prohibits explanatory comments,
+  JSDoc, TODO/FIXME/HACK/NOTE annotations, commented-out code, AI-generated notes,
+  author or AI credits, narration, and inline documentation, including comments that
+  explain security, races, compatibility, invariants or non-obvious reasons. Put such
+  explanations in tests, names, Issues, PR descriptions or Markdown documentation.
+  The only permitted non-comment syntax is a shebang on a file's first line. Legal
+  notices and directives are not exempt unless a reviewed, tested rule adds an exception
+  under CONTRIBUTING. Do not add TODO/NOTES/PLAN/report files.
 - New source files need one responsibility, a real caller or verification consumer,
   and a location/name consistent with the current module. Use the enforced naming
   categories in CONTRIBUTING; approve a real new module's convention before adding
@@ -182,10 +189,9 @@ hooks and successful workflows alone do not prove server-side enforcement.
 - Disable automatic commit/PR attribution through supported project settings where
   available. Preserve MCP and permission configuration. Report unsupported runtime
   settings rather than adding incompatible keys or silently changing user settings.
-- Review comments for useful invariants, security constraints, races, compatibility
-  and API contracts; remove redundant narration only within scope. Static checks
-  reject known signature forms, not every paraphrase or unnecessary explanation.
-  Human review must assess usefulness, provenance, truth and owner authorization.
+- The zero-comment policy is enforced mechanically by `scripts/check-hygiene.mjs`
+  through `scripts/source-comments.mjs`, which parses each supported format. Review
+  must still assess provenance, truth and owner authorization for non-comment content.
 - Preserve unrelated modified, staged, and untracked work, authenticated sessions,
   and processes. Recheck before writes. Do not reset, clean, overwrite, delete,
   force-push, or rewrite another person's work/shared history by inference.

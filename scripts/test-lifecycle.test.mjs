@@ -171,7 +171,6 @@ test('real pre-commit rejects unregistered tests and a disabled npm guard withou
   ];
   for (const [module, callable] of modules) {
     const source = pathToFileURL(path.join(root, 'scripts', module + '.mjs')).href;
-    // Fixture commits use local metadata; the outer workflow event belongs to another repository.
     const args = module === 'check-metadata' ? 'process.cwd(), {}' : 'process.cwd()';
     write(`scripts/${module === 'scan-staged' ? 'check-tools' : module}.mjs`,
       `import { ${callable} } from ${JSON.stringify(source)};\n${callable}(${args});\n`);

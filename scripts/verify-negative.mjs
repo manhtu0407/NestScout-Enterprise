@@ -143,7 +143,6 @@ try {
   }, /Competing agent instruction file/);
   reservedCase('reject root policy case rename in index', ({ git }) => git(['mv', 'AGENTS.md', 'agents.md']), /Competing agent instruction file/);
   reservedCase('reject root policy case rename only on disk', ({ repository }) => {
-    // Two renames work even on case-insensitive filesystems.
     renameSync(path.join(repository, 'AGENTS.md'), path.join(repository, 'policy.tmp'));
     renameSync(path.join(repository, 'policy.tmp'), path.join(repository, 'agents.md'));
   }, /Competing agent instruction file|Required regular root file/);
@@ -186,7 +185,6 @@ try {
   const workflow = path.join(directory, 'invalid.yml');
   writeFileSync(workflow, 'name: Invalid\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n        unknown-property: invalid\n');
   mustReject(toolPath('actionlint'), ['-shellcheck=', '-pyflakes=', workflow], 'Actionlint');
-  // Synthetic shape only. No real credential is used or printed.
   const token = ['gh', 'p_', 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'].join('');
   assert.match(token, /^ghp_[A-Za-z0-9]{36}$/);
   writeFileSync(path.join(directory, 'synthetic.txt'), `token=${token}\n`);

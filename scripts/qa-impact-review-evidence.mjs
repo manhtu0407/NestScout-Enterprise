@@ -11,8 +11,6 @@ import { gitEnvironment } from './git-environment.mjs';
 const revision = 'e977bd0e77d0e5c8750e537dda00c551e6ddc365';
 const manifestHash = 'b458bfa88ead7714749ec62eefd71b4b47220ba30b14e68f6cded38964b5935c';
 const sha = value => createHash('sha256').update(value).digest('hex');
-// Inspect the entire lexical path, including ancestors above the evidence root.
-// Do not realpath first: that would hide a symlink/junction from this check.
 export function evidencePath(file, type = 'file') {
   assert.equal(typeof file, 'string', 'Invalid evidence path');
   assert.ok(path.isAbsolute(file) && !file.includes('\0'), 'Absolute evidence path required');
@@ -94,7 +92,6 @@ export function evidenceSanitizer(config, cases = [], threads = []) {
   });
   assert.equal(new Set(prefixes.map(p => p.toLowerCase())).size, prefixes.length, 'Duplicate profile mapping');
   const counts = { home: 0, fixture: 0, thread: 0 };
-  // Encode each segment before joining: the separator and colon alternatives contain regex syntax.
   const segment = part => /^[A-Za-z]:$/.test(part) ? escape(part[0]) + '(?::|%3A)' : escape(part).replaceAll(' ', '(?: |%20)');
   const patterns = prefixes.sort((a, b) => b.length - a.length).map(prefix => new RegExp(prefix.split('/').map(segment)
     .join('(?:\\\\+|/)') + '(?=$|[\\\\/\\s"\'`])', 'gi'));
@@ -151,7 +148,6 @@ function counts(directory) {
     const commands = ends.map(e => ({ id: e.id, command: e.command, exit: e.exit_code, output: e.aggregated_output,
       failureClass: e.exit_code === 0 ? null : /TypeError:/.test(e.aggregated_output) ? 'probe-TypeError'
         : /cannot use NUL as an exclude file/.test(e.aggregated_output) ? 'git-NUL' : /Cannot find path/.test(e.aggregated_output) ? 'missing-path-bundle' : 'UNCLASSIFIED',
-      // A diagnostic flag is not a parser of nested PowerShell process status.
       zeroExitWithDiagnostic: e.exit_code === 0 && /fatal:|TypeError:|Cannot find path|Permission denied/i.test(e.aggregated_output) }));
     assert.ok(commands.every(e => Number.isInteger(e.exit)));
     cases.push({ id, commandCount: commands.length, nonzero: commands.filter(e => e.exit !== 0).length,
@@ -273,7 +269,6 @@ async function exportEvidence(mappingFile) {
   }
   const cases = json(member(raw, 'cases.json'));
   assert.deepEqual(cases.map(c => c.id), Array.from({ length: 10 }, (_, n) => `C${String(n + 1).padStart(2, '0')}`));
-  // c.out, c.directory and command paths are evidence text, never filesystem authority.
   const threads = cases.map(c => [c.id, JSON.parse(read(member(raw, `${c.id}/trace.jsonl`)).split(/\r?\n/)[0]).thread_id]);
   const sanitizer = evidenceSanitizer(config, cases, threads);
   const outputs = {};
@@ -287,7 +282,6 @@ async function exportEvidence(mappingFile) {
   }
   const supplement = bytes(path.join(root, '.cache/qa02-r3-post-run-smoke.json'));
   const sanitizedSupplement = sanitizer.transform(JSON.parse(supplement));
-  // Complete private-path validation before creating any output package.
   const destination = mkdtempSync(path.join(evidencePath(path.join(root, '.cache'), 'directory'), 'qa02-r3-sanitized-'));
   for (const [relative, output] of Object.entries(outputs)) writeMember(destination, relative, output);
   write(member(destination, 'raw-hashes.json'), original);
@@ -308,7 +302,6 @@ async function exportEvidence(mappingFile) {
     scan: { tool: 'Gitleaks 8.30.1', exit: 0, stdout: scan }, humanPrivacyReview: 'REQUIRED BEFORE SHARING' });
   execFileSync(scanner, ['dir', destination, '--redact', '--no-banner'], { stdio: ['ignore', 'pipe', 'pipe'] });
   const manifestSHA256 = sha(bytes(member(destination, 'sanitized-manifest.json')));
-  // Recompute every transformation against sealed raw bytes, not just ledger hashes.
   const comparison = evidenceSanitizer(config, cases, threads);
   for (const [relative, digest] of Object.entries(manifest.files)) {
     const content = read(member(raw, relative));

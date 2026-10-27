@@ -8,7 +8,6 @@ import { test } from 'node:test';
 import { root } from './tool-path.mjs';
 import { ambientTestOptions, nodeOptionTokens } from './run-tests.mjs';
 
-// An absolute --test-reporter path is imported as a URL, so a Windows drive path is invalid there; a file URL works on both platforms.
 const reporter = pathToFileURL(path.join(root, 'scripts/test-integrity-reporter.mjs')).href;
 const runnerScript = path.join(root, 'scripts/run-tests.mjs');
 const ambientNames = /^(?:NODE_TEST_CONTEXT|NODE_OPTIONS|npm_config_node_options)$/i;
@@ -232,7 +231,6 @@ test('the runner script never reports a pass for a dangerous quoted filter, dire
     assert.match(result.output, /Ambient Node options would change/, NODE_OPTIONS);
     assert.doesNotMatch(result.output, /ℹ pass|✔/, 'nothing may run under rejected options');
   }
-  // Node itself refuses an unterminated quote before the runner starts; either way nothing may pass.
   const malformed = viaRunner({ 'a.test.mjs': mixed }, {}, { env: { NODE_OPTIONS: '--test-name-pattern="good' } });
   assert.notEqual(malformed.status, 0);
   assert.doesNotMatch(malformed.output, /ℹ pass|✔/);
@@ -283,7 +281,6 @@ test('legitimate Node options and the normal spec output are preserved by the ru
 });
 
 test('the runner script fails when the reporter leaves incomplete execution evidence, even though node reports success', () => {
-  // Stand-in reporters keep the normal spec output and exit status 0 but record nothing, or only part of the run.
   const stubs = {
     none: 'export default async function* (source) { yield* Readable.from(source).compose(new spec()); }\n',
     partial: "import { writeFileSync } from 'node:fs';\nexport default async function* (source) { writeFileSync(process.env.NESTSCOUT_TEST_EVIDENCE, JSON.stringify({ 'a.test.mjs': 1 })); yield* Readable.from(source).compose(new spec()); }\n",

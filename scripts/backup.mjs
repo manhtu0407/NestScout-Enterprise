@@ -33,7 +33,7 @@ export function createGitBackup(repository, requested) {
   const sourceHead = git(['rev-parse', 'HEAD']);
   const refs = () => git(['for-each-ref', '--format=%(refname) %(objectname)']).split('\n').filter(Boolean);
   const sourceRefs = refs();
-  mkdirSync(directory); // Refuse to overwrite an existing backup; parent must exist.
+  mkdirSync(directory);
   const bundle = path.join(directory, 'source.bundle');
   git(['bundle', 'create', bundle, '--all']);
   git(['bundle', 'verify', bundle]);
@@ -69,7 +69,6 @@ export function exportMetadata(directory, read = githubRead) {
     try {
       value = read(repo + endpoint, paginated);
     } catch {
-      // Do not copy credential-bearing upstream error text into the archive.
       statuses.push({ label, status: 'UNVERIFIED', reason: 'API export failed; inspect endpoint access separately.' });
       return null;
     }

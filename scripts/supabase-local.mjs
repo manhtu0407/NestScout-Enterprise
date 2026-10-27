@@ -200,7 +200,6 @@ async function main(action) {
     }
     const before = runtime.verify();
     if (action === 'status') {
-      // Never log CLI status.env: it contains local passwords and API keys.
       console.log(JSON.stringify(before));
     } else if (action === 'types' || action === 'check-types') {
       const generated = runtime.cli(['gen', 'types', 'typescript', '--local', '--schema', 'public'])

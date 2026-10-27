@@ -26,8 +26,6 @@ function selectedTests(scripts, state) {
       }
     } else if (commands.length !== 1) throw new Error(state + ': unexpected test runner command ' + runner);
     const tokens = commands[commands.length - 1].split(' ');
-    // Registration alone does not prove execution; the runner script pins the reporter that fails skipped, todo and empty tests
-    // and rejects ambient options that filter tests, so a bare node --test is not an accepted runner.
     if (tokens.length < 3 || tokens[0] !== 'node' || tokens[1] !== runnerPath) {
       throw new Error(state + ': test runner must execute node ' + runnerPath + ': ' + runner);
     }

@@ -9,7 +9,8 @@ import { spawnSync } from 'node:child_process';
 import { root } from './tool-path.mjs';
 import { gitEnvironment } from './git-environment.mjs';
 import { git, repositoryFiles, blobByteLimit } from './repository-files.mjs';
-import { checkPath, checkAttribution, checkHygiene, sourceComments } from './check-hygiene.mjs';
+import { checkPath, checkAttribution, checkHygiene, checkNoComments } from './check-hygiene.mjs';
+import { commentSpans, hasCommentRule } from './source-comments.mjs';
 import { inspectArtifact, artifactLimits } from './inspect-artifact.mjs';
 import { scanStaged } from './scan-staged.mjs';
 import { checkBranch, checkMessage, checkMetadata, checkPullRequest, checkCommitRange, checkPush } from './check-metadata.mjs';
@@ -85,7 +86,11 @@ function zipFixture(entries, comment = '') {
 }
 
 function checkArtifact(file, content) {
-  for (const record of inspectArtifact(file, content)) checkAttribution(record.metadata ? record.text : sourceComments(record.file, record.text), record.file);
+  for (const record of inspectArtifact(file, content)) {
+    if (record.metadata) checkAttribution(record.text, record.file);
+    else if (hasCommentRule(record.file)) checkNoComments(record.file, record.text);
+    else checkAttribution(record.text, record.file);
+  }
 }
 
 test('existing naming categories and exact required/generated/legal filenames pass', () => {
@@ -148,7 +153,7 @@ test('logo tampering is rejected in working files and staged blobs even after de
   assert.doesNotThrow(() => checkHygiene(repository));
 });
 
-test('real technical comments, factual people, API contracts and provenance pass', () => {
+test('factual people, API contracts and provenance text passes attribution checks', () => {
   for (const text of ['// Keep the lock until the asynchronous callback settles.',
     '/* The caller must approve this SQL before execution. */', '/** @returns {Promise<void>} */',
     '// Copyright 2026 Example Corporation. All rights reserved.',
@@ -169,31 +174,31 @@ for (const signature of ['// Generated with Claude Code', '/* Written by Codex *
     assert.throws(() => checkAttribution(signature, 'fixture'), /Unapproved AI attribution/);
   });
 }
-test('working, staged, renamed and committed source comments are checked without scanning string fixtures', () => {
+test('working, staged, renamed and committed source files are checked without scanning string fixtures', () => {
   const { repository, write, run } = fixture();
-  write('scripts/example.mjs', 'const fixture = "Generated with Claude Code";\n// Preserve a lock across awaits.\n');
+  write('scripts/example.mjs', 'const fixture = "Generated with Claude Code";\n');
   run(['add', '.']);
   assert.doesNotThrow(() => checkHygiene(repository));
   write('scripts/example.mjs', 'export const valid = true; // Generated with Codex\n');
-  assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+  assert.throws(() => checkHygiene(repository), /Prohibited source comment/);
   run(['add', '.']);
   write('scripts/example.mjs', 'export const valid = true;\n');
-  assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+  assert.throws(() => checkHygiene(repository), /Prohibited source comment/);
   run(['mv', 'scripts/example.mjs', 'scripts/renamed.mjs']);
-  assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+  assert.throws(() => checkHygiene(repository), /Prohibited source comment/);
   run(['commit', '--quiet', '-m', 'test: retain invalid staged fixture']);
   rmSync(path.join(repository, 'scripts/renamed.mjs'));
-  assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+  assert.throws(() => checkHygiene(repository), /Prohibited source comment/);
   run(['rm', '--cached', 'scripts/renamed.mjs']);
   assert.doesNotThrow(() => checkHygiene(repository));
 });
-test('untracked documents, comment blocks and post-code comments are checked', () => {
+test('untracked source files reject every comment form while Markdown keeps attribution checks', () => {
   const { repository, write } = fixture();
   for (const content of ['/*\n * Generated with Claude Code\n */\nexport const x = 1;\n',
     'const x = 1; /* Generated with Codex */\n', '// Generated with Claude Code\n',
     'export function f() { /* Written by Codex */ return 1; }\n']) {
     write('scripts/probe.mjs', content);
-    assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+    assert.throws(() => checkHygiene(repository), /Prohibited source comment/);
   }
   rmSync(path.join(repository, 'scripts/probe.mjs'));
   write('docs/probe.md', '# Probe\n\nGenerated with Claude Code\n');
@@ -265,14 +270,14 @@ test('permanent artifacts require matching index and working manifests, hash and
   write(item.path, content);
   assert.throws(() => checkHygiene(repository), /mismatched index artifact/);
 });
-test('registered ZIPs, supported legacy empty Codex setting and useful comments pass', () => {
+test('registered ZIPs and the supported legacy empty Codex setting pass', () => {
   const { repository, run, write } = fixture();
   const content = Buffer.from([0x50, 0x4b, 0x05, 0x06, ...new Array(18).fill(0)]);
   const item = { path: 'docs/artifacts/reference-input.zip', purpose: 'Durable reference input', source: 'Owner supplied fixture', sha256: createHash('sha256').update(content).digest('hex') };
   write(item.path, content);
   write('package.json', JSON.stringify({ repositoryHygiene: { artifacts: [item] } }));
   write('.codex/config.toml', 'commit_attribution = ""\n[mcp_servers.fixture]\ncommand = "node"\n');
-  write('scripts/example.mjs', '/** @returns {boolean} Whether the caller holds the lock. */\nexport const valid = true;\n// Preserve the lock across awaits to avoid a race.\n');
+  write('scripts/example.mjs', 'export const valid = true;\n');
   run(['add', '.']);
   assert.doesNotThrow(() => checkHygiene(repository));
   write('.claude/settings.json', '{"attribution":false}\n');
@@ -286,37 +291,89 @@ test('invalid UTF-8, NUL content and malformed JavaScript fail transparently', (
     assert.throws(() => checkHygiene(repository));
   }
 });
-test('TypeScript AST comments cover inline, type-only, multiline, declaration and JSX contexts', () => {
+test('TypeScript comments are rejected in every syntactic context while literals, regexes and JSX text pass', () => {
   for (const file of ['input.ts', 'input.mts', 'input.cts', 'input.d.ts', 'input.d.mts', 'input.d.cts', 'input.tsx']) {
     for (const text of ['type Value = string; // Generated with Codex\n',
       'type Value = { x: string /* Generated with Claude Code */ };\n',
       'type Value = {\n /*\n * Maintainer: Codex\n */\n x: string;\n};\n',
-      'declare function f(value: /* Written by Codex */ string): void;\n']) {
-      assert.throws(() => checkAttribution(sourceComments(file, text), file), /Unapproved AI attribution/, `${file}: ${text}`);
+      'declare function f(value: /* Written by Codex */ string): void;\n',
+      'declare const value: { field: string /* Retain the old field for wire compatibility. */ };\n',
+      '/** @returns A lock token; release it after the asynchronous callback settles. */\ndeclare function acquire(): string;\n']) {
+      assert.throws(() => checkNoComments(file, text), /Prohibited source comment/, `${file}: ${text}`);
     }
-    const valid = 'type Value = "Generated with Codex";\n' +
-      'declare const value: { field: string /* Retain the old field for wire compatibility. */ };\n' +
-      '/** @returns A lock token; release it after the asynchronous callback settles. */\n' +
-      'declare function acquire(): string;\n';
-    assert.doesNotThrow(() => checkAttribution(sourceComments(file, valid), file));
+    assert.doesNotThrow(() => checkNoComments(file, 'type Value = "Generated with Codex";\ndeclare function acquire(): string;\n'));
   }
-  for (const text of ['const x: string = `literal // Generated with Codex`;\n',
-    'const x = /[/*]Generated with Codex/;\n', 'const x = `prefix ${1 /* Keep ordering across retries. */} // Generated with Codex`;\n',
-    'const view = <span>// Generated with Codex</span>;\n']) {
-    assert.doesNotThrow(() => checkAttribution(sourceComments('input.tsx', text), 'fixture'));
+  for (const text of ['const x: string = `literal // Generated with Codex`;\n', 'const x = /[/*]Generated with Codex/;\n']) {
+    assert.doesNotThrow(() => checkNoComments('input.ts', text));
   }
-  assert.throws(() => sourceComments('input.ts', 'type Value = { broken: ; };'), /Invalid TypeScript/);
+  assert.doesNotThrow(() => checkNoComments('input.tsx', 'const view = <span>// Generated with Codex</span>;\n'));
+  assert.throws(() => checkNoComments('input.ts', 'const x = `prefix ${1 /* Keep ordering across retries. */}`;\n'), /Prohibited source comment/);
+  assert.throws(() => commentSpans('input.ts', 'type Value = { broken: ; };'), /Invalid TypeScript/);
+});
+const prohibitedComments = [
+  ['scripts/example.mjs', 'export const value = 1; // Explains the invariant.\n', 1],
+  ['scripts/example.mjs', '/* Explains the race. */\nexport const value = 1;\n', 1],
+  ['scripts/example.mjs', '/**\n * @returns {number}\n */\nexport const value = 1;\n', 1],
+  ['scripts/example.mjs', 'export const value = 1;\n// TODO: remove the fallback.\n', 1],
+  ['scripts/example.mjs', 'export const value = 1;\n// const old = 2;\n', 1],
+  ['scripts/example.mjs', 'export function f() {\n  return /*\n*/ value;\n}\n', 1],
+  ['scripts/example.ts', 'export type Value = string; // Explains the contract.\n', 1],
+  ['scripts/example.tsx', 'export const view = <b>text</b>; // Explains the view.\n', 1],
+  ['.github/workflows/ci.yml', 'steps:\n  - uses: actions/checkout@0000000000000000000000000000000000000000 # v6\n', 1],
+  ['.github/dependabot.yml', '# Keeps dependencies current.\nversion: 2\n', 1],
+  ['supabase/config.toml', 'project_id = "example" # local only\n', 1],
+  ['supabase/seed.sql', '-- Explains the fixture.\nSELECT 1;\n', 1],
+  ['supabase/seed.sql', 'SELECT 1; /* Explains nested state. */\n', 1],
+  ['.githooks/pre-commit', '#!/bin/sh\nset -eu # Explains the gate.\n', 1],
+  ['.gitignore', '# Supabase\n.temp\n', 1],
+  ['.editorconfig', '; Explains the style.\n[*]\n', 1],
+  ['.markdownlint-cli2.jsonc', '{ // Explains the rule.\n  "globs": []\n}\n', 1],
+];
+for (const [file, text, count] of prohibitedComments) {
+  test(`zero-comment policy rejects ${count} comment(s) in ${file}: ${JSON.stringify(text.slice(0, 40))}`, () => {
+    assert.equal(commentSpans(file, text).length, count);
+    assert.throws(() => checkNoComments(file, text), /Prohibited source comment/);
+  });
+}
+const commentLikeContent = [
+  ['scripts/example.mjs', '#!/usr/bin/env node\nexport const text = "// not a comment";\nexport const pattern = /\\/\\*/;\n'],
+  ['scripts/example.ts', 'export type Value = "Generated with Codex";\n'],
+  ['scripts/example.tsx', 'export const view = <b>// text</b>;\n'],
+  ['.github/workflows/ci.yml', "run: |\n  echo '# not a comment'\nkey: \"# value\"\n"],
+  ['supabase/config.toml', 'url = "https://example.test/#fragment"\nsql = """\n# text\n"""\n'],
+  ['supabase/seed.sql', "SELECT 'a -- text', $$ /* text */ $$;\n"],
+  ['.githooks/pre-commit', "#!/bin/sh\necho '# text' \"a#b\"\n"],
+  ['.gitignore', '\\#literal\n*.log\n'],
+  ['.markdownlint-cli2.jsonc', '{ "globs": ["**/*.md", "/* text */"] }\n'],
+  ['docs/example.md', '<!-- Documentation note. -->\n'],
+  ['supabase/migrations/.gitkeep', ''],
+];
+for (const [file, text] of commentLikeContent) {
+  test(`zero-comment policy accepts comment-like content without comments in ${file}`, () => {
+    assert.deepEqual(commentSpans(file, text), []);
+    assert.doesNotThrow(() => checkNoComments(file, text));
+  });
+}
+test('prohibited comments report every line that contains one', () => {
+  assert.throws(() => checkNoComments('scripts/example.mjs', 'const a = 1;\n// first\nconst b = 2; // second\n'), /at line 2, 3\./);
+});
+test('unrecognized source formats fail closed instead of passing unchecked', () => {
+  assert.throws(() => checkNoComments('scripts/example.xyz', 'value\n'), /No comment rule for source format/);
+});
+test('the shebang exemption applies to the first line only', () => {
+  assert.throws(() => checkNoComments('.githooks/pre-push', '#!/bin/sh\n#!/bin/sh\n'), /Prohibited source comment/);
 });
 test('TypeScript staged comments cannot hide behind clean working files or renames', () => {
   const { repository, run, write } = fixture();
   write('supabase/database.types.ts', 'export type Value = string; // Generated with Codex\n');
   run(['add', '.']);
   write('supabase/database.types.ts', 'export type Value = string; // Preserve the wire contract.\n');
-  assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+  assert.throws(() => checkHygiene(repository), /Prohibited source comment/);
+  write('supabase/database.types.ts', 'export type Value = string;\n');
   run(['add', '.']);
   assert.doesNotThrow(() => checkHygiene(repository));
   write('supabase/database.types.ts', 'export type Value = { x: string /* Generated with Codex */ };\n');
-  assert.throws(() => checkHygiene(repository), /Unapproved AI attribution/);
+  assert.throws(() => checkHygiene(repository), /Prohibited source comment/);
 });
 test('PDF metadata accepts factual authors, escaped strings, Unicode and indirect text without rewriting bytes', () => {
   const unicode = Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from('Hợp đồng', 'utf16le').swap16()]).toString('hex');
@@ -350,7 +407,7 @@ test('PDF unsupported metadata features and malformed structures fail closed', (
 });
 test('ZIP stored/deflated/data-descriptor entries inspect comments and contents while preserving legitimate strings', () => {
   for (const entry of [{ name: 'reference.md', body: '# Reference\n\nPreserve the wire contract.\n', method: 0 },
-    { name: 'module/input.ts', body: 'export type Value = "Generated with Codex"; /* Keep wire compatibility. */\n' },
+    { name: 'module/input.ts', body: 'export type Value = "Generated with Codex";\n' },
     { name: 'input.mjs', body: 'const fixture = "Generated with Codex";\n', flags: 0x808 },
     { name: 'contract.pdf', body: pdfFixture() }]) {
     const content = zipFixture([entry]);
@@ -361,8 +418,8 @@ test('ZIP stored/deflated/data-descriptor entries inspect comments and contents 
   assert.doesNotThrow(() => checkArtifact('input.zip', zipFixture([{ name: 'module/', mode: 0x4000 }, { name: 'module/input.txt', body: 'Reference\n', extra: Buffer.from([0x55, 0x54, 5, 0, 1, 0, 0, 0, 0]) }])));
   assert.doesNotThrow(() => checkArtifact('input.zip', zipFixture([{ name: 'LICENSE', body: 'Copyright 2026 Example Corporation.\n' },
     { name: 'coverage.test.mjs', body: 'export const value = true;\n' }, { name: 'src/coverage/index.ts', body: 'export type Value = string;\n' }])));
+  assert.throws(() => checkArtifact('input.zip', zipFixture([{ name: 'input.ts', body: 'export type Value = string; // Generated with Codex\n' }])), /Prohibited source comment/);
   for (const content of [zipFixture([{ name: 'reference.md', body: 'Generated with Codex\n' }]),
-    zipFixture([{ name: 'input.ts', body: 'export type Value = string; // Generated with Codex\n' }]),
     zipFixture([{ name: 'contract.pdf', body: pdfFixture({ info: '/Author (Codex)' }) }]),
     zipFixture([], 'Generated with Claude Code')]) assert.throws(() => checkArtifact('input.zip', content), /Unapproved AI attribution/);
 });

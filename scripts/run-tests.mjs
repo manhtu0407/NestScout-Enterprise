@@ -5,19 +5,19 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-// Every persistent test runner goes through here. `node --test` exits 0 when inherited configuration filters tests out
-// (NODE_OPTIONS or npm's node-options with --test-name-pattern and friends) or when NODE_TEST_CONTEXT makes it skip the
-// runner entirely, so the invocation is built and checked in one place instead of trusting each caller's environment.
 const reporter = path.join(path.dirname(fileURLToPath(import.meta.url)), 'test-integrity-reporter.mjs');
 const testFile = /\.(?:test|spec)\.mjs$/;
 const optionVariables = /^(?:NODE_OPTIONS|npm_config_node[_-]options)$/i;
-// Every --test-* option (and its experimental- form) selects, shards, isolates or reports tests, so none may arrive through
-// the environment; other options stay allowed. Node accepts underscores wherever an option name has hyphens.
 const testOption = /^--(?:experimental-)?test(?:[-=]|$)/;
 
-// Splits a NODE_OPTIONS value exactly as Node does: only a space separates options, double quotes group text and are
-// removed wherever they appear, and a backslash escapes the next character inside quotes. Anything Node would reject, or
-// would read differently from a plain split, throws so the caller fails closed instead of guessing.
+function readExecutedEvidence(file) {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 export function nodeOptionTokens(value) {
   if (/[^\S ]/.test(value)) throw new Error('contains whitespace other than spaces');
   const tokens = [];
@@ -57,7 +57,6 @@ export function runTests(files, env = process.env, cwd = process.cwd()) {
   if (!files.length || files.some(file => !testFile.test(file))) throw new Error('Pass one or more *.test.mjs or *.spec.mjs files.');
   const ambient = ambientTestOptions(env);
   if (ambient.length) throw new Error(`Ambient Node options would change, or cannot be shown not to change, which tests run: ${ambient.join(', ')}. Unset them or run node --test directly outside verification.`);
-  // NODE_TEST_CONTEXT is set only inside a test run; a stale value would make the child skip running the files.
   const childEnvironment = Object.fromEntries(Object.entries(env).filter(([name]) => !/^NODE_TEST_CONTEXT$/i.test(name)));
   const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-test-run-'));
   try {
@@ -67,8 +66,7 @@ export function runTests(files, env = process.env, cwd = process.cwd()) {
     });
     if (result.error) throw result.error;
     const problems = [];
-    let executed = null;
-    try { executed = JSON.parse(readFileSync(evidence, 'utf8')); } catch { /* reported below */ }
+    const executed = readExecutedEvidence(evidence);
     if (!executed) problems.push('the integrity reporter did not complete, so execution of the requested tests is unproven');
     else for (const file of files) {
       const relative = path.relative(cwd, path.resolve(cwd, file)).split(path.sep).join('/');
