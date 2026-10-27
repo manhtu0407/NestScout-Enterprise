@@ -318,8 +318,10 @@ function runCommands(repository, scripts, head) {
   const bound = git(repository, ['rev-parse', 'HEAD']).trim() === head && git(repository, ['status', '--porcelain']).trim() === '';
   if (!bound) return { bound, results: [] };
   const manifest = JSON.parse(readFileSync(path.join(repository, 'package.json'), 'utf8'));
-  const cli = process.env.npm_execpath || path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
-  if (scripts.length && !existsSync(cli)) throw new Error('The npm CLI was not found; run this through npm or set npm_execpath.');
+  const installation = path.dirname(process.execPath);
+  const cli = [process.env.npm_execpath, path.join(installation, 'node_modules/npm/bin/npm-cli.js'), path.join(installation, '../lib/node_modules/npm/bin/npm-cli.js')]
+    .find(candidate => candidate && existsSync(candidate));
+  if (scripts.length && !cli) throw new Error('The npm CLI was not found; run this through npm or set npm_execpath.');
   const results = scripts.map(script => {
     if (!manifest.scripts?.[script]) throw new Error(`package.json has no script named ${script}.`);
     const child = spawnSync(process.execPath, [cli, 'run', script], {

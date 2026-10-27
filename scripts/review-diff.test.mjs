@@ -413,6 +413,18 @@ test('command evidence is bound to the frozen head and a clean working tree', ()
   assert.throws(() => reviewDiff({ repository, base: 'main', scope, run: ['not-a-script'] }), /no script named not-a-script/);
 });
 
+test('recorded commands find the npm CLI from the Node installation when not started through npm', () => {
+  const saved = process.env.npm_execpath;
+  delete process.env.npm_execpath;
+  try {
+    const packet = review(api => api.write('apps/mobile/src/lib/format-total.ts', formatTotal + 'export const unitLabel = currency;\n'), { run: ['check', 'verify:negative'] });
+    assert.equal(packet.dimensions.correctness.verdict, PASS);
+    assert.deepEqual(packet.commands.map(command => command.exitCode), [0, 0]);
+  } finally {
+    if (saved !== undefined) process.env.npm_execpath = saved;
+  }
+});
+
 test('the reviewed diff is frozen to resolved SHAs, so later commits do not change it', () => {
   const { repository, api } = fixture(inner => inner.write('apps/mobile/src/lib/format-total.ts', formatTotal + 'export const unitLabel = currency;\n'));
   const frozen = api.run(['rev-parse', 'HEAD']).trim();
