@@ -29,8 +29,6 @@ const word = '[a-z0-9]+(?:-[a-z0-9]+)*';
 const segments = `(?:${word}/)*`;
 const mobileSource = `apps/mobile/src/${segments}`;
 const disposable = /^(?:todo|notes|plan|report|handoff|session-summary|debug|scratch)(?:[-.]|$)/i;
-// Owner-supplied NestScout_Horizon_Restored_Asset_Pack_v1.zip, unchanged 04_android/play_store_512x512.png.
-// Archive SHA-256: d845aa9bf8795ff8ab7f57c17edd29a05fe6e7ba558c80c0d2ede25d0ee65064.
 const approvedLogo = Object.freeze({
   path: 'docs/assets/nestscout-horizon-logo-light.png',
   sha256: 'b4dbdd2eb0c742e36f61b41f87744f32f709cbdfc4441c93f17a494a87fde446',
@@ -264,6 +262,19 @@ function shellComments(_file, text) {
   return found;
 }
 
+function lineComments(markers) {
+  return (_file, text) => {
+    const found = [];
+    for (let index = 0; index < text.length;) {
+      const end = lineEnd(text, index);
+      const lead = text.slice(index, end).search(/\S/);
+      if (lead >= 0 && markers.includes(text[index + lead])) found.push({ text: text.slice(index + lead, end).trimEnd(), start: index + lead });
+      index = end + 1;
+    }
+    return found;
+  };
+}
+
 function yamlComments(_file, text) {
   const found = [];
   const collect = token => {
@@ -291,14 +302,12 @@ function yamlComments(_file, text) {
 const commentGrammars = [
   [/\.(?:[cm]?ts|tsx)$/, typeScriptComments], [/\.[cm]?js$/, javaScriptComments], [/\.sql$/, sqlComments],
   [/\.toml$/, tomlComments], [/\.ya?ml$/, yamlComments], [/\.jsonc$/, jsoncComments], [/^\.githooks\//, shellComments],
+  [/(?:^|\/)\.(?:gitignore|gitattributes)$/, lineComments('#')], [/(?:^|\/)\.editorconfig$/, lineComments('#;')],
+  [/(?:^|\/)\.env\.example$/, shellComments],
 ];
+const plainConfiguration = /(?:^|\/)\.(?:gitignore|gitattributes|editorconfig|env\.example)$/;
 
 export const hasCommentGrammar = file => commentGrammars.some(([pattern]) => pattern.test(file));
-
-export const sameCommentGrammar = (first, second) => {
-  const grammar = file => commentGrammars.find(([pattern]) => pattern.test(file))?.[1];
-  return grammar(first) !== undefined && grammar(first) === grammar(second);
-};
 
 export function commentRecords(file, text) {
   const grammar = commentGrammars.find(([pattern]) => pattern.test(file));
@@ -306,7 +315,7 @@ export function commentRecords(file, text) {
 }
 
 export function sourceComments(file, text) {
-  const records = commentRecords(file, text);
+  const records = plainConfiguration.test(file) ? null : commentRecords(file, text);
   if (records) return records.map(record => record.text).join('\n');
   if (file.endsWith('.json')) return text.split(/\r?\n/).filter(line => /^\s*(?:#|\/\/|\/\*|\*|--)/.test(line)).join('\n');
   return text;

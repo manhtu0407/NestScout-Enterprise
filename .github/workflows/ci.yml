@@ -32,7 +32,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Install checksum-verified tools
         run: npm run tools:install
-      - name: Check added source comments on the proposed revision
+      - name: Check the zero-comment source policy on the delivered state
         run: npm run check:comments
       - name: Check the formatting contract
         run: npm run check:format

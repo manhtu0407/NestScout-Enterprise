@@ -15,7 +15,6 @@ function fail(label, message) {
 }
 
 function checkLinks(text, file, available, label) {
-  // Check inline/image, reference-definition and HTML destinations; never fetch them.
   const destinations = [
     ...text.matchAll(/\]\(\s*(<[^>\n]*>|[^\s)]+)(?:\s+[^\n)]*)?\)/g),
     ...text.matchAll(/^\s{0,3}\[[^\]\n]+\]:\s*(<[^>\n]*>|\S+)/gm),

@@ -1,4 +1,3 @@
-# Local Docker stack: dynamic loopback endpoints; never a hosted target.
 project_id = "nestscout-enterprise-agent-local"
 
 [api]

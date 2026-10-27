@@ -20,6 +20,7 @@ function fixture() {
     writeFileSync(path.join(repository, file), content);
   };
   run(['init', '--quiet', '--initial-branch=main']);
+  run(['config', 'core.autocrlf', 'false']);
   write('.gitignore', '.cache/\n');
   write('scripts/example.mjs', 'export const valid = true;\n');
   run(['add', '.']);
@@ -108,6 +109,14 @@ test('the staged gate leaves unchanged and deleted index entries alone and rejec
   write('docs/crlf.md', '# Title\r\n');
   run(['add', '--', 'docs/crlf.md']);
   assert.throws(() => checkStagedFormat(repository), /index docs\/crlf\.md:1: carriage return/);
+});
+
+test('fixture repositories keep staged line endings byte for byte whatever the host autocrlf setting is', () => {
+  const { repository, run, write } = fixture();
+  assert.equal(run(['config', '--local', '--get', 'core.autocrlf']), 'false\n');
+  write('docs/crlf.md', '# Title\r\n');
+  run(['add', '--', 'docs/crlf.md']);
+  assert.equal(run(['cat-file', 'blob', ':docs/crlf.md']), '# Title\r\n');
 });
 
 test('before the first commit every staged file is changed', () => {

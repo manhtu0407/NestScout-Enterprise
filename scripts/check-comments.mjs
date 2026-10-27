@@ -1,13 +1,12 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { root } from './tool-path.mjs';
-import { git, readBlobs, repositoryFiles, checkHookIndex, emptyTree, headRevision } from './repository-files.mjs';
-import { commentRecords, hasCommentGrammar, sameCommentGrammar, checkPath, generatedFiles } from './check-hygiene.mjs';
-import { metadataRange } from './check-metadata.mjs';
+import { git, readBlobs, repositoryFiles, indexEntries, checkHookIndex, headRevision } from './repository-files.mjs';
+import { commentRecords, hasCommentGrammar, generatedFiles } from './check-hygiene.mjs';
 
-const zeroObject = /^0+$/;
 const regularMode = mode => mode === '100644' || mode === '100755';
 const decode = bytes => new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+const inspected = file => hasCommentGrammar(file) || file === 'package.json';
 
 export const normalizeComment = text => text.replace(/\s+/g, ' ').trim();
 
@@ -48,168 +47,77 @@ export function isMandatoryComment(file, text, source, start) {
     && !['annotation', 'suppression'].includes(commentCategory(text));
 }
 
-export function addedComments(file, baseText, text) {
-  const available = new Map();
-  for (const source of [baseText].flat()) {
-    const counts = new Map();
-    for (const record of source ? commentRecords(file, source) : []) {
-      const key = normalizeComment(record.text);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    for (const [key, count] of counts) available.set(key, Math.max(available.get(key) ?? 0, count));
-  }
-  return commentRecords(file, text).filter(record => {
-    const key = normalizeComment(record.text);
-    const remaining = available.get(key) ?? 0;
-    if (remaining) available.set(key, remaining - 1);
-    return !remaining;
-  });
-}
-
-export function approvedExceptions(manifest, label) {
-  if (manifest === null) return [];
-  let entries;
+function unsupportedExceptions(text) {
   try {
-    entries = JSON.parse(manifest).repositoryHygiene?.commentExceptions ?? [];
+    return JSON.parse(text).repositoryHygiene?.commentExceptions !== undefined;
   } catch {
-    throw new Error(`Invalid package.json in ${label}.`);
+    return false;
   }
-  if (!Array.isArray(entries)) throw new Error('repositoryHygiene.commentExceptions must be an array.');
-  return entries.map(item => {
-    if (!item || ['file', 'text', 'reason'].some(key => typeof item[key] !== 'string' || !item[key].trim())) {
-      throw new Error('Each comment exception needs file, text and reason.');
-    }
-    checkPath(item.file);
-    return { file: item.file, text: normalizeComment(item.text) };
-  });
 }
 
-export function commentViolations(changes, remaining, label) {
+export function commentViolations(sources, label) {
   const found = [];
-  for (const { file, text, baseText } of changes) {
+  for (const { file, text } of sources) {
     if (generatedFiles.includes(file)) continue;
-    for (const record of addedComments(file, baseText, text)) {
+    if (file === 'package.json') {
+      if (unsupportedExceptions(text)) found.push(`${label} package.json repositoryHygiene.commentExceptions: exceptions are not supported`);
+      continue;
+    }
+    for (const record of commentRecords(file, text) ?? []) {
       if (isMandatoryComment(file, record.text, text, record.start)) continue;
-      const key = normalizeComment(record.text);
-      const approved = remaining.findIndex(item => item.file === file && item.text === key);
-      if (approved >= 0) {
-        remaining.splice(approved, 1);
-        continue;
-      }
-      found.push(`${label} ${file}:${text.slice(0, record.start).split('\n').length} ${commentCategory(record.text)}: ${key.slice(0, 80)}`);
+      found.push(`${label} ${file}:${text.slice(0, record.start).split('\n').length} ${commentCategory(record.text)}: ${normalizeComment(record.text).slice(0, 80)}`);
     }
   }
   return found;
 }
 
-function report(found, trusted) {
+function report(found) {
   if (found.length) {
-    throw new Error(`Added source comments are prohibited (${found.length}):\n  ${found.slice(0, 10).join('\n  ')}\n`
-      + 'Remove them from the change that adds them. Only technically mandatory, legally required and generated content passes automatically; '
-      + `an exception counts only when repositoryHygiene.commentExceptions already lists it in the trusted baseline (${trusted ?? 'unavailable'}), never in the proposed change.`);
+    throw new Error(`Source comments are prohibited (${found.length}):\n  ${found.slice(0, 10).join('\n  ')}\n`
+      + 'Remove them. Only technically mandatory directives (a shebang, TypeScript triple-slash references, JSX pragmas, the Dependabot version tag after a '
+      + 'SHA-pinned action), legally required copyright or SPDX notices and the generated database types pass. No baseline, history or exception approves a comment.');
   }
 }
 
-function rawChanges(repository, args, label) {
-  const fields = git(repository, args).split('\0');
-  const changes = [];
-  for (let index = 0; index < fields.length - 1;) {
-    const [, mode, oldBlob, newBlob, status] = fields[index++].slice(1).split(' ');
-    const oldPath = fields[index++];
-    const file = status[0] === 'R' ? fields[index++] : oldPath;
-    if (status[0] === 'U') throw new Error(`Unmerged ${label} entry: ${JSON.stringify(file)}`);
-    changes.push({ status: status[0], mode, oldBlob, newBlob, file, oldFile: oldPath });
-  }
-  return changes.filter(change => change.status !== 'D' && regularMode(change.mode) && hasCommentGrammar(change.file));
+function blobSources(repository, entries) {
+  const contents = readBlobs(repository, entries.map(entry => entry.blob));
+  return entries.map(entry => ({ file: entry.file, text: decode(contents.get(entry.blob)) }));
 }
 
-const comparableBase = change => !zeroObject.test(change.oldBlob) && (change.file === change.oldFile || sameCommentGrammar(change.oldFile, change.file));
-
-function blobChanges(repository, args, label) {
-  const changes = rawChanges(repository, args, label);
-  const contents = readBlobs(repository, changes.flatMap(change => [change.newBlob, comparableBase(change) ? change.oldBlob : null]).filter(blob => blob && !zeroObject.test(blob)));
-  return changes.map(change => ({
-    file: change.file, text: decode(contents.get(change.newBlob)),
-    baseText: comparableBase(change) ? decode(contents.get(change.oldBlob)) : '',
-  }));
+function committedEntries(repository) {
+  return git(repository, ['ls-tree', '-r', '-z', '--full-tree', headRevision(repository)]).split('\0').filter(Boolean).map(entry => {
+    const tab = entry.indexOf('\t');
+    const [mode, , blob] = entry.slice(0, tab).split(' ');
+    return { mode, blob, file: entry.slice(tab + 1) };
+  });
 }
 
-function optionalText(repository, spec) {
-  let blob;
-  try {
-    blob = git(repository, ['rev-parse', '--verify', '--quiet', spec]).trim();
-  } catch (error) {
-    if (error.status === 1) return null;
-    throw error;
-  }
-  return decode(readBlobs(repository, [blob]).get(blob));
+function stagedEntries(repository) {
+  const entries = indexEntries(repository);
+  const unmerged = entries.find(entry => entry.stage !== '0');
+  if (unmerged) throw new Error(`Unmerged index entry: ${JSON.stringify(unmerged.file)}`);
+  return entries;
 }
 
-const rawArguments = ['-M', '--raw', '-z', '--no-abbrev'];
+const sourceEntries = entries => entries.filter(entry => regularMode(entry.mode) && inspected(entry.file));
 
-export function trustedBaseline(repository) {
-  try {
-    return git(repository, ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main^{commit}']).trim();
-  } catch (error) {
-    if (error.status === 1) return null;
-    throw error;
-  }
+export function checkCommittedComments(repository = root) {
+  report(commentViolations(blobSources(repository, sourceEntries(committedEntries(repository))), 'HEAD'));
 }
 
-export function trustedExceptions(repository, trusted) {
-  if (trusted === null) return [];
-  return approvedExceptions(optionalText(repository, `${trusted}:package.json`), `trusted baseline ${trusted}`);
+export function checkStagedComments(repository = root) {
+  report(commentViolations(blobSources(repository, sourceEntries(stagedEntries(repository))), 'index'));
 }
 
-function commitChanges(repository, sha, parents) {
-  const label = `commit ${sha}`;
-  const compare = parent => blobChanges(repository, ['diff-tree', '-r', ...rawArguments, parent, sha], label);
-  if (parents.length < 2) return compare(parents[0] ?? emptyTree(repository));
-  const [first, ...others] = parents.map(compare);
-  return first.filter(change => others.every(list => list.some(item => item.file === change.file))).map(change => ({
-    file: change.file, text: change.text,
-    baseText: [first, ...others].flatMap(list => list.filter(item => item.file === change.file).map(item => item.baseText)),
-  }));
+export function checkWorkingComments(repository = root) {
+  const working = repositoryFiles(repository).filter(item => item.state === 'working' && inspected(item.file));
+  report(commentViolations(working.map(item => ({ file: item.file, text: decode(item.content) })), 'working tree'));
 }
 
-export function checkCommentRevision(repository, base, head) {
-  const pool = trustedExceptions(repository, base);
-  const found = [];
-  const commits = git(repository, ['rev-list', '--reverse', '--topo-order', '--parents', head, `^${base}`]).split('\n').filter(Boolean);
-  for (const line of commits) {
-    const [sha, ...parents] = line.split(' ');
-    found.push(...commentViolations(commitChanges(repository, sha, parents), pool, `revision ${sha.slice(0, 12)}`));
-  }
-  report(found, base);
-}
-
-export function checkStagedComments(repository, trusted = trustedBaseline(repository)) {
-  const changes = blobChanges(repository, ['diff-index', '--cached', ...rawArguments, headRevision(repository)], 'index');
-  report(commentViolations(changes, trustedExceptions(repository, trusted), 'index'), trusted);
-}
-
-export function checkWorkingComments(repository, trusted = trustedBaseline(repository)) {
-  const base = headRevision(repository);
-  const working = new Map(repositoryFiles(repository).filter(item => item.state === 'working').map(item => [item.file, item.content]));
-  const tracked = rawChanges(repository, ['diff-index', ...rawArguments, base], 'working tree');
-  const bases = readBlobs(repository, tracked.map(change => change.oldBlob).filter(blob => !zeroObject.test(blob)));
-  const changes = tracked.filter(change => working.has(change.file)).map(change => ({
-    file: change.file, text: decode(working.get(change.file)),
-    baseText: comparableBase(change) ? decode(bases.get(change.oldBlob)) : '',
-  }));
-  const seen = new Set(changes.map(change => change.file));
-  const untracked = git(repository, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
-  for (const file of untracked.filter(file => !seen.has(file) && hasCommentGrammar(file) && working.has(file))) {
-    changes.push({ file, text: decode(working.get(file)), baseText: '' });
-  }
-  report(commentViolations(changes, trustedExceptions(repository, trusted), 'working tree'), trusted);
-}
-
-export function checkComments(repository = root, environment = process.env) {
-  const { base, head } = metadataRange(repository, environment);
-  checkCommentRevision(repository, base, head);
-  checkStagedComments(repository, base);
-  checkWorkingComments(repository, base);
+export function checkComments(repository = root) {
+  checkCommittedComments(repository);
+  checkStagedComments(repository);
+  checkWorkingComments(repository);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -219,5 +127,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     checkHookIndex(root);
     checkStagedComments(root);
   } else checkComments();
-  console.log(`Added source comments passed for the ${staged ? 'staged index' : 'committed range, staged index and working tree'}.`);
+  console.log(`Source comments passed for the ${staged ? 'staged index' : 'committed tree, staged index and working tree'}.`);
 }
