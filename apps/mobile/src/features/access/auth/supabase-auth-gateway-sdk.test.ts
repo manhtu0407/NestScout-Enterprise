@@ -1,12 +1,13 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { act, render, screen } from '@testing-library/react-native';
+import { createElement, useEffect } from 'react';
+import { Text } from 'react-native';
 
 import type { AuthEvent } from './auth-gateway';
 import { createSupabaseAuthGateway } from './supabase-auth-gateway';
-
-// These tests run the real Supabase Auth client (the same GoTrueClient the app uses)
-// against a scripted Auth server and in-memory storage, so session replacement,
-// event ordering and sign-out behave as the SDK implements them. Nothing here is
-// evidence about the hosted or local Supabase Auth service itself.
+import type { CapabilityRepository } from '../capability/capability-repository';
+import type { PreferredModeStore } from '../mode/preferred-mode-store';
+import { AccessProvider, useAccess, type AccessApi } from '../state/access-provider';
 
 type Hold = { promise: Promise<void>; release: () => void };
 
@@ -25,6 +26,9 @@ function createAuthServer() {
   const rejections = new Map<string, { status: number; code?: string }>();
   const requests: Request[] = [];
   const gates: { user?: Hold; logout?: Hold } = {};
+  let offline = false;
+  let refreshRefused = false;
+  let logoutAnswer: (() => Response) | undefined;
   // Replaces the answer of GET /user for every token that is not already rejected.
   let userAnswer: ((token: string | null) => Response | Promise<Response>) | undefined;
   let issued = 0;
@@ -45,6 +49,7 @@ function createAuthServer() {
     const method = init?.method ?? 'GET';
     const bearer = new Headers(init?.headers).get('authorization')?.replace(/^Bearer /, '') ?? null;
     requests.push({ method, path: url.pathname, scope: url.searchParams.get('scope'), token: bearer });
+    if (offline) throw new TypeError('Network request failed');
 
     if (method === 'GET' && url.pathname === '/auth/v1/user') {
       await gates.user?.promise;
@@ -56,12 +61,12 @@ function createAuthServer() {
     }
     if (method === 'POST' && url.pathname === '/auth/v1/verify') return json(200, issue(nextUser));
     if (method === 'POST' && url.pathname === '/auth/v1/token') {
-      const owner = owners.get((JSON.parse(init?.body ?? '{}') as { refresh_token?: string }).refresh_token ?? '');
+      const owner = refreshRefused ? undefined : owners.get((JSON.parse(init?.body ?? '{}') as { refresh_token?: string }).refresh_token ?? '');
       return owner ? json(200, issue(owner)) : json(400, { code: 400, error_code: 'refresh_token_not_found', msg: 'unknown refresh token' });
     }
     if (method === 'POST' && url.pathname === '/auth/v1/logout') {
       await gates.logout?.promise;
-      return new Response(null, { status: 204 });
+      return logoutAnswer ? logoutAnswer() : new Response(null, { status: 204 });
     }
     return json(404, { code: 404, error_code: 'not_found', msg: url.pathname });
   };
@@ -70,6 +75,15 @@ function createAuthServer() {
     fetchImpl,
     requests,
     gates,
+    setOffline: (value: boolean) => {
+      offline = value;
+    },
+    refuseRefresh: () => {
+      refreshRefused = true;
+    },
+    answerLogout: (answer: () => Response) => {
+      logoutAnswer = answer;
+    },
     reject: (token: string, code?: string, status = 403) => rejections.set(token, { status, code }),
     answerUser: (answer: typeof userAnswer) => {
       userAnswer = answer;
@@ -92,8 +106,8 @@ function createAuthServer() {
 
 const storageKey = 'test-auth-token';
 
-function createHarness() {
-  const data = new Map<string, string>();
+function createHarness(shared: { data?: Map<string, string>; server?: ReturnType<typeof createAuthServer> } = {}) {
+  const data = shared.data ?? new Map<string, string>();
   const storage = {
     getItem: async (key: string) => data.get(key) ?? null,
     setItem: async (key: string, value: string) => {
@@ -103,7 +117,7 @@ function createHarness() {
       data.delete(key);
     },
   };
-  const server = createAuthServer();
+  const server = shared.server ?? createAuthServer();
   const client: SupabaseClient = createClient('http://127.0.0.1:54321', 'publishable-key-for-tests', {
     auth: { storage, storageKey, autoRefreshToken: false, persistSession: true, detectSessionInUrl: false },
     global: { fetch: server.fetchImpl as typeof fetch },
@@ -112,7 +126,11 @@ function createHarness() {
   const events: AuthEvent[] = [];
   const unsubscribe = gateway.subscribe((event) => events.push(event));
   const stored = () => (data.has(storageKey) ? (JSON.parse(data.get(storageKey) as string) as { access_token: string }) : null);
-  return { client, gateway, server, events, stored, unsubscribe };
+  const expireStored = () => {
+    const session = JSON.parse(data.get(storageKey) as string) as { expires_at: number };
+    data.set(storageKey, JSON.stringify({ ...session, expires_at: Math.floor(Date.now() / 1000) - 60 }));
+  };
+  return { client, gateway, server, data, events, stored, expireStored, unsubscribe };
 }
 
 async function signIn(harness: ReturnType<typeof createHarness>, userId = 'user-a') {
@@ -334,5 +352,155 @@ describe('removing a refused session', () => {
       expect(harness.stored()).toBeNull();
       expect(harness.server.logouts().map((request) => request.token)).toEqual([harness.token]);
     });
+  });
+});
+
+async function signOutOffline(harness: Awaited<ReturnType<typeof start>>) {
+  jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'queueMicrotask'] });
+  harness.expireStored();
+  harness.server.setOffline(true);
+  const outcome = harness.gateway.signOut();
+  await jest.advanceTimersByTimeAsync(60_000);
+  return outcome;
+}
+
+describe('signing out', () => {
+  afterEach(() => jest.useRealTimers());
+
+  test('removes the stored session, announces it and revokes it with its own token', async () => {
+    const harness = await start();
+    expect(await harness.gateway.signOut()).toEqual({ ok: true, value: undefined });
+    expect(harness.stored()).toBeNull();
+    expect(harness.events).toContainEqual({ type: 'signed_out' });
+    expect(harness.server.logouts()).toEqual([{ method: 'POST', path: '/auth/v1/logout', scope: 'local', token: harness.token }]);
+  });
+
+  test('an unreachable server still removes the session and announces it', async () => {
+    const harness = await start();
+    harness.server.answerLogout(() => {
+      throw new TypeError('Network request failed');
+    });
+    expect((await harness.gateway.signOut()).ok).toBe(false);
+    expect(harness.stored()).toBeNull();
+    expect(harness.events).toContainEqual({ type: 'signed_out' });
+  });
+
+  test('an expired access token with no connectivity leaves the session stored and announces nothing', async () => {
+    const harness = await start();
+    expect(await signOutOffline(harness)).toEqual({ ok: false, failure: 'network' });
+    expect(harness.stored()?.access_token).toBe(harness.token);
+    expect(harness.events).not.toContainEqual({ type: 'signed_out' });
+  });
+
+  test('a retry within the SDK refresh cooldown fails again and one after it succeeds', async () => {
+    const harness = await start();
+    expect((await signOutOffline(harness)).ok).toBe(false);
+    harness.server.setOffline(false);
+    expect((await harness.gateway.signOut()).ok).toBe(false);
+    expect(harness.stored()?.access_token).toBe(harness.token);
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(await harness.gateway.signOut()).toEqual({ ok: true, value: undefined });
+    expect(harness.stored()).toBeNull();
+    expect(harness.events).toContainEqual({ type: 'signed_out' });
+  });
+
+  test('a refresh token the server refuses removes the session', async () => {
+    const harness = await start();
+    harness.expireStored();
+    harness.server.refuseRefresh();
+    await harness.gateway.signOut();
+    expect(harness.stored()).toBeNull();
+    expect(harness.events).toContainEqual({ type: 'signed_out' });
+  });
+});
+
+describe('the access state follows the stored session when signing out', () => {
+  let latest: AccessApi;
+
+  function Probe() {
+    const access = useAccess();
+    useEffect(() => {
+      latest = access;
+    });
+    return createElement(Text, { testID: 'phase' }, access.phase);
+  }
+
+  const capabilities: CapabilityRepository = { fetchCapabilities: async () => ({ kind: 'resolved', worker: 'none' }) };
+  const preferredMode: PreferredModeStore = { load: async () => null, save: async () => undefined, clear: async () => undefined };
+  const phase = () => screen.getByTestId('phase').props.children as string;
+  const flush = () => act(async () => void (await jest.advanceTimersByTimeAsync(1)));
+
+  async function openApp(harness: ReturnType<typeof createHarness>) {
+    await render(createElement(AccessProvider, { services: { auth: harness.gateway, capabilities, preferredMode }, children: createElement(Probe) }));
+    await flush();
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'queueMicrotask'] });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test('a sign-out that could not remove the session keeps the account signed in and a restart restores it', async () => {
+    const first = await start();
+    await openApp(first);
+    expect(phase()).toBe('client');
+
+    first.expireStored();
+    first.server.setOffline(true);
+    let outcome: Awaited<ReturnType<AccessApi['signOut']>> | undefined;
+    await act(async () => {
+      const pending = latest.signOut().then((result) => (outcome = result));
+      await jest.advanceTimersByTimeAsync(60_000);
+      await pending;
+    });
+    expect(outcome?.ok).toBe(false);
+    expect(first.stored()?.access_token).toBe(first.token);
+    expect(phase()).toBe('client');
+    expect(latest.userId).toBe('user-a');
+
+    first.server.setOffline(false);
+    const restarted = createHarness({ data: first.data, server: first.server });
+    cleanups.push(restarted.unsubscribe);
+    expect(await restarted.gateway.restoreSession()).toEqual({ userId: 'user-a' });
+  });
+
+  test('the same sign-out, retried once connectivity is back, ends in the guest state with nothing stored', async () => {
+    const harness = await start();
+    await openApp(harness);
+    harness.expireStored();
+    harness.server.setOffline(true);
+    await act(async () => {
+      const pending = latest.signOut();
+      await jest.advanceTimersByTimeAsync(60_000);
+      await pending;
+    });
+    expect(phase()).toBe('client');
+
+    harness.server.setOffline(false);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(await latest.signOut()).toEqual({ ok: true, value: undefined });
+    });
+    await flush();
+    expect(phase()).toBe('guest');
+    expect(harness.stored()).toBeNull();
+    const restarted = createHarness({ data: harness.data, server: harness.server });
+    cleanups.push(restarted.unsubscribe);
+    expect(await restarted.gateway.restoreSession()).toBeNull();
+  });
+
+  test('a sign-out that removed the session locally ends in the guest state even though the server could not be told', async () => {
+    const harness = await start();
+    await openApp(harness);
+    harness.server.answerLogout(() => {
+      throw new TypeError('Network request failed');
+    });
+    await act(async () => void (await latest.signOut()));
+    await flush();
+    expect(phase()).toBe('guest');
+    expect(harness.stored()).toBeNull();
   });
 });

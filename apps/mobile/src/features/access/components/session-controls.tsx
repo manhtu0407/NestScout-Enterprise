@@ -18,7 +18,7 @@ export function SignOutControl() {
   return (
     <>
       <ActionButton secondary label="Sign out" onPress={signOut} busy={busy} />
-      {failed ? <ErrorText>Signed out on this device; the server session could not be confirmed closed.</ErrorText> : null}
+      {failed ? <ErrorText>Could not sign out. Check your connection and try again.</ErrorText> : null}
     </>
   );
 }

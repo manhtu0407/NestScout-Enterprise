@@ -139,11 +139,7 @@ export function AccessProvider({ services, children }: { services: AccessService
     [auth, otpPhone],
   );
 
-  const signOut = useCallback(async () => {
-    const outcome = await auth.signOut();
-    dispatch({ type: 'session_ended' });
-    return outcome;
-  }, [auth]);
+  const signOut = useCallback(() => auth.signOut(), [auth]);
 
   const view = useMemo(() => deriveAccess(state), [state]);
   const api = useMemo<AccessApi>(

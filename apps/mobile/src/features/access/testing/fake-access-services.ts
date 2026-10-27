@@ -14,6 +14,7 @@ export type FakeOptions = {
   issuedCode?: string;
   signInIdentity?: SessionIdentity;
   requestOtp?: () => Promise<AuthOutcome>;
+  signOut?: () => Promise<AuthOutcome>;
 };
 
 // Controllable stand-ins for Supabase Auth and the capability table, used only
@@ -65,9 +66,12 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
     },
     async signOut() {
       calls.signOut += 1;
-      current = null;
-      listener?.({ type: 'signed_out' });
-      return { ok: true, value: undefined };
+      const outcome = options.signOut ? await options.signOut() : ({ ok: true, value: undefined } as const);
+      if (outcome.ok) {
+        current = null;
+        listener?.({ type: 'signed_out' });
+      }
+      return outcome;
     },
     subscribe(next) {
       listener = next;

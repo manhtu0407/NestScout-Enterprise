@@ -159,6 +159,23 @@ describe('mode switch and sign-out', () => {
     expect(screen.queryByRole('header', { name: 'Worker mode' })).toBeNull();
   });
 
+  test('a sign-out that cannot remove the session keeps the account signed in and can be retried', async () => {
+    let attempts = 0;
+    const fake = await start({
+      session: user,
+      capability: grant('none'),
+      signOut: async () => (attempts++ === 0 ? { ok: false, failure: 'network' } : { ok: true, value: undefined }),
+    });
+    expect(await heading('Client mode')).toBeTruthy();
+    await press('Sign out');
+    expect(await screen.findByText('Could not sign out. Check your connection and try again.')).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'Client mode' })).toBeTruthy();
+    expect(screen.queryByRole('header', { name: 'NestScout' })).toBeNull();
+    await press('Sign out');
+    expect(await heading('NestScout')).toBeTruthy();
+    expect(fake.calls.signOut).toBe(2);
+  });
+
   test('a sign-out reported by the auth service closes the protected area', async () => {
     const fake = await start({ session: user, capability: grant('none') });
     expect(await heading('Client mode')).toBeTruthy();

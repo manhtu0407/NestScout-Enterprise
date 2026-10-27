@@ -68,6 +68,16 @@ describe('supabase auth gateway', () => {
     expect(await gateway.verifyIdentity()).toEqual({ status: 'unreachable' });
   });
 
+  test('identity check: a refused session whose removal returns an error is not reported as removed', async () => {
+    const session = { data: { session: { access_token: 'token-1' } }, error: null };
+    const gateway = createSupabaseAuthGateway(stubClient({
+      getSession: async () => session,
+      getUser: async () => ({ data: { user: null }, error: new AuthApiError('invalid JWT', 403, 'bad_jwt') }),
+      signOut: async () => ({ error: new AuthRetryableFetchError('offline', 0) }),
+    }));
+    expect(await gateway.verifyIdentity()).toEqual({ status: 'unreachable' });
+  });
+
   test('restore reports an unverified claim only and ignores a malformed stored session', async () => {
     const restore = (result: unknown) => createSupabaseAuthGateway(stubClient({ getSession: async () => result })).restoreSession();
     expect(await restore({ data: { session: { user: {} } }, error: null })).toBeNull();
@@ -90,6 +100,13 @@ describe('supabase auth gateway', () => {
     const signOut = jest.fn(async () => ({ error: null }));
     expect(await createSupabaseAuthGateway(stubClient({ signOut })).signOut()).toEqual({ ok: true, value: undefined });
     expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  test('a sign-out that returns an error or throws is a failure', async () => {
+    const returned = createSupabaseAuthGateway(stubClient({ signOut: async () => ({ error: new AuthRetryableFetchError('offline', 0) }) }));
+    expect(await returned.signOut()).toEqual({ ok: false, failure: 'network' });
+    const thrown = createSupabaseAuthGateway(stubClient({ signOut: () => Promise.reject(new Error('keychain')) }));
+    expect(await thrown.signOut()).toEqual({ ok: false, failure: 'network' });
   });
 
   test('forwards auth events as values and unsubscribes on request', () => {

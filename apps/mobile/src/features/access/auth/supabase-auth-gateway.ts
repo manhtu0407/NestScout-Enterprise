@@ -54,9 +54,10 @@ export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
     if (current.access_token !== refusedToken) return { status: 'unreachable' };
     // Revoking a token the server already refused is moot, and the SDK removes the
     // local session even when that request fails. A session that cannot be removed
-    // throws, which leaves the answer unapplied and the check to be repeated.
-    await client.auth.signOut({ scope: 'local' });
-    return { status: 'invalid' };
+    // is reported through the returned error, not by throwing, and the answer is then
+    // not applied: nothing is authorized and the check is repeated.
+    const { error: removalError } = await client.auth.signOut({ scope: 'local' });
+    return removalError ? { status: 'unreachable' } : { status: 'invalid' };
   }
 
   return {
@@ -113,7 +114,9 @@ export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
 
     async signOut() {
       try {
-        // The local session is removed even when revoking the server session fails.
+        // A failure after the SDK removed the session is announced as SIGNED_OUT; a
+        // failure before it (expired access token, refresh unreachable) leaves the
+        // session stored and announces nothing, which is why callers follow events.
         const { error } = await client.auth.signOut({ scope: 'local' });
         return error ? { ok: false, failure: classifyAuthError(error) } : { ok: true, value: undefined };
       } catch {

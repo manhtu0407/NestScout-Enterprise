@@ -162,6 +162,15 @@ describe('late and superseded answers (ACCESS-06)', () => {
     expect(fake.calls.signOut).toBe(1);
   });
 
+  test('a failed sign-out keeps the account and its Worker access unchanged', async () => {
+    const fake = await mount({ session: { userId: 'user-a' }, storedMode: workerPreference, capability: active, signOut: async () => ({ ok: false, failure: 'network' }) });
+    expect(phase()).toBe('worker:authorized:verified');
+    await act(async () => void (await latest.signOut()));
+    expect(phase()).toBe('worker:authorized:verified');
+    expect(latest.userId).toBe('user-a');
+    expect(fake.calls.signOut).toBe(1);
+  });
+
   test('a late active answer after the capability timeout does not reopen Worker', async () => {
     const pending = deferred<CapabilityResult>();
     await mount({ session: { userId: 'user-a' }, storedMode: workerPreference, capability: () => pending.promise });
