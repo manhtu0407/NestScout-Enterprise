@@ -53,9 +53,23 @@ describe('supabase auth gateway', () => {
   });
 
   test.each([
+    [403, 'bad_jwt', 'invalid'],
     [401, 'bad_jwt', 'invalid'],
+    [403, 'session_expired', 'invalid'],
+    [403, 'session_not_found', 'invalid'],
+    [403, 'user_not_found', 'invalid'],
     [403, 'user_banned', 'invalid'],
-    [404, 'user_not_found', 'invalid'],
+    [400, 'refresh_token_not_found', 'invalid'],
+    [400, 'refresh_token_already_used', 'invalid'],
+    // Same statuses, different reasons: not evidence that the session is dead.
+    [403, 'not_admin', 'unreachable'],
+    [403, 'insufficient_aal', 'unreachable'],
+    [403, 'captcha_failed', 'unreachable'],
+    [403, 'phone_provider_disabled', 'unreachable'],
+    [403, undefined, 'unreachable'],
+    [404, undefined, 'unreachable'],
+    [404, 'identity_not_found', 'unreachable'],
+    [401, undefined, 'unreachable'],
     [429, 'over_request_rate_limit', 'unreachable'],
     [500, 'unexpected_failure', 'unreachable'],
     [502, undefined, 'unreachable'],
@@ -70,6 +84,41 @@ describe('supabase auth gateway', () => {
     expect(await check(new AuthSessionMissingError())).toEqual({ status: 'invalid' });
     expect(await check(new AuthUnknownError('odd', new Error('cause')))).toEqual({ status: 'unreachable' });
     expect(await check(new Error('anything else'))).toEqual({ status: 'unreachable' });
+  });
+
+  test.each([
+    ['an empty success payload', { data: {}, error: null }],
+    ['a null user without an error', { data: { user: null }, error: null }],
+    ['a null payload', { data: null, error: null }],
+    ['a user without an id', { data: { user: {} }, error: null }],
+    ['a non-string id', { data: { user: { id: 42 } }, error: null }],
+    ['an empty id', { data: { user: { id: '' } }, error: null }],
+  ])('identity check: %s is never a verified identity', async (_name, result) => {
+    const gateway = createSupabaseAuthGateway(stubClient({ getUser: async () => result }));
+    expect(await gateway.verifyIdentity()).toEqual({ status: 'unreachable' });
+  });
+
+  test('identity check: a rejected promise and a thrown error are unreachable', async () => {
+    const rejected = createSupabaseAuthGateway(stubClient({ getUser: () => Promise.reject(new Error('boom')) }));
+    expect(await rejected.verifyIdentity()).toEqual({ status: 'unreachable' });
+  });
+
+  test('restore reports an unverified claim only and ignores a malformed stored session', async () => {
+    const restore = (result: unknown) => createSupabaseAuthGateway(stubClient({ getSession: async () => result })).restoreSession();
+    expect(await restore({ data: { session: { user: {} } }, error: null })).toBeNull();
+    expect(await restore({ data: { session: { user: { id: '' } } }, error: null })).toBeNull();
+    expect(await restore({ data: null, error: null })).toBeNull();
+  });
+
+  test('verifyOtp does not log a user in on malformed success payloads or thrown errors', async () => {
+    const verify = (result: () => unknown) => createSupabaseAuthGateway(stubClient({ verifyOtp: async () => result() })).verifyOtp('+84912345678', '123456');
+    expect(await verify(() => ({ data: { session: { user: {} } }, error: null }))).toEqual({ ok: false, failure: 'unknown' });
+    expect(await verify(() => ({ data: null, error: null }))).toEqual({ ok: false, failure: 'unknown' });
+    expect(
+      await verify(() => {
+        throw new TypeError('offline');
+      }),
+    ).toEqual({ ok: false, failure: 'network' });
   });
 
   test('signs out the local device session', async () => {

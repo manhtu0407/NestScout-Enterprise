@@ -1,7 +1,7 @@
-import { isAuthApiError, isAuthRetryableFetchError, isAuthSessionMissingError, type SupabaseClient } from '@supabase/supabase-js';
+import { isAuthApiError, isAuthSessionMissingError, type SupabaseClient } from '@supabase/supabase-js';
 
 import { classifyAuthError } from './auth-errors';
-import type { AuthGateway, IdentityCheck } from './auth-gateway';
+import type { AuthGateway, IdentityCheck, SessionIdentity } from './auth-gateway';
 
 const eventTypes = {
   SIGNED_IN: 'signed_in',
@@ -9,13 +9,32 @@ const eventTypes = {
   USER_UPDATED: 'updated',
 } as const;
 
-// Only an answer that says the session or account is gone ends the session. Server
-// trouble (5xx, 429) and transport failures leave the stored session alone.
-function classifyIdentityError(error: unknown): IdentityCheck {
+// getUser() is answered by the Auth server, so it is the identity authority. Only a
+// structured answer that names a dead session or account ends the session; HTTP
+// status alone is not trusted (403/404 also mean unsupported features, rate limits
+// and project misconfiguration). Anything unrecognised, 5xx, 429 and transport
+// failures stay "unreachable": the session is kept but nothing is authorized.
+// Codes: https://supabase.com/docs/guides/auth/debugging/error-codes
+const sessionRejectedCodes: ReadonlySet<string> = new Set([
+  'bad_jwt',
+  'session_expired',
+  'session_not_found',
+  'user_not_found',
+  'user_banned',
+  'refresh_token_not_found',
+  'refresh_token_already_used',
+]);
+
+export function classifyIdentityError(error: unknown): IdentityCheck {
+  // The SDK maps the session_not_found response to AuthSessionMissingError.
   if (isAuthSessionMissingError(error)) return { status: 'invalid' };
-  if (isAuthRetryableFetchError(error)) return { status: 'unreachable' };
-  if (isAuthApiError(error) && [401, 403, 404].includes(error.status)) return { status: 'invalid' };
+  if (isAuthApiError(error) && error.code && sessionRejectedCodes.has(error.code)) return { status: 'invalid' };
   return { status: 'unreachable' };
+}
+
+function identityOf(user: unknown): SessionIdentity | null {
+  const id = (user as { id?: unknown } | null | undefined)?.id;
+  return typeof id === 'string' && id.length > 0 ? { userId: id } : null;
 }
 
 export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
@@ -33,24 +52,28 @@ export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
       try {
         const { data, error } = await client.auth.verifyOtp({ phone: phoneE164, token: code, type: 'sms' });
         if (error) return { ok: false, failure: classifyAuthError(error) };
-        if (!data.session) return { ok: false, failure: 'unknown' };
-        return { ok: true, value: { userId: data.session.user.id } };
+        // A session returned by this call was issued by the Auth server for the code
+        // just confirmed, which is what lets the caller treat it as a verified login.
+        const identity = identityOf(data?.session?.user);
+        return identity ? { ok: true, value: identity } : { ok: false, failure: 'unknown' };
       } catch {
         return { ok: false, failure: 'network' };
       }
     },
 
     async restoreSession() {
+      // Read from storage and not server-checked: an unverified claim only.
       const { data, error } = await client.auth.getSession();
-      if (error || !data.session) return null;
-      return { userId: data.session.user.id };
+      if (error) return null;
+      return identityOf(data?.session?.user);
     },
 
     async verifyIdentity(): Promise<IdentityCheck> {
       try {
         const { data, error } = await client.auth.getUser();
         if (error) return classifyIdentityError(error);
-        return { status: 'valid', identity: { userId: data.user.id } };
+        const identity = identityOf(data?.user);
+        return identity ? { status: 'valid', identity } : { status: 'unreachable' };
       } catch {
         return { status: 'unreachable' };
       }

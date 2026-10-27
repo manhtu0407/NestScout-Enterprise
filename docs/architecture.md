@@ -47,6 +47,15 @@ The existing native tooling installer supports Windows/Linux x64; macOS tooling
 and native iOS execution have not been verified. Reinspect the implementation
 before a later application task; this baseline is not a product-readiness claim.
 
+Application Foundation V2 access model: authentication, capability and presentation
+mode are separate. Worker mode renders only for an identity the Auth server verified
+in this run (`getUser()` or an interactive OTP confirmation, never a stored session or
+an auth event alone), a current backend grant for that exact account, and a Worker
+selection. Unreachable or unrecognised answers fail closed to Client. Navigation
+guards are not authorization; Worker operations need their own server-side checks.
+Details, error classification, storage guarantees, tested and untested layers are in
+the [mobile application guide](mobile-application.md).
+
 ## ADR 001 — Repository and development boundaries
 
 **Context:** One product is planned; current tooling is already maintained in one

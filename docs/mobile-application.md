@@ -31,28 +31,47 @@ The root `overrides` entry for `react` keeps a single React copy for the test re
 
 ## Entry and sign-in
 
-A launch with no session lands on the guest shell without a role chooser. A
-restored session is verified with the server, then the capability lookup runs
-before any protected route renders. Expo Router protected groups plus the
-`EntryRedirect` destination keep guests out of Client and Worker routes, send an
-unauthorized Worker deep link to Client, and avoid redirect loops. An unreachable
-server never promotes Worker access: the account stays in Client and can retry.
+A launch with no session lands on the guest shell without a role chooser. A stored
+session is only an unverified claim: the Auth server must confirm it with `getUser()`
+before the account counts as verified, and the capability lookup must resolve before
+any protected route renders. Expo Router protected groups plus the `EntryRedirect`
+destination keep guests out of Client and Worker routes, send an unauthorized Worker
+deep link to Client, and avoid redirect loops. Navigation is never authorization.
 
 Sign-in uses `signInWithOtp({ phone, options: { shouldCreateUser: true } })` and
 `verifyOtp({ phone, token, type: 'sms' })` with the number normalized by
 `libphonenumber-js` to `+84` E.164 (accepting `0…`, `84…`, `0084…` and `+84…`).
 The phone and code are held in memory only; they are never placed in URLs, logs
-or stored values. Success is reported only when Auth returns a session.
+or stored values. Success is reported only when Auth returns a session with a user id.
 
-## Roles and modes
+## Identity, roles and modes
 
-Authentication says who the person is. Worker mode requires a row in
-`public.worker_access_grants` with `status = 'active'` for that exact user. The
-app reads the caller's own row under the authenticated session (row level security
-is the authority) and re-reads it on sign-in, resume, token refresh and every mode
-switch. Loading, resolved, revoked and error are distinct; an error, a missing row
-or a malformed row never grants Worker. The saved preferred mode is a keychain value
-bound to one account and is ignored unless the backend currently grants Worker.
+Authentication says who the person is. Worker mode needs ALL of the following, and
+`deriveAccess` in `access-reducer.ts` is the single place that combines them:
+
+1. **Verified identity.** `identity` becomes `verified` only when `getUser()` answers
+   for the same account, or when an interactive OTP confirmation returns a session
+   (the Auth server issued it for the code just confirmed). A session restored from
+   storage and every auth event (`SIGNED_IN`, `TOKEN_REFRESHED`, `USER_UPDATED`;
+   `INITIAL_SESSION` is ignored) is a claim and never upgrades the identity. A
+   `getUser()` answer for a different account does not verify the current one.
+2. **A current backend grant.** A row in `public.worker_access_grants` with
+   `status = 'active'` whose `user_id` equals the signed-in account, read under the
+   authenticated session. Row level security is the authority; the client also checks
+   the returned owner. Loading, resolved (`none`, `active`, `revoked`) and error are
+   distinct. A missing, malformed, foreign, forbidden or failed row never grants Worker.
+3. **A Worker selection.** The saved preference is a keychain value bound to one
+   account and is only applied once 1 and 2 hold; it grants nothing by itself.
+
+If the Auth server is unreachable, times out or answers in an unrecognised way, the
+account stays signed in, in Client mode, with Worker status "unknown" and a retry
+button. The recheck on foreground, on a token refresh and on every mode switch
+repeats the checks. Every identity check and capability lookup carries a request id;
+an answer for a superseded request, another account or a signed-out state is dropped.
+A lookup the backend refuses with an authentication error withdraws verification and
+asks `getUser()` again instead of signing out directly; only `getUser()` can end a
+session. A session the server proves dead is removed from the device from reducer
+state, so a superseded check can never sign out a newer session.
 
 The grant table is deliberately minimal: user id, `active`/`revoked` status and
 timestamps. Only trusted backend operators (`postgres`, `service_role`) can write
@@ -60,6 +79,37 @@ it; `anon` has no access and an authenticated user can read only their own row.
 It is a technical access grant, not worker onboarding or qualification. Route
 guards are navigation control only; future Worker operations need server-side
 authorization of their own.
+
+### Error classification
+
+`getUser()` errors end a session only when Supabase names a dead session or account
+(`AuthSessionMissingError`/`session_not_found`, `bad_jwt`, `session_expired`,
+`user_not_found`, `user_banned`, `refresh_token_not_found`,
+`refresh_token_already_used`). HTTP status alone is not trusted: 401/403/404 with
+other or no codes, 429, 5xx and transport errors keep the session unverified.
+Capability lookups follow PostgREST semantics: `PGRST301/302/303` and an HTTP 401
+(including anonymous `42501`) mean the token was refused; `42501` with 403 is
+"denied"; `42P01`/`PGRST205` is a missing table; `PGRST116` or an unexpected row is
+malformed; everything else, including `PGRST300`, is "unavailable". All of them deny Worker.
+
+## Session storage
+
+The Supabase session is persisted through `src/lib/chunked-storage.ts` into
+`expo-secure-store` (iOS Keychain, `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`). A value is
+split into immutable chunks in one of two slots; a small manifest item (slot, count,
+length, FNV-1a checksum) names the committed slot. A write fills the other slot and
+then replaces the manifest, so a reader gets the previous complete value or the new
+complete value. That guarantee depends on a single-item write being atomic, which the
+Keychain's per-item add/update provides but this module cannot create across items.
+Removing the previous generation is best effort: a failure leaves unreachable chunks
+that the next write overwrites and never changes what is read. A missing chunk, a
+checksum mismatch or a corrupt manifest is reported as `StorageIntegrityError`
+(session restore then falls back to the guest shell) and is replaced by the next
+write; `removeItem` clears the manifest and both slots, including after a lost manifest.
+Operations are serialized per storage instance; the scheme does not coordinate
+separate processes. Keys are encoded reversibly, so distinct keys cannot collide.
+Values above 200 chunks are refused before any write. The mode preference lives in the
+same store and is bound to one user id; it is cleared on sign-out.
 
 ## Configuration
 
@@ -77,22 +127,49 @@ a provider or a local test configuration; test OTP values must never be committe
 
 ## Timeouts and failure handling
 
-Restoring a stored session, verifying its identity and each capability lookup are
-bounded (8 s, 8 s and 10 s). A session restore that times out opens the guest shell;
-an identity check that times out keeps the stored account in Client, unverified; a
-capability lookup that times out resolves to Client with Worker status unknown, also
-when it was a re-check during Worker mode. Late answers are discarded. Only a 401, 403
-or 404 answer or a missing session ends a stored session; 5xx, 429 and transport
-failures never sign the person out.
+Restoring a stored session (8 s), the identity check (8 s), each capability lookup
+(10 s) and reading the saved preference (5 s) are bounded. A restore that times out or
+fails opens the guest shell; an identity check that times out keeps the stored account
+in Client, unverified; a lookup that times out resolves to Client with Worker status
+unknown, also for a re-check during Worker mode; a preference read that fails resolves
+to Client. These deadlines stop the app WAITING. Only the capability lookup is
+actually cancelled (an `AbortSignal` is passed to the request and aborted on timeout or
+when a newer lookup supersedes it). `getUser()`, `getSession()` and keychain reads have
+no cancellation, so they may complete after the app moved on; their results are
+discarded by request id and cannot change state.
+
+## Test coverage
+
+| Layer | Evidence | Kind |
+| --- | --- | --- |
+| Reducer and route policy (`access-reducer.test.ts`, `route-policy.test.ts`) | Identity transitions, request ids, Worker predicate | Unit |
+| Provider (`access-provider*.test.tsx`) | Event ordering, deferred promises, fake timers, account switches, late answers, aborts | Unit with fake gateway |
+| Gateway and repository tests | Error-code matrices against real `@supabase/supabase-js` error classes and PostgREST response shapes | Unit against stubbed clients |
+| `chunked-storage.test.ts` | Fault injection at every store call, restart, corruption, concurrency | Unit against an in-memory keychain |
+| `navigation.test.tsx` | Real Expo Router tree through `renderRouter` with fake services | Component integration |
+| `supabase/tests/database/worker-access-grants.test.sql` | RLS, grants, revocation, anonymous and cross-account denial | pgTAP, runs only on the canonical stack |
+
+Not covered: a real Auth or PostgREST service, a real Keychain, a native iOS build or
+device, and real SMS delivery. Metro serving the bundle proves bundling only.
 
 ## Known dependency advisories
 
-`npm audit` reports five high findings, all inside Expo's own command-line tooling
-(`@expo/cli`, `@expo/code-signing-certificates`, `node-forge`, `zod` 3.x) and the
-`expo` package that depends on them. The Metro iOS development bundle contains none of
-`node-forge`, `zod` or the code-signing package, so they run only on the developer machine. The suggested "fix" is a downgrade to Expo SDK 54 and is rejected; `node-forge`
-has no patched release on npm and `zod` is patched only in 4.x, whose API the Expo
-CLI does not target. Re-run the audit on every Expo SDK patch update.
+`npm audit` reports five high findings, all in Expo's command-line tooling, which runs
+on developer machines and is not part of the Metro iOS bundle (verified for
+`node-forge`, `zod` and the code-signing package). They reduce to two advisories:
+
+| Advisory | Package and path | Range | Patched | Preconditions | Assessment |
+| --- | --- | --- | --- | --- | --- |
+| GHSA-86w9-cpqp-85rv | `node-forge` 1.4.0 via `@expo/cli` and `@expo/code-signing-certificates` | `<=1.4.0` | none published | Verifying attacker-supplied RSA PKCS#1 v1.5 signatures | Not used by app code; relevant only if Expo code-signing tooling verifies untrusted signatures. `expo-updates` is not installed |
+| GHSA-mrhx-c7xc-m3w5 | `zod` 3.25.76 nested in `@expo/cli` | `<4.6.6` | 4.6.6 (4.x only) | Large arrays without length bounds reaching a schema | Memory exhaustion of a developer tool process; advisory text describes the 4.x code path, so applicability to 3.25.76 is unconfirmed |
+
+The three remaining findings (`@expo/cli`, `@expo/code-signing-certificates`, `expo`)
+are only chains to those two. `npm audit fix --force` proposes Expo SDK 54, a major
+downgrade of the whole app stack, and overriding `zod` to a different major inside the
+CLI is untested; neither is applied. The residual risk is **unresolved and requires
+owner acceptance**; it is not accepted by the agent. Mitigations: run Expo tooling
+only on trusted developer machines and CI, never feed it untrusted certificates, and
+re-run `npm audit` on every Expo SDK patch update.
 
 ## Commands
 

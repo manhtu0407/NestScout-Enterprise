@@ -51,10 +51,29 @@ describe('cold start', () => {
   });
 
   test('an unreachable server keeps the account in Client without Worker access', async () => {
-    await start({ session: user, identityCheck: { status: 'unreachable' }, capability: { kind: 'error' }, storedMode: { userId: 'user-a', mode: 'worker' } });
+    await start({ session: user, identityCheck: { status: 'unreachable' }, capability: { kind: 'error', reason: 'unavailable' }, storedMode: { userId: 'user-a', mode: 'worker' } });
     expect(await heading('Client mode')).toBeTruthy();
     expect(screen.getByText('Worker access could not be verified, so Client mode is shown.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Switch to Worker mode' })).toBeNull();
+  });
+});
+
+describe('unverified identity', () => {
+  test('an active grant and a saved Worker preference do not open Worker while getUser is unreachable', async () => {
+    await start({ session: user, identityCheck: { status: 'unreachable' }, capability: grant('active'), storedMode: { userId: 'user-a', mode: 'worker' } }, '/worker-home');
+    expect(await heading('Client mode')).toBeTruthy();
+    expect(screen.queryByRole('header', { name: 'Worker mode' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Switch to Worker mode' })).toBeNull();
+    expect(screen.getByText('Worker access could not be verified, so Client mode is shown.')).toBeTruthy();
+  });
+
+  test('a later successful re-check from the banner opens the saved Worker mode', async () => {
+    let answer: { status: 'unreachable' } | { status: 'valid'; identity: { userId: string } } = { status: 'unreachable' };
+    await start({ session: user, verifyIdentity: async () => answer, capability: grant('active'), storedMode: { userId: 'user-a', mode: 'worker' } });
+    expect(await heading('Client mode')).toBeTruthy();
+    answer = { status: 'valid', identity: user };
+    await press('Check Worker access again');
+    expect(await heading('Worker mode')).toBeTruthy();
   });
 });
 
@@ -123,7 +142,7 @@ describe('mode switch and sign-out', () => {
 
   test('a failed re-check never promotes the account to Worker', async () => {
     let answers = 0;
-    await start({ session: user, capability: async () => (answers++ === 0 ? grant('active') : { kind: 'error' }) });
+    await start({ session: user, capability: async () => (answers++ === 0 ? grant('active') : { kind: 'error', reason: 'unavailable' }) });
     expect(await heading('Client mode')).toBeTruthy();
     await press('Switch to Worker mode');
     expect(await screen.findByText('Worker access could not be verified, so Client mode is shown.')).toBeTruthy();

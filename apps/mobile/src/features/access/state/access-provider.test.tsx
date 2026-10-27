@@ -89,8 +89,13 @@ describe('access provider lifecycle', () => {
     expect(phase()).toBe('guest:checking');
   });
 
-  test('a session the backend rejects during the lookup is signed out', async () => {
-    const { fake } = await mount({ session: { userId: 'user-a' }, capability: { kind: 'session_invalid' } });
+  test('a token rejected by the lookup is re-verified and signed out only when the server confirms it is dead', async () => {
+    let checks = 0;
+    const { fake } = await mount({
+      session: { userId: 'user-a' },
+      verifyIdentity: async () => (checks++ === 0 ? { status: 'valid', identity: { userId: 'user-a' } } : { status: 'invalid' }),
+      capability: { kind: 'unauthenticated' },
+    });
     await waitFor(() => expect(phase()).toBe('guest:checking'));
     expect(fake.calls.signOut).toBe(1);
   });

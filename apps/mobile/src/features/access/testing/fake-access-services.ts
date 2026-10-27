@@ -1,5 +1,5 @@
 import type { AuthEvent, AuthGateway, AuthOutcome, IdentityCheck, SessionIdentity } from '../auth/auth-gateway';
-import type { CapabilityRepository, CapabilityResult } from '../capability/capability-repository';
+import type { CapabilityRepository, CapabilityRequest, CapabilityResult } from '../capability/capability-repository';
 import type { AppMode } from '../mode/app-mode';
 import type { PreferredModeStore } from '../mode/preferred-mode-store';
 import type { AccessServices } from '../state/access-provider';
@@ -8,7 +8,7 @@ export type FakeOptions = {
   session?: SessionIdentity | null;
   identityCheck?: IdentityCheck;
   verifyIdentity?: () => Promise<IdentityCheck>;
-  capability?: CapabilityResult | (() => Promise<CapabilityResult>);
+  capability?: CapabilityResult | ((request: CapabilityRequest) => Promise<CapabilityResult>);
   storedMode?: { userId: string; mode: AppMode } | null;
   restore?: () => Promise<SessionIdentity | null>;
   issuedCode?: string;
@@ -23,7 +23,7 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
   let stored = options.storedMode ?? null;
   const issuedCode = options.issuedCode ?? '654321';
   const signInIdentity = options.signInIdentity ?? { userId: 'user-a' };
-  const calls = { requestOtp: [] as string[], verifyOtp: [] as string[], signOut: 0, capability: 0, cleared: 0 };
+  const calls = { requestOtp: [] as string[], verifyOtp: [] as string[], verifyIdentity: 0, signOut: 0, capability: 0, cleared: 0, signals: [] as AbortSignal[] };
 
   const auth: AuthGateway = {
     async requestOtp(phone) {
@@ -37,7 +37,11 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
       return { ok: true, value: signInIdentity };
     },
     restoreSession: options.restore ?? (async () => options.session ?? null),
-    verifyIdentity: options.verifyIdentity ?? (async () => options.identityCheck ?? { status: 'valid', identity: options.session ?? signInIdentity }),
+    verifyIdentity() {
+      calls.verifyIdentity += 1;
+      if (options.verifyIdentity) return options.verifyIdentity();
+      return Promise.resolve(options.identityCheck ?? { status: 'valid', identity: options.session ?? signInIdentity });
+    },
     async signOut() {
       calls.signOut += 1;
       listener?.({ type: 'signed_out' });
@@ -53,10 +57,11 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
   };
 
   const capabilities: CapabilityRepository = {
-    async fetchCapabilities() {
+    async fetchCapabilities(request) {
       calls.capability += 1;
+      calls.signals.push(request.signal);
       const capability = options.capability ?? { kind: 'resolved', worker: 'none' };
-      return typeof capability === 'function' ? capability() : capability;
+      return typeof capability === 'function' ? capability(request) : capability;
     },
   };
 

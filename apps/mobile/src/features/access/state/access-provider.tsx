@@ -5,7 +5,8 @@ import type { AuthGateway, AuthOutcome } from '../auth/auth-gateway';
 import type { CapabilityRepository } from '../capability/capability-repository';
 import type { AppMode } from '../mode/app-mode';
 import type { PreferredModeStore } from '../mode/preferred-mode-store';
-import { accessReducer, deriveAccess, identityAction, initialAccessState, type AccessView } from './access-reducer';
+import { withDeadline } from './deadline';
+import { accessReducer, deriveAccess, initialAccessState, type AccessView } from './access-reducer';
 
 export type AccessServices = {
   auth: AuthGateway;
@@ -27,52 +28,34 @@ export type AccessApi = AccessView & {
 const AccessContext = createContext<AccessApi | null>(null);
 
 // Upper bounds that keep an offline or hanging backend from holding the app on a
-// splash screen or leaving a stale Worker decision in place.
-export const accessTimeouts = { restoreMs: 8000, identityMs: 8000, capabilityMs: 10_000 } as const;
+// splash screen or leaving a stale Worker decision in place. Only the capability
+// lookup is cancelled at its deadline (AbortSignal); Auth calls and storage reads
+// cannot be aborted, so those are abandoned and their late answers discarded.
+export const accessTimeouts = { restoreMs: 8000, identityMs: 8000, capabilityMs: 10_000, preferenceMs: 5000 } as const;
 const resendCooldownMs = 60_000;
-
-function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(fallback), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      () => {
-        clearTimeout(timer);
-        resolve(fallback);
-      },
-    );
-  });
-}
 
 export function AccessProvider({ services, children }: { services: AccessServices; children: ReactNode }) {
   const { auth, capabilities, preferredMode } = services;
   const [state, dispatch] = useReducer(accessReducer, initialAccessState);
-  const { userId, requestId, bootstrapped, preferenceLoaded, selectedMode, otpPhone } = state;
+  const { userId, requestId, bootstrapped, preferenceLoaded, selectedMode, otpPhone, identityPending, identityRequest, purgeSession } = state;
 
-  // Bootstrap and session events. The listener only forwards values to the reducer.
+  // Session events and the stored-session restore. Events only forward values: they
+  // describe a claim, and the identity check below is what verifies it.
   useEffect(() => {
     let active = true;
     const unsubscribe = auth.subscribe((event) => {
       if (!active) return;
       if (event.type === 'signed_out') dispatch({ type: 'session_ended' });
-      else if (event.type === 'signed_in') dispatch({ type: 'session_established', userId: event.identity.userId });
-      else dispatch({ type: 'session_refreshed', userId: event.identity.userId });
+      else dispatch({ type: 'session_event', event: event.type, userId: event.identity.userId });
     });
     auth.setForeground(AppState.currentState === 'active');
     const appState = AppState.addEventListener('change', (next) => {
       auth.setForeground(next === 'active');
       if (next === 'active') dispatch({ type: 'recheck_requested' });
     });
-    void (async () => {
-      const restored = await withTimeout(auth.restoreSession().catch(() => null), accessTimeouts.restoreMs, null);
-      if (!restored) return active && dispatch({ type: 'bootstrapped', userId: null, identity: 'unverified' });
-      const check = await withTimeout(auth.verifyIdentity(), accessTimeouts.identityMs, { status: 'unreachable' as const });
-      if (check.status === 'invalid') await auth.signOut();
-      if (active) dispatch(identityAction(check, restored.userId));
-    })();
+    void withDeadline(() => auth.restoreSession(), accessTimeouts.restoreMs, null).then((restored) => {
+      if (active) dispatch({ type: 'restore_settled', userId: restored?.userId ?? null });
+    });
     return () => {
       active = false;
       unsubscribe();
@@ -80,19 +63,45 @@ export function AccessProvider({ services, children }: { services: AccessService
     };
   }, [auth]);
 
-  // Authoritative capability lookup; a newer request supersedes older answers.
+  // Server-side identity check (getUser). Unreachable and unknown outcomes keep the
+  // session but leave the identity unverified.
   useEffect(() => {
-    if (!bootstrapped || userId === null) return;
+    if (!identityPending) return;
     let active = true;
-    void withTimeout(capabilities.fetchCapabilities(), accessTimeouts.capabilityMs, { kind: 'error' as const }).then((result) => {
-      if (!active) return;
-      dispatch({ type: 'capability_received', requestId, userId, result });
-      if (result.kind === 'session_invalid') void auth.signOut();
+    void withDeadline(() => auth.verifyIdentity(), accessTimeouts.identityMs, { status: 'unreachable' as const }).then((check) => {
+      if (active) dispatch({ type: 'identity_checked', request: identityRequest, check });
     });
     return () => {
       active = false;
     };
-  }, [capabilities, auth, userId, requestId, bootstrapped]);
+  }, [auth, identityPending, identityRequest]);
+
+  // Removes a session the server rejected. Runs from state so that a check which has
+  // since been superseded can never sign out a newer session.
+  useEffect(() => {
+    if (!purgeSession) return;
+    void auth.signOut();
+    dispatch({ type: 'purge_done' });
+  }, [auth, purgeSession]);
+
+  // Authoritative capability lookup; a newer request supersedes (and aborts) older ones.
+  useEffect(() => {
+    if (!bootstrapped || userId === null) return;
+    let active = true;
+    const controller = new AbortController();
+    void withDeadline(
+      () => capabilities.fetchCapabilities({ userId, signal: controller.signal }),
+      accessTimeouts.capabilityMs,
+      { kind: 'error' as const, reason: 'unavailable' as const },
+      () => controller.abort(),
+    ).then((result) => {
+      if (active) dispatch({ type: 'capability_received', requestId, userId, result });
+    });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [capabilities, userId, requestId, bootstrapped]);
 
   useEffect(() => {
     if (!bootstrapped) return;
@@ -101,7 +110,7 @@ export function AccessProvider({ services, children }: { services: AccessService
       return;
     }
     let active = true;
-    void preferredMode.load(userId).then((mode) => {
+    void withDeadline(() => preferredMode.load(userId), accessTimeouts.preferenceMs, null).then((mode) => {
       if (active) dispatch({ type: 'preference_loaded', userId, mode });
     });
     return () => {
@@ -109,6 +118,7 @@ export function AccessProvider({ services, children }: { services: AccessService
     };
   }, [preferredMode, userId, bootstrapped]);
 
+  // Cosmetic preference: losing a write only costs the remembered mode.
   useEffect(() => {
     if (userId === null || !preferenceLoaded) return;
     void preferredMode.save(userId, selectedMode).catch(() => undefined);
@@ -130,7 +140,7 @@ export function AccessProvider({ services, children }: { services: AccessService
       if (otpPhone === null) return { ok: false, failure: 'unknown' };
       const outcome = await auth.verifyOtp(otpPhone, code);
       if (!outcome.ok) return outcome;
-      dispatch({ type: 'session_established', userId: outcome.value.userId });
+      dispatch({ type: 'otp_verified', userId: outcome.value.userId });
       return { ok: true, value: undefined };
     },
     [auth, otpPhone],

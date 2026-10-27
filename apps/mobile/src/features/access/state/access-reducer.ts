@@ -9,10 +9,17 @@ type CapabilityState =
   | { status: 'resolved'; worker: WorkerGrant; refreshing: boolean }
   | { status: 'error'; refreshing: boolean };
 
+// Identity is "verified" only after the Auth server confirmed the account in this
+// run: getUser() answered for the same user, or an OTP confirmation returned a
+// session. A session read from storage, and any auth event, is only a claim and
+// leaves the identity "unverified" until a check answers.
 export type AccessState = {
   bootstrapped: boolean;
   userId: string | null;
   identity: 'verified' | 'unverified';
+  // Identifies the identity check whose answer may still be applied.
+  identityRequest: number;
+  identityPending: boolean;
   capability: CapabilityState;
   // Identifies the capability lookup whose answer may still be applied.
   requestId: number;
@@ -24,13 +31,19 @@ export type AccessState = {
   otpPhone: string | null;
   // Earliest time a new code may be requested, set from server outcomes.
   resendAvailableAt: number | null;
+  // Set when the stored session was proven dead and must be removed from the device.
+  purgeSession: boolean;
 };
 
+export type SessionEventType = 'signed_in' | 'refreshed' | 'updated';
+
 export type AccessAction =
-  | { type: 'bootstrapped'; userId: string | null; identity: AccessState['identity'] }
-  | { type: 'session_established'; userId: string }
-  | { type: 'session_refreshed'; userId: string }
+  | { type: 'restore_settled'; userId: string | null }
+  | { type: 'session_event'; event: SessionEventType; userId: string }
+  | { type: 'otp_verified'; userId: string }
   | { type: 'session_ended' }
+  | { type: 'identity_checked'; request: number; check: IdentityCheck }
+  | { type: 'purge_done' }
   | { type: 'recheck_requested' }
   | { type: 'capability_received'; requestId: number; userId: string; result: CapabilityResult }
   | { type: 'preference_loaded'; userId: string; mode: AppMode | null }
@@ -45,6 +58,8 @@ export const initialAccessState: AccessState = {
   bootstrapped: false,
   userId: null,
   identity: 'unverified',
+  identityRequest: 0,
+  identityPending: false,
   capability: { status: 'loading' },
   requestId: 0,
   preferenceLoaded: false,
@@ -54,14 +69,25 @@ export const initialAccessState: AccessState = {
   intent: null,
   otpPhone: null,
   resendAvailableAt: null,
+  purgeSession: false,
 };
 
-function signedOut(state: AccessState): AccessState {
+// Every reset moves both request counters so that answers to earlier checks and
+// lookups can never be applied to the state that replaced them.
+function reset(state: AccessState, userId: string | null, identity: AccessState['identity'], keep: Partial<AccessState> = {}): AccessState {
   return {
     ...initialAccessState,
     bootstrapped: true,
+    userId,
+    identity,
     requestId: state.requestId + 1,
+    identityRequest: state.identityRequest + 1,
+    ...keep,
   };
+}
+
+function signedOut(state: AccessState): AccessState {
+  return reset(state, null, 'unverified');
 }
 
 function withNewLookup(state: AccessState): AccessState {
@@ -70,59 +96,96 @@ function withNewLookup(state: AccessState): AccessState {
   return { ...state, capability, requestId: state.requestId + 1 };
 }
 
+function withIdentityCheck(state: AccessState): AccessState {
+  return { ...state, identityRequest: state.identityRequest + 1, identityPending: true };
+}
+
+function wantsWorker(state: AccessState): boolean {
+  return state.pendingMode === 'worker' || state.intent === 'worker';
+}
+
+// A Worker request (button or pre-login intent) is answered only once the lookup and
+// the identity check have both settled, and is granted only when both allow it.
+function settleWorkerRequest(state: AccessState): AccessState {
+  if (!wantsWorker(state) || state.identityPending) return state;
+  const { capability } = state;
+  if (capability.status === 'loading' || capability.refreshing) return state;
+  const granted = state.identity === 'verified' && capability.status === 'resolved' && capability.worker === 'active';
+  return {
+    ...state,
+    selectedMode: granted ? 'worker' : state.selectedMode,
+    pendingMode: null,
+    intent: null,
+    notice: granted ? null : capability.status === 'resolved' && capability.worker !== 'active' ? 'worker_unavailable' : 'worker_unverified',
+  };
+}
+
 export function accessReducer(state: AccessState, action: AccessAction): AccessState {
   switch (action.type) {
-    case 'bootstrapped':
-      if (state.bootstrapped) return state;
-      return action.userId === null
-        ? { ...state, bootstrapped: true, userId: null }
-        : { ...state, bootstrapped: true, userId: action.userId, identity: action.identity, requestId: state.requestId + 1 };
+    case 'restore_settled':
+      if (action.userId === null) return state.userId === null ? { ...state, bootstrapped: true } : state;
+      // An auth event that already named a session wins over the slower restore.
+      if (state.userId !== null) return state;
+      return withIdentityCheck({ ...state, userId: action.userId, identity: 'unverified', requestId: state.requestId + 1 });
 
-    case 'session_established':
-      if (state.userId === action.userId) return { ...state, bootstrapped: true, otpPhone: null };
-      return {
-        ...initialAccessState,
-        bootstrapped: true,
-        userId: action.userId,
-        identity: 'verified',
-        requestId: state.requestId + 1,
-        intent: state.intent,
-      };
+    case 'session_event':
+      if (state.userId === action.userId) return action.event === 'signed_in' ? state : withNewLookup(state);
+      return withIdentityCheck({ ...reset(state, action.userId, 'unverified', { intent: state.intent }), bootstrapped: state.bootstrapped });
 
-    case 'session_refreshed':
+    case 'otp_verified':
       return state.userId === action.userId
-        ? withNewLookup(state)
-        : accessReducer(state, { type: 'session_established', userId: action.userId });
+        ? { ...state, bootstrapped: true, identity: 'verified', identityRequest: state.identityRequest + 1, identityPending: false, otpPhone: null }
+        : reset(state, action.userId, 'verified', { intent: state.intent });
 
     case 'session_ended':
       return signedOut(state);
 
-    case 'recheck_requested':
-      return state.userId === null || !state.bootstrapped ? state : withNewLookup(state);
+    case 'identity_checked': {
+      if (!state.identityPending || action.request !== state.identityRequest || state.userId === null) return state;
+      const { check } = action;
+      if (check.status === 'invalid') return { ...signedOut(state), purgeSession: true };
+      const verified = check.status === 'valid' && check.identity.userId === state.userId;
+      return settleWorkerRequest({ ...state, bootstrapped: true, identity: verified ? 'verified' : 'unverified', identityPending: false });
+    }
+
+    case 'purge_done':
+      return { ...state, purgeSession: false };
+
+    case 'recheck_requested': {
+      if (state.userId === null || !state.bootstrapped) return state;
+      const next = withNewLookup(state);
+      return state.identity === 'unverified' && !state.identityPending ? withIdentityCheck(next) : next;
+    }
 
     case 'capability_received': {
       if (action.requestId !== state.requestId || action.userId !== state.userId) return state;
       const { result } = action;
-      if (result.kind === 'session_invalid') return signedOut(state);
+      if (result.kind === 'unauthenticated') {
+        // The token was refused: nothing is trusted until getUser answers again.
+        const next: AccessState = {
+          ...state,
+          identity: 'unverified',
+          capability: { status: 'error', refreshing: false },
+          notice: wantsWorker(state) || state.selectedMode === 'worker' ? 'worker_unverified' : state.notice,
+        };
+        return settleWorkerRequest(state.identityPending ? next : withIdentityCheck(next));
+      }
       if (result.kind === 'error') {
-        return {
+        const next: AccessState = {
           ...state,
           capability: { status: 'error', refreshing: false },
-          pendingMode: null,
-          intent: null,
-          notice: state.pendingMode === 'worker' || state.intent === 'worker' || state.selectedMode === 'worker' ? 'worker_unverified' : state.notice,
+          notice: wantsWorker(state) || state.selectedMode === 'worker' ? 'worker_unverified' : state.notice,
         };
+        return settleWorkerRequest(next);
       }
-      const wantsWorker = state.pendingMode === 'worker' || state.intent === 'worker';
       const active = result.worker === 'active';
-      return {
+      const next: AccessState = {
         ...state,
         capability: { status: 'resolved', worker: result.worker, refreshing: false },
-        selectedMode: active ? (wantsWorker ? 'worker' : state.selectedMode) : 'client',
-        pendingMode: null,
-        intent: null,
-        notice: wantsWorker && !active ? 'worker_unavailable' : active ? null : state.notice,
+        selectedMode: active ? state.selectedMode : 'client',
+        notice: active ? null : state.notice,
       };
+      return settleWorkerRequest(next);
     }
 
     case 'preference_loaded':
@@ -134,10 +197,12 @@ export function accessReducer(state: AccessState, action: AccessAction): AccessS
         selectedMode: state.capability.status === 'resolved' && state.capability.worker !== 'active' ? 'client' : (action.mode ?? state.selectedMode),
       };
 
-    case 'mode_requested':
+    case 'mode_requested': {
       if (state.userId === null) return state;
       if (action.mode === 'client') return { ...state, selectedMode: 'client', pendingMode: null, notice: null };
-      return { ...withNewLookup(state), pendingMode: 'worker', notice: null };
+      const next = { ...withNewLookup(state), pendingMode: 'worker' as const, notice: null };
+      return state.identity === 'unverified' && !state.identityPending ? withIdentityCheck(next) : next;
+    }
 
     case 'intent_set':
       return { ...state, intent: action.intent };
@@ -156,12 +221,6 @@ export function accessReducer(state: AccessState, action: AccessAction): AccessS
   }
 }
 
-export function identityAction(check: IdentityCheck, fallbackUserId: string): AccessAction {
-  if (check.status === 'valid') return { type: 'bootstrapped', userId: check.identity.userId, identity: 'verified' };
-  if (check.status === 'invalid') return { type: 'bootstrapped', userId: null, identity: 'unverified' };
-  return { type: 'bootstrapped', userId: fallbackUserId, identity: 'unverified' };
-}
-
 export type AccessPhase = 'bootstrapping' | 'guest' | 'resolving' | 'client' | 'worker';
 export type WorkerStatus = 'checking' | 'authorized' | 'none' | 'revoked' | 'unknown';
 
@@ -176,15 +235,18 @@ export type AccessView = {
   resendAvailableAt: number | null;
 };
 
-// Worker mode needs a resolved, active backend grant AND a selection of Worker;
-// every other state, including a failed lookup, resolves to Client.
+// Worker needs ALL of: a verified identity, a resolved active backend grant for that
+// account, and a Worker selection. Every other state, including a failed lookup or an
+// unverified identity, resolves to Client. The selected mode is a preference only.
 export function deriveAccess(state: AccessState): AccessView {
   const { capability } = state;
-  const canUseWorker = capability.status === 'resolved' && capability.worker === 'active';
-  const workerStatus: WorkerStatus =
-    capability.status === 'loading' ? 'checking'
-      : capability.status === 'error' ? 'unknown'
-        : capability.worker === 'active' ? 'authorized' : capability.worker;
+  const verified = state.identity === 'verified';
+  const canUseWorker = verified && capability.status === 'resolved' && capability.worker === 'active';
+  let workerStatus: WorkerStatus;
+  if (capability.status === 'loading') workerStatus = 'checking';
+  else if (capability.status === 'error') workerStatus = 'unknown';
+  else if (capability.worker === 'active') workerStatus = verified ? 'authorized' : 'unknown';
+  else workerStatus = capability.worker;
   let phase: AccessPhase;
   if (!state.bootstrapped) phase = 'bootstrapping';
   else if (state.userId === null) phase = 'guest';
