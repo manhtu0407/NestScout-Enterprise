@@ -430,12 +430,67 @@ test('the delivered repository sources contain no prohibited comment and only th
     }
   }
   assert.ok(mandatory.length > 0);
-  for (const { file, text } of mandatory) {
-    const hook = /^\.githooks\/[a-z-]+$/.test(file) && /^#!\/bin\/sh$/.test(text);
-    const dependabot = /^\.github\/workflows\/[a-z-]+\.yml$/.test(file) && /^# v\d+(?:\.\d+){0,2}$/.test(text);
-    assert.ok(hook || dependabot, `Unexpected mandatory comment ${file}: ${text}`);
-  }
+  assertApprovedMandatoryKinds(mandatory);
   assert.deepEqual(violations('package.json', readFileSync(path.join(root, 'package.json'), 'utf8'), 'repository'), []);
+});
+
+const approvedMandatoryKinds = [
+  ['shebang', (file, text) => /^#!(?:\/[\w.-]+)+(?: [-\w=./]+){0,2}$/.test(text) && /\.(?:[cm]?js|[cm]?ts)$|^\.githooks\//.test(file)],
+  ['triple-slash', (file, text) => /^\/\/\/\s*<(?:reference|amd-module|amd-dependency)\b[^<>]*\/>\s*$/.test(text) && /\.(?:[cm]?js|[cm]?ts|tsx)$/.test(file)],
+  ['jsx-pragma', (file, text) => /^\/\*\*?\s*(?:@jsx(?:Frag|ImportSource|Runtime)? \S+\s*)+\*\/$/.test(text) && /\.(?:[cm]?js|[cm]?ts|tsx)$/.test(file)],
+  ['dependabot-version', (file, text) => /^# v\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?$/.test(text) && /\.ya?ml$/.test(file)],
+  ['copyright', (file, text) => /^(?:\/\/+|\/\*+|#+|--+)\s*Copyright(?: \(c\)| ©)? (?:19|20)\d{2}\b[^\n]*$/i.test(text)],
+  ['spdx', (file, text) => /^(?:\/\/+|\/\*+|#+|--+)\s*SPDX-License-Identifier: [^\n]+$/.test(text)],
+];
+
+function assertApprovedMandatoryKinds(entries) {
+  for (const { file, text } of entries) {
+    assert.ok(approvedMandatoryKinds.some(([, matches]) => matches(file, text)), `Unapproved mandatory comment ${file}: ${text}`);
+    assert.ok(!['annotation', 'suppression'].includes(commentCategory(text)), `Prohibited mandatory comment ${file}: ${text}`);
+  }
+}
+
+test('the repository-wide mandatory assertion accepts every approved category and rejects prose, annotations and suppressions', () => {
+  const approved = [
+    ['.githooks/pre-push', '#!/bin/sh'],
+    ['scripts/tool.mjs', '#!/usr/bin/env node'],
+    ['.github/workflows/ci.yml', '# v7.1.2'],
+    ['apps/mobile/env.d.ts', '/// <reference types="expo/types" />'],
+    ['apps/mobile/src/view.tsx', '/** @jsxImportSource preact */'],
+    ['apps/mobile/src/example.ts', '// SPDX-License-Identifier: MIT OR Apache-2.0'],
+    ['apps/mobile/src/example.ts', '// Copyright 2026 Example Corporation'],
+    ['supabase/migrations/20260101000000_example.sql', '-- Copyright (c) 2026 Example Corporation'],
+  ];
+  assert.doesNotThrow(() => assertApprovedMandatoryKinds(approved.map(([file, text]) => ({ file, text }))));
+  for (const [file, text] of [
+    ['scripts/example.mjs', '// explain the value'],
+    ['scripts/example.mjs', '/** Returns the value. */'],
+    ['scripts/example.mjs', '// TODO: remove'],
+    ['scripts/example.mjs', '// SPDX-License-Identifier: MIT TODO'],
+    ['apps/mobile/src/example.ts', '// @ts-ignore'],
+    ['apps/mobile/src/example.ts', '/* eslint-disable */'],
+  ]) assert.throws(() => assertApprovedMandatoryKinds([{ file, text }]), file + text);
+  for (const [file, text] of approved) {
+    const source = file.endsWith('.yml') ? `steps:\n  - uses: actions/checkout@${sha} ${text}\n` : `${text}\nexport {};\n`;
+    assert.deepEqual(violations(file, source, 'repository'), [], `${file}: ${text}`);
+  }
+});
+
+test('legal notices and TypeScript directives pass in committed, staged and working states while adjacent prose, JSDoc, TODOs and suppressions fail', () => {
+  const files = {
+    'apps/mobile/expo-env.d.ts': '/// <reference types="expo/types" />\n\nexport {};\n',
+    'apps/mobile/src/licensed.ts': '// Copyright 2026 Example Corporation\n// SPDX-License-Identifier: MIT\nexport const licensed = 1;\n',
+    'apps/mobile/src/view.tsx': '/** @jsxImportSource preact */\nexport const view = 1;\n',
+    'supabase/migrations/20260101000000_licensed.sql': '-- SPDX-License-Identifier: Apache-2.0\nselect 1;\n',
+  };
+  const { repository, run, write } = repositoryFixture(files);
+  assert.doesNotThrow(() => checkComments(repository));
+  write('apps/mobile/src/licensed.ts', `${files['apps/mobile/src/licensed.ts']}// explain the value\n/** Returns the value. */\n// TODO: remove\n// @ts-ignore\nexport const other = 2;\n`);
+  assert.throws(() => checkWorkingComments(repository), error => [/licensed\.ts:4 inline/, /licensed\.ts:5 documentation/, /licensed\.ts:6 annotation/, /licensed\.ts:7 suppression/].every(pattern => pattern.test(error.message)) && !/licensed\.ts:[123] /.test(error.message));
+  run(['add', '.']);
+  assert.throws(() => checkStagedComments(repository), /index apps\/mobile\/src\/licensed\.ts:4 inline/);
+  run(['commit', '--quiet', '-m', 'feat: add commented licensed source']);
+  assert.throws(() => checkCommittedComments(repository), /apps\/mobile\/src\/licensed\.ts:7 suppression/);
 });
 
 test('command line entry points reject unsupported arguments', () => {
