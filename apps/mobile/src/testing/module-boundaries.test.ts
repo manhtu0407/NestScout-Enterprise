@@ -97,6 +97,6 @@ describe('module ownership', () => {
 
   test('the bundle contains no privileged key names', () => {
     const offenders = files.filter((file) => /service_role|SERVICE_ROLE|sb_secret_/.test(readFileSync(file, 'utf8')));
-    expect(offenders.map((file) => path.relative(src, file))).toEqual(['lib/config.ts']);
+    expect(offenders.map((file) => path.relative(src, file).split(path.sep).join('/'))).toEqual(['lib/config.ts']);
   });
 });
