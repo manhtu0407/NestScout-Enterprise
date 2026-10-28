@@ -24,6 +24,7 @@ export type AccessState = {
   intent: AppMode | null;
   otpPhone: string | null;
   resendAvailableAt: number | null;
+  guestDraft: { text: string; ownerId: string | null } | null;
 };
 
 export type SessionEventType = 'signed_in' | 'refreshed' | 'updated';
@@ -42,7 +43,9 @@ export type AccessAction =
   | { type: 'otp_requested'; phone: string; resendAt: number }
   | { type: 'otp_throttled'; resendAt: number }
   | { type: 'otp_cleared' }
-  | { type: 'notice_dismissed' };
+  | { type: 'notice_dismissed' }
+  | { type: 'guest_draft_edited'; text: string }
+  | { type: 'guest_draft_cleared' };
 
 export const initialAccessState: AccessState = {
   bootstrapped: false,
@@ -59,6 +62,7 @@ export const initialAccessState: AccessState = {
   intent: null,
   otpPhone: null,
   resendAvailableAt: null,
+  guestDraft: null,
 };
 
 function reset(state: AccessState, userId: string | null, identity: AccessState['identity'], keep: Partial<AccessState> = {}): AccessState {
@@ -114,12 +118,20 @@ export function accessReducer(state: AccessState, action: AccessAction): AccessS
 
     case 'session_event':
       if (state.userId === action.userId) return action.event === 'signed_in' ? state : withNewLookup(state);
-      return withIdentityCheck({ ...reset(state, action.userId, 'unverified', { intent: state.intent }), bootstrapped: state.bootstrapped });
+      return withIdentityCheck({ ...reset(state, action.userId, 'unverified', {
+        intent: state.intent,
+        guestDraft: state.userId === null && state.guestDraft?.ownerId === null
+          ? { ...state.guestDraft, ownerId: action.userId } : null,
+      }), bootstrapped: state.bootstrapped });
 
     case 'otp_verified':
       return state.userId === action.userId
         ? { ...state, bootstrapped: true, identity: 'verified', identityRequest: state.identityRequest + 1, identityPending: false, otpPhone: null }
-        : reset(state, action.userId, 'verified', { intent: state.intent });
+        : reset(state, action.userId, 'verified', {
+          intent: state.intent,
+          guestDraft: state.userId === null && state.guestDraft?.ownerId === null
+            ? { ...state.guestDraft, ownerId: action.userId } : null,
+        });
 
     case 'session_ended':
       return signedOut(state);
@@ -197,6 +209,12 @@ export function accessReducer(state: AccessState, action: AccessAction): AccessS
 
     case 'notice_dismissed':
       return { ...state, notice: null };
+
+    case 'guest_draft_edited':
+      return state.userId === null ? { ...state, guestDraft: { text: action.text, ownerId: null } } : state;
+
+    case 'guest_draft_cleared':
+      return { ...state, guestDraft: null };
   }
 }
 
@@ -212,6 +230,7 @@ export type AccessView = {
   notice: AccessNotice | null;
   otpPhone: string | null;
   resendAvailableAt: number | null;
+  guestDraft: string | null;
 };
 
 export function deriveAccess(state: AccessState): AccessView {
@@ -237,5 +256,7 @@ export function deriveAccess(state: AccessState): AccessView {
     notice: state.notice,
     otpPhone: state.otpPhone,
     resendAvailableAt: state.resendAvailableAt,
+    guestDraft: state.guestDraft && (state.userId === null || (verified && state.guestDraft.ownerId === state.userId))
+      ? state.guestDraft.text : null,
   };
 }

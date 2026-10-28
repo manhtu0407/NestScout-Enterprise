@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { TextInput } from 'react-native';
 
 import { ActionButton, BodyText, Heading, Screen } from '@/features/shared';
 
@@ -15,9 +16,9 @@ export function GuestLandingScreen() {
     <Screen>
       <Heading>NestScout</Heading>
       <BodyText>
-        You are exploring as a guest. This build is a technical foundation: no services, prices, bookings or assistant
-        are available yet.
+        Describe your needs here. Your draft stays in memory until you sign in; no request is sent yet.
       </BodyText>
+      <TextInput accessibilityLabel="Guest request draft" value={access.guestDraft ?? ''} onChangeText={access.editGuestDraft} multiline maxLength={4000} placeholder="Describe the problem" />
       <ActionButton label="Sign in with phone" onPress={() => signIn(null)} hint="Opens phone number sign-in" />
       <BodyText muted>Protected areas need an account. These actions only demonstrate the sign-in transition.</BodyText>
       <ActionButton

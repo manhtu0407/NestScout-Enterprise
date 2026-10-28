@@ -1,5 +1,14 @@
 import { accessReducer, deriveAccess, initialAccessState, type AccessAction, type AccessState } from './access-reducer';
 
+test('a guest draft binds to the first signed-in account and is discarded on account switch', () => {
+  const guest = accessReducer(initialAccessState, { type: 'guest_draft_edited', text: 'Need repair' });
+  const signedIn = accessReducer(guest, { type: 'otp_verified', userId: 'account-a' });
+  expect(deriveAccess(signedIn).guestDraft).toBe('Need repair');
+  const switched = accessReducer(signedIn, { type: 'session_event', event: 'signed_in', userId: 'account-b' });
+  expect(deriveAccess(switched).guestDraft).toBeNull();
+  expect(deriveAccess(accessReducer(signedIn, { type: 'session_ended' })).guestDraft).toBeNull();
+});
+
 const user = 'user-a';
 
 function run(actions: AccessAction[], from: AccessState = initialAccessState): AccessState {
