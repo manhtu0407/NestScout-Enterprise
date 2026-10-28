@@ -185,7 +185,7 @@ needs manual evidence.
 `scripts/review-diff.mjs` reads a frozen base-to-head diff (resolved SHAs and the merge
 base) and returns a verdict of `PASS`, `FAIL` or `INSUFFICIENT_EVIDENCE` for each of five
 dimensions. `scripts/review-diff.test.mjs` exercises it on isolated temporary
-repositories, never production modules, with 44 tests:
+repositories, never production modules, with 45 tests:
 
 - test weakening: `it.skip`, `it.only` and a node-test `skip` option fail; a deleted test
   file fails, and so does a test file renamed to a name that no longer matches the test
@@ -225,7 +225,8 @@ repositories, never production modules, with 44 tests:
   tree. A removed export that a
   consumer still imports from the original module fails, even when another file exports
   the same name or the consumer itself re-exports it; a default export written as
-  `export default value` is tracked like a declared one. A move is accepted only when the consumer now imports the name from a
+  `export default value` is tracked like a declared one, and a barrel that stops using
+  `export *` needs owner review because the names it re-exported cannot be listed. A move is accepted only when the consumer now imports the name from a
   module whose declaration text equals the removed one and which did not export it
   before. A re-pointed import to a pre-existing or different declaration, a whole-module
   import, a re-export that cannot be compared, or a mention without an import needs

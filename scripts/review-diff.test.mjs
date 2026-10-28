@@ -722,6 +722,19 @@ test('a consumer that re-exports a removed export is still checked for importing
   assert.equal(unrelated.dimensions.deadCodeSafety.verdict, PASS, 'a consumer that declares its own export of the same name');
 });
 
+test('a barrel that stops re-exporting a whole module cannot pass dead-code safety', () => {
+  const files = {
+    [`${lib}rates.ts`]: 'export const tariff = 1;\n',
+    [`${lib}rates-barrel.ts`]: "export * from './rates';\n",
+    [`${lib}use-rates.ts`]: "import { tariff } from './rates-barrel';\n\nexport const total = tariff + 1;\n",
+  };
+  const dropStar = reviewWith(files, api => api.write(`${lib}rates-barrel.ts`, 'export {};\n'));
+  assert.equal(dropStar.dimensions.deadCodeSafety.verdict, INSUFFICIENT);
+  assert.match(dropStar.dimensions.deadCodeSafety.findings.join('\n'), /rates-barrel\.ts: export \* was removed/);
+  const kept = reviewWith(files, api => api.write(`${lib}rates-barrel.ts`, "export * from './rates';\nexport const extra = 1;\n"));
+  assert.equal(kept.dimensions.deadCodeSafety.verdict, PASS, 'a barrel that still re-exports the module');
+});
+
 test('script selection counts only test invocations, so another tool over the workspace cannot hide a narrowed jest match', () => {
   const mobile = 'apps/mobile/package.json';
   const covered = 'apps/mobile/src/lib/format-total.test.ts';

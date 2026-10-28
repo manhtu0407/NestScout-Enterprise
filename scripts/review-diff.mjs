@@ -632,6 +632,7 @@ function deadCodeDimension(repository, files, mergeBase, head, views) {
         findings.push(`${file.path}: exports could not be compared: Invalid syntax in ${was ? file.path : original}.`);
         continue;
       }
+      if (was.star && !now.star) findings.push(`${file.path}: export * was removed, so the names it re-exported cannot be listed; owner review must confirm no consumer still imports them.`);
       for (const [name, declaration] of was.exports) {
         if (now.exports.has(name)) continue;
         const result = removedExportChecks(repository, head, file, name, declaration, now, views.before, views.after);
