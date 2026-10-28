@@ -316,7 +316,7 @@ author's check of one case, not independent review.
 
 ### Platform coverage
 
-Measured at the code commit `abbe33a6ae22d8e98f772891bf3897ee081bf472`; only
+Measured at the code commit `320856f5638a178a0f24932fdf58608d947c2274`; only
 documentation changed after it. Each platform used a fresh clone with its own
 `node_modules`; the Linux container was built from a Git bundle of the full history.
 
@@ -328,8 +328,8 @@ documentation changed after it. Each platform used a fresh clone with its own
 | Command | Windows | Linux |
 | --- | --- | --- |
 | `npm ci --ignore-scripts`, `npm run tools:install` | exit 0 | exit 0 |
-| the two evaluator test files | inside the 130 foundation tests below | 41 of 41, run on their own |
-| `npm run check` (foundation, mobile) | exit 0; 130 and 272 tests | exit 0; 130 and 272 tests |
+| the two evaluator test files | inside the 136 foundation tests below | 47 of 47, run on their own |
+| `npm run check` (foundation, mobile) | exit 0; 136 and 272 tests | exit 0; 136 and 272 tests |
 | `npm run verify:negative` | exit 0; 151 tests | exit 0; 151 tests |
 | `npm run health:dead-code` | exit 0; the nine items listed above | exit 0; the same nine |
 | `npm run health:review-diff`, scoped to `docs/**`, `scripts/**` and the two manifests | exit 2, `INSUFFICIENT_EVIDENCE` | exit 2, `INSUFFICIENT_EVIDENCE` |
