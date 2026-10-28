@@ -48,18 +48,33 @@ left join lateral (select e.version, e.actor_id, e.created_at from public.servic
   where e.job_id = j.id and e.event = 'paused' order by e.version desc limit 1) p on true
 where j.stage = 'paused';
 
-create function public.open_job_pauses()
+create function public.worker_pauses()
 returns table (job_id uuid, category text, prior_stage text, paused_from_version integer, resume_requested boolean, created_at timestamptz)
 language sql stable security invoker set search_path = ''
 as $$
   select p.job_id, p.category, p.prior_stage, p.paused_from_version,
     p.category = 'ordinary_interruption' and p.resume_requested_at is not null, p.created_at
   from public.service_job_pauses p
-  where p.resumed_at is null
+  where p.resumed_at is null and p.job_id in (select w.job_id from nestscout_private.worker_jobs() w)
   order by p.job_id;
 $$;
-revoke all on function public.open_job_pauses() from public, anon, authenticated;
-grant execute on function public.open_job_pauses() to authenticated;
+revoke all on function public.worker_pauses() from public, anon, authenticated;
+grant execute on function public.worker_pauses() to authenticated;
+
+create function public.customer_pauses()
+returns table (job_id uuid, category text, prior_stage text, paused_from_version integer, resume_requested boolean, created_at timestamptz)
+language sql stable security invoker set search_path = ''
+as $$
+  select p.job_id, p.category, p.prior_stage, p.paused_from_version,
+    p.category = 'ordinary_interruption' and p.resume_requested_at is not null, p.created_at
+  from public.service_job_pauses p
+  where p.resumed_at is null and p.job_id in (
+    select j.id from public.service_jobs j join public.service_requests r on r.id = j.request_id
+    where r.owner_id = (select auth.uid()))
+  order by p.job_id;
+$$;
+revoke all on function public.customer_pauses() from public, anon, authenticated;
+grant execute on function public.customer_pauses() to authenticated;
 
 create function nestscout_private.job_has_dispute(p_job_id uuid)
 returns boolean

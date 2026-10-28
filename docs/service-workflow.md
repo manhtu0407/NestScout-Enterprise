@@ -386,6 +386,11 @@ When any part of the Worker snapshot, including the correction projection,
 cannot be verified, the screen keeps the last verified state as stale
 read-only information, disables every action and form, and offers a refresh.
 
+Open pauses are read through `worker_pauses()`, limited to the caller's Worker
+jobs, or `customer_pauses()`, limited to the jobs of the caller's own requests,
+so an account that uses both modes receives only the rows of the mode it is
+reading and never a row the screen cannot place.
+
 Workflow failures are classified by the database error class together with a
 closed set of the domain messages written in the migrations, and the client
 shows a fixed text for each class, never the server text. The classes are

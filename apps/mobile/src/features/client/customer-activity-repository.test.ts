@@ -48,7 +48,7 @@ const pauseRow = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const activityWith = (jobs: unknown[], pauses: unknown, pauseStatus = 200) => jest.mocked(authenticatedRequest).mockImplementation(async (_user, path) => {
-  if (path === 'rpc/open_job_pauses') return { ok: pauseStatus === 200, status: pauseStatus, json: async () => pauses } as Response;
+  if (path === 'rpc/customer_pauses') return { ok: pauseStatus === 200, status: pauseStatus, json: async () => pauses } as Response;
   return { ok: true, json: async () => path.startsWith('service_jobs?') ? jobs : [] } as Response;
 });
 
@@ -56,7 +56,7 @@ test('open pauses are read for the paused jobs of the Customer', async () => {
   activityWith([pausedJob], [pauseRow({ resume_requested: true })]);
   const result = await readCustomerActivity('customer-a', [requestId], new AbortController().signal);
   expect(result.pauses).toEqual([{ job_id: jobId, category: 'ordinary_interruption', resume_requested: true }]);
-  const call = jest.mocked(authenticatedRequest).mock.calls.find(([, path]) => path === 'rpc/open_job_pauses');
+  const call = jest.mocked(authenticatedRequest).mock.calls.find(([, path]) => path === 'rpc/customer_pauses');
   expect(call?.[2]?.method).toBe('POST');
 });
 
@@ -64,7 +64,7 @@ test('no pause request is made when the Customer has no job', async () => {
   activityWith([], []);
   const result = await readCustomerActivity('customer-a', [requestId], new AbortController().signal);
   expect(result.pauses).toEqual([]);
-  expect(jest.mocked(authenticatedRequest).mock.calls.some(([, path]) => path === 'rpc/open_job_pauses')).toBe(false);
+  expect(jest.mocked(authenticatedRequest).mock.calls.some(([, path]) => path === 'rpc/customer_pauses')).toBe(false);
 });
 
 test.each([

@@ -255,6 +255,11 @@ isOneToOne: false
 "consent_service_resume":
 { Args: { "p_job_id": string,"p_version": number }; Returns: number
                            },
+"customer_pauses":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "category": string,"created_at": string,"job_id": string,"paused_from_version": number,"prior_stage": string,"resume_requested": boolean
+            }[]
+                           },
 "decide_service_scope":
 { Args: { "p_decision": string,"p_job_version": number,"p_proposal_id": string,"p_sequence": number }; Returns: string
                            },
@@ -266,11 +271,6 @@ isOneToOne: false
                            },
 "kael_read_context":
 { Args: { "p_kind": string,"p_resource_id": string }; Returns: Json
-                           },
-"open_job_pauses":
-{ Args: Record<PropertyKey, never>; Returns: {
-              "category": string,"created_at": string,"job_id": string,"paused_from_version": number,"prior_stage": string,"resume_requested": boolean
-            }[]
                            },
 "open_service_aftercare":
 { Args: { "p_job_id": string,"p_key": string,"p_reason": string }; Returns: string
@@ -309,6 +309,11 @@ isOneToOne: false
 "worker_offers":
 { Args: Record<PropertyKey, never>; Returns: {
               "amount_minor": number,"basis": string,"currency": string,"expires_at": string,"invitation_id": string,"quote_id": string,"quote_version": number,"scope": string
+            }[]
+                           },
+"worker_pauses":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "category": string,"created_at": string,"job_id": string,"paused_from_version": number,"prior_stage": string,"resume_requested": boolean
             }[]
                            }
           }

@@ -103,7 +103,7 @@ export async function readWorkerCorrections(userId: string, jobs: Job[], signal:
 
 export async function readWorkerPauses(userId: string, jobs: Job[], signal: AbortSignal): Promise<Pause[]> {
   if (!jobs.length) return [];
-  const result = await rpc(userId, 'open_job_pauses', {}, signal);
+  const result = await rpc(userId, 'worker_pauses', {}, signal);
   if (!Array.isArray(result)) throw new Error('Invalid pauses');
   complete(result);
   const listed = new Map(jobs.map(job => [job.job_id, job]));

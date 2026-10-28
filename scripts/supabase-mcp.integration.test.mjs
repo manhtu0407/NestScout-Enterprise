@@ -650,7 +650,7 @@ test('a classified pause is resumed only with both parties through real Auth and
     });
     const command = (name, token, body) => call(`/rest/v1/rpc/${name}`, token, { method: 'POST', body: JSON.stringify(body) });
     const accounts = [];
-    const [request, quote, invitation, job, requestKey] = Array.from({ length: 5 }, () => randomUUID());
+    const [request, quote, invitation, job, requestKey, request2, quote2, invitation2, job2, requestKey2] = Array.from({ length: 10 }, () => randomUUID());
     let fixtures = false;
     try {
       for (let index = 0; index < 4; index++) {
@@ -669,7 +669,7 @@ test('a classified pause is resumed only with both parties through real Auth and
         accounts[index] = { id: account.id, token: (await login.json()).access_token };
       }
       const [customer, worker, foreignWorker, otherCustomer] = accounts;
-      query(`begin; insert into public.worker_access_grants (user_id) values ('${worker.id}'), ('${foreignWorker.id}'); insert into nestscout_private.worker_dispatch_eligibility (user_id,basis,active) values ('${worker.id}','local_fixture',true), ('${foreignWorker.id}','local_fixture',true); insert into public.service_requests (id,owner_id,submission_key,description) values ('${request}','${customer.id}','${requestKey}','Pause fixture'); insert into public.service_quotes (id,request_id,version,scope,amount_minor,currency,expires_at,accepted_at,accepted_by) values ('${quote}','${request}',1,'Pause fixture',100,'VND',clock_timestamp()+interval '1 hour',clock_timestamp(),'${customer.id}'); insert into public.service_invitations (id,request_id,quote_id,worker_id,expires_at,state) values ('${invitation}','${request}','${quote}','${worker.id}',clock_timestamp()+interval '1 hour','accepted'); insert into public.service_jobs (id,request_id,quote_id,invitation_id,worker_id,stage,version) values ('${job}','${request}','${quote}','${invitation}','${worker.id}','working',1); commit;`);
+      query(`begin; insert into public.worker_access_grants (user_id) values ('${worker.id}'), ('${foreignWorker.id}'); insert into nestscout_private.worker_dispatch_eligibility (user_id,basis,active) values ('${worker.id}','local_fixture',true), ('${foreignWorker.id}','local_fixture',true); insert into public.service_requests (id,owner_id,submission_key,description) values ('${request}','${customer.id}','${requestKey}','Pause fixture'); insert into public.service_quotes (id,request_id,version,scope,amount_minor,currency,expires_at,accepted_at,accepted_by) values ('${quote}','${request}',1,'Pause fixture',100,'VND',clock_timestamp()+interval '1 hour',clock_timestamp(),'${customer.id}'); insert into public.service_invitations (id,request_id,quote_id,worker_id,expires_at,state) values ('${invitation}','${request}','${quote}','${worker.id}',clock_timestamp()+interval '1 hour','accepted'); insert into public.service_jobs (id,request_id,quote_id,invitation_id,worker_id,stage,version) values ('${job}','${request}','${quote}','${invitation}','${worker.id}','working',1); insert into public.service_requests (id,owner_id,submission_key,description) values ('${request2}','${worker.id}','${requestKey2}','Dual-role fixture'); insert into public.service_quotes (id,request_id,version,scope,amount_minor,currency,expires_at,accepted_at,accepted_by) values ('${quote2}','${request2}',1,'Dual-role fixture',100,'VND',clock_timestamp()+interval '1 hour',clock_timestamp(),'${worker.id}'); insert into public.service_invitations (id,request_id,quote_id,worker_id,expires_at,state) values ('${invitation2}','${request2}','${quote2}','${foreignWorker.id}',clock_timestamp()+interval '1 hour','accepted'); insert into public.service_jobs (id,request_id,quote_id,invitation_id,worker_id,stage,version) values ('${job2}','${request2}','${quote2}','${invitation2}','${foreignWorker.id}','working',1); commit;`);
       fixtures = true;
       const stage = () => query(`select stage || ':' || version from public.service_jobs where id='${job}';`).trim();
       const failure = async response => {
@@ -690,19 +690,31 @@ test('a classified pause is resumed only with both parties through real Auth and
       const replay = await command('pause_service_job', worker.token, { p_job_id: job, p_version: 1, p_category: 'ordinary_interruption' });
       assert.equal(await replay.json(), 2);
 
-      for (const person of [customer, worker]) {
-        const seen = await command('open_job_pauses', person.token, {});
+      const otherPause = await command('pause_service_job', foreignWorker.token, { p_job_id: job2, p_version: 1, p_category: 'ordinary_interruption' });
+      assert.equal(otherPause.status, 200);
+      assert.equal(await otherPause.json(), 2);
+
+      for (const [name, person] of [['customer_pauses', customer], ['worker_pauses', worker]]) {
+        const seen = await command(name, person.token, {});
         assert.equal(seen.status, 200);
         const rows = await seen.json();
         assert.equal(rows.length, 1);
         assert.deepEqual({ ...rows[0], created_at: undefined }, { job_id: job, category: 'ordinary_interruption', prior_stage: 'working', paused_from_version: 1, resume_requested: false, created_at: undefined });
       }
-      for (const stranger of [foreignWorker, otherCustomer]) {
-        const none = await command('open_job_pauses', stranger.token, {});
-        assert.equal(none.status, 200);
-        assert.deepEqual(await none.json(), []);
-      }
-      assert.equal((await command('open_job_pauses', publicKey, {})).status, 401);
+      const pausedJobs = async (name, person) => {
+        const response = await command(name, person.token, {});
+        assert.equal(response.status, 200);
+        return (await response.json()).map(row => row.job_id);
+      };
+      assert.deepEqual(await pausedJobs('worker_pauses', worker), [job], 'A dual-role account sees only its Worker pauses in Worker mode');
+      assert.deepEqual(await pausedJobs('customer_pauses', worker), [job2], 'A dual-role account sees only its owned-job pauses in Customer mode');
+      assert.deepEqual(await pausedJobs('worker_pauses', customer), []);
+      assert.deepEqual(await pausedJobs('worker_pauses', foreignWorker), [job2]);
+      assert.deepEqual(await pausedJobs('customer_pauses', foreignWorker), []);
+      assert.deepEqual(await pausedJobs('worker_pauses', otherCustomer), []);
+      assert.deepEqual(await pausedJobs('customer_pauses', otherCustomer), []);
+      assert.equal((await command('worker_pauses', publicKey, {})).status, 401);
+      assert.equal((await command('customer_pauses', publicKey, {})).status, 401);
 
       for (const person of [customer, worker]) {
         for (const column of ['paused_by', 'resume_requested_by', 'resumed_by']) {
@@ -732,7 +744,7 @@ test('a classified pause is resumed only with both parties through real Auth and
       assert.equal(requested.status, 200);
       assert.equal(await requested.json(), 3);
       assert.equal(stage(), 'paused:3');
-      const waiting = await (await command('open_job_pauses', customer.token, {})).json();
+      const waiting = await (await command('customer_pauses', customer.token, {})).json();
       assert.equal(waiting[0].resume_requested, true);
 
       assert.equal((await command('consent_service_resume', otherCustomer.token, { p_job_id: job, p_version: 3 })).status, 403);
@@ -746,7 +758,7 @@ test('a classified pause is resumed only with both parties through real Auth and
       assert.equal(stage(), 'working:4');
       assert.equal(await (await command('consent_service_resume', customer.token, { p_job_id: job, p_version: 3 })).json(), 4);
       assert.equal(query(`select count(*) from public.service_job_events where job_id='${job}' and event in ('paused','resume_requested','resumed');`).trim(), '3');
-      assert.deepEqual(await (await command('open_job_pauses', customer.token, {})).json(), []);
+      assert.deepEqual(await (await command('customer_pauses', customer.token, {})).json(), []);
 
       const safety = await command('pause_service_job', worker.token, { p_job_id: job, p_version: 4, p_category: 'safety_concern' });
       assert.equal(await safety.json(), 5);
@@ -755,7 +767,7 @@ test('a classified pause is resumed only with both parties through real Auth and
       assert.equal(stage(), 'paused:5');
       assert.equal(query(`select count(*) from public.service_job_pauses where job_id='${job}' and resumed_at is null and category='safety_concern';`).trim(), '1');
     } finally {
-      if (fixtures) query(`delete from public.service_job_pauses where job_id='${job}'; delete from public.service_job_events where job_id='${job}'; delete from public.service_jobs where id='${job}'; delete from public.service_invitations where id='${invitation}'; delete from public.service_quotes where id='${quote}'; delete from public.service_requests where id='${request}';`);
+      if (fixtures) query(`delete from public.service_job_pauses where job_id in ('${job}','${job2}'); delete from public.service_job_events where job_id in ('${job}','${job2}'); delete from public.service_jobs where id in ('${job}','${job2}'); delete from public.service_invitations where id in ('${invitation}','${invitation2}'); delete from public.service_quotes where id in ('${quote}','${quote2}'); delete from public.service_requests where id in ('${request}','${request2}');`);
       for (const account of accounts) {
         const id = typeof account === 'string' ? account : account.id;
         query(`delete from nestscout_private.worker_dispatch_eligibility where user_id='${id}'; delete from public.worker_access_grants where user_id='${id}';`);

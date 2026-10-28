@@ -9,15 +9,17 @@ insert into auth.users (id, aud, role) values
   ('00000000-0000-4000-8000-0000000000c3', 'authenticated', 'authenticated'),
   ('00000000-0000-4000-8000-0000000000d4', 'authenticated', 'authenticated');
 insert into public.worker_access_grants (user_id) values
+  ('00000000-0000-4000-8000-0000000000a2'),
   ('00000000-0000-4000-8000-0000000000b2'),
   ('00000000-0000-4000-8000-0000000000c3'),
   ('00000000-0000-4000-8000-0000000000d4');
 insert into nestscout_private.worker_dispatch_eligibility (user_id, basis, active) values
+  ('00000000-0000-4000-8000-0000000000a2', 'local_fixture', true),
   ('00000000-0000-4000-8000-0000000000b2', 'local_fixture', true),
   ('00000000-0000-4000-8000-0000000000c3', 'local_fixture', true),
   ('00000000-0000-4000-8000-0000000000d4', 'local_fixture', true);
 
-create temporary table job_fixture (n integer primary key, worker uuid, stage text, version integer);
+create temporary table job_fixture (n integer primary key, worker uuid, stage text, version integer, owner uuid not null default '00000000-0000-4000-8000-0000000000a1');
 insert into job_fixture values
   (1, '00000000-0000-4000-8000-0000000000b2', 'working', 1),
   (2, '00000000-0000-4000-8000-0000000000b2', 'working', 1),
@@ -33,15 +35,18 @@ insert into job_fixture values
   (12, '00000000-0000-4000-8000-0000000000d4', 'working', 1),
   (13, '00000000-0000-4000-8000-0000000000b2', 'paused', 3),
   (14, '00000000-0000-4000-8000-0000000000b2', 'paused', 3);
+insert into job_fixture (n, worker, stage, version, owner) values
+  (15, '00000000-0000-4000-8000-0000000000b2', 'paused', 2, '00000000-0000-4000-8000-0000000000a2'),
+  (16, '00000000-0000-4000-8000-0000000000a2', 'paused', 2, '00000000-0000-4000-8000-0000000000a1');
 
 insert into public.service_requests (id, owner_id, submission_key, description)
-select ('10000000-0000-4000-8000-0000000000' || lpad(n::text, 2, '0'))::uuid, '00000000-0000-4000-8000-0000000000a1',
+select ('10000000-0000-4000-8000-0000000000' || lpad(n::text, 2, '0'))::uuid, owner,
   ('20000000-0000-4000-8000-0000000000' || lpad(n::text, 2, '0'))::uuid, 'Pause fixture'
 from job_fixture;
 insert into public.service_quotes (id, request_id, version, scope, amount_minor, currency, expires_at, accepted_at, accepted_by)
 select ('30000000-0000-4000-8000-0000000000' || lpad(n::text, 2, '0'))::uuid,
   ('10000000-0000-4000-8000-0000000000' || lpad(n::text, 2, '0'))::uuid,
-  1, 'Synthetic scope', 100, 'VND', now() + interval '1 day', now(), '00000000-0000-4000-8000-0000000000a1'
+  1, 'Synthetic scope', 100, 'VND', now() + interval '1 day', now(), owner
 from job_fixture;
 insert into public.service_invitations (id, request_id, quote_id, worker_id, expires_at, state)
 select ('40000000-0000-4000-8000-0000000000' || lpad(n::text, 2, '0'))::uuid,
@@ -78,7 +83,9 @@ insert into public.service_job_reports (job_id, actor_id, report_key, reported_f
 values ('50000000-0000-4000-8000-000000000007', '00000000-0000-4000-8000-0000000000b2', gen_random_uuid(), 1, 'customer_absent', 'No answer');
 insert into public.service_job_pauses (job_id, category, prior_stage, paused_by, paused_from_version, resume_requested_by,
   resume_requested_from_version, resume_requested_at)
-values ('50000000-0000-4000-8000-000000000008', 'ordinary_interruption', 'working', '00000000-0000-4000-8000-0000000000b2', 1, null, null, null),
+values ('50000000-0000-4000-8000-000000000015', 'ordinary_interruption', 'working', '00000000-0000-4000-8000-0000000000b2', 1, null, null, null),
+  ('50000000-0000-4000-8000-000000000016', 'ordinary_interruption', 'working', '00000000-0000-4000-8000-0000000000a2', 1, null, null, null),
+  ('50000000-0000-4000-8000-000000000008', 'ordinary_interruption', 'working', '00000000-0000-4000-8000-0000000000b2', 1, null, null, null),
   ('50000000-0000-4000-8000-000000000013', 'ordinary_interruption', 'working', '00000000-0000-4000-8000-0000000000b2', 1,
     '00000000-0000-4000-8000-0000000000b2', 2, now()),
   ('50000000-0000-4000-8000-000000000014', 'safety_concern', 'working', '00000000-0000-4000-8000-0000000000b2', 1,
@@ -95,7 +102,8 @@ select ok(has_column_privilege('authenticated', 'public.service_job_pauses', 'ca
 select ok(not (select p.prosecdef from pg_proc p where p.oid = 'public.pause_service_job(uuid,integer,text)'::regprocedure),
   'The public pause command runs with the caller privileges');
 select ok(not has_function_privilege('anon', 'public.pause_service_job(uuid,integer,text)', 'execute'), 'Anonymous clients cannot pause');
-select ok(not has_function_privilege('anon', 'public.open_job_pauses()', 'execute'), 'Anonymous clients cannot read pauses');
+select ok(not has_function_privilege('anon', 'public.worker_pauses()', 'execute'), 'Anonymous clients cannot read Worker pauses');
+select ok(not has_function_privilege('anon', 'public.customer_pauses()', 'execute'), 'Anonymous clients cannot read Customer pauses');
 select ok(not has_column_privilege('anon', 'public.service_job_pauses', 'category', 'select'), 'Anonymous clients cannot read the pause category');
 select ok(not has_function_privilege('anon', 'public.request_service_resume(uuid,integer)', 'execute'), 'Anonymous clients cannot request a resume');
 select ok(not has_function_privilege('anon', 'public.consent_service_resume(uuid,integer)', 'execute'), 'Anonymous clients cannot consent to a resume');
@@ -125,7 +133,7 @@ select is((select count(*)::integer from public.service_job_events where job_id 
   'The retry recorded no second request');
 select throws_ok($$select public.request_service_resume('50000000-0000-4000-8000-000000000001', 3)$$, '22023', 'invalid transition', 'A resume cannot be requested twice');
 select is((select stage from public.service_jobs where id = '50000000-0000-4000-8000-000000000001'), 'paused', 'A request alone does not resume the work');
-select is((select count(*)::integer from public.open_job_pauses() where job_id = '50000000-0000-4000-8000-000000000001' and resume_requested), 1,
+select is((select count(*)::integer from public.worker_pauses() where job_id = '50000000-0000-4000-8000-000000000001' and resume_requested), 1,
   'The Worker sees that a request is waiting');
 reset role;
 
@@ -133,7 +141,8 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000c3","role":"authenticated"}', true);
 select throws_ok($$select public.pause_service_job('50000000-0000-4000-8000-000000000001', 3, 'safety_concern')$$, '42501', 'job unavailable', 'Another Worker cannot pause the job');
 select throws_ok($$select public.request_service_resume('50000000-0000-4000-8000-000000000001', 3)$$, '42501', 'job unavailable', 'Another Worker cannot request a resume');
-select is_empty($$select 1 from public.open_job_pauses()$$, 'Another Worker sees no pause');
+select is_empty($$select 1 from public.worker_pauses()$$, 'Another Worker sees no pause');
+select is_empty($$select 1 from public.customer_pauses()$$, 'Another Worker sees no pause as a Customer either');
 select throws_ok($$select public.advance_service_job('50000000-0000-4000-8000-000000000009', 1, 'paused')$$, '22023', 'invalid transition',
   'The unclassified pause path stays closed for a working job');
 select is((select stage from public.service_jobs where id = '50000000-0000-4000-8000-000000000009'), 'working', 'The refused pause left the job working');
@@ -150,7 +159,7 @@ select is(public.consent_service_resume('50000000-0000-4000-8000-000000000001', 
 select is((select count(*)::integer from public.service_job_events where job_id = '50000000-0000-4000-8000-000000000001' and event = 'resumed'), 1, 'The duplicate recorded no second event');
 select is((select stage from public.service_jobs where id = '50000000-0000-4000-8000-000000000001'), 'working', 'The work returns to the recorded prior stage');
 select throws_ok($$select public.consent_service_resume('50000000-0000-4000-8000-000000000001', 4)$$, '22023', 'invalid transition', 'Consent cannot be given when nothing is paused');
-select is_empty($$select 1 from public.open_job_pauses() where job_id = '50000000-0000-4000-8000-000000000001'$$, 'A resumed pause is no longer open');
+select is_empty($$select 1 from public.customer_pauses() where job_id = '50000000-0000-4000-8000-000000000001'$$, 'A resumed pause is no longer open');
 reset role;
 
 select is((select resumed_by from public.service_job_pauses where job_id = '50000000-0000-4000-8000-000000000001'), '00000000-0000-4000-8000-0000000000a1'::uuid,
@@ -182,8 +191,8 @@ select is(public.pause_service_job('50000000-0000-4000-8000-000000000004', 3, 's
 select is((select count(*)::integer from public.service_job_events where job_id = '50000000-0000-4000-8000-000000000004' and event = 'safety_escalated'), 1,
   'The escalation retry recorded no second event');
 select is((select category from public.service_job_pauses where job_id = '50000000-0000-4000-8000-000000000004' and resumed_at is null), 'safety_concern', 'The pause is now a safety stop');
-select is((select resume_requested from public.open_job_pauses() where job_id = '50000000-0000-4000-8000-000000000004'), false, 'An escalated pause shows no pending resume request');
-select is((select category from public.open_job_pauses() where job_id = '50000000-0000-4000-8000-000000000004'), 'safety_concern', 'The projection reports the safety stop');
+select is((select resume_requested from public.worker_pauses() where job_id = '50000000-0000-4000-8000-000000000004'), false, 'An escalated pause shows no pending resume request');
+select is((select category from public.worker_pauses() where job_id = '50000000-0000-4000-8000-000000000004'), 'safety_concern', 'The projection reports the safety stop');
 select throws_ok($$select public.request_service_resume('50000000-0000-4000-8000-000000000004', 4)$$, '22023', 'invalid transition', 'An escalated pause cannot be resumed');
 select throws_ok($$select public.pause_service_job('50000000-0000-4000-8000-000000000006', 3, 'safety_concern')$$, '22023', 'invalid transition', 'A disputed job cannot be paused');
 select throws_ok($$select public.pause_service_job('50000000-0000-4000-8000-000000000010', 2, 'ordinary_interruption')$$, '22023', 'invalid transition', 'A job awaiting the Customer cannot be paused');
@@ -209,7 +218,7 @@ select throws_ok($$select public.consent_service_resume('50000000-0000-4000-8000
   'Consent needs the Worker request first');
 select throws_ok($$select public.consent_service_resume('50000000-0000-4000-8000-000000000014', 3)$$, '22023', 'invalid transition',
   'Consent is refused for a safety stop even when its version matches a request');
-select is((select count(*)::integer from public.open_job_pauses() where category = 'safety_concern'), 3, 'The Customer sees all safety stops');
+select is((select count(*)::integer from public.customer_pauses() where category = 'safety_concern'), 3, 'The Customer sees all safety stops');
 select throws_ok($$select paused_by from public.service_job_pauses$$, '42501', null, 'The Customer cannot read the pausing account');
 select throws_ok($$select resumed_by from public.service_job_pauses$$, '42501', null, 'The Customer cannot read the consenting account');
 select throws_ok($$update public.service_job_pauses set category = 'ordinary_interruption'$$, '42501', null, 'The Customer cannot rewrite a pause');
@@ -274,7 +283,7 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000d4","role":"authenticated"}', true);
 select throws_ok($$select public.request_service_resume('50000000-0000-4000-8000-000000000005', 2)$$, '42501', 'worker unavailable', 'A revoked Worker cannot request a resume');
 select throws_ok($$select public.pause_service_job('50000000-0000-4000-8000-000000000005', 2, 'safety_concern')$$, '42501', 'worker unavailable', 'A revoked Worker cannot escalate');
-select is_empty($$select 1 from public.open_job_pauses()$$, 'A revoked Worker sees no pause');
+select is_empty($$select 1 from public.worker_pauses()$$, 'A revoked Worker sees no pause');
 reset role;
 
 set local role authenticated;
@@ -284,8 +293,27 @@ select throws_ok($$select public.consent_service_resume('50000000-0000-4000-8000
 select is((select stage from public.service_jobs where id = '50000000-0000-4000-8000-000000000012'), 'paused', 'The job stays paused');
 reset role;
 
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a2","role":"authenticated"}', true);
+select is((select array_agg(job_id) from public.worker_pauses()), array['50000000-0000-4000-8000-000000000016'::uuid],
+  'An account that is both Customer and Worker receives only the pauses of the jobs it holds as Worker');
+select is((select array_agg(job_id) from public.customer_pauses()), array['50000000-0000-4000-8000-000000000015'::uuid],
+  'The same account receives only the pauses of the jobs it owns as Customer');
+select is((select count(*)::integer from public.worker_jobs()), 1, 'The Worker mode of that account lists exactly the job it holds');
+select is((select count(*)::integer from public.worker_pauses() p where p.job_id not in (select w.job_id from public.worker_jobs() w)), 0,
+  'No Worker pause row falls outside the Worker job list');
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}', true);
+select ok((select array_agg(job_id order by job_id) from public.worker_pauses()) @> array['50000000-0000-4000-8000-000000000015'::uuid],
+  'The Worker of the dual-role account job sees that pause as Worker');
+select is_empty($$select 1 from public.customer_pauses()$$, 'That Worker owns no job and so sees no pause as Customer');
+reset role;
+
 set local role anon;
-select throws_ok($$select * from public.open_job_pauses()$$, '42501', null, 'An unauthenticated client cannot read pauses');
+select throws_ok($$select * from public.worker_pauses()$$, '42501', null, 'An unauthenticated client cannot read Worker pauses');
+select throws_ok($$select * from public.customer_pauses()$$, '42501', null, 'An unauthenticated client cannot read Customer pauses');
 reset role;
 
 select * from finish();

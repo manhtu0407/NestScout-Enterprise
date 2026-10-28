@@ -20,7 +20,7 @@ async function list(userId: string, path: string, signal: AbortSignal): Promise<
 }
 
 async function readPauses(userId: string, jobs: CustomerJob[], signal: AbortSignal): Promise<JobPause[]> {
-  const response = await authenticatedRequest(userId, 'rpc/open_job_pauses', { method: 'POST', signal, body: '{}' });
+  const response = await authenticatedRequest(userId, 'rpc/customer_pauses', { method: 'POST', signal, body: '{}' });
   if (!response.ok) throw await workflowErrorFrom(response);
   const result: unknown = await response.json();
   if (!Array.isArray(result)) throw new Error('Invalid pauses');

@@ -184,7 +184,7 @@ test('open pauses are requested without any job identifier and mapped', async ()
   await expect(readWorkerPauses('worker-a', [pausedJob], new AbortController().signal)).resolves.toEqual([
     { job_id: job.job_id, category: 'ordinary_interruption', prior_stage: 'working', paused_from_version: 4, resume_requested: true },
   ]);
-  expect(requestedPath()).toBe('rpc/open_job_pauses');
+  expect(requestedPath()).toBe('rpc/worker_pauses');
 });
 
 test('no pause request is made when the Worker has no jobs', async () => {
@@ -238,7 +238,7 @@ test('a refused pause read is reported', async () => {
 
 test('the snapshot carries the open pauses', async () => {
   jest.mocked(authenticatedRequest).mockImplementation(async (_user, path) => ({
-    ok: true, json: async () => path === 'rpc/worker_jobs' ? [{ ...pausedJob }] : path === 'rpc/open_job_pauses' ? [pauseRow()] : [],
+    ok: true, json: async () => path === 'rpc/worker_jobs' ? [{ ...pausedJob }] : path === 'rpc/worker_pauses' ? [pauseRow()] : [],
   } as Response));
   const result = await readWorkerSnapshot('worker-a', new AbortController().signal);
   expect(result.pauses).toEqual([{ job_id: job.job_id, category: 'ordinary_interruption', prior_stage: 'working', paused_from_version: 4, resume_requested: false }]);
