@@ -112,7 +112,7 @@ smallest configuration that removes them, and each entry is justified:
 Scripts are not declared entries as a group, so a genuinely unreferenced script would
 still be reported.
 
-With this configuration `npm run health:dead-code` reports only the items below. They are
+With this configuration `npm run health:dead-code` reports only the items below. The report was taken again after `main` moved to `3d1926f` (the Horizon A–E workflow foundation) and was merged into this branch: `useAccess` stopped being reported because that change imports it from the feature barrel, and the worker and fixture items are new. They are
 review items for the owner. None has been removed, and none is claimed to be dead:
 several are exported for tests or as part of a feature's public surface.
 
@@ -120,16 +120,17 @@ several are exported for tests or as part of a feature's public surface.
 | --- | --- | --- | --- |
 | export | `emptyTree` | `scripts/repository-files.mjs:29` | Live code. Called at line 38 of the same file; only the `export` modifier is unused |
 | export | `classifyIdentityError` | `apps/mobile/src/features/access/auth/supabase-auth-gateway.ts:22` | Live code. Called at lines 36, 74 and 83 of the same file; only the `export` modifier is unused |
-| export | `useAccess` | `apps/mobile/src/features/access/index.ts:8` | Unresolved. The hook is used widely, but every consumer imports it from `state/access-provider`; whether the feature barrel is a public surface is an owner decision |
+| export | `FIXTURE_BASIS` | `apps/mobile/src/features/shared/fixture-basis.ts:1` and the barrel `apps/mobile/src/features/shared/index.ts:10` | Live code. Used by `isFixtureBasis` in the same file; only the `export` modifier and the barrel re-export are unused |
+| export | `readWorkerChanges`, `readWorkerReports` | `apps/mobile/src/features/worker/worker-repository.ts:76`, `:80` | Live code. Both are called at line 135 of the same file; only the `export` modifier is unused |
 | type | `CapabilityFailure` | `apps/mobile/src/features/access/capability/capability-repository.ts:5` | Live. Used by an exported type in the same file; exporting it lets callers name the failure reason |
-| type | `AccessServices` | `apps/mobile/src/features/access/index.ts:8` | Unresolved, with the same barrel question as `useAccess`; the type itself is used by the provider, the default services and the test fakes |
+| type | `AccessServices` | `apps/mobile/src/features/access/index.ts:8` | Unresolved. Whether the feature barrel is a public surface is an owner decision; the type itself is used by the provider, the default services and the test fakes |
 | type | `AccessNotice` | `apps/mobile/src/features/access/state/access-reducer.ts:5` | Live. Used by the reducer state type in the same file |
 | type | `SessionEventType` | `apps/mobile/src/features/access/state/access-reducer.ts:29` | Live. Used by the reducer action type in the same file |
 | type | `WorkerStatus` | `apps/mobile/src/features/access/state/access-reducer.ts:204` | Live. Used by the access state type and its derivation in the same file |
 | binary | `ssh-keygen` | `scripts/review-diff.test.mjs` | False positive. A host tool that generates throwaway signing keys for the attestation tests, not a package dependency |
 
 No item is confirmed dead code, no dynamic or runtime reference was needed to explain
-any of them, and nothing was removed. The first eight are `export` modifiers or barrel
+any of them, and nothing was removed. The first eleven are `export` modifiers or barrel
 re-exports that no other module imports; removing a modifier is an API decision for the
 owner of each module and is outside this change.
 
@@ -316,7 +317,8 @@ author's check of one case, not independent review.
 
 ### Platform coverage
 
-Measured at the code commit `320856f5638a178a0f24932fdf58608d947c2274`; only
+Measured at the merge commit `f610383d739ad35d7c5420058443db38c067b03f`, which
+combines this branch's code commit `320856f` with `origin/main` at `3d1926f`; only
 documentation changed after it. Each platform used a fresh clone with its own
 `node_modules`; the Linux container was built from a Git bundle of the full history.
 
@@ -329,14 +331,14 @@ documentation changed after it. Each platform used a fresh clone with its own
 | --- | --- | --- |
 | `npm ci --ignore-scripts`, `npm run tools:install` | exit 0 | exit 0 |
 | the two evaluator test files | inside the 136 foundation tests below | 47 of 47, run on their own |
-| `npm run check` (foundation, mobile) | exit 0; 136 and 272 tests | exit 0; 136 and 272 tests |
+| `npm run check` (foundation, mobile) | exit 0; 136 and 469 tests | exit 0; 136 and 469 tests |
 | `npm run verify:negative` | exit 0; 151 tests | exit 0; 151 tests |
-| `npm run health:dead-code` | exit 0; the nine items listed above | exit 0; the same nine |
+| `npm run health:dead-code` | exit 0; the items listed above | exit 0; the same items |
 | `npm run health:review-diff`, scoped to `docs/**`, `scripts/**` and the two manifests | exit 2, `INSUFFICIENT_EVIDENCE` | exit 2, `INSUFFICIENT_EVIDENCE` |
 
 The review exits 2 on both platforms because no signed reviewer attestation exists for
 this branch, so code health stays at insufficient evidence; that is the intended result
-until the owner supplies one. Both platforms report the same nine Knip items.
+until the owner supplies one. Both platforms report the same Knip items.
 
 An earlier Windows run of `npm run check` failed 6 mobile tests in four access-state
 suites, all with the default 5 second timeout, while another process was loading the
