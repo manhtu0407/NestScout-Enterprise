@@ -29,7 +29,7 @@ const highRisk = [
   /^apps\/mobile\/src\/features\/access\//,
   /^apps\/mobile\/src\/lib\/(?:config|chunked-storage|supabase-client|device-storage)\.ts$/,
   /(?:^|\/)(?:jest|babel|metro|eslint|knip|stryker|vitest|playwright)\.config\.[^/]+$/,
-  /(?:^|\/)\.?knip\.jsonc?$/,
+  /(?:^|\/)\.?knip\.(?:jsonc?|[cm]?[jt]s)$/,
   /(?:^|\/)(?:tsconfig(?:\.[^/]+)?\.json|\.npmrc|\.env(?:\.[^/]+)?|\.gitignore|\.gitattributes|\.editorconfig|\.nvmrc|\.node-version|\.markdownlint-cli2\.[^/]+)$/,
 ];
 const authorizationWord = /^(?:roles?|capabilit(?:y|ies)|permissions?|grants?|authori[sz]\w*|authenticat\w*|polic(?:y|ies)|rls|credentials?|secrets?)$/;

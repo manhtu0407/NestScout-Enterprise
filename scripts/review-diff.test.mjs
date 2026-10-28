@@ -282,6 +282,13 @@ test('the allowed signers file cannot live inside the reviewed repository, and t
   const packet = reviewDiff({ repository: inside.repository, base: 'main', scope, reviewer: inside.tag });
   assert.equal(packet.reviewer.attested, false);
   assert.match(packet.dimensions.codeHealth.findings.join('\n'), /allowed signers file is inside the repository under review/);
+
+  const dotted = attestedRepository({ prepare: (target, api) => {
+    api.write('..keys/trusted-signers', `${reviewerKey.entry}\n`);
+    git(target, ['config', 'gpg.ssh.allowedSignersFile', path.join(target, '..keys', 'trusted-signers')]);
+  } });
+  const refused = reviewDiff({ repository: dotted.repository, base: 'main', scope, reviewer: dotted.tag });
+  assert.match(refused.dimensions.codeHealth.findings.join('\n'), /allowed signers file is inside the repository under review/);
 });
 
 test('a deliberate test weakening is caught: skipped, deleted, removed or altered assertions and tests', () => {

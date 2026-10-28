@@ -425,6 +425,10 @@ deterministic dimensions is still not evidence that behavior is intact. Open:
 - attribution and comment rules are applied to the text a diff adds, with the canonical
   comment extraction, and not to the whole delivered tree, which `npm run check:comments`
   still judges;
+- the assertion comparison is exact: rewriting `await expect(p).resolves` as a returned
+  promise, extracting assertions into a called helper, or wrapping them in `waitFor` is
+  reported for review even when behavior is unchanged, and so is adding an `await` that
+  strengthens a test. These are review items, never failures;
 - the word-based reference search uses whole-word matching, so an identifier containing
   `$` can be missed, and a file named `index.*` is always reported for review because its
   stem is too generic to search; both are conservative for the second case only;

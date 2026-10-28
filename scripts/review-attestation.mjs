@@ -23,7 +23,7 @@ function signersInside(repository) {
     return process.platform === 'win32' ? real.toLowerCase() : real;
   };
   const relative = path.relative(canonical(git(repository, ['rev-parse', '--show-toplevel']).trim()), canonical(configured));
-  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+  return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
 function lineCount(text) {
