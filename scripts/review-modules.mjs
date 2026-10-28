@@ -22,6 +22,10 @@ function describe(source, text) {
       else for (const element of clause.elements) exported.set(element.name.text, null);
       continue;
     }
+    if (statement.kind === SyntaxKind.ExportAssignment) {
+      exported.set('default', slice(statement));
+      continue;
+    }
     const modifiers = statement.modifiers ? [...statement.modifiers].map(modifier => modifier.kind) : [];
     if (!modifiers.includes(SyntaxKind.ExportKeyword)) continue;
     if (modifiers.includes(SyntaxKind.DefaultKeyword)) exported.set('default', slice(statement));
@@ -94,7 +98,7 @@ function aliasTargets(view, importer, specifier) {
           const matches = star < 0 ? specifier === pattern : specifier.length >= pattern.length - 1 && specifier.startsWith(prefix) && specifier.endsWith(suffix);
           if (!matches) continue;
           const captured = star < 0 ? '' : specifier.slice(prefix.length, specifier.length - suffix.length);
-          return replacements.map(replacement => path.posix.join(baseDirectory, replacement.replace('*', captured)));
+          return replacements.map(replacement => path.posix.join(baseDirectory, replacement.replaceAll('*', () => captured)));
         }
       }
       return [];

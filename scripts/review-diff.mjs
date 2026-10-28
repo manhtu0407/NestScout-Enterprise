@@ -398,8 +398,11 @@ function jestSelection(directory, jest) {
   return { selects: file => inside(file) && matches(file) && !ignores.some(pattern => pattern.test(`/${file}`)), unevaluable: null };
 }
 
+const testRunners = new Set(['jest', 'vitest', 'mocha', 'ava', 'tap']);
+const runsTests = tokens => tokens.includes('--test') || tokens.some(token => testRunners.has(token) || testFile.test(token) || /(?:^|\/)run-tests\.mjs$/.test(token));
+
 function scriptSelection(directory, scripts) {
-  const targets = Object.values(scripts ?? {}).flatMap(command => commandSegments(command).flat())
+  const targets = Object.values(scripts ?? {}).flatMap(command => commandSegments(command).filter(runsTests).flat())
     .map(token => token.replace(/^['"]|['"]$/g, '')).filter(token => !token.startsWith('-'))
     .map(token => (directory === '.' ? token : path.posix.join(directory, token)).replace(/^\.\//, ''));
   const globs = targets.filter(target => target.includes('*')).map(globPattern);
@@ -572,7 +575,7 @@ function removedExportChecks(repository, head, file, name, declaration, now, bef
       findings.push(`${consumer}: references could not be compared: Invalid syntax in ${consumer}.`);
       return;
     }
-    if (!isDefault && module.exports.has(name)) return;
+    if (!isDefault && typeof module.exports.get(name) === 'string') return;
     let bound = false;
     for (const use of module.uses) {
       const named = use.names.has(name);
@@ -641,33 +644,43 @@ function deadCodeDimension(repository, files, mergeBase, head, views) {
   return verdictOf([...findings, ...references.findings], [...failed, ...references.failed]);
 }
 
+const treeBound = (repository, head) => git(repository, ['rev-parse', 'HEAD']).trim() === head && git(repository, ['status', '--porcelain']).trim() === '';
+
 function runCommands(repository, scripts, head) {
-  const bound = git(repository, ['rev-parse', 'HEAD']).trim() === head && git(repository, ['status', '--porcelain']).trim() === '';
-  if (!bound) return { bound, results: [] };
+  const bound = treeBound(repository, head);
+  if (!bound) return { bound, invalidated: null, results: [] };
   const manifest = JSON.parse(readFileSync(path.join(repository, 'package.json'), 'utf8'));
   const installation = path.dirname(process.execPath);
   const cli = [process.env.npm_execpath, path.join(installation, 'node_modules/npm/bin/npm-cli.js'), path.join(installation, '../lib/node_modules/npm/bin/npm-cli.js')]
     .find(candidate => candidate && existsSync(candidate));
   if (scripts.length && !cli) throw new Error('The npm CLI was not found; run this through npm or set npm_execpath.');
-  const results = scripts.map(script => {
+  const results = [];
+  let invalidated = null;
+  for (const script of scripts) {
     if (!manifest.scripts?.[script]) throw new Error(`package.json has no script named ${script}.`);
     const child = spawnSync(process.execPath, [cli, 'run', script], {
       cwd: repository, env: Object.fromEntries(Object.entries(gitEnvironment()).filter(([name]) => !/^NODE_TEST_CONTEXT$/i.test(name))), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 30 * 60 * 1000, windowsHide: true,
     });
-    return { script, exitCode: child.status ?? 1, error: child.error?.message ?? null, outputTail: `${child.stdout}${child.stderr}`.slice(-1500) };
-  });
-  return { bound, results };
+    results.push({ script, exitCode: child.status ?? 1, error: child.error?.message ?? null, outputTail: `${child.stdout}${child.stderr}`.slice(-1500) });
+    if (!treeBound(repository, head)) {
+      invalidated = script;
+      break;
+    }
+  }
+  return { bound, invalidated, results };
 }
 
 function correctnessDimension(commands) {
   const findings = [];
   const failed = [];
   if (!commands.bound) findings.push('Command results were not recorded: HEAD differs from the frozen head or the working tree is dirty.');
+  if (commands.invalidated) findings.push(`npm run ${commands.invalidated} changed the working tree or HEAD, so no command result describes the frozen head.`);
   for (const result of commands.results) {
     if (result.exitCode !== 0) failed.push(`npm run ${result.script} exited ${result.exitCode}${result.error ? `: ${result.error}` : ''}.`);
   }
+  const valid = commands.invalidated ? [] : commands.results;
   for (const script of requiredCommands) {
-    if (!commands.results.some(result => result.script === script)) findings.push(`npm run ${script} was not run on the frozen head.`);
+    if (!valid.some(result => result.script === script)) findings.push(`npm run ${script} was not run on the frozen head.`);
   }
   return verdictOf(findings, failed);
 }

@@ -184,7 +184,7 @@ needs manual evidence.
 `scripts/review-diff.mjs` reads a frozen base-to-head diff (resolved SHAs and the merge
 base) and returns a verdict of `PASS`, `FAIL` or `INSUFFICIENT_EVIDENCE` for each of five
 dimensions. `scripts/review-diff.test.mjs` exercises it on isolated temporary
-repositories, never production modules, with 38 tests:
+repositories, never production modules, with 44 tests:
 
 - test weakening: `it.skip`, `it.only` and a node-test `skip` option fail; a deleted test
   file fails, and so does a test file renamed to a name that no longer matches the test
@@ -201,7 +201,9 @@ repositories, never production modules, with 38 tests:
   `catch`, `case`, conditional or `&&`, `||`, `??`, any earlier statement in the block
   that can return, throw, break or continue, an enclosing function that is not the test
   callback itself (an assertion moved into a closure nobody calls), and whether the
-  assertion is awaited or returned (an `await` dropped from `rejects`). Same-file `const` and `let` values that the
+  assertion is awaited or returned (an `await` dropped from `rejects`). Whitespace is
+  ignored only between tokens, never inside a string, template or regular-expression
+  literal, so an edited expected string is an altered assertion. Same-file `const` and `let` values that the
   expression names (looked up by scope, to three levels) are part of the comparison, so a
   weakened matcher, an early return, an unreachable branch or a changed expected constant
   is reported even when the assertion's own line is unchanged. A non-test file that
@@ -221,7 +223,8 @@ repositories, never production modules, with 38 tests:
   approved. Exports, including default exports, and imports are read from the syntax
   tree. A removed export that a
   consumer still imports from the original module fails, even when another file exports
-  the same name. A move is accepted only when the consumer now imports the name from a
+  the same name or the consumer itself re-exports it; a default export written as
+  `export default value` is tracked like a declared one. A move is accepted only when the consumer now imports the name from a
   module whose declaration text equals the removed one and which did not export it
   before. A re-pointed import to a pre-existing or different declaration, a whole-module
   import, a re-export that cannot be compared, or a mention without an import needs
@@ -243,8 +246,9 @@ repositories, never production modules, with 38 tests:
   `check`, `test`, `lint`, `typecheck`, `scan` or `verify` script in any changed
   `package.json` that stops running a command it ran before fails;
 - test selection is derived from the base and the head, whether or not the root manifest
-  changed: a test file that still exists but is no longer selected by any script argument
-  or by a jest `testMatch`, `testRegex` or `testPathIgnorePatterns` fails, a new test that
+  changed: a test file that still exists but is no longer selected by a test invocation in a script
+  (a runner such as jest, `node --test`, `run-tests.mjs` or a test file argument, not a
+  linter or typechecker) or by a jest `testMatch`, `testRegex` or `testPathIgnorePatterns` fails, a new test that
   nothing selects needs review, and a jest `roots`, `projects`, glob or `preset` this
   evaluator cannot evaluate, or a changed `jest.config.*`, needs review;
 - reviewer attestation (see the protocol below): a self-declared verdict is ignored;
@@ -367,7 +371,9 @@ npm run health:review-diff -- --base origin/main --head HEAD --scope "apps/mobil
 
 `--run` executes `npm run <script>` only for scripts present in `package.json`, and only
 when `HEAD` equals the frozen head and the working tree is clean. Otherwise the commands
-are not recorded and correctness is `INSUFFICIENT_EVIDENCE`.
+are not recorded and correctness is `INSUFFICIENT_EVIDENCE`. The same two conditions are
+checked again after every command; a command that changes `HEAD` or the working tree
+stops the run and invalidates all results, so correctness is `INSUFFICIENT_EVIDENCE`.
 
 `--reviewer` names a signed, annotated git tag whose message is JSON,
 `{"codeHealth":{"verdict":"PASS","evidence":["path:line"]}}`. The tag is accepted only

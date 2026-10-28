@@ -6,6 +6,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { git } from './repository-files.mjs';
 import { exportedNames, FAIL, INSUFFICIENT, PASS, reviewDiff } from './review-diff.mjs';
+import { resolveModule } from './review-modules.mjs';
 import { root } from './tool-path.mjs';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-review-diff-'));
@@ -692,10 +693,85 @@ test('a removed default export that a consumer still imports fails, and a kept d
   assert.equal(kept.dimensions.deadCodeSafety.verdict, PASS);
 });
 
+test('a removed default export written as an export assignment is tracked like a declaration', () => {
+  const files = {
+    [`${lib}assigned-rate.ts`]: 'const rate = () => 1;\n\nexport default rate;\n',
+    [`${lib}use-assigned-rate.ts`]: "import rate from './assigned-rate';\n\nexport const used = rate();\n",
+  };
+  const removed = reviewWith(files, api => api.write(`${lib}assigned-rate.ts`, 'export const rate = () => 1;\n'));
+  assert.equal(removed.dimensions.deadCodeSafety.verdict, FAIL);
+  assert.match(removed.dimensions.deadCodeSafety.findings.join('\n'), /export default was removed but is still referenced at apps\/mobile\/src\/lib\/use-assigned-rate\.ts/);
+  const expression = reviewWith({ ...files, [`${lib}assigned-rate.ts`]: 'export default () => 1;\n' }, api => api.write(`${lib}assigned-rate.ts`, 'export const rate = () => 1;\n'));
+  assert.equal(expression.dimensions.deadCodeSafety.verdict, FAIL);
+  const kept = reviewWith(files, api => api.write(`${lib}assigned-rate.ts`, 'const rate = () => 2;\n\nexport default rate;\n'));
+  assert.equal(kept.dimensions.deadCodeSafety.verdict, PASS);
+});
+
+test('a consumer that re-exports a removed export is still checked for importing it', () => {
+  const files = {
+    [`${lib}rates.ts`]: 'export const tariffRate = 1;\nexport const keptRate = 2;\n',
+    [`${lib}rates-barrel.ts`]: "export { tariffRate, keptRate } from './rates';\n",
+  };
+  const dropTariff = api => api.write(`${lib}rates.ts`, 'export const keptRate = 2;\n');
+  const direct = reviewWith(files, dropTariff);
+  assert.equal(direct.dimensions.deadCodeSafety.verdict, FAIL);
+  assert.match(direct.dimensions.deadCodeSafety.findings.join('\n'), /export tariffRate was removed but is still referenced at apps\/mobile\/src\/lib\/rates-barrel\.ts/);
+  const indirect = reviewWith({ ...files, [`${lib}rates-barrel.ts`]: "import { tariffRate } from './rates';\n\nexport { tariffRate };\n" }, dropTariff);
+  assert.equal(indirect.dimensions.deadCodeSafety.verdict, FAIL);
+  const unrelated = reviewWith({ ...files, [`${lib}rates-barrel.ts`]: 'export const tariffRate = 9;\n' }, dropTariff);
+  assert.equal(unrelated.dimensions.deadCodeSafety.verdict, PASS, 'a consumer that declares its own export of the same name');
+});
+
+test('script selection counts only test invocations, so another tool over the workspace cannot hide a narrowed jest match', () => {
+  const mobile = 'apps/mobile/package.json';
+  const covered = 'apps/mobile/src/lib/format-total.test.ts';
+  const tools = { lint: 'eslint .', typecheck: 'tsc --noEmit', format: 'prettier --check src' };
+  const narrowed = reviewWith({ [mobile]: mobileManifest({}, tools) }, api => api.write(mobile, mobileManifest({ testMatch: ['<rootDir>/src/**/nothing.test.ts'] }, tools)), { scope: [mobile] });
+  assert.equal(narrowed.dimensions.testIntegrity.verdict, FAIL);
+  assert.match(narrowed.dimensions.testIntegrity.findings.join('\n'), new RegExp(`${covered.replaceAll('.', '\\.')}: still exists but no script or jest configuration selects it any more`));
+
+  const runnerManifest = scripts => rootManifest(scripts);
+  const registered = { check: 'node scripts/run-tests.mjs scripts/order-state.test.mjs' };
+  const dropped = reviewWith({ 'package.json': runnerManifest(registered) }, api => api.write('package.json', runnerManifest({ check: 'node scripts/run-tests.mjs' })), { scope: ['package.json'] });
+  assert.equal(dropped.dimensions.testIntegrity.verdict, FAIL, 'a runner script that no longer lists the test');
+  const kept = reviewWith({ 'package.json': runnerManifest(registered) }, api => api.write('package.json', runnerManifest({ ...registered, lint: 'eslint .' })), { scope: ['package.json'] });
+  assert.equal(kept.dimensions.testIntegrity.verdict, PASS, 'a runner script that still lists the test');
+});
+
+test('command evidence is invalidated when a check changes the checked-out tree', () => {
+  const files = {
+    'package.json': rootManifest({ check: 'node scripts/rewrite-module.mjs' }),
+    'scripts/rewrite-module.mjs': "import { appendFileSync } from 'node:fs';\n\nappendFileSync('scripts/order-state.mjs', 'export const touched = 1;\\n');\n",
+  };
+  const { repository } = fixture(defaultChange, { files });
+  const packet = reviewDiff({ repository, base: 'main', scope, run: ['check', 'verify:negative'] });
+  assert.equal(packet.dimensions.correctness.verdict, INSUFFICIENT);
+  assert.match(packet.dimensions.correctness.findings.join('\n'), /npm run check changed the working tree or HEAD/);
+  assert.deepEqual(packet.commands.map(command => command.script), ['check']);
+  assert.notEqual(packet.verdict, PASS);
+});
+
+test('assertions that differ only inside a string literal are not treated as the same assertion', () => {
+  const edited = review(api => api.write(`${lib}format-total.test.ts`, formatTotalTest.replace("'d12.34'", "'d12. 34'")));
+  assert.notEqual(edited.dimensions.testIntegrity.verdict, PASS);
+  assert.match(edited.dimensions.testIntegrity.findings.join('\n'), /removed, altered or moved behind control flow/);
+  const spacing = review(api => api.write(`${lib}format-total.test.ts`, formatTotalTest.replace("expect(formatTotal(1234)).toBe('d12.34');", "expect( formatTotal(1234) ).toBe( 'd12.34' );")));
+  assert.equal(spacing.dimensions.testIntegrity.verdict, PASS, 'spacing between tokens is still neutral');
+});
+
 test('the dead-code detector configuration is a high-risk area', () => {
   const packet = review(api => api.write('knip.json', '{}\n'), { scope: ['knip.json'] });
   assert.equal(packet.dimensions.scope.verdict, INSUFFICIENT);
   assert.match(packet.dimensions.scope.findings.join('\n'), /knip\.json.*high-risk area|high-risk area.*knip\.json/);
+});
+
+test('path alias targets substitute the captured text literally and every wildcard', () => {
+  const files = new Map([['app/tsconfig.json', JSON.stringify({ compilerOptions: { paths: { '@/*': ['./src/*', './alt/*/*'] } } })]]);
+  const view = { has: file => files.has(file), read: file => files.get(file) };
+  const resolved = resolveModule(view, 'app/src/use.ts', "@/it's$&$1$`");
+  assert.ok(resolved.candidates.includes("app/src/it's$&$1$`"), 'special replacement patterns stay literal');
+  assert.ok(resolved.candidates.includes("app/alt/it's$&$1$`/it's$&$1$`"), 'every wildcard is replaced');
+  assert.equal(resolveModule(view, 'app/src/use.ts', '@other'), null);
 });
 
 test('a renamed or moved module that leaves an importer unresolved fails, and a complete rename passes', () => {
