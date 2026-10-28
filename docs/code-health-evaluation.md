@@ -296,12 +296,15 @@ author's check of one case, not independent review.
 
 Measured on Windows 11 with Node.js 24.19.0, and again on Linux in a
 `node:24-bookworm` container (Node.js 24.22.1, npm 11.19.1, x86_64) built from a Git
-bundle of the full history, so no Windows `node_modules` were reused. On Linux, at the
-commit that added the syntax-tree test analysis, `npm ci --ignore-scripts`, `npm run
-tools:install`, the two evaluator test files (30 tests), `npm run check` (foundation 119
-tests, mobile 272), `npm run verify:negative` (151) and `npm run health:dead-code` all
-passed. `npm run check` and `npm run verify:negative` also passed on Windows at that
-commit, and both platforms report the same eight Knip items listed above.
+bundle of the full history, so no Windows `node_modules` were reused. At the code commit
+that added signed reviewer attestations and the reference, risk and selection checks
+(`44550ef2b4eb684dcf5b78144698869fef2f9006`, only documentation changed after it), on
+Linux `npm ci --ignore-scripts`, `npm run tools:install`, the two evaluator test files
+(35 tests), `npm run check` (foundation 124 tests, mobile 272), `npm run verify:negative`
+(151) and `npm run health:dead-code` all passed; the container had OpenSSH 9.2
+(`ssh-keygen`), which the attestation tests need. `npm run check`, `npm run
+verify:negative` and `npm run health:dead-code` passed on Windows at the same commit, and
+both platforms report the same nine Knip items listed above.
 
 The first Linux pass found a real defect in this change: `review-diff.mjs` located the
 npm CLI only in the Windows layout, so recorded commands failed whenever it was not
