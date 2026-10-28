@@ -1,14 +1,14 @@
-import { ModeSwitchControl, SignOutControl } from '@/features/access';
-import { BodyText, Heading, Screen } from '@/features/shared';
+import { ModeSwitchControl, SignOutControl, useAccess } from '@/features/access';
+import { Heading, Screen } from '@/features/shared';
+
+import { WorkerJobs } from './worker-jobs';
 
 export function WorkerHomeScreen() {
+  const access = useAccess();
   return (
     <Screen>
       <Heading>Worker mode</Heading>
-      <BodyText>
-        Technical placeholder for the Worker experience. Entry here reflects an active backend grant only; it is not
-        a worker qualification, and no jobs or earnings exist yet.
-      </BodyText>
+      {access.userId && access.canUseWorker ? <WorkerJobs key={access.userId} userId={access.userId} /> : null}
       <ModeSwitchControl target="client" />
       <SignOutControl />
     </Screen>
