@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { WorkflowError } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
@@ -75,4 +75,31 @@ test('a definitive refusal releases the retry key and keeps the typed evidence',
   await waitFor(() => expect(screen.getByRole('button', { name: 'Submit work' })).toBeEnabled());
   expect(deviceStorage.removeItem).toHaveBeenCalledTimes(1);
   expect(screen.getByLabelText('Work evidence').props.value).toBe('Repaired tap');
+});
+
+const savedSubmission = JSON.stringify({ key: '00000000-0000-4000-8000-000000000456', version: 4, evidence: 'First job evidence' });
+const switches = [
+  ['job', 'worker-a', { ...job, job_id: 'other-job' }],
+  ['account', 'worker-b', job],
+] as const;
+
+test.each(switches)('a draft read that settles after the %s changed is discarded', async (_label, userId, next) => {
+  let settle: (raw: string | null) => void = () => undefined;
+  jest.mocked(deviceStorage.getItem).mockImplementationOnce(() => new Promise<string | null>((resolve) => { settle = resolve; })).mockResolvedValue(null);
+  const view = await render(<WorkSubmission userId="worker-a" job={job} onSettled={() => undefined} />);
+  await view.rerender(<WorkSubmission userId={userId} job={next} onSettled={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Submit work' })).toBeEnabled());
+  await act(async () => settle(savedSubmission));
+  expect(screen.getByRole('button', { name: 'Submit work' })).toBeEnabled();
+  expect(screen.getByLabelText('Work evidence').props.value).toBe('');
+});
+
+test.each(switches)('the draft of the previous %s does not carry over', async (_label, userId, next) => {
+  jest.mocked(deviceStorage.getItem).mockImplementation(async (key: string) => (key === 'nestscout.work-submission.worker-a.job' ? savedSubmission : null));
+  const view = await render(<WorkSubmission userId="worker-a" job={job} onSettled={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Retry work submission' })).toBeEnabled());
+  expect(screen.getByLabelText('Work evidence').props.value).toBe('First job evidence');
+  await view.rerender(<WorkSubmission userId={userId} job={next} onSettled={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Submit work' })).toBeEnabled());
+  expect(screen.getByLabelText('Work evidence').props.value).toBe('');
 });

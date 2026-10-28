@@ -21,6 +21,11 @@ export type Job = {
   currency: 'VND';
 };
 
+export type Correction = { job_id: string; note: string };
+
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const submissionDecisions = ['pending', 'accepted', 'revision_requested', 'disputed'];
+
 async function rpc(userId: string, name: string, body: object, signal: AbortSignal): Promise<unknown> {
   const response = await authenticatedRequest(userId, `rpc/${name}`, { method: 'POST', signal, body: JSON.stringify(body) });
   if (!response.ok) throw await workflowErrorFrom(response);
@@ -61,21 +66,47 @@ export function readWorkerReports(userId: string, jobs: Job[], signal: AbortSign
   return readJobReports(userId, jobs.map(job => job.job_id), signal);
 }
 
+export async function readWorkerCorrections(userId: string, jobs: Job[], signal: AbortSignal): Promise<Correction[]> {
+  if (!jobs.length) return [];
+  const jobIds = jobs.map(job => job.job_id);
+  if (!jobIds.every(id => uuid.test(id))) throw new Error('Invalid job identifier');
+  const response = await authenticatedRequest(userId, `service_submissions?select=id,job_id,decision,correction_note,created_at&job_id=in.(${jobIds.join(',')})`, { signal });
+  if (!response.ok) throw new Error('Submissions unavailable');
+  const result: unknown = await response.json();
+  if (!Array.isArray(result)) throw new Error('Invalid submissions');
+  const latest = new Map<string, { at: number; note: string | null }>();
+  for (const value of result) {
+    if (typeof value !== 'object' || value === null) throw new Error('Invalid submissions');
+    const row = value as Record<string, unknown>;
+    const at = typeof row.created_at === 'string' ? Date.parse(row.created_at) : Number.NaN;
+    const text = typeof row.correction_note === 'string' ? row.correction_note : null;
+    const correction = row.decision === 'revision_requested';
+    if (typeof row.id !== 'string' || typeof row.job_id !== 'string' || !jobIds.includes(row.job_id) || Number.isNaN(at)
+      || !submissionDecisions.includes(String(row.decision))
+      || (correction ? !text?.trim() : row.correction_note !== null)) throw new Error('Invalid submissions');
+    const previous = latest.get(row.job_id);
+    if (!previous || at > previous.at) latest.set(row.job_id, { at, note: correction ? text : null });
+  }
+  return [...latest].flatMap(([job_id, entry]) => entry.note === null ? [] : [{ job_id, note: entry.note }]);
+}
+
 export async function readWorkerSnapshot(userId: string, signal: AbortSignal): Promise<{
-  offers: Offer[]; jobs: Job[]; changes: ScopeChange[]; reports: JobReport[];
+  offers: Offer[]; jobs: Job[]; changes: ScopeChange[]; reports: JobReport[]; corrections: Correction[];
 }> {
   const [offers, jobs] = await Promise.all([readOffers(userId, signal), readJobs(userId, signal)]);
-  const [changes, reports] = await Promise.all([readWorkerChanges(userId, jobs, signal), readWorkerReports(userId, jobs, signal)]);
+  const [changes, reports, corrections] = await Promise.all([
+    readWorkerChanges(userId, jobs, signal), readWorkerReports(userId, jobs, signal), readWorkerCorrections(userId, jobs, signal),
+  ]);
   const [currentOffers, currentJobs] = await Promise.all([readOffers(userId, signal), readJobs(userId, signal)]);
   const offerKeys = (items: Offer[]) => items.map(item => JSON.stringify([
-    item.invitation_id, item.quote_id, item.quote_version, item.scope, item.amount_minor, item.currency, item.expires_at,
+    item.invitation_id, item.quote_id, item.quote_version, item.scope, item.amount_minor, item.currency, item.expires_at, item.basis,
   ])).sort();
   const jobKeys = (items: Job[]) => items.map(item => JSON.stringify([
     item.job_id, item.version, item.stage, item.scope, item.amount_minor, item.currency,
   ])).sort();
   if (JSON.stringify(offerKeys(offers)) !== JSON.stringify(offerKeys(currentOffers))
     || JSON.stringify(jobKeys(jobs)) !== JSON.stringify(jobKeys(currentJobs))) throw new Error('Worker activity changed during refresh');
-  return { offers, jobs, changes, reports };
+  return { offers, jobs, changes, reports, corrections };
 }
 
 export async function acceptOffer(userId: string, offer: Offer, signal: AbortSignal): Promise<void> {

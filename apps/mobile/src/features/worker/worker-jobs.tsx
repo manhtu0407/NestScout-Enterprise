@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
 import { ActionButton, BasisNotice, BodyText, ErrorText, KaelStatus, failureMessage, isFixtureBasis, type JobReport, type ScopeChange } from '@/features/shared';
 
-import { acceptOffer, advanceJob, declineOffer, readWorkerSnapshot, type Job, type Offer } from './worker-repository';
+import { acceptOffer, advanceJob, declineOffer, readWorkerSnapshot, type Correction, type Job, type Offer } from './worker-repository';
 import { WorkSubmission } from './work-submission';
 import { ScopeProposal } from './scope-proposal';
 import { WorkerReport } from './worker-report';
@@ -18,6 +18,7 @@ export function WorkerJobs({ userId }: { userId: string }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [changes, setChanges] = useState<ScopeChange[]>([]);
   const [reports, setReports] = useState<JobReport[]>([]);
+  const [corrections, setCorrections] = useState<Correction[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
@@ -36,6 +37,7 @@ export function WorkerJobs({ userId }: { userId: string }) {
         setJobs(snapshot.jobs);
         setChanges(snapshot.changes);
         setReports(snapshot.reports);
+        setCorrections(snapshot.corrections);
       }
     } catch {
       if (mounted.current && !controller.signal.aborted) {
@@ -43,6 +45,7 @@ export function WorkerJobs({ userId }: { userId: string }) {
         setJobs([]);
         setChanges([]);
         setReports([]);
+        setCorrections([]);
         setMessage('Could not load Worker activity. Try refreshing.');
       }
     }
@@ -59,6 +62,7 @@ export function WorkerJobs({ userId }: { userId: string }) {
           setJobs(snapshot.jobs);
           setChanges(snapshot.changes);
           setReports(snapshot.reports);
+          setCorrections(snapshot.corrections);
         }
       },
       () => {
@@ -110,6 +114,9 @@ export function WorkerJobs({ userId }: { userId: string }) {
         <Fragment key={job.job_id}>
           <BodyText>{`Job: ${job.scope} — ${job.amount_minor} ${job.currency}; stage: ${job.stage}`}</BodyText>
           <KaelStatus userId={userId} resourceId={job.job_id} kind="worker_job" />
+          {corrections.filter((correction) => correction.job_id === job.job_id).map((correction) => (
+            <BodyText key={correction.job_id}>{`Customer requested a correction: ${correction.note}`}</BodyText>
+          ))}
           {reports.filter((report) => report.job_id === job.job_id).map((report) => (
             <BodyText key={report.id}>{`Worker report (${report.kind}): ${report.details}. No automatic fee or rescheduling applied.`}</BodyText>
           ))}

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { WorkflowError } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
@@ -64,4 +64,31 @@ test('a definitive refusal releases the report key and keeps the typed details',
   await waitFor(() => expect(screen.getByRole('button', { name: 'Report delay' })).toBeEnabled());
   expect(deviceStorage.removeItem).toHaveBeenCalledTimes(1);
   expect(screen.getByLabelText('Report details').props.value).toBe('Traffic');
+});
+
+const savedReport = JSON.stringify({ key: '00000000-0000-4000-8000-000000000456', version: 2, kind: 'delay', details: 'First job traffic' });
+const switches = [
+  ['job', 'worker-a', { ...job, job_id: 'other-job' }],
+  ['account', 'worker-b', job],
+] as const;
+
+test.each(switches)('a draft read that settles after the %s changed is discarded', async (_label, userId, next) => {
+  let settle: (raw: string | null) => void = () => undefined;
+  jest.mocked(deviceStorage.getItem).mockImplementationOnce(() => new Promise<string | null>((resolve) => { settle = resolve; })).mockResolvedValue(null);
+  const view = await render(<WorkerReport userId="worker-a" job={job} onRefresh={() => undefined} />);
+  await view.rerender(<WorkerReport userId={userId} job={next} onRefresh={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Report delay' })).toBeEnabled());
+  await act(async () => settle(savedReport));
+  expect(screen.getByRole('button', { name: 'Report delay' })).toBeEnabled();
+  expect(screen.getByLabelText('Report details').props.value).toBe('');
+});
+
+test.each(switches)('the draft of the previous %s does not carry over', async (_label, userId, next) => {
+  jest.mocked(deviceStorage.getItem).mockImplementation(async (key: string) => (key === 'nestscout.worker-report.worker-a.job' ? savedReport : null));
+  const view = await render(<WorkerReport userId="worker-a" job={job} onRefresh={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Retry report' })).toBeEnabled());
+  expect(screen.getByLabelText('Report details').props.value).toBe('First job traffic');
+  await view.rerender(<WorkerReport userId={userId} job={next} onRefresh={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Report delay' })).toBeEnabled());
+  expect(screen.getByLabelText('Report details').props.value).toBe('');
 });

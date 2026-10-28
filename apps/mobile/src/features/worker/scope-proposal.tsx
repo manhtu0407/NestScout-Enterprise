@@ -9,9 +9,14 @@ import { proposeScope, type Job } from './worker-repository';
 
 type Pending = { key: string; version: number; scope: string; amount: number; rationale: string };
 
-export function ScopeProposal({ userId, job, hasPending, onRefresh }: {
-  userId: string; job: Job; hasPending: boolean; onRefresh(): void;
-}) {
+type Props = { userId: string; job: Job; hasPending: boolean; onRefresh(): void };
+
+export function ScopeProposal(props: Props) {
+  const storageKey = `nestscout.scope-proposal.${props.userId}.${props.job.job_id}`;
+  return <ScopeProposalDraft key={storageKey} storageKey={storageKey} {...props} />;
+}
+
+function ScopeProposalDraft({ storageKey, userId, job, hasPending, onRefresh }: Props & { storageKey: string }) {
   const [scope, setScope] = useState('');
   const [amount, setAmount] = useState('');
   const [rationale, setRationale] = useState('');
@@ -23,13 +28,20 @@ export function ScopeProposal({ userId, job, hasPending, onRefresh }: {
   const active = useRef(true);
   const running = useRef(false);
   const controller = useRef<AbortController | null>(null);
-  const storageKey = `nestscout.scope-proposal.${userId}.${job.job_id}`;
 
   useEffect(() => {
     active.current = true;
+    return () => {
+      active.current = false;
+      controller.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     setUnreadable(false);
     deviceStorage.getItem(storageKey).then((raw) => {
-      if (!active.current) return;
+      if (cancelled) return;
       if (raw !== null) {
         const value: unknown = JSON.parse(raw);
         if (typeof value !== 'object' || value === null) throw new Error('Invalid proposal');
@@ -47,14 +59,13 @@ export function ScopeProposal({ userId, job, hasPending, onRefresh }: {
       }
       setReady(true);
     }).catch(() => {
-      if (active.current) {
+      if (!cancelled) {
         setUnreadable(true);
         setMessage('Could not read the pending scope proposal on this device.');
       }
     });
     return () => {
-      active.current = false;
-      controller.current?.abort();
+      cancelled = true;
     };
   }, [storageKey, attempt, setUnreadable]);
 

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { WorkflowError } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
@@ -124,4 +124,54 @@ test('an uncertain aftercare failure keeps the saved retry key', async () => {
   await screen.findByText('The result was not confirmed. Refresh before trying again.');
   expect(deviceStorage.removeItem).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: 'Retry support case' })).toBeTruthy();
+});
+
+test('re-reading an unreadable draft does not abort a decision that is in flight', async () => {
+  let given: AbortSignal | undefined;
+  let finish: () => void = () => undefined;
+  jest.mocked(decideSubmission).mockImplementation((...args) => {
+    given = args[5];
+    return new Promise<void>((resolve) => { finish = resolve; });
+  });
+  jest.mocked(deviceStorage.getItem).mockRejectedValueOnce(new Error('locked')).mockResolvedValue(null);
+  const onRefresh = jest.fn();
+  await render(<CustomerJobActivity userId="customer-a" job={submitted} submissions={[evidence]} cases={[]} onRefresh={onRefresh} />);
+  await screen.findByText('Could not read the pending support case on this device.');
+  await fireEvent.press(screen.getByRole('button', { name: 'Accept submitted work' }));
+  await waitFor(() => expect(decideSubmission).toHaveBeenCalledTimes(1));
+  await fireEvent.press(screen.getByRole('button', { name: 'Retry reading saved draft' }));
+  await waitFor(() => expect(deviceStorage.getItem).toHaveBeenCalledTimes(2));
+  expect(given?.aborted).toBe(false);
+  expect(screen.getByRole('button', { name: 'Accept submitted work' })).toBeDisabled();
+  await act(async () => finish());
+  await screen.findByText('Decision recorded. Payment is not configured.');
+  expect(onRefresh).toHaveBeenCalledTimes(1);
+});
+
+const completed: CustomerJob = { ...submitted, stage: 'completed' };
+const savedCase = JSON.stringify({ key: '00000000-0000-4000-8000-000000000456', reason: 'Follow-up on the first job' });
+const switches = [
+  ['job', 'customer-a', { ...completed, id: 'other-job' }],
+  ['account', 'customer-b', completed],
+] as const;
+
+test.each(switches)('a draft read that settles after the %s changed is discarded', async (_label, userId, job) => {
+  let settle: (raw: string | null) => void = () => undefined;
+  jest.mocked(deviceStorage.getItem).mockImplementationOnce(() => new Promise<string | null>((resolve) => { settle = resolve; })).mockResolvedValue(null);
+  const view = await render(<CustomerJobActivity userId="customer-a" job={completed} submissions={[]} cases={[]} onRefresh={() => undefined} />);
+  await view.rerender(<CustomerJobActivity userId={userId} job={job} submissions={[]} cases={[]} onRefresh={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Open support case' })).toBeEnabled());
+  await act(async () => settle(savedCase));
+  expect(screen.getByRole('button', { name: 'Open support case' })).toBeEnabled();
+  expect(screen.getByLabelText('Correction or support details').props.value).toBe('');
+});
+
+test.each(switches)('the draft of the previous %s does not carry over', async (_label, userId, job) => {
+  jest.mocked(deviceStorage.getItem).mockImplementation(async (key: string) => (key === 'nestscout.aftercare.customer-a.job' ? savedCase : null));
+  const view = await render(<CustomerJobActivity userId="customer-a" job={completed} submissions={[]} cases={[]} onRefresh={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Retry support case' })).toBeEnabled());
+  expect(screen.getByLabelText('Correction or support details').props.value).toBe('Follow-up on the first job');
+  await view.rerender(<CustomerJobActivity userId={userId} job={job} submissions={[]} cases={[]} onRefresh={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Open support case' })).toBeEnabled());
+  expect(screen.getByLabelText('Correction or support details').props.value).toBe('');
 });

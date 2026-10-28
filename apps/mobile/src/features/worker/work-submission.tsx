@@ -9,7 +9,14 @@ import { submitWork, type Job } from './worker-repository';
 
 type Pending = { key: string; version: number; evidence: string };
 
-export function WorkSubmission({ userId, job, scopePending = false, onSettled }: { userId: string; job: Job; scopePending?: boolean; onSettled(): void }) {
+type Props = { userId: string; job: Job; scopePending?: boolean; onSettled(): void };
+
+export function WorkSubmission(props: Props) {
+  const storageKey = `nestscout.work-submission.${props.userId}.${props.job.job_id}`;
+  return <WorkSubmissionDraft key={storageKey} storageKey={storageKey} {...props} />;
+}
+
+function WorkSubmissionDraft({ storageKey, userId, job, scopePending = false, onSettled }: Props & { storageKey: string }) {
   const [evidence, setEvidence] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   const [ready, setReady] = useState(false);
@@ -19,13 +26,20 @@ export function WorkSubmission({ userId, job, scopePending = false, onSettled }:
   const active = useRef(true);
   const inFlight = useRef(false);
   const controller = useRef<AbortController | null>(null);
-  const storageKey = `nestscout.work-submission.${userId}.${job.job_id}`;
 
   useEffect(() => {
     active.current = true;
+    return () => {
+      active.current = false;
+      controller.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     setUnreadable(false);
     deviceStorage.getItem(storageKey).then((raw) => {
-      if (!active.current) return;
+      if (cancelled) return;
       if (raw !== null) {
         const item: unknown = JSON.parse(raw);
         if (typeof item !== 'object' || item === null) throw new Error('Invalid pending submission');
@@ -41,14 +55,13 @@ export function WorkSubmission({ userId, job, scopePending = false, onSettled }:
       }
       setReady(true);
     }).catch(() => {
-      if (active.current) {
+      if (!cancelled) {
         setUnreadable(true);
         setMessage('Could not read the pending work submission on this device.');
       }
     });
     return () => {
-      active.current = false;
-      controller.current?.abort();
+      cancelled = true;
     };
   }, [storageKey, attempt, setUnreadable]);
 

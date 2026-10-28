@@ -19,11 +19,11 @@ const job = { job_id: 'job', stage: 'working' as const, version: 4, scope: 'Repl
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [], changes: [], reports: [] });
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [], changes: [], reports: [], corrections: [] });
 });
 
 test('the Worker sees terms and accepts the exact displayed offer', async () => {
-  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [offer], jobs: [], changes: [], reports: [] });
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [offer], jobs: [], changes: [], reports: [], corrections: [] });
   jest.mocked(acceptOffer).mockResolvedValue();
   await render(<WorkerJobs userId="worker-a" />);
   await screen.findByText(/Offer: Replace part/);
@@ -32,7 +32,7 @@ test('the Worker sees terms and accepts the exact displayed offer', async () => 
 });
 
 test('the Worker can decline the displayed terms without creating an assignment', async () => {
-  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [offer], jobs: [], changes: [], reports: [] });
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [offer], jobs: [], changes: [], reports: [], corrections: [] });
   jest.mocked(declineOffer).mockResolvedValue();
   await render(<WorkerJobs userId="worker-a" />);
   await screen.findByText(/Offer: Replace part/);
@@ -42,7 +42,7 @@ test('the Worker can decline the displayed terms without creating an assignment'
 });
 
 test('an uncertain pause is not shown as a confirmed change', async () => {
-  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [job], changes: [], reports: [] });
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [job], changes: [], reports: [], corrections: [] });
   jest.mocked(advanceJob).mockRejectedValue(new Error('offline'));
   await render(<WorkerJobs userId="worker-a" />);
   await screen.findByText(/stage: working/);
@@ -53,17 +53,17 @@ test('an uncertain pause is not shown as a confirmed change', async () => {
 });
 
 test('late offers for a previous account are discarded', async () => {
-  let finish: (value: { offers: typeof offer[]; jobs: []; changes: []; reports: [] }) => void = () => undefined;
+  let finish: (value: { offers: typeof offer[]; jobs: []; changes: []; reports: []; corrections: [] }) => void = () => undefined;
   jest.mocked(readWorkerSnapshot).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
   const first = await render(<WorkerJobs userId="worker-a" />);
   await first.unmount();
   await render(<WorkerJobs userId="worker-b" />);
-  await act(async () => finish({ offers: [offer], jobs: [], changes: [], reports: [] }));
+  await act(async () => finish({ offers: [offer], jobs: [], changes: [], reports: [], corrections: [] }));
   expect(screen.queryByText(/Offer: Replace part/)).toBeNull();
 });
 
 test('a job awaiting Customer review offers no pause that would strand it', async () => {
-  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [{ ...job, stage: 'submitted' }], changes: [], reports: [] });
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [{ ...job, stage: 'submitted' }], changes: [], reports: [], corrections: [] });
   await render(<WorkerJobs userId="worker-a" />);
   await screen.findByText(/stage: submitted/);
   expect(screen.queryByRole('button', { name: 'Pause for safety' })).toBeNull();
@@ -71,7 +71,7 @@ test('a job awaiting Customer review offers no pause that would strand it', asyn
 });
 
 test('a stale version and a wrong-role refusal are explained differently from a lost connection', async () => {
-  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [job], changes: [], reports: [] });
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [job], changes: [], reports: [], corrections: [] });
   jest.mocked(advanceJob).mockRejectedValueOnce(new WorkflowError('stale')).mockRejectedValueOnce(new WorkflowError('forbidden'));
   await render(<WorkerJobs userId="worker-a" />);
   await screen.findByText(/stage: working/);
@@ -82,15 +82,38 @@ test('a stale version and a wrong-role refusal are explained differently from a 
 });
 
 test('a fixture offer is labelled as a test offer', async () => {
-  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [offer], jobs: [], changes: [], reports: [] });
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [offer], jobs: [], changes: [], reports: [], corrections: [] });
   await render(<WorkerJobs userId="worker-a" />);
   await screen.findByText('Test offer — not a real price or commitment.');
   expect(screen.getByRole('button', { name: 'Accept displayed offer' })).toBeEnabled();
 });
 
+test('the Worker sees the Customer correction request on the job it belongs to', async () => {
+  const other = { ...job, job_id: 'other-job' };
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [job, other], changes: [], reports: [], corrections: [{ job_id: 'job', note: 'Reseal the joint' }] });
+  await render(<WorkerJobs userId="worker-a" />);
+  await screen.findByText('Customer requested a correction: Reseal the joint');
+  expect(screen.getAllByText(/Customer requested a correction/)).toHaveLength(1);
+  expect(screen.getAllByText(/stage: working/)).toHaveLength(2);
+});
+
+test('a correction request for a job that is not listed is not displayed', async () => {
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [job], changes: [], reports: [], corrections: [{ job_id: 'unlisted', note: 'Someone else' }] });
+  await render(<WorkerJobs userId="worker-a" />);
+  await screen.findByText(/stage: working/);
+  expect(screen.queryByText(/Customer requested a correction/)).toBeNull();
+});
+
+test('no correction request is shown when the Customer has not asked for one', async () => {
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [], jobs: [job], changes: [], reports: [], corrections: [] });
+  await render(<WorkerJobs userId="worker-a" />);
+  await screen.findByText(/stage: working/);
+  expect(screen.queryByText(/Customer requested a correction/)).toBeNull();
+});
+
 test('an offer with an unrecognized source cannot be accepted but can be declined', async () => {
   const unknown = { ...offer, basis: 'matching_engine' };
-  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [unknown], jobs: [], changes: [], reports: [] });
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [unknown], jobs: [], changes: [], reports: [], corrections: [] });
   jest.mocked(declineOffer).mockResolvedValue();
   await render(<WorkerJobs userId="worker-a" />);
   await screen.findByText('This offer has an unrecognized source and cannot be accepted here.');

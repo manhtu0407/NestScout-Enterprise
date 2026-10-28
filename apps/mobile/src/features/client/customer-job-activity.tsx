@@ -9,7 +9,7 @@ import { decideScope, decideSubmission, openAftercare, type CustomerJob, type Su
 
 type PendingCase = { key: string; reason: string };
 
-export function CustomerJobActivity({ userId, job, submissions, cases, changes = [], reports = [], onRefresh }: {
+type Props = {
   userId: string;
   job: CustomerJob;
   submissions: Submission[];
@@ -17,7 +17,14 @@ export function CustomerJobActivity({ userId, job, submissions, cases, changes =
   changes?: ScopeChange[];
   reports?: JobReport[];
   onRefresh(): void;
-}) {
+};
+
+export function CustomerJobActivity(props: Props) {
+  const storageKey = `nestscout.aftercare.${props.userId}.${props.job.id}`;
+  return <CustomerJobDraft key={storageKey} storageKey={storageKey} {...props} />;
+}
+
+function CustomerJobDraft({ storageKey, userId, job, submissions, cases, changes = [], reports = [], onRefresh }: Props & { storageKey: string }) {
   const [reason, setReason] = useState('');
   const [pendingCase, setPendingCase] = useState<PendingCase | null>(null);
   const [ready, setReady] = useState(false);
@@ -27,13 +34,20 @@ export function CustomerJobActivity({ userId, job, submissions, cases, changes =
   const active = useRef(true);
   const running = useRef(false);
   const controller = useRef<AbortController | null>(null);
-  const storageKey = `nestscout.aftercare.${userId}.${job.id}`;
 
   useEffect(() => {
     active.current = true;
+    return () => {
+      active.current = false;
+      controller.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     setUnreadable(false);
     deviceStorage.getItem(storageKey).then((raw) => {
-      if (!active.current) return;
+      if (cancelled) return;
       if (raw !== null) {
         const value: unknown = JSON.parse(raw);
         if (typeof value !== 'object' || value === null) throw new Error('Invalid case');
@@ -45,14 +59,13 @@ export function CustomerJobActivity({ userId, job, submissions, cases, changes =
       }
       setReady(true);
     }).catch(() => {
-      if (active.current) {
+      if (!cancelled) {
         setUnreadable(true);
         setMessage('Could not read the pending support case on this device.');
       }
     });
     return () => {
-      active.current = false;
-      controller.current?.abort();
+      cancelled = true;
     };
   }, [storageKey, attempt, setUnreadable]);
 

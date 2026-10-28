@@ -9,7 +9,14 @@ import { reportJob, type Job } from './worker-repository';
 
 type Pending = { key: string; version: number; kind: JobReport['kind']; details: string };
 
-export function WorkerReport({ userId, job, onRefresh }: { userId: string; job: Job; onRefresh(): void }) {
+type Props = { userId: string; job: Job; onRefresh(): void };
+
+export function WorkerReport(props: Props) {
+  const storageKey = `nestscout.worker-report.${props.userId}.${props.job.job_id}`;
+  return <WorkerReportDraft key={storageKey} storageKey={storageKey} {...props} />;
+}
+
+function WorkerReportDraft({ storageKey, userId, job, onRefresh }: Props & { storageKey: string }) {
   const [details, setDetails] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   const [ready, setReady] = useState(false);
@@ -19,13 +26,20 @@ export function WorkerReport({ userId, job, onRefresh }: { userId: string; job: 
   const active = useRef(true);
   const running = useRef(false);
   const controller = useRef<AbortController | null>(null);
-  const storageKey = `nestscout.worker-report.${userId}.${job.job_id}`;
 
   useEffect(() => {
     active.current = true;
+    return () => {
+      active.current = false;
+      controller.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     setUnreadable(false);
     deviceStorage.getItem(storageKey).then((raw) => {
-      if (!active.current) return;
+      if (cancelled) return;
       if (raw !== null) {
         const value: unknown = JSON.parse(raw);
         if (typeof value !== 'object' || value === null) throw new Error('Invalid report');
@@ -40,14 +54,13 @@ export function WorkerReport({ userId, job, onRefresh }: { userId: string; job: 
       }
       setReady(true);
     }).catch(() => {
-      if (active.current) {
+      if (!cancelled) {
         setUnreadable(true);
         setMessage('Could not read the pending report on this device.');
       }
     });
     return () => {
-      active.current = false;
-      controller.current?.abort();
+      cancelled = true;
     };
   }, [storageKey, attempt, setUnreadable]);
 

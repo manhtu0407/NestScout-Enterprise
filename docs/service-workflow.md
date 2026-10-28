@@ -359,7 +359,7 @@ a test and refuse to accept any other basis.
 | Propose fixture scope | Assigned Worker; grant, fixture eligibility, working job and version | Immutable old/new terms, rationale and event; key binds payload |
 | Decide fixture scope | Owner; exact proposal sequence and job version; job working or paused | Decision and event commit together; original quote stays unchanged; a safety pause never leaves a proposal undecidable |
 | Submit work | Assigned Worker; grant, fixture eligibility, working stage, version and no pending scope | Evidence, submission and event commit together; key binds version and evidence |
-| Accept, request correction or dispute | Owner; pending submission, job version and required reason | One decision and event; dispute creates a separate case; exact replay is safe; only the correction note is Worker-readable and the private reason is not exposed to any client |
+| Accept, request correction or dispute | Owner; pending submission, job version and required reason | One decision and event; dispute creates a separate case; exact replay is safe; only the correction note is Worker-readable and the private reason is not exposed to any client; the Worker screen shows the note while the newest submission of the job is the correction request |
 | Open aftercare | Owner; completed job and case key | Linked case created once without changing the job or event history |
 | Read Kael context | Owner of request or currently eligible assigned Worker | Redacted deterministic projection; allowed and unavailable calls audited within a per-minute budget; the first rate-limited call in each minute is audited |
 
@@ -375,7 +375,7 @@ status tool is unavailable.
 | --- | --- | --- |
 | Mobile access state and guest screen | Access owns the in-memory guest draft; guest and Customer screens consume it | Reducer and navigation tests; draft is not automatically submitted |
 | Mobile Client feature | Customer owns request, quote, scope decision, acceptance, dispute and aftercare presentations | Client tests and local Auth/REST integration |
-| Mobile Worker feature | Worker owns fixture offers, job actions, evidence, scope proposals and reports | Worker tests, Auth/REST integration and database races |
+| Mobile Worker feature | Worker owns fixture offers, job actions, evidence, scope proposals, reports and the Customer correction request it must act on | Worker tests, Auth/REST integration and database races |
 | Mobile shared feature and authenticated-rest module | Shared projections and bounded status surface; both modes use the existing Supabase session | Component tests and module-boundary checks |
 | create_service_requests migration | Request table and submission RPC; Customer consumer | Request pgTAP and concurrent retry |
 | create_quote_acceptance migration | Quote terms and owner acceptance; Customer and assignment consumers | Quote pgTAP, expiry race and Auth/REST |
@@ -390,6 +390,11 @@ status tool is unavailable.
 | Supabase database tests and local integration test | Database ACL and real transaction/API evidence | Canonical isolated stack and test runner |
 | Supabase generated database types | CLI-generated public schema artifact | Local type generation and drift check |
 | Mobile package manifest and lockfile | Pinned native UUID source for durable operation keys | Expo compatibility and mobile checks |
+
+The saved-draft state of each form belongs to one account and one job: switching
+either discards the previous draft, and a late storage read for the previous
+account or job cannot change the current form. Reading an unreadable draft again
+never interrupts a Customer decision that is already in flight.
 
 A proposal or report can remain pending on the originating device after an
 uncertain response. Real-time subscriptions, outbound notification delivery and

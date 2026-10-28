@@ -426,3 +426,87 @@ test('acceptance, scope consent and safety races serialize at the job', async ()
     }
   });
 });
+
+test('a correction request reaches only the assigned Worker through real Auth and REST', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const runtime = localRuntime();
+    const stack = runtime.verify();
+    const status = runtime.status();
+    const serviceKey = status.env.SERVICE_ROLE_KEY;
+    const publicKey = status.env.ANON_KEY;
+    assert.ok(serviceKey && publicKey);
+    const origin = stack.endpoints['rest.http'].url.replace(/\/$/, '');
+    const ids = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/);
+    assert.equal(ids.length, 1);
+    assert.match(ids[0], /^[a-f0-9]{12,64}$/);
+    const query = sql => execFileSync('docker', ['exec', '-i', ids[0], 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], { input: sql, encoding: 'utf8' });
+    const admin = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
+    const call = (path, token, options = {}) => fetch(`${origin}${path}`, {
+      ...options,
+      headers: { apikey: publicKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+    const accounts = [];
+    const [request, quote, invitation, job, submission, workKey, requestKey] = Array.from({ length: 7 }, () => randomUUID());
+    let fixtures = false;
+    try {
+      for (let index = 0; index < 3; index++) {
+        const email = `${randomUUID()}@example.invalid`;
+        const password = randomUUID();
+        const created = await fetch(`${origin}/auth/v1/admin/users`, {
+          method: 'POST', headers: admin, body: JSON.stringify({ email, password, email_confirm: true }),
+        });
+        assert.equal(created.status, 200, 'Local test account creation failed');
+        const account = await created.json();
+        assert.match(account.id, /^[a-f0-9-]{36}$/);
+        accounts.push(account.id);
+        const login = await fetch(`${origin}/auth/v1/token?grant_type=password`, {
+          method: 'POST', headers: { apikey: publicKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
+        });
+        assert.equal(login.status, 200, 'Local test login failed');
+        const session = await login.json();
+        assert.ok(typeof session.access_token === 'string');
+        accounts[index] = { id: account.id, token: session.access_token };
+      }
+      const [customer, worker, foreign] = accounts;
+      query(`begin; insert into public.worker_access_grants (user_id) values ('${worker.id}'), ('${foreign.id}'); insert into nestscout_private.worker_dispatch_eligibility (user_id,basis,active) values ('${worker.id}','local_fixture',true), ('${foreign.id}','local_fixture',true); insert into public.service_requests (id,owner_id,submission_key,description) values ('${request}','${customer.id}','${requestKey}','Correction fixture'); insert into public.service_quotes (id,request_id,version,scope,amount_minor,currency,expires_at,accepted_at,accepted_by) values ('${quote}','${request}',1,'Correction fixture',100,'VND',clock_timestamp()+interval '1 hour',clock_timestamp(),'${customer.id}'); insert into public.service_invitations (id,request_id,quote_id,worker_id,expires_at,state) values ('${invitation}','${request}','${quote}','${worker.id}',clock_timestamp()+interval '1 hour','accepted'); insert into public.service_jobs (id,request_id,quote_id,invitation_id,worker_id,stage,version) values ('${job}','${request}','${quote}','${invitation}','${worker.id}','submitted',2); insert into public.service_submissions (id,job_id,submitted_by,submission_key,submitted_from_version,evidence) values ('${submission}','${job}','${worker.id}','${workKey}',1,'Fixture evidence'); commit;`);
+      fixtures = true;
+      const read = token => call(`/rest/v1/service_submissions?select=id,job_id,decision,correction_note,created_at&job_id=eq.${job}`, token);
+      const states = async response => (await response.json()).map(row => [row.decision, row.correction_note]);
+      const waiting = await read(worker.token);
+      assert.equal(waiting.status, 200);
+      assert.deepEqual(await states(waiting), [['pending', null]]);
+      const decision = await call('/rest/v1/rpc/decide_service_submission', customer.token, {
+        method: 'POST', body: JSON.stringify({ p_submission_id: submission, p_version: 2, p_decision: 'revision_requested', p_reason: 'Synthetic correction' }),
+      });
+      assert.equal(decision.status, 200);
+      const assigned = await read(worker.token);
+      assert.equal(assigned.status, 200);
+      assert.deepEqual(await states(assigned), [['revision_requested', 'Synthetic correction']]);
+      const owner = await read(customer.token);
+      assert.equal(owner.status, 200);
+      assert.deepEqual(await states(owner), [['revision_requested', 'Synthetic correction']]);
+      const stranger = await read(foreign.token);
+      assert.equal(stranger.status, 200);
+      assert.deepEqual(await stranger.json(), []);
+      for (const column of ['decision_reason', 'decided_by', 'submitted_by']) {
+        const denied = await call(`/rest/v1/service_submissions?select=${column}&job_id=eq.${job}`, worker.token);
+        assert.equal(denied.status, 403);
+        assert.equal((await call(`/rest/v1/service_submissions?select=id&${column}=not.is.null`, worker.token)).status, 403);
+      }
+      assert.equal((await call('/rest/v1/service_submissions?select=id&order=decision_reason', worker.token)).status, 403);
+      assert.equal((await read(publicKey)).status, 401);
+      query(`update public.worker_access_grants set status='revoked', revoked_at=clock_timestamp() where user_id='${worker.id}';`);
+      const revoked = await read(worker.token);
+      assert.equal(revoked.status, 200);
+      assert.deepEqual(await revoked.json(), []);
+    } finally {
+      if (fixtures) query(`delete from public.service_cases where job_id='${job}'; delete from public.service_submissions where job_id='${job}'; delete from public.service_job_events where job_id='${job}'; delete from public.service_jobs where id='${job}'; delete from public.service_invitations where id='${invitation}'; delete from public.service_quotes where id='${quote}'; delete from public.service_requests where id='${request}';`);
+      for (const account of accounts) {
+        const id = typeof account === 'string' ? account : account.id;
+        query(`delete from nestscout_private.worker_dispatch_eligibility where user_id='${id}'; delete from public.worker_access_grants where user_id='${id}';`);
+        const removed = await fetch(`${origin}/auth/v1/admin/users/${id}`, { method: 'DELETE', headers: admin });
+        assert.equal(removed.status, 200, 'Local test account cleanup failed');
+      }
+    }
+  });
+});
