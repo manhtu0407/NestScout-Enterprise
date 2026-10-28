@@ -71,7 +71,7 @@ const blockKinds = new Set([SyntaxKind.Block, SyntaxKind.SourceFile, SyntaxKind.
 const logicalOperators = new Set([SyntaxKind.AmpersandAmpersandToken, SyntaxKind.BarBarToken, SyntaxKind.QuestionQuestionToken]);
 const labelKinds = new Set([SyntaxKind.PropertyAccessExpression, SyntaxKind.PropertyAssignment]);
 const loopHeaderKinds = new Set([SyntaxKind.ForOfStatement, SyntaxKind.ForInStatement]);
-const emptyStructure = () => ({ disabled: 0, declarations: 0, assertions: [] });
+const emptyStructure = () => ({ disabled: 0, unconditional: 0, declarations: 0, assertions: [] });
 
 const chainTarget = node => (node.kind === SyntaxKind.TaggedTemplateExpression ? node.tag : node.expression);
 
@@ -189,14 +189,20 @@ function testStructure(file, text) {
 
     const structure = emptyStructure();
     for (const node of nodes) {
-      if (node.kind === SyntaxKind.VariableDeclaration && node.initializer && aliasesTestRoot(node.initializer)) structure.disabled++;
+      if (node.kind === SyntaxKind.VariableDeclaration && node.initializer && aliasesTestRoot(node.initializer)) {
+        structure.disabled++;
+        structure.unconditional++;
+      }
       if (node.kind === SyntaxKind.CallExpression && testRoots.has(chainOf(node)?.root)) {
         for (const argument of node.arguments) {
           const options = argument.kind === SyntaxKind.Identifier ? lookup(argument) : argument;
           if (options?.kind !== SyntaxKind.ObjectLiteralExpression) continue;
           for (const property of options.properties) {
             const switchedOff = property.kind === SyntaxKind.PropertyAssignment && property.initializer.kind === SyntaxKind.FalseKeyword;
-            if ((property.kind === SyntaxKind.PropertyAssignment || property.kind === SyntaxKind.ShorthandPropertyAssignment) && optionNames.has(property.name.text) && !switchedOff) structure.disabled++;
+            if ((property.kind === SyntaxKind.PropertyAssignment || property.kind === SyntaxKind.ShorthandPropertyAssignment) && optionNames.has(property.name.text) && !switchedOff) {
+              structure.disabled++;
+              if (property.kind === SyntaxKind.PropertyAssignment && (property.initializer.kind === SyntaxKind.TrueKeyword || property.initializer.kind === SyntaxKind.StringLiteral || property.initializer.kind === SyntaxKind.NoSubstitutionTemplateLiteral)) structure.unconditional++;
+            }
           }
         }
       }
@@ -205,7 +211,10 @@ function testStructure(file, text) {
       if (!chain) continue;
       const { root, members } = chain;
       if (disabledRoots.has(root) || (testRoots.has(root) && members.some(member => member === null || disabledMembers.has(member)))
-        || (contexts.has(root) && members.some(member => contextMembers.has(member)))) structure.disabled++;
+        || (contexts.has(root) && members.some(member => contextMembers.has(member)))) {
+        structure.disabled++;
+        structure.unconditional++;
+      }
       if (node.kind !== SyntaxKind.CallExpression) continue;
       if (declarationRoots.has(root)) structure.declarations++;
       if (assertionRoots.has(root) || (contexts.has(root) && members.some(member => member?.startsWith('assert')))) {
@@ -218,6 +227,7 @@ function testStructure(file, text) {
 
 const legacyStructure = text => ({
   disabled: count(text, disabledMarker),
+  unconditional: count(text, disabledMarker),
   declarations: count(text, testDeclaration),
   assertions: lineSet(text).filter(line => assertion.test(line)),
 });
@@ -495,6 +505,7 @@ function testDimension(repository, files, mergeBase, head, views) {
       continue;
     }
     if (isTest && now.disabled > was.disabled) failed.push(`${file.path}: disabled tests increased from ${was.disabled} to ${now.disabled}.`);
+    if (isTest && now.disabled <= was.disabled && now.unconditional > was.unconditional) failed.push(`${file.path}: unconditionally disabled tests increased from ${was.unconditional} to ${now.unconditional}.`);
     if (isTest && now.declarations < was.declarations) findings.push(`${file.path}: test declarations decreased from ${was.declarations} to ${now.declarations}.`);
     const added = missingItems(now.assertions, was.assertions);
     const removed = [];

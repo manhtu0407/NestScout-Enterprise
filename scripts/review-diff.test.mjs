@@ -740,6 +740,17 @@ test('a barrel that stops re-exporting a whole module cannot pass dead-code safe
   assert.equal(kept.dimensions.deadCodeSafety.verdict, PASS, 'a barrel that still re-exports the module');
 });
 
+test('a conditional skip option made unconditional is a newly disabled test', () => {
+  const file = 'scripts/order-state.test.mjs';
+  const header = "test('a valid transition succeeds', () => {";
+  const files = { [file]: baseFiles[file].replace(header, "test('a valid transition succeeds', { skip: process.platform === 'win32' }, () => {") };
+  const always = reviewWith(files, api => api.write(file, files[file].replace("{ skip: process.platform === 'win32' }", '{ skip: true }')),{ scope: ['scripts/**'] });
+  assert.equal(always.dimensions.testIntegrity.verdict, FAIL);
+  assert.match(always.dimensions.testIntegrity.findings.join('\n'), /unconditionally disabled tests increased from 0 to 1/);
+  const unchanged = reviewWith(files, api => api.write(file, files[file].replace("'win32'", "'darwin'")), { scope: ['scripts/**'] });
+  assert.equal(unchanged.dimensions.testIntegrity.verdict, PASS);
+});
+
 test('script selection counts only test invocations, so another tool over the workspace cannot hide a narrowed jest match', () => {
   const mobile = 'apps/mobile/package.json';
   const covered = 'apps/mobile/src/lib/format-total.test.ts';

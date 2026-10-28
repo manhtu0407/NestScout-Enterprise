@@ -185,7 +185,7 @@ needs manual evidence.
 `scripts/review-diff.mjs` reads a frozen base-to-head diff (resolved SHAs and the merge
 base) and returns a verdict of `PASS`, `FAIL` or `INSUFFICIENT_EVIDENCE` for each of five
 dimensions. `scripts/review-diff.test.mjs` exercises it on isolated temporary
-repositories, never production modules, with 45 tests:
+repositories, never production modules, with 46 tests:
 
 - test weakening: `it.skip`, `it.only` and a node-test `skip` option fail; a deleted test
   file fails, and so does a test file renamed to a name that no longer matches the test
@@ -196,7 +196,9 @@ repositories, never production modules, with 45 tests:
   counted. Disabled tests are counted for modifier chains (`it.concurrent.skip`,
   `xit.each`), computed access (`it['skip']`, a dynamic key), aliases and destructuring of
   the test function, a stored `it.skip`, `skip`, `todo` or `only` options, written inline or in a same-file options object, that are not the
-  literal `false`, and `skip()` or `todo()` on the context parameter of a test callback;
+  literal `false`, and `skip()` or `todo()` on the context parameter of a test callback.
+  Unconditional disabling is also counted on its own, so a conditional `skip` expression
+  that becomes `true` fails even when the total does not change;
 - assertions are the outermost `expect` and `assert` call chains, compared as a whole
   expression with every control-flow guard around them: an enclosing `if`, loop, `try` or
   `catch`, `case`, conditional or `&&`, `||`, `??`, any earlier statement in the block
