@@ -269,7 +269,7 @@ isOneToOne: false
                            },
 "worker_offers":
 { Args: Record<PropertyKey, never>; Returns: {
-              "amount_minor": number,"currency": string,"expires_at": string,"invitation_id": string,"quote_id": string,"quote_version": number,"scope": string
+              "amount_minor": number,"basis": string,"currency": string,"expires_at": string,"invitation_id": string,"quote_id": string,"quote_version": number,"scope": string
             }[]
                            }
           }

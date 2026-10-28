@@ -212,6 +212,7 @@ test('real local Auth and REST enforce participant ownership', { timeout: 240000
       assert.equal(visibleOffers.length, 1);
       assert.equal(visibleOffers[0].invitation_id, invitation);
       assert.equal(visibleOffers[0].scope, 'Synthetic local terms');
+      assert.equal(visibleOffers[0].basis, 'local_fixture');
       const wrongWorker = await rpc(users[0].token, 'accept_service_invitation', { p_invitation_id: invitation, p_quote_id: quote, p_quote_version: 1 });
       assert.notEqual(wrongWorker.status, 200);
       const assignment = await rpc(users[1].token, 'accept_service_invitation', { p_invitation_id: invitation, p_quote_id: quote, p_quote_version: 1 });
@@ -263,6 +264,21 @@ test('real local Auth and REST enforce participant ownership', { timeout: 240000
         assert.equal(visible.status, 200);
         assert.equal((await visible.json()).length, 1);
       }
+      for (const token of [users[0].token, users[1].token]) {
+        for (const [table, column] of [['service_job_events', 'actor_id'], ['service_jobs', 'worker_id'], ['service_scope_changes', 'proposed_by'], ['service_scope_changes', 'decided_by'], ['service_job_reports', 'actor_id'], ['service_submissions', 'submitted_by']]) {
+          const denied = await call(`/rest/v1/${table}?select=${column}`, token);
+          assert.equal(denied.status, 403);
+        }
+        const events = await call(`/rest/v1/service_job_events?job_id=eq.${job}&select=event,version`, token);
+        assert.equal(events.status, 200);
+        assert.ok((await events.json()).length >= 4);
+        const jobs = await call(`/rest/v1/service_jobs?id=eq.${job}&select=id,request_id,stage,version`, token);
+        assert.equal(jobs.status, 200);
+        assert.equal((await jobs.json()).length, 1);
+      }
+      const quoteRows = await call(`/rest/v1/service_quotes?id=eq.${quote}&select=id,basis`, users[0].token);
+      assert.equal(quoteRows.status, 200);
+      assert.deepEqual((await quoteRows.json()).map(row => row.basis), ['local_fixture']);
       const context = await rpc(users[0].token, 'kael_read_context', { p_kind: 'customer_request', p_resource_id: requestId });
       assert.equal(context.status, 200);
       assert.equal((await context.json()).state, 'request_received');

@@ -10,6 +10,7 @@ export type ServiceQuote = {
   amount_minor: number;
   currency: 'VND';
   expires_at: string;
+  basis: string;
   accepted_at: string | null;
   rejected_at: string | null;
 };
@@ -39,7 +40,7 @@ export async function submitRequest(userId: string, key: string, description: st
 }
 
 export async function readQuotes(userId: string, signal: AbortSignal): Promise<ServiceQuote[]> {
-  const response = await authenticatedRequest(userId, 'service_quotes?select=id,request_id,version,scope,amount_minor,currency,expires_at,accepted_at,rejected_at', { signal });
+  const response = await authenticatedRequest(userId, 'service_quotes?select=id,request_id,version,scope,amount_minor,currency,expires_at,basis,accepted_at,rejected_at', { signal });
   if (!response.ok) throw new Error('Could not read quotes');
   const result: unknown = await response.json();
   if (!Array.isArray(result) || !result.every((row: unknown) => {
@@ -47,7 +48,7 @@ export async function readQuotes(userId: string, signal: AbortSignal): Promise<S
     const item = row as Record<string, unknown>;
     return typeof item.id === 'string' && typeof item.request_id === 'string' && Number.isSafeInteger(item.version)
       && typeof item.scope === 'string' && Number.isSafeInteger(item.amount_minor) && item.currency === 'VND'
-      && typeof item.expires_at === 'string' && (item.accepted_at === null || typeof item.accepted_at === 'string')
+      && typeof item.expires_at === 'string' && typeof item.basis === 'string' && (item.accepted_at === null || typeof item.accepted_at === 'string')
       && (item.rejected_at === null || typeof item.rejected_at === 'string');
   })) throw new Error('Invalid quote response');
   return result as ServiceQuote[];

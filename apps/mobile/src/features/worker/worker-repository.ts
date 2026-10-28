@@ -9,6 +9,7 @@ export type Offer = {
   amount_minor: number;
   currency: 'VND';
   expires_at: string;
+  basis: string;
 };
 
 export type Job = {
@@ -36,7 +37,7 @@ export async function readOffers(userId: string, signal: AbortSignal): Promise<O
     if (typeof value !== 'object' || value === null) return false;
     const row = value as Record<string, unknown>;
     return typeof row.invitation_id === 'string' && typeof row.quote_id === 'string'
-      && Number.isSafeInteger(row.quote_version) && typeof row.expires_at === 'string' && terms(row);
+      && Number.isSafeInteger(row.quote_version) && typeof row.expires_at === 'string' && typeof row.basis === 'string' && terms(row);
   })) throw new Error('Invalid offers');
   return result as Offer[];
 }

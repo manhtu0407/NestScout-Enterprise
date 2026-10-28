@@ -14,7 +14,7 @@ jest.mock('./worker-repository', () => ({
   reportJob: jest.fn(),
 }));
 
-const offer = { invitation_id: 'invite', quote_id: 'quote', quote_version: 2, scope: 'Replace part', amount_minor: 100, currency: 'VND' as const, expires_at: '2027-01-01' };
+const offer = { invitation_id: 'invite', quote_id: 'quote', quote_version: 2, scope: 'Replace part', amount_minor: 100, currency: 'VND' as const, expires_at: '2027-01-01', basis: 'local_fixture' };
 const job = { job_id: 'job', stage: 'working' as const, version: 4, scope: 'Replace part', amount_minor: 100, currency: 'VND' as const };
 
 beforeEach(() => {
@@ -79,4 +79,24 @@ test('a stale version and a wrong-role refusal are explained differently from a 
   await screen.findByText(/changed after it was loaded/);
   await fireEvent.press(screen.getByRole('button', { name: 'Pause for safety' }));
   await screen.findByText('This action is not available for your account or this item.');
+});
+
+test('a fixture offer is labelled as a test offer', async () => {
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [offer], jobs: [], changes: [], reports: [] });
+  await render(<WorkerJobs userId="worker-a" />);
+  await screen.findByText('Test offer — not a real price or commitment.');
+  expect(screen.getByRole('button', { name: 'Accept displayed offer' })).toBeEnabled();
+});
+
+test('an offer with an unrecognized source cannot be accepted but can be declined', async () => {
+  const unknown = { ...offer, basis: 'matching_engine' };
+  jest.mocked(readWorkerSnapshot).mockResolvedValue({ offers: [unknown], jobs: [], changes: [], reports: [] });
+  jest.mocked(declineOffer).mockResolvedValue();
+  await render(<WorkerJobs userId="worker-a" />);
+  await screen.findByText('This offer has an unrecognized source and cannot be accepted here.');
+  expect(screen.getByRole('button', { name: 'Accept displayed offer' })).toBeDisabled();
+  await fireEvent.press(screen.getByRole('button', { name: 'Accept displayed offer' }));
+  expect(acceptOffer).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByRole('button', { name: 'Decline displayed offer' }));
+  await waitFor(() => expect(declineOffer).toHaveBeenCalledWith('worker-a', unknown, expect.anything()));
 });

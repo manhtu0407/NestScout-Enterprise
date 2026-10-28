@@ -88,7 +88,7 @@ test('refreshing requests does not cancel restoration of a pending draft', async
 
 test('acceptance uses the displayed quote version without claiming payment or booking', async () => {
   read.mockResolvedValue([{ id: 'request-a', description: 'Repair', created_at: '2026-01-01' }]);
-  jest.mocked(readQuotes).mockResolvedValue([{ id: 'quote-a', request_id: 'request-a', version: 2, scope: 'Replace part', amount_minor: 1000, currency: 'VND', expires_at: '2027-01-01T00:00:00Z', accepted_at: null, rejected_at: null }]);
+  jest.mocked(readQuotes).mockResolvedValue([{ id: 'quote-a', request_id: 'request-a', version: 2, scope: 'Replace part', amount_minor: 1000, currency: 'VND', expires_at: '2027-01-01T00:00:00Z', basis: 'local_fixture', accepted_at: null, rejected_at: null }]);
   jest.mocked(acceptQuote).mockResolvedValue('quote-a');
   await render(<ServiceRequests userId="customer-a" />);
   await screen.findByText(/Quote 2: Replace part/);
@@ -99,7 +99,7 @@ test('acceptance uses the displayed quote version without claiming payment or bo
 
 test('Customer can reject the displayed quote without accepting it', async () => {
   read.mockResolvedValue([{ id: 'request-a', description: 'Repair', created_at: '2026-01-01' }]);
-  jest.mocked(readQuotes).mockResolvedValue([{ id: 'quote-a', request_id: 'request-a', version: 2, scope: 'Replace part', amount_minor: 1000, currency: 'VND', expires_at: '2027-01-01T00:00:00Z', accepted_at: null, rejected_at: null }]);
+  jest.mocked(readQuotes).mockResolvedValue([{ id: 'quote-a', request_id: 'request-a', version: 2, scope: 'Replace part', amount_minor: 1000, currency: 'VND', expires_at: '2027-01-01T00:00:00Z', basis: 'local_fixture', accepted_at: null, rejected_at: null }]);
   jest.mocked(rejectQuote).mockResolvedValue('quote-a');
   await render(<ServiceRequests userId="customer-a" />);
   await screen.findByText(/Quote 2: Replace part/);
@@ -118,4 +118,24 @@ test('unreadable pending storage can be re-read and restores the saved key', asy
   await waitFor(() => expect(screen.getByRole('button', { name: 'Retry request' })).toBeEnabled());
   expect(screen.getByLabelText('Service request').props.value).toBe('Pending repair');
   expect(submit).not.toHaveBeenCalled();
+});
+
+test('a fixture quote is labelled as a test quote and can still be decided', async () => {
+  read.mockResolvedValue([{ id: 'request-a', description: 'Repair', created_at: '2026-01-01' }]);
+  jest.mocked(readQuotes).mockResolvedValue([{ id: 'quote-a', request_id: 'request-a', version: 2, scope: 'Replace part', amount_minor: 1000, currency: 'VND', expires_at: '2027-01-01T00:00:00Z', basis: 'local_fixture', accepted_at: null, rejected_at: null }]);
+  await render(<ServiceRequests userId="customer-a" />);
+  await screen.findByText('Test quote — not a real price or commitment.');
+  expect(screen.getByRole('button', { name: 'Accept quote 2' })).toBeEnabled();
+});
+
+test('a quote with an unrecognized source cannot be accepted but can be rejected', async () => {
+  read.mockResolvedValue([{ id: 'request-a', description: 'Repair', created_at: '2026-01-01' }]);
+  jest.mocked(readQuotes).mockResolvedValue([{ id: 'quote-a', request_id: 'request-a', version: 2, scope: 'Replace part', amount_minor: 1000, currency: 'VND', expires_at: '2027-01-01T00:00:00Z', basis: 'pricing_engine', accepted_at: null, rejected_at: null }]);
+  await render(<ServiceRequests userId="customer-a" />);
+  await screen.findByText('This quote has an unrecognized source and cannot be accepted here.');
+  expect(screen.queryByText('Test quote — not a real price or commitment.')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Accept quote 2' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Reject quote 2' })).toBeEnabled();
+  await fireEvent.press(screen.getByRole('button', { name: 'Accept quote 2' }));
+  expect(acceptQuote).not.toHaveBeenCalled();
 });

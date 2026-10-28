@@ -1,7 +1,7 @@
 import { authenticatedRequest } from '@/lib/authenticated-rest';
 import { readJobReports, readScopeChanges } from '@/features/shared';
 
-import { readWorkerSnapshot } from './worker-repository';
+import { readOffers, readWorkerSnapshot } from './worker-repository';
 
 jest.mock('@/lib/authenticated-rest', () => ({ authenticatedRequest: jest.fn() }));
 jest.mock('@/features/shared', () => ({ readJobReports: jest.fn(), readScopeChanges: jest.fn() }));
@@ -29,4 +29,12 @@ test('matching scoped projections are returned', async () => {
   } as Response));
   const result = await readWorkerSnapshot('worker-a', new AbortController().signal);
   expect(result.jobs).toEqual([job]);
+});
+
+test('an offer without a recognizable source field is rejected as invalid', async () => {
+  const offer = { invitation_id: 'invite', quote_id: 'quote', quote_version: 1, scope: 'Fixture', amount_minor: 100, currency: 'VND', expires_at: '2027-01-01' };
+  jest.mocked(authenticatedRequest).mockResolvedValue({ ok: true, json: async () => [offer] } as Response);
+  await expect(readOffers('worker-a', new AbortController().signal)).rejects.toThrow('Invalid offers');
+  jest.mocked(authenticatedRequest).mockResolvedValue({ ok: true, json: async () => [{ ...offer, basis: 'local_fixture' }] } as Response);
+  await expect(readOffers('worker-a', new AbortController().signal)).resolves.toHaveLength(1);
 });

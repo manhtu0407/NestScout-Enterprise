@@ -1,4 +1,4 @@
-import { readRequests, submitRequest } from './service-request-repository';
+import { readQuotes, readRequests, submitRequest } from './service-request-repository';
 
 const mockGetSession = jest.fn();
 jest.mock('@/lib/supabase-client', () => ({ getSupabaseClient: () => ({ auth: { getSession: mockGetSession } }) }));
@@ -44,4 +44,14 @@ test('a submission carries the captured account token and immutable key', async 
 test('rejects malformed projections instead of displaying them', async () => {
   jest.mocked(global.fetch).mockResolvedValue({ ok: true, json: async () => [{ id: 4 }] } as Response);
   await expect(readRequests('customer-a', new AbortController().signal)).rejects.toThrow('Invalid request response');
+});
+
+test('a quote without a source field is rejected and a fixture quote is accepted', async () => {
+  const quote = { id: 'quote-a', request_id: 'request-a', version: 1, scope: 'Fixture', amount_minor: 100, currency: 'VND', expires_at: '2027-01-01', accepted_at: null, rejected_at: null };
+  jest.mocked(global.fetch).mockResolvedValueOnce({ ok: true, json: async () => [quote] } as Response);
+  await expect(readQuotes('customer-a', new AbortController().signal)).rejects.toThrow('Invalid quote response');
+  jest.mocked(global.fetch).mockResolvedValueOnce({ ok: true, json: async () => [{ ...quote, basis: 'local_fixture' }] } as Response);
+  await expect(readQuotes('customer-a', new AbortController().signal)).resolves.toHaveLength(1);
+  const requested = String(jest.mocked(global.fetch).mock.calls[1]?.[0]);
+  expect(requested).toContain('basis');
 });

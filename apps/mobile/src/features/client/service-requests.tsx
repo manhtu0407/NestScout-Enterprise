@@ -2,7 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 
-import { ActionButton, BodyText, DraftRecovery, ErrorText, KaelStatus, failureMessage, useDraftRecovery } from '@/features/shared';
+import { ActionButton, BasisNotice, BodyText, DraftRecovery, ErrorText, KaelStatus, failureMessage, isFixtureBasis, useDraftRecovery } from '@/features/shared';
 
 import { clearPendingRequest, loadPendingRequest, savePendingRequest, type PendingRequest } from './pending-request-store';
 import { CustomerJobActivity } from './customer-job-activity';
@@ -178,9 +178,10 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
           {quotes.filter((quote) => quote.request_id === request.id).map((quote) => (
             <Fragment key={quote.id}>
               <BodyText>{`Quote ${quote.version}: ${quote.scope} — ${quote.amount_minor} ${quote.currency}; expires ${quote.expires_at}`}</BodyText>
+              <BasisNotice basis={quote.basis} noun="quote" />
               {quote.accepted_at ? <BodyText>Accepted</BodyText> : quote.rejected_at ? <BodyText>Rejected</BodyText> : (
                 <>
-                  <ActionButton secondary label={`Accept quote ${quote.version}`} onPress={() => void decideQuote(quote, 'accept')} disabled={busy || quotes.some((other) => other.request_id === request.id && (other.version > quote.version || other.accepted_at !== null))} />
+                  <ActionButton secondary label={`Accept quote ${quote.version}`} onPress={() => void decideQuote(quote, 'accept')} disabled={busy || !isFixtureBasis(quote.basis) || quotes.some((other) => other.request_id === request.id && (other.version > quote.version || other.accepted_at !== null))} />
                   <ActionButton secondary label={`Reject quote ${quote.version}`} onPress={() => void decideQuote(quote, 'reject')} disabled={busy || quotes.some((other) => other.request_id === request.id && (other.version > quote.version || other.accepted_at !== null))} />
                 </>
               )}

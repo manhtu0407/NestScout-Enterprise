@@ -80,3 +80,48 @@ test('a stale decision is reported as changed rather than as an unknown result',
   await fireEvent.press(screen.getByRole('button', { name: 'Accept submitted work' }));
   await screen.findByText(/changed after it was loaded/);
 });
+
+test('an unreadable support-case draft can be re-read without losing the saved retry key', async () => {
+  const saved = JSON.stringify({ key: '00000000-0000-4000-8000-000000000456', reason: 'Follow-up' });
+  jest.mocked(deviceStorage.getItem).mockRejectedValueOnce(new Error('locked')).mockResolvedValue(saved);
+  await render(<CustomerJobActivity userId="customer-a" job={{ ...submitted, stage: 'completed' }} submissions={[]} cases={[]} onRefresh={() => undefined} />);
+  await screen.findByText('Could not read the pending support case on this device.');
+  expect(screen.getByRole('button', { name: 'Open support case' })).toBeDisabled();
+  await fireEvent.press(screen.getByRole('button', { name: 'Retry reading saved draft' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Retry support case' })).toBeEnabled());
+  expect(screen.getByLabelText('Correction or support details').props.value).toBe('Follow-up');
+  expect(deviceStorage.removeItem).not.toHaveBeenCalled();
+});
+
+test('a corrupt support-case draft is removed only after an explicit discard', async () => {
+  jest.mocked(deviceStorage.getItem).mockResolvedValue('{not json');
+  await render(<CustomerJobActivity userId="customer-a" job={{ ...submitted, stage: 'completed' }} submissions={[]} cases={[]} onRefresh={() => undefined} />);
+  await screen.findByText('Could not read the pending support case on this device.');
+  expect(deviceStorage.removeItem).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByRole('button', { name: 'Discard saved draft' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Open support case' })).toBeEnabled());
+  expect(deviceStorage.removeItem).toHaveBeenCalledTimes(1);
+});
+
+test('a definitive refusal releases the support-case key and keeps the typed details', async () => {
+  jest.mocked(openAftercare).mockRejectedValueOnce(new WorkflowError('rejected'));
+  await render(<CustomerJobActivity userId="customer-a" job={{ ...submitted, stage: 'completed' }} submissions={[]} cases={[]} onRefresh={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Open support case' })).toBeEnabled());
+  await fireEvent.changeText(screen.getByLabelText('Correction or support details'), 'Follow-up');
+  await fireEvent.press(screen.getByRole('button', { name: 'Open support case' }));
+  await screen.findByText(/no longer available/);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Open support case' })).toBeEnabled());
+  expect(deviceStorage.removeItem).toHaveBeenCalledTimes(1);
+  expect(screen.getByLabelText('Correction or support details').props.value).toBe('Follow-up');
+});
+
+test('an uncertain aftercare failure keeps the saved retry key', async () => {
+  jest.mocked(openAftercare).mockRejectedValueOnce(new Error('offline'));
+  await render(<CustomerJobActivity userId="customer-a" job={{ ...submitted, stage: 'completed' }} submissions={[]} cases={[]} onRefresh={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Open support case' })).toBeEnabled());
+  await fireEvent.changeText(screen.getByLabelText('Correction or support details'), 'Follow-up');
+  await fireEvent.press(screen.getByRole('button', { name: 'Open support case' }));
+  await screen.findByText('The result was not confirmed. Refresh before trying again.');
+  expect(deviceStorage.removeItem).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Retry support case' })).toBeTruthy();
+});

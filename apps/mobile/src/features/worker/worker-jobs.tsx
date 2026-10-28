@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
-import { ActionButton, BodyText, ErrorText, KaelStatus, failureMessage, type JobReport, type ScopeChange } from '@/features/shared';
+import { ActionButton, BasisNotice, BodyText, ErrorText, KaelStatus, failureMessage, isFixtureBasis, type JobReport, type ScopeChange } from '@/features/shared';
 
 import { acceptOffer, advanceJob, declineOffer, readWorkerSnapshot, type Job, type Offer } from './worker-repository';
 import { WorkSubmission } from './work-submission';
@@ -101,7 +101,8 @@ export function WorkerJobs({ userId }: { userId: string }) {
       {offers.map((offer) => (
         <Fragment key={offer.invitation_id}>
           <BodyText>{`Offer: ${offer.scope} — ${offer.amount_minor} ${offer.currency}; expires ${offer.expires_at}`}</BodyText>
-          <ActionButton label="Accept displayed offer" disabled={busy} onPress={() => void run((signal) => acceptOffer(userId, offer, signal))} />
+          <BasisNotice basis={offer.basis} noun="offer" />
+          <ActionButton label="Accept displayed offer" disabled={busy || !isFixtureBasis(offer.basis)} onPress={() => void run((signal) => acceptOffer(userId, offer, signal))} />
           <ActionButton secondary label="Decline displayed offer" disabled={busy} onPress={() => void run((signal) => declineOffer(userId, offer, signal))} />
         </Fragment>
       ))}

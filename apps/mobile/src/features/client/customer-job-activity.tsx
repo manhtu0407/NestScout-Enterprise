@@ -2,7 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 
-import { ActionButton, BodyText, DraftRecovery, ErrorText, failureMessage, useDraftRecovery, type JobReport, type ScopeChange } from '@/features/shared';
+import { ActionButton, BodyText, DraftRecovery, ErrorText, failureMessage, isDefinitiveFailure, useDraftRecovery, type JobReport, type ScopeChange } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
 import { decideScope, decideSubmission, openAftercare, type CustomerJob, type Submission, type SupportCase } from './customer-activity-repository';
@@ -108,7 +108,14 @@ export function CustomerJobActivity({ userId, job, submissions, cases, changes =
       if (!pendingCase) await deviceStorage.setItem(storageKey, JSON.stringify(item));
       if (!active.current || signal.aborted) throw new Error('Cancelled');
       setPendingCase(item);
-      await openAftercare(userId, job.id, item.key, item.reason, signal);
+      try {
+        await openAftercare(userId, job.id, item.key, item.reason, signal);
+      } catch (error) {
+        if (isDefinitiveFailure(error)) {
+          await deviceStorage.removeItem(storageKey).then(() => { if (active.current) setPendingCase(null); }, () => undefined);
+        }
+        throw error;
+      }
       await deviceStorage.removeItem(storageKey);
       if (active.current) setPendingCase(null);
     }, 'Support case opened. Warranty coverage has not been determined.');

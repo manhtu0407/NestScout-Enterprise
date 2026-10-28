@@ -5,6 +5,8 @@ export { Screen } from './ui/screen';
 export { BodyText, ErrorText, Heading } from './ui/text';
 export { readScopeChanges, type ScopeChange } from './scope-changes';
 export { readJobReports, type JobReport } from './job-reports';
+export { BasisNotice } from './ui/basis-notice';
 export { DraftRecovery } from './ui/draft-recovery';
+export { FIXTURE_BASIS, isFixtureBasis } from './fixture-basis';
 export { useDraftRecovery } from './use-draft-recovery';
 export { WorkflowError, workflowErrorFrom, failureMessage, isDefinitiveFailure } from './workflow-error';

@@ -343,6 +343,10 @@ providers require separate evidence.
 These are local fixture contracts, not commercial dispatch or provider
 contracts. PostgreSQL owns persisted facts. Mutation RPCs derive the actor from
 Auth and use a restricted private function when transaction authority is needed.
+Tables that both participants can read grant only named columns, so no account
+id, idempotency token or private decision reason reaches the other party. Quotes
+and offers carry a basis; the apps label every `local_fixture` quote or offer as
+a test and refuse to accept any other basis.
 
 | Operation | Actor and guard | Atomic result and retry |
 | --- | --- | --- |
@@ -382,6 +386,7 @@ status tool is unavailable.
 | add_workflow_responses migration | Quote rejection and invitation decline | Workflow response pgTAP |
 | create_job_reports migration | Stage-guarded Worker reports with no financial or scheduling effect | Report pgTAP and participant projections |
 | close_workflow_audit_gaps migration | Pause that cannot strand a decision, column-restricted submission reads, fixture provenance on quotes and invitations, audited rate limits | Audit-gap pgTAP, Kael pgTAP and Auth/REST race |
+| expose_fixture_basis_and_hide_counterparty_ids migration | Fixture basis in the Worker offer projection; column-level reads that omit account ids, idempotency tokens and private reasons on shared workflow tables | Counterparty visibility pgTAP and Auth/REST denial checks |
 | Supabase database tests and local integration test | Database ACL and real transaction/API evidence | Canonical isolated stack and test runner |
 | Supabase generated database types | CLI-generated public schema artifact | Local type generation and drift check |
 | Mobile package manifest and lockfile | Pinned native UUID source for durable operation keys | Expo compatibility and mobile checks |
