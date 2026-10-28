@@ -1,10 +1,15 @@
 # Code health evaluation
 
-Status: **advisory baseline and acceptance protocol; no new blocking gate.** Base
-`origin/main` `d87c9d97683c3dccf7cbad67f3434bc7c70f1f97`, measured 2026-10-27 on Windows 11,
-Node.js 24.19.0, npm 11.17.0. This is a task-specific procedure under the sole root
-[policy](../AGENTS.md), not another instruction source, and it grants no authority to
-delete code, merge, push or change CI.
+Status: **advisory baseline and acceptance protocol.** The Knip report and the diff
+reviewer are not part of `check`, CI or the hooks and cannot block anything by themselves.
+Their two test files do join `verify:foundation`, so they run in `check`, CI and the
+pre-push hook, and they pin exact Knip outcomes: a Knip or oxc version bump, including
+one proposed by the weekly npm Dependabot update, fails them until the fixture outcomes
+are reviewed by a person. The baseline table was measured on 2026-10-27 at
+`origin/main` `d87c9d97683c3dccf7cbad67f3434bc7c70f1f97` on Windows 11, Node.js 24.19.0,
+npm 11.17.0; the branch was later rebased onto `33a3e10dd3f1f1740f2ca08e153829f8f29bd9c2`.
+This is a task-specific procedure under the sole root [policy](../AGENTS.md), not another
+instruction source, and it grants no authority to delete code, merge, push or change CI.
 
 The question is whether the repository can tell a safe refactor from an unsafe one
 using public tools and its existing gates, without treating fewer lines as better
@@ -113,6 +118,7 @@ several are exported for tests or as part of a feature's public surface.
 
 | Kind | Item | Location |
 | --- | --- | --- |
+| export | `emptyTree` | `scripts/repository-files.mjs:29`, used only inside its own file at line 38 |
 | export | `classifyIdentityError` | `apps/mobile/src/features/access/auth/supabase-auth-gateway.ts:22` |
 | export | `useAccess` | `apps/mobile/src/features/access/index.ts:8` |
 | type | `CapabilityFailure` | `apps/mobile/src/features/access/capability/capability-repository.ts:5` |
@@ -153,6 +159,15 @@ chosen after seeing them. Every added runtime-entry reference that is not an imp
 (`.mcp.json`, shell, Edge Function, computed `require`) is a false positive, which is
 the dominant risk. **Enforcement is NOT_READY; the tool stays advisory.**
 
+Caveats the numbers carry, reported by a separate read-only review and not corrected in
+the fixtures: the two FN cases and the SQL TN case use subjects that Knip cannot name by
+construction, so recall 6/8 reflects which out-of-scope cases were chosen, not Knip's
+recall on the fixture; the fixture's full report holds five exported items that carry no
+label, and only labeled subjects are classified, so 6/13 is precision over labeled
+subjects, not over everything Knip printed; and the literal and registry dynamic
+`import()` cases are labeled live although the fixture never calls the loader with those
+names. Treat the ratios as descriptive only.
+
 Limits of visibility: SQL and other backend resources, routes consumed by the router,
 configuration-referenced files, shell and JSON launch arguments, Edge Function
 entries and computed dynamic paths are not reliably seen. Any removal touching those
@@ -163,18 +178,29 @@ needs manual evidence.
 `scripts/review-diff.mjs` reads a frozen base-to-head diff (resolved SHAs and the merge
 base) and returns a verdict of `PASS`, `FAIL` or `INSUFFICIENT_EVIDENCE` for each of five
 dimensions. `scripts/review-diff.test.mjs` exercises it on isolated temporary
-repositories, never production modules, with 21 tests:
+repositories, never production modules, with 27 tests:
 
 - test weakening: `it.skip`, `it.only` and a node-test `skip` option fail; a deleted test
-  file fails; a deleted assertion, an altered expected value and a removed test case
-  need justification;
-- skip markers are matched in executable code only. Strings, template text, regular
-  expressions and comments are masked first, using the parsers the hygiene gate already
-  relies on (acorn for JavaScript, the TypeScript native API for TypeScript), so
-  fixture text such as a quoted `it.skip(` is not a disabled test. A real skip beside
-  such a literal, inside a template substitution, with a reason string, with TypeScript
-  annotations or as `describe.only` still fails, and a file that cannot be parsed falls
-  back to the raw count, which can only over-report;
+  file fails, and so does a test file renamed to a name that no longer matches the test
+  pattern; a deleted assertion, an altered expected value and a removed test case need
+  justification;
+- JavaScript and TypeScript test files are analyzed from the syntax tree, parsed with the
+  TypeScript native API, so quoted, templated and commented `it.skip(` text is never
+  counted. Disabled tests are counted for modifier chains (`it.concurrent.skip`,
+  `xit.each`), computed access (`it['skip']`, a dynamic key), aliases and destructuring of
+  the test function, a stored `it.skip`, `skip`, `todo` or `only` options that are not the
+  literal `false`, and `skip()` or `todo()` on the context parameter of a test callback;
+- assertions are the outermost `expect` and `assert` call chains, compared as a whole
+  expression with every control-flow guard around them: an enclosing `if`, loop, `try` or
+  `catch`, `case`, conditional or `&&`, `||`, `??`, and any earlier statement in the block
+  that can return, throw, break or continue. Same-file `const` and `let` values that the
+  expression names (looked up by scope, to three levels) are part of the comparison, so a
+  weakened matcher, an early return, an unreachable branch or a changed expected constant
+  is reported even when the assertion's own line is unchanged. A non-test file that
+  contained an assertion is compared the same way, which covers shared test helpers;
+- a changed test file that cannot be parsed, at either revision, is reported as not
+  comparable and never passes; there is no raw-text fallback for JavaScript or
+  TypeScript. SQL tests keep the earlier line-based comparison;
 - registrations: appending an existing test file to a `check`, `verify:` or `check:`
   script, and extending the assertion that pins that script, is reported as an owner
   review item and not as a scope failure. Dropping a registered test, appending anything
@@ -304,12 +330,33 @@ Rules that follow from the policy:
 - CI needs no model call and no secret. A second session or another connected agent is
   an optional layer; the deterministic dimensions are reproducible without it.
 
-Heuristics to know: disabled-test and declaration counts run on literal-and-comment-masked
-code, but assertion lines are still matched by pattern on raw lines, so a fixture string
-containing an assertion can only over-report, never hide a loss;
-the high-risk path list encodes the areas the owner asked to protect (access control,
-session storage, routes, migrations and policies, policy and tooling files) and is data
-in `scripts/review-diff.mjs`.
+Heuristics to know: the high-risk path list encodes the areas the owner asked to protect
+(access control, session storage, routes, migrations and policies, policy and tooling
+files) and is data in `scripts/review-diff.mjs`.
+
+Known limits of the diff reviewer, found by a separate read-only review of
+`33a3e10..71ceb5d`. The test-weakening gaps it reported (a renamed test file, aliased or
+computed skips, line-based assertion matching) are fixed above, with regression tests.
+The following are open, so a PASS from the deterministic dimensions is not evidence that
+tests are intact:
+
+- the assertion comparison follows same-file values only. Data that reaches an assertion
+  through a callback parameter (for example an `it.each` table), through an import, or
+  through a shadowed `expect` is not compared, and a helper in another file is compared
+  only if that file is changed and contained an assertion before;
+- `reviewer.independent` is the reviewer's own statement. Its evidence paths are not
+  checked against the head, so the flag and the evidence prove nothing about who looked;
+- a removed export counts as moved when any other file exports the same name, and a
+  renamed non-test file is not searched for references to its old path;
+- the high-risk list does not yet cover the Client/Worker mode store, `scripts/tools.json`,
+  `.gitignore`, the phone module and `default-services.ts`; a changed `jest` selection in
+  the mobile manifest is noticed only when the root manifest is also edited;
+- only `check`, `verify:*` and `check:*` scripts are guarded against weakening;
+  attribution and comment rules are checked on added text, not with the canonical gate;
+- an oversized file makes the evaluator throw, and an uncaught exception exits 1, the same
+  code as a FAIL verdict;
+- `--run` executes the head's own scripts with the host environment, so run it in a
+  disposable worktree.
 
 ## Pilot
 

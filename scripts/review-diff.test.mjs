@@ -168,8 +168,8 @@ test('a deliberate test weakening is caught: skipped, deleted, removed or altere
     ['focused test', change('apps/mobile/src/lib/format-total.test.ts', "it('formats fractions'", "it.only('formats fractions'"), FAIL, /disabled tests increased/],
     ['node test skip option', change('scripts/order-state.test.mjs', "test('a valid transition succeeds', () => {", "test('a valid transition succeeds', { skip: true }, () => {"), FAIL, /disabled tests increased/],
     ['deleted test file', api => api.remove('apps/mobile/src/lib/format-total.test.ts'), FAIL, /test file deleted/],
-    ['deleted assertion', change('apps/mobile/src/lib/format-total.test.ts', "    expect(formatTotal(1234)).toBe('d12.34');\n", ''), INSUFFICIENT, /assertion line\(s\) removed or altered/],
-    ['altered expected result', change('apps/mobile/src/lib/format-total.test.ts', "toBe('d12.34')", "toBe('d12.35')"), INSUFFICIENT, /assertion line\(s\) removed or altered/],
+    ['deleted assertion', change('apps/mobile/src/lib/format-total.test.ts', "    expect(formatTotal(1234)).toBe('d12.34');\n", ''), INSUFFICIENT, /assertion\(s\) removed, altered or moved behind control flow/],
+    ['altered expected result', change('apps/mobile/src/lib/format-total.test.ts', "toBe('d12.34')", "toBe('d12.35')"), INSUFFICIENT, /assertion\(s\) removed, altered or moved behind control flow/],
     ['removed test case', change('apps/mobile/src/lib/format-total.test.ts', "  it('formats fractions', () => {\n    expect(formatTotal(1234)).toBe('d12.34');\n  });\n", ''), INSUFFICIENT, /test declarations decreased/],
   ];
   for (const [label, mutate, expected, pattern] of cases) {
@@ -208,7 +208,7 @@ test('skip markers inside strings, templates and comments are not disabled tests
   }
 });
 
-test('real disabled tests are still caught beside literal fixtures, in code positions, and in unparseable files', () => {
+test('real disabled tests are still caught beside literal fixtures and in code positions', () => {
   const literals = "const fixtureText = \"it.skip('a')\";\n";
   const cases = [
     ['real skip beside a literal', appendTo('scripts/order-state.test.mjs', `${literals}test.skip('quote " in the name', () => {});\n`), /from 0 to 1/],
@@ -216,7 +216,6 @@ test('real disabled tests are still caught beside literal fixtures, in code posi
     ['skip with a reason string', appendTo('scripts/order-state.test.mjs', "test('n', { skip: 'later' }, () => {});\n"), /from 0 to 1/],
     ['typed TypeScript skip', appendTo('apps/mobile/src/lib/format-total.test.ts', `${literals}it.skip('typed', (): void => {});\n`), /from 0 to 1/],
     ['focused suite', appendTo('apps/mobile/src/lib/format-total.test.ts', "describe.only('focused', () => {});\n"), /from 0 to 1/],
-    ['unparseable file falls back to the raw count', appendTo('scripts/order-state.test.mjs', `${literals}const broken = ;\n`), /from 0 to 1/],
   ];
   for (const [label, mutate, pattern] of cases) {
     const packet = review(mutate, { scope: ['scripts/**', 'apps/mobile/src/lib/**'] });
@@ -225,6 +224,125 @@ test('real disabled tests are still caught beside literal fixtures, in code posi
   }
   const added = review(appendTo('scripts/order-state.test.mjs', `${literals}test.skip('x', () => {});\n`), { scope: ['scripts/**'] });
   assert.equal(added.dimensions.testIntegrity.findings.filter(line => /disabled tests increased/.test(line)).length, 1);
+});
+
+const extraTypedTest = "it('extra', () => {\n  expect(formatTotal(1)).toBe('d0.01');\n});\n";
+const extraNodeTest = "test('extra', () => {\n  assert.equal(1, 1);\n});\n";
+
+test('disabled tests are found through computed access, chained modifiers, aliases, options and context calls even when new tests offset the count', () => {
+  const typed = 'apps/mobile/src/lib/format-total.test.ts';
+  const node = 'scripts/order-state.test.mjs';
+  const cases = [
+    ['computed skip', typed, "it['skip']('hidden', () => {});\n"],
+    ['concurrent skip', typed, "it.concurrent.skip('hidden', () => {});\n"],
+    ['skipped table', typed, "xit.each([1])('hidden', () => {});\n"],
+    ['skip through destructuring', typed, "const { skip } = it;\nskip('hidden', () => {});\n"],
+    ['skip through a renamed destructuring', typed, "const { skip: park } = it;\npark('hidden', () => {});\n"],
+    ['alias of the test function', typed, "const run = it;\nrun.skip('hidden', () => {});\n"],
+    ['stored skip', typed, "const quarantined = it.skip;\nquarantined('hidden', () => {});\n"],
+    ['dynamic modifier', typed, "describe[process.env.MODE]('hidden', () => {});\n"],
+    ['conditional skip option', node, "test('hidden', { skip: process.platform !== 'none' }, () => {});\n"],
+    ['skip option from a variable', node, "const parked = true;\ntest('hidden', { skip: parked }, () => {});\n"],
+    ['todo option', node, "test('hidden', { todo: true }, () => {});\n"],
+    ['context skip', node, "test('hidden', t => {\n  t.skip();\n});\n"],
+    ['context todo with a reason', node, "test('hidden', async context => {\n  context.todo('later');\n});\n"],
+  ];
+  for (const [label, file, text] of cases) {
+    const packet = review(appendTo(file, `${text}${file === typed ? extraTypedTest : extraNodeTest}`), { scope: ['scripts/**', 'apps/mobile/src/lib/**'] });
+    assert.equal(packet.dimensions.testIntegrity.verdict, FAIL, label);
+    assert.match(disabledCount(packet), /disabled tests increased/, label);
+    assert.notEqual(packet.verdict, PASS, label);
+  }
+  const harmless = [
+    ['an explicit false option', node, "test('visible', { skip: false }, () => {});\n"],
+    ['a table of enabled tests', typed, "it.each([1, 2])('visible %d', value => {\n  expect(formatTotal(value)).toBeDefined();\n});\n"],
+    ['a member named like a modifier on another object', typed, "const registry = { skip: 1 };\nexpect(registry.skip).toBe(1);\n"],
+  ];
+  for (const [label, file, text] of harmless) {
+    const packet = review(appendTo(file, text), { scope: ['scripts/**', 'apps/mobile/src/lib/**'] });
+    assert.equal(packet.dimensions.testIntegrity.verdict, PASS, label);
+  }
+});
+
+test('a test file renamed to a name that no test runner selects counts as a deleted test', () => {
+  const renamed = review(api => api.run(['mv', 'apps/mobile/src/lib/format-total.test.ts', 'apps/mobile/src/lib/format-total-checks.ts']));
+  assert.equal(renamed.dimensions.testIntegrity.verdict, FAIL);
+  assert.match(renamed.dimensions.testIntegrity.findings.join('\n'), /format-total\.test\.ts: test file renamed to apps\/mobile\/src\/lib\/format-total-checks\.ts/);
+  assert.notEqual(renamed.verdict, PASS);
+
+  const stillTest = review(api => api.run(['mv', 'apps/mobile/src/lib/format-total.test.ts', 'apps/mobile/src/lib/format-totals.test.ts']));
+  assert.equal(stillTest.dimensions.testIntegrity.verdict, PASS);
+});
+
+const wholeExpectation = [
+  "import { formatTotal } from './format-total';",
+  '',
+  "describe('formatTotal', () => {",
+  "  it('formats whole amounts', () => {",
+  "    const wholeExpected = 'd5.00';",
+  '    expect(formatTotal(500))',
+  '      .toBe(wholeExpected);',
+  '  });',
+  "  it('formats fractions', () => {",
+  "    const wholeExpected = 'd12.34';",
+  '    expect(formatTotal(1234)).toBe(wholeExpected);',
+  '  });',
+  '});',
+  '',
+].join('\n');
+const assertTotalHelper = "import { formatTotal } from './format-total';\n\nexport function checkTotal(cents: number, expected: string): void {\n  expect(formatTotal(cents)).toBe(expected);\n}\n";
+const withBase = (file, base, head) => {
+  const { repository } = fixture(api => api.write(file, head), { files: { [file]: base } });
+  return reviewDiff({ repository, base: 'main', scope });
+};
+
+test('assertions that are weakened without changing a matched line are reported: control flow, matchers, constants and shared helpers', () => {
+  const file = 'apps/mobile/src/lib/format-total.test.ts';
+  const cases = [
+    ['early return', change(file, "    expect(formatTotal(500)).toBe('d5.00');", "    return;\n    expect(formatTotal(500)).toBe('d5.00');")],
+    ['conditional return', change(file, "    expect(formatTotal(500)).toBe('d5.00');", "    if (process.env.FAST) return;\n    expect(formatTotal(500)).toBe('d5.00');")],
+    ['wrapped in an unreachable branch', change(file, "    expect(formatTotal(500)).toBe('d5.00');", "    if (Date.now() < 0) {\n      expect(formatTotal(500)).toBe('d5.00');\n    }")],
+    ['short-circuited', change(file, "    expect(formatTotal(500)).toBe('d5.00');", "    process.env.SLOW && expect(formatTotal(500)).toBe('d5.00');")],
+    ['moved into a catch handler', change(file, "    expect(formatTotal(500)).toBe('d5.00');", "    try {\n      formatTotal(500);\n    } catch {\n      expect(formatTotal(500)).toBe('d5.00');\n    }")],
+    ['looped over nothing', change(file, "    expect(formatTotal(500)).toBe('d5.00');", "    for (const unused of []) {\n      expect(formatTotal(500)).toBe('d5.00');\n    }")],
+  ];
+  for (const [label, mutate] of cases) {
+    const packet = review(mutate);
+    assert.equal(packet.dimensions.testIntegrity.verdict, INSUFFICIENT, label);
+    assert.match(packet.dimensions.testIntegrity.findings.join('\n'), /assertion\(s\) removed, altered or moved behind control flow/, label);
+    assert.notEqual(packet.verdict, PASS, label);
+  }
+
+  const multiLine = withBase(file, wholeExpectation, wholeExpectation.replace('      .toBe(wholeExpected);', '      .toBeDefined();'));
+  assert.equal(multiLine.dimensions.testIntegrity.verdict, INSUFFICIENT, 'multi-line matcher weakened');
+  assert.match(multiLine.dimensions.testIntegrity.findings.join('\n'), /1 assertion\(s\) removed, altered or moved/);
+
+  const constant = withBase(file, wholeExpectation, wholeExpectation.replace("const wholeExpected = 'd5.00';", 'const wholeExpected = formatTotal(500);'));
+  assert.equal(constant.dimensions.testIntegrity.verdict, INSUFFICIENT, 'expected value made self-referential');
+
+  const helper = 'apps/mobile/src/lib/assert-total.ts';
+  const loosened = withBase(helper, assertTotalHelper, assertTotalHelper.replace('  expect(formatTotal(cents)).toBe(expected);\n', '  formatTotal(cents);\n'));
+  assert.equal(loosened.dimensions.testIntegrity.verdict, INSUFFICIENT, 'assertion removed from a shared helper');
+  assert.match(loosened.dimensions.testIntegrity.findings.join('\n'), /assert-total\.ts: 1 assertion\(s\) removed/);
+});
+
+test('behavior-neutral edits to tests are not assertion findings: formatting, added tests with the same local names, moved blocks', () => {
+  const file = 'apps/mobile/src/lib/format-total.test.ts';
+  const reflowed = withBase(file, wholeExpectation, wholeExpectation.replace('    expect(formatTotal(500))\n      .toBe(wholeExpected);', '    expect(formatTotal(500)).toBe(wholeExpected);'));
+  assert.equal(reflowed.dimensions.testIntegrity.verdict, PASS, 'reformatted assertion');
+
+  const added = withBase(file, wholeExpectation, wholeExpectation.replace('});\n', "  it('formats zero', () => {\n    const wholeExpected = 'd0.00';\n    expect(formatTotal(0)).toBe(wholeExpected);\n  });\n});\n"));
+  assert.equal(added.dimensions.testIntegrity.verdict, PASS, 'new test with a repeated local name');
+
+  const untouched = review(api => api.write('apps/mobile/src/lib/format-total.ts', formatTotal + 'export const unitLabel = currency;\n'));
+  assert.equal(untouched.dimensions.testIntegrity.verdict, PASS);
+});
+
+test('a test file that cannot be parsed is reported as not comparable and never passes', () => {
+  const packet = review(appendTo('scripts/order-state.test.mjs', "const fixtureText = \"it.skip('a')\";\nconst broken = ;\ntest.skip('x', () => {});\n"), { scope: ['scripts/**'] });
+  assert.equal(packet.dimensions.testIntegrity.verdict, INSUFFICIENT);
+  assert.match(packet.dimensions.testIntegrity.findings.join('\n'), /scripts\/order-state\.test\.mjs: tests could not be compared: Invalid syntax/);
+  assert.notEqual(packet.verdict, PASS);
 });
 
 const registryTests = ['scripts/order-state.test.mjs'];
@@ -251,7 +369,7 @@ test('registering an existing new test file in the script and its pin needs owne
   assert.match(packet.dimensions.scope.findings.join('\n'), /registers test file\(s\) scripts\/new-check\.test\.mjs; owner review must confirm/);
   assert.equal(packet.dimensions.testIntegrity.verdict, INSUFFICIENT);
   assert.match(packet.dimensions.testIntegrity.findings.join('\n'), /assertion extended with registered test file\(s\) scripts\/new-check\.test\.mjs/);
-  assert.doesNotMatch(packet.dimensions.testIntegrity.findings.join('\n'), /removed or altered/);
+  assert.doesNotMatch(packet.dimensions.testIntegrity.findings.join('\n'), /removed, altered or moved/);
   assert.notEqual(packet.verdict, PASS);
   assert.notEqual(packet.verdict, FAIL);
 });
@@ -287,7 +405,7 @@ test('registration changes that drop, hide or invent a test are scope or test-in
     api.write('scripts/registry-pin.test.mjs', registryPin(registryTests, ' --no-fail'));
   });
   assert.equal(hidden.dimensions.testIntegrity.verdict, INSUFFICIENT);
-  assert.match(hidden.dimensions.testIntegrity.findings.join('\n'), /1 assertion line\(s\) removed or altered/);
+  assert.match(hidden.dimensions.testIntegrity.findings.join('\n'), /1 assertion\(s\) removed, altered or moved behind control flow/);
   const pinOnly = registryReview(api => {
     api.write('scripts/new-check.test.mjs', newTest);
     api.write('scripts/registry-pin.test.mjs', registryPin(extended));

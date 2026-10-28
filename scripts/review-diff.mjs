@@ -2,11 +2,10 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse as parseJavaScript, tokTypes } from 'acorn';
 import { API } from 'typescript/unstable/sync';
 import { createVirtualFileSystem } from 'typescript/unstable/fs';
 import { SyntaxKind } from 'typescript/unstable/ast';
-import { checkAttribution, checkPath, commentRecords } from './check-hygiene.mjs';
+import { checkAttribution, checkPath } from './check-hygiene.mjs';
 import { git } from './repository-files.mjs';
 import { root } from './tool-path.mjs';
 
@@ -35,31 +34,78 @@ const textFile = /\.(?:[cm]?[jt]sx?|json|md|ya?ml|sql|toml|jsonc)$/;
 const disabledMarker = /(?:^|[^\w.])(?:(?:it|test|describe)\.(?:skip|only|todo|failing)\b|(?:xit|xtest|xdescribe|fit|fdescribe)\s*\()|\b(?:skip|todo)\s*:\s*(?:true|['"`])|\bt\.(?:skip|todo)\s*\(/g;
 const testDeclaration = /(?:^|[^\w.])(?:it|test)(?:\.(?:each|concurrent))?\s*(?:\(|`)/g;
 const assertion = /(?:^|[^\w.])(?:expect\s*\(|assert(?:\.\w+)?\s*\(|t\.assert\w*\s*\(|(?:is|isnt|ok|throws_ok|lives_ok|results_eq|results_ne|cmp_ok|is_empty|isnt_empty|policies_are|has_\w+|hasnt_\w+)\s*\()/;
-const dependencyKeys = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies', 'overrides', 'workspaces'];
+const guardsAssertions = /\b(?:expect|assert)\b/;
+const dependencyKeys =['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies', 'overrides', 'workspaces'];
 const exportDeclaration = /^export\s+(?:declare\s+)?(?:default\s+)?(?:abstract\s+)?(?:async\s+)?(?:function\*?|class|const|let|var|type|interface|enum)\s+([A-Za-z_$][\w$]*)/gm;
 const exportList = /^export\s*(?:type\s*)?\{([^}]*)\}/gm;
 
 const count = (text, pattern) => [...text.matchAll(pattern)].length;
 
-const stringKinds = new Set([SyntaxKind.StringLiteral]);
-const literalKinds = new Set([SyntaxKind.RegularExpressionLiteral, SyntaxKind.JsxText, SyntaxKind.NoSubstitutionTemplateLiteral,
-  SyntaxKind.TemplateHead, SyntaxKind.TemplateMiddle, SyntaxKind.TemplateTail]);
+const testRoots = new Set(['it', 'test', 'describe', 'xit', 'xtest', 'xdescribe', 'fit', 'fdescribe']);
+const declarationRoots = new Set(['it', 'test', 'xit', 'xtest', 'fit']);
+const disabledRoots = new Set(['xit', 'xtest', 'xdescribe', 'fit', 'fdescribe']);
+const disabledMembers = new Set(['skip', 'only', 'todo', 'failing']);
+const contextMembers = new Set(['skip', 'todo']);
+const optionNames = new Set(['skip', 'todo', 'only']);
+const assertionRoots = new Set(['expect', 'assert']);
+const chainKinds = new Set([SyntaxKind.CallExpression, SyntaxKind.PropertyAccessExpression, SyntaxKind.ElementAccessExpression,
+  SyntaxKind.ParenthesizedExpression, SyntaxKind.NonNullExpression, SyntaxKind.AsExpression, SyntaxKind.TaggedTemplateExpression]);
+const aliasKinds = new Set([SyntaxKind.ParenthesizedExpression, SyntaxKind.NonNullExpression, SyntaxKind.AsExpression]);
+const functionKinds = new Set([SyntaxKind.ArrowFunction, SyntaxKind.FunctionExpression, SyntaxKind.FunctionDeclaration, SyntaxKind.MethodDeclaration,
+  SyntaxKind.Constructor, SyntaxKind.GetAccessor, SyntaxKind.SetAccessor]);
+const callbackKinds = new Set([SyntaxKind.ArrowFunction, SyntaxKind.FunctionExpression]);
+const scopeKinds = new Set([...functionKinds, SyntaxKind.Block, SyntaxKind.SourceFile, SyntaxKind.ModuleBlock, SyntaxKind.ForStatement,
+  SyntaxKind.ForInStatement, SyntaxKind.ForOfStatement]);
+const exitKinds = new Set([SyntaxKind.ReturnStatement, SyntaxKind.ThrowStatement, SyntaxKind.BreakStatement, SyntaxKind.ContinueStatement]);
+const guardKinds = new Set([SyntaxKind.IfStatement, SyntaxKind.ConditionalExpression, SyntaxKind.ForStatement, SyntaxKind.ForInStatement,
+  SyntaxKind.ForOfStatement, SyntaxKind.WhileStatement, SyntaxKind.DoStatement, SyntaxKind.TryStatement, SyntaxKind.CatchClause,
+  SyntaxKind.CaseClause, SyntaxKind.DefaultClause]);
+const blockKinds = new Set([SyntaxKind.Block, SyntaxKind.SourceFile, SyntaxKind.ModuleBlock]);
+const logicalOperators = new Set([SyntaxKind.AmpersandAmpersandToken, SyntaxKind.BarBarToken, SyntaxKind.QuestionQuestionToken]);
+const labelKinds = new Set([SyntaxKind.PropertyAccessExpression, SyntaxKind.PropertyAssignment]);
+const loopHeaderKinds = new Set([SyntaxKind.ForOfStatement, SyntaxKind.ForInStatement]);
+const emptyStructure = () => ({ disabled: 0, declarations: 0, assertions: [] });
 
-function javaScriptLiterals(file, text) {
-  const ranges = [];
-  parseJavaScript(text, {
-    ecmaVersion: 'latest', sourceType: file.endsWith('.cjs') ? 'script' : 'module',
-    onToken: token => {
-      if (token.type === tokTypes.string) ranges.push([token.start + 1, token.end - 1]);
-      else if (token.type === tokTypes.template || token.type === tokTypes.regexp) ranges.push([token.start, token.end]);
-    },
-  });
-  return ranges;
+const squash = value => value.replace(/\s+/g, ' ').replace(/ ?([.,;()[\]{}]) ?/g, '$1').trim();
+const sameNode = (left, right) => left.kind === right.kind && left.pos === right.pos && left.end === right.end;
+const chainTarget = node => (node.kind === SyntaxKind.TaggedTemplateExpression ? node.tag : node.expression);
+
+function chainOf(start) {
+  const members = [];
+  for (let node = start; node; node = chainTarget(node)) {
+    if (node.kind === SyntaxKind.Identifier) return { root: node.text, members };
+    if (node.kind === SyntaxKind.PropertyAccessExpression) members.push(node.name.text);
+    else if (node.kind === SyntaxKind.ElementAccessExpression) {
+      const key = node.argumentExpression;
+      members.push(key.kind === SyntaxKind.StringLiteral || key.kind === SyntaxKind.NoSubstitutionTemplateLiteral ? key.text : null);
+    } else if (!chainKinds.has(node.kind)) return null;
+  }
+  return null;
 }
 
-function typeScriptLiterals(file, text) {
+const continuesChain = node => Boolean(node.parent && chainKinds.has(node.parent.kind) && sameNode(chainTarget(node.parent), node));
+
+function aliasesTestRoot(node) {
+  let current = node;
+  while (aliasKinds.has(current.kind)) current = current.expression;
+  return current.kind === SyntaxKind.Identifier && testRoots.has(current.text);
+}
+
+const boundNames = name => (name.kind === SyntaxKind.Identifier ? [name.text] : name.elements.flatMap(element => (element.name ? boundNames(element.name) : [])));
+
+function exits(node) {
+  if (exitKinds.has(node.kind)) return true;
+  if (functionKinds.has(node.kind)) return false;
+  let found = false;
+  node.forEachChild(child => {
+    if (exits(child)) found = true;
+  });
+  return found;
+}
+
+function withSource(file, text, use) {
   const directory = path.resolve(root, '.cache/review-diff-types').replaceAll('\\', '/');
-  const sourcePath = `${directory}/input${file.match(/(?:\.d)?\.(?:[cm]?ts|tsx)$/)[0]}`;
+  const sourcePath = `${directory}/input${/x$/.test(file) ? '.tsx' : '.ts'}`;
   const configPath = `${directory}/tsconfig.json`;
   const api = new API({
     cwd: root,
@@ -71,35 +117,119 @@ function typeScriptLiterals(file, text) {
   try {
     const program = api.updateSnapshot({ openProjects: [configPath] }).getProjects()[0]?.program;
     const source = program?.getSourceFile(sourcePath);
-    if (!source || program.getSyntacticDiagnostics(sourcePath).length) throw new Error(`Invalid TypeScript syntax in ${file}.`);
-    const ranges = [];
-    const visit = node => {
-      if (stringKinds.has(node.kind)) ranges.push([node.getStart(source) + 1, node.end - 1]);
-      else if (literalKinds.has(node.kind)) ranges.push([node.getStart(source), node.end]);
-      node.forEachChild(visit);
-    };
-    visit(source);
-    return ranges;
+    if (!source || program.getSyntacticDiagnostics(sourcePath).length) throw new Error(`Invalid syntax in ${file}.`);
+    return use(source);
   } finally {
     api.close();
   }
 }
 
-export function executableText(file, text) {
-  const grammar = /\.[cm]?js$/.test(file) ? javaScriptLiterals : /\.(?:[cm]?ts|tsx)$/.test(file) ? typeScriptLiterals : null;
-  if (!grammar) return text;
-  let ranges;
-  try {
-    ranges = [...grammar(file, text), ...commentRecords(file, text).map(record => [record.start, record.start + record.text.length])];
-  } catch {
-    return text;
-  }
-  const characters = text.split('');
-  for (const [start, end] of ranges) {
-    for (let index = start; index < end; index++) if (characters[index] !== '\n' && characters[index] !== '\r') characters[index] = ' ';
-  }
-  return characters.join('');
+function testStructure(file, text) {
+  if (!text.trim()) return emptyStructure();
+  return withSource(file, text, source => {
+    const nodes = [];
+    const collect = node => {
+      nodes.push(node);
+      node.forEachChild(collect);
+    };
+    collect(source);
+    const slice = node => squash(text.slice(node.getStart(source), node.end));
+
+    const contexts = new Set();
+    for (const node of nodes) {
+      if (node.kind !== SyntaxKind.CallExpression || !testRoots.has(chainOf(node)?.root)) continue;
+      for (const argument of node.arguments.filter(candidate => callbackKinds.has(candidate.kind))) {
+        for (const parameter of argument.parameters) if (parameter.name.kind === SyntaxKind.Identifier) contexts.add(parameter.name.text);
+      }
+    }
+
+    const declared = new Map();
+    for (const node of nodes) {
+      if (node.kind !== SyntaxKind.VariableDeclaration) continue;
+      const header = node.parent?.parent;
+      const value = node.initializer ?? (header && loopHeaderKinds.has(header.kind) ? header.expression : null);
+      if (!value) continue;
+      let scope = node.parent;
+      while (scope && !scopeKinds.has(scope.kind)) scope = scope.parent;
+      for (const name of boundNames(node.name)) declared.set(name, [...(declared.get(name) ?? []), { scope, value }]);
+    }
+    const lookup = identifier => {
+      for (let scope = identifier.parent; scope; scope = scope.parent) {
+        const entry = (declared.get(identifier.text) ?? []).find(candidate => candidate.scope && sameNode(candidate.scope, scope));
+        if (entry) return entry.value;
+      }
+      return null;
+    };
+    const identifiersIn = node => {
+      const found = [];
+      const visit = child => {
+        if (child.kind === SyntaxKind.Identifier && !(labelKinds.has(child.parent?.kind) && sameNode(child.parent.name, child))) found.push(child);
+        child.forEachChild(visit);
+      };
+      visit(node);
+      return found;
+    };
+    const resolved = call => {
+      const lines = [];
+      const seen = new Set();
+      let frontier = identifiersIn(call);
+      for (let depth = 0; depth < 3 && frontier.length; depth++) {
+        const next = [];
+        for (const identifier of frontier) {
+          const value = lookup(identifier);
+          if (!value || seen.has(`${identifier.text}@${value.pos}`)) continue;
+          seen.add(`${identifier.text}@${value.pos}`);
+          lines.push(`${identifier.text}=${slice(value)}`);
+          next.push(...identifiersIn(value));
+        }
+        frontier = next;
+      }
+      return lines.sort();
+    };
+    const guards = node => {
+      const entries = [];
+      let child = node;
+      for (let ancestor = node.parent; ancestor; child = ancestor, ancestor = ancestor.parent) {
+        if (guardKinds.has(ancestor.kind) || (ancestor.kind === SyntaxKind.BinaryExpression && logicalOperators.has(ancestor.operatorToken.kind))) {
+          const prefix = squash(text.slice(ancestor.getStart(source), child.getStart(source)));
+          if (prefix) entries.push(`when ${prefix}`);
+        }
+        if (blockKinds.has(ancestor.kind)) {
+          for (const statement of ancestor.statements) if (statement.end <= child.pos && exits(statement)) entries.push(`after ${slice(statement)}`);
+        }
+      }
+      return entries;
+    };
+
+    const structure = emptyStructure();
+    for (const node of nodes) {
+      if (node.kind === SyntaxKind.VariableDeclaration && node.initializer && aliasesTestRoot(node.initializer)) structure.disabled++;
+      if (node.kind === SyntaxKind.PropertyAssignment || node.kind === SyntaxKind.ShorthandPropertyAssignment) {
+        const call = node.parent?.kind === SyntaxKind.ObjectLiteralExpression ? node.parent.parent : null;
+        const switchedOff = node.kind === SyntaxKind.PropertyAssignment && node.initializer.kind === SyntaxKind.FalseKeyword;
+        if (call?.kind === SyntaxKind.CallExpression && testRoots.has(chainOf(call)?.root) && optionNames.has(node.name.text) && !switchedOff) structure.disabled++;
+      }
+      if (!chainKinds.has(node.kind) || continuesChain(node)) continue;
+      const chain = chainOf(node);
+      if (!chain) continue;
+      const { root, members } = chain;
+      if (disabledRoots.has(root) || (testRoots.has(root) && members.some(member => member === null || disabledMembers.has(member)))
+        || (contexts.has(root) && members.some(member => contextMembers.has(member)))) structure.disabled++;
+      if (node.kind !== SyntaxKind.CallExpression) continue;
+      if (declarationRoots.has(root)) structure.declarations++;
+      if (assertionRoots.has(root) || (contexts.has(root) && members.some(member => member?.startsWith('assert')))) {
+        structure.assertions.push([slice(node), ...resolved(node), ...guards(node)].join(' | '));
+      }
+    }
+    return structure;
+  });
 }
+
+const legacyStructure = text => ({
+  disabled: count(text, disabledMarker),
+  declarations: count(text, testDeclaration),
+  assertions: lineSet(text).filter(line => assertion.test(line)),
+});
 const lineSet = text => text.split(/\r?\n/).map(line => line.trim().replace(/\s+/g, ' ')).filter(Boolean);
 
 function multiset(lines) {
@@ -108,19 +238,18 @@ function multiset(lines) {
   return counts;
 }
 
-function missingLines(before, after, keep = () => true) {
-  const remaining = multiset(lineSet(after));
+function missingItems(before, after) {
+  const remaining = multiset(after);
   const missing = [];
-  for (const line of lineSet(before)) {
-    if (!keep(line)) continue;
-    const available = remaining.get(line) ?? 0;
-    if (available > 0) remaining.set(line, available - 1);
-    else missing.push(line);
+  for (const item of before) {
+    const available = remaining.get(item) ?? 0;
+    if (available > 0) remaining.set(item, available - 1);
+    else missing.push(item);
   }
   return missing;
 }
 
-const addedText = (before, after) => missingLines(after, before).join('\n');
+const addedText = (before, after) => missingItems(lineSet(after), lineSet(before)).join('\n');
 
 export function exportedNames(text) {
   const names = new Set([...text.matchAll(exportDeclaration)].map(match => match[1]));
@@ -253,6 +382,9 @@ function testDimension(repository, files, mergeBase, head, packages) {
       failed.push(`${fromPath}: test file deleted.`);
       continue;
     }
+    if (file.from && testFile.test(file.from) && !testFile.test(file.path)) {
+      failed.push(`${file.from}: test file renamed to ${file.path}, which is not a test file name.`);
+    }
     if (file.status === 'A' || file.from) {
       try { checkPath(file.path); } catch (error) { failed.push(`${file.path}: ${error.message}`); }
     }
@@ -260,24 +392,29 @@ function testDimension(repository, files, mergeBase, head, packages) {
     const before = file.status === 'A' ? '' : readAt(repository, mergeBase, fromPath);
     const after = readAt(repository, head, file.path);
     try { checkAttribution(addedText(before, after), file.path); } catch (error) { failed.push(`${file.path}: ${error.message}`); }
-    if (!testFile.test(file.path)) continue;
-    const codeBefore = executableText(fromPath, before);
-    const codeAfter = executableText(file.path, after);
-    const disabledBefore = count(codeBefore, disabledMarker);
-    const disabledAfter = count(codeAfter, disabledMarker);
-    if (disabledAfter > disabledBefore) failed.push(`${file.path}: disabled tests increased from ${disabledBefore} to ${disabledAfter}.`);
-    const declaredBefore = count(codeBefore, testDeclaration);
-    const declaredAfter = count(codeAfter, testDeclaration);
-    if (declaredAfter < declaredBefore) findings.push(`${file.path}: test declarations decreased from ${declaredBefore} to ${declaredAfter}.`);
-    const added = missingLines(after, before);
+    const isTest = testFile.test(file.path) || testFile.test(fromPath);
+    const structured = sourceFile.test(file.path);
+    if (!isTest && !(structured && guardsAssertions.test(before))) continue;
+    let was;
+    let now;
+    try {
+      was = structured ? testStructure(fromPath, before) : legacyStructure(before);
+      now = structured ? testStructure(file.path, after) : legacyStructure(after);
+    } catch (error) {
+      findings.push(`${file.path}: tests could not be compared: ${error.message}`);
+      continue;
+    }
+    if (isTest && now.disabled > was.disabled) failed.push(`${file.path}: disabled tests increased from ${was.disabled} to ${now.disabled}.`);
+    if (isTest && now.declarations < was.declarations) findings.push(`${file.path}: test declarations decreased from ${was.declarations} to ${now.declarations}.`);
+    const added = missingItems(now.assertions, was.assertions);
     const removed = [];
-    for (const line of missingLines(before, after, candidate => assertion.test(candidate))) {
-      const extras = added.map(candidate => appendedTokens(lineTokens(line), [lineTokens(candidate)])).find(Boolean);
-      if (!extras?.every(token => testFile.test(token))) removed.push(line);
+    for (const item of missingItems(was.assertions, now.assertions)) {
+      const extras = added.map(candidate => appendedTokens(lineTokens(item), [lineTokens(candidate)])).find(Boolean);
+      if (!extras?.every(token => testFile.test(token))) removed.push(item);
       else if (extras.some(token => !existsAt(repository, head, token))) failed.push(`${file.path}: assertion registers a test file that does not exist at the head: ${extras.join(', ')}`);
       else findings.push(`${file.path}: assertion extended with registered test file(s) ${extras.join(', ')}; owner review must confirm the original protection is intact.`);
     }
-    if (removed.length) findings.push(`${file.path}: ${removed.length} assertion line(s) removed or altered, first: ${removed[0]}`);
+    if (removed.length) findings.push(`${file.path}: ${removed.length} assertion(s) removed, altered or moved behind control flow, first: ${removed[0].slice(0, 200)}`);
   }
   if (packages && packages.dependencies.length === 0 && files.some(file => file.path === 'apps/mobile/package.json')) {
     const jest = revision => JSON.stringify(JSON.parse(readAt(repository, revision, 'apps/mobile/package.json')).jest);
