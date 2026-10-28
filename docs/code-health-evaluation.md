@@ -126,6 +126,7 @@ several are exported for tests or as part of a feature's public surface.
 | type | `AccessNotice` | `apps/mobile/src/features/access/state/access-reducer.ts:5` |
 | type | `SessionEventType` | `apps/mobile/src/features/access/state/access-reducer.ts:29` |
 | type | `WorkerStatus` | `apps/mobile/src/features/access/state/access-reducer.ts:204` |
+| binary | `ssh-keygen` | `scripts/review-diff.test.mjs`, a host tool that generates throwaway signing keys for the attestation tests; not a dependency |
 
 ## Evaluating the evaluators
 

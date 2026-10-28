@@ -72,7 +72,7 @@ export function describeModules(entries) {
   return withSources(entries, sources => sources.map((source, index) => (source ? describe(source, entries[index].text) : null)));
 }
 
-export function candidatePaths(target) {
+function candidatePaths(target) {
   const swapped = [...sourceSwaps].flatMap(([from, replacements]) => (target.endsWith(from) ? replacements.map(replacement => target.slice(0, -from.length) + replacement) : []));
   return [target, ...swapped, ...extensions.map(extension => target + extension), ...extensions.map(extension => `${target}/index${extension}`)];
 }
