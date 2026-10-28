@@ -2,11 +2,12 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { API } from 'typescript/unstable/sync';
-import { createVirtualFileSystem } from 'typescript/unstable/fs';
 import { SyntaxKind } from 'typescript/unstable/ast';
 import { checkAttribution, checkPath } from './check-hygiene.mjs';
 import { git } from './repository-files.mjs';
+import { verifyAttestation } from './review-attestation.mjs';
+import { describeModules, resolveModule } from './review-modules.mjs';
+import { boundNames, sameNode, squash, withSource } from './review-syntax.mjs';
 import { root } from './tool-path.mjs';
 
 export const PASS = 'PASS';
@@ -20,14 +21,20 @@ const highRisk = [
   /^\.(?:github|githooks|agents|claude|codex|cursor)\//,
   /^\.mcp\.json$/,
   /^package(?:-lock)?\.json$/,
-  /^supabase\/(?:migrations\/|tests\/|config\.toml$|seed\.sql$)/,
-  /^scripts\/(?:check-|verify-|scan-|install-|tool-|run-tests|test-integrity|repository-files|git-environment)/,
-  /^apps\/mobile\/(?:package|app|tsconfig)\.json$/,
-  /^apps\/mobile\/eslint\.config\.mjs$/,
+  /^supabase\//,
+  /^scripts\//,
+  /^apps\/mobile\/(?:package|app)\.json$/,
   /^apps\/mobile\/src\/app\//,
-  /^apps\/mobile\/src\/features\/access\/(?:auth|capability|routing|state)\//,
+  /^apps\/mobile\/src\/features\/access\//,
   /^apps\/mobile\/src\/lib\/(?:config|chunked-storage|supabase-client|device-storage)\.ts$/,
+  /(?:^|\/)(?:jest|babel|metro|eslint|knip|stryker|vitest|playwright)\.config\.[^/]+$/,
+  /(?:^|\/)(?:tsconfig(?:\.[^/]+)?\.json|\.npmrc|\.env(?:\.[^/]+)?|\.gitignore|\.gitattributes|\.editorconfig|\.nvmrc|\.node-version|\.markdownlint-cli2\.[^/]+)$/,
 ];
+const authorizationWord = /^(?:roles?|capabilit(?:y|ies)|permissions?|grants?|authori[sz]\w*|authenticat\w*|polic(?:y|ies)|rls|credentials?|secrets?)$/;
+const authorizationTerm = text => text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).find(word => authorizationWord.test(word));
+const configurationFile = /(?:^|\/)(?:(?:jest|vitest|playwright)\.config\.[^/]+|\.mocharc[^/]*)$/;
+const guardedScript = /^(?:check|test|lint|typecheck|scan|verify)(?::|$)/;
+const manifestFile = /(?:^|\/)package\.json$/;
 const testFile = /\.(?:test|spec)\.(?:[cm]?[jt]sx?|sql)$/;
 const sourceFile = /\.(?:[cm]?[jt]sx?)$/;
 const textFile = /\.(?:[cm]?[jt]sx?|json|md|ya?ml|sql|toml|jsonc)$/;
@@ -35,9 +42,7 @@ const disabledMarker = /(?:^|[^\w.])(?:(?:it|test|describe)\.(?:skip|only|todo|f
 const testDeclaration = /(?:^|[^\w.])(?:it|test)(?:\.(?:each|concurrent))?\s*(?:\(|`)/g;
 const assertion = /(?:^|[^\w.])(?:expect\s*\(|assert(?:\.\w+)?\s*\(|t\.assert\w*\s*\(|(?:is|isnt|ok|throws_ok|lives_ok|results_eq|results_ne|cmp_ok|is_empty|isnt_empty|policies_are|has_\w+|hasnt_\w+)\s*\()/;
 const guardsAssertions = /\b(?:expect|assert)\b/;
-const dependencyKeys =['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies', 'overrides', 'workspaces'];
-const exportDeclaration = /^export\s+(?:declare\s+)?(?:default\s+)?(?:abstract\s+)?(?:async\s+)?(?:function\*?|class|const|let|var|type|interface|enum)\s+([A-Za-z_$][\w$]*)/gm;
-const exportList = /^export\s*(?:type\s*)?\{([^}]*)\}/gm;
+const dependencyKeys = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies', 'overrides', 'workspaces'];
 
 const count = (text, pattern) => [...text.matchAll(pattern)].length;
 
@@ -66,8 +71,6 @@ const labelKinds = new Set([SyntaxKind.PropertyAccessExpression, SyntaxKind.Prop
 const loopHeaderKinds = new Set([SyntaxKind.ForOfStatement, SyntaxKind.ForInStatement]);
 const emptyStructure = () => ({ disabled: 0, declarations: 0, assertions: [] });
 
-const squash = value => value.replace(/\s+/g, ' ').replace(/ ?([.,;()[\]{}]) ?/g, '$1').trim();
-const sameNode = (left, right) => left.kind === right.kind && left.pos === right.pos && left.end === right.end;
 const chainTarget = node => (node.kind === SyntaxKind.TaggedTemplateExpression ? node.tag : node.expression);
 
 function chainOf(start) {
@@ -91,8 +94,6 @@ function aliasesTestRoot(node) {
   return current.kind === SyntaxKind.Identifier && testRoots.has(current.text);
 }
 
-const boundNames = name => (name.kind === SyntaxKind.Identifier ? [name.text] : name.elements.flatMap(element => (element.name ? boundNames(element.name) : [])));
-
 function exits(node) {
   if (exitKinds.has(node.kind)) return true;
   if (functionKinds.has(node.kind)) return false;
@@ -101,27 +102,6 @@ function exits(node) {
     if (exits(child)) found = true;
   });
   return found;
-}
-
-function withSource(file, text, use) {
-  const directory = path.resolve(root, '.cache/review-diff-types').replaceAll('\\', '/');
-  const sourcePath = `${directory}/input${/x$/.test(file) ? '.tsx' : '.ts'}`;
-  const configPath = `${directory}/tsconfig.json`;
-  const api = new API({
-    cwd: root,
-    fs: createVirtualFileSystem({
-      [sourcePath]: text,
-      [configPath]: JSON.stringify({ compilerOptions: { noLib: true, noResolve: true, jsx: 'preserve' }, files: [sourcePath] }),
-    }),
-  });
-  try {
-    const program = api.updateSnapshot({ openProjects: [configPath] }).getProjects()[0]?.program;
-    const source = program?.getSourceFile(sourcePath);
-    if (!source || program.getSyntacticDiagnostics(sourcePath).length) throw new Error(`Invalid syntax in ${file}.`);
-    return use(source);
-  } finally {
-    api.close();
-  }
 }
 
 function testStructure(file, text) {
@@ -251,14 +231,10 @@ function missingItems(before, after) {
 
 const addedText = (before, after) => missingItems(lineSet(after), lineSet(before)).join('\n');
 
-export function exportedNames(text) {
-  const names = new Set([...text.matchAll(exportDeclaration)].map(match => match[1]));
-  for (const [, list] of text.matchAll(exportList)) {
-    for (const item of list.split(',')) {
-      const name = item.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop();
-      if (name) names.add(name);
-    }
-  }
+export function exportedNames(text, file = 'input.ts') {
+  const [described] = describeModules([{ file, text }]);
+  if (!described) throw new Error(`Invalid syntax in ${file}.`);
+  const names = new Set(described.exports.keys());
   names.delete('default');
   return names;
 }
@@ -304,6 +280,19 @@ const existsAt = (repository, revision, file) => {
   }
 };
 
+function revisionView(repository, revision) {
+  const files = new Set(git(repository, ['ls-tree', '-r', '-z', '--name-only', revision]).split('\0').filter(Boolean));
+  return { files, has: file => files.has(file), read: file => readAt(repository, revision, file) };
+}
+
+const parseJson = text => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
+
 const commandSegments = value => String(value ?? '').split(' && ').map(segment => segment.trim().split(/\s+/).filter(Boolean)).filter(tokens => tokens.length);
 const sameTokens = (left, right) => left.length === right.length && left.every((token, index) => token === right[index]);
 
@@ -323,18 +312,21 @@ function appendedTokens(segment, candidates) {
   return null;
 }
 
-function packageChanges(repository, mergeBase, head) {
-  const before = JSON.parse(readAt(repository, mergeBase, 'package.json'));
-  const after = JSON.parse(readAt(repository, head, 'package.json'));
+function packageChanges(repository, mergeBase, head, manifest) {
+  const before = parseJson(readAt(repository, mergeBase, manifest));
+  const after = parseJson(readAt(repository, head, manifest));
+  if (!before || !after) return { manifest, dependencies: [], scripts: [], weakened: [`${manifest} is not valid JSON at the base or the head.`], registered: [] };
+  const directory = path.posix.dirname(manifest);
+  const label = directory === '.' ? '' : `${manifest} `;
   const dependencies = dependencyKeys.filter(key => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
   const scripts = [...new Set([...Object.keys(before.scripts ?? {}), ...Object.keys(after.scripts ?? {})])]
     .filter(name => before.scripts?.[name] !== after.scripts?.[name]);
   const weakened = [];
   const registered = [];
   for (const name of scripts) {
-    if (!(name === 'check' || name.startsWith('verify:') || name.startsWith('check:'))) continue;
+    if (!guardedScript.test(name)) continue;
     if (!after.scripts?.[name]) {
-      weakened.push(`script ${name} was removed`);
+      weakened.push(`${label}script ${name} was removed`);
       continue;
     }
     const kept = commandSegments(after.scripts[name]);
@@ -342,18 +334,18 @@ function packageChanges(repository, mergeBase, head) {
       if (kept.some(candidate => sameTokens(candidate, segment))) continue;
       const extras = appendedTokens(segment, kept);
       if (!extras || !extras.every(token => testFile.test(token))) {
-        weakened.push(`script ${name} no longer runs: ${segment.join(' ')}`);
+        weakened.push(`${label}script ${name} no longer runs: ${segment.join(' ')}`);
         continue;
       }
-      const missing = extras.filter(token => !existsAt(repository, head, token));
-      if (missing.length) weakened.push(`script ${name} registers ${missing.join(', ')}, which does not exist at the head.`);
+      const missing = extras.filter(token => !existsAt(repository, head, directory === '.' ? token : path.posix.join(directory, token)));
+      if (missing.length) weakened.push(`${label}script ${name} registers ${missing.join(', ')}, which does not exist at the head.`);
       else registered.push({ script: name, files: extras });
     }
   }
-  return { dependencies, scripts, weakened, registered };
+  return { manifest, dependencies, scripts, weakened, registered };
 }
 
-function scopeDimension(files, scope, packages) {
+function scopeDimension(repository, files, mergeBase, head, scope, packages) {
   const findings = [];
   const failed = [];
   if (!scope.length) findings.push('No owner-declared scope was supplied, so intent cannot be checked.');
@@ -363,17 +355,93 @@ function scopeDimension(files, scope, packages) {
       if (patterns.length && !patterns.some(pattern => pattern.test(name))) failed.push(`${name} is outside the declared scope.`);
       if (highRisk.some(pattern => pattern.test(name))) findings.push(`${name} is in a high-risk area that needs explicit owner review.`);
     }
+    if (!sourceFile.test(file.path) && !/\.sql$/.test(file.path)) continue;
+    const before = file.status === 'A' ? '' : readAt(repository, mergeBase, file.from ?? file.path);
+    const after = file.status === 'D' ? '' : readAt(repository, head, file.path);
+    const term = authorizationTerm(`${addedText(before, after)}\n${addedText(after, before)}`);
+    if (term) findings.push(`${file.path}: changed lines mention "${term}"; authorization and access-control changes need explicit owner review.`);
   }
-  if (packages) {
-    if (packages.dependencies.length) findings.push(`package.json changed ${packages.dependencies.join(', ')}; license, security and compatibility need review.`);
-    if (packages.scripts.length) findings.push(`package.json scripts changed: ${packages.scripts.join(', ')}.`);
-    for (const { script, files } of packages.registered) findings.push(`package.json script ${script} registers test file(s) ${files.join(', ')}; owner review must confirm they exist and run.`);
-    failed.push(...packages.weakened);
+  for (const change of packages) {
+    if (change.dependencies.length) findings.push(`${change.manifest} changed ${change.dependencies.join(', ')}; license, security and compatibility need review.`);
+    if (change.scripts.length) findings.push(`${change.manifest} scripts changed: ${change.scripts.join(', ')}.`);
+    for (const { script, files: registeredFiles } of change.registered) findings.push(`${change.manifest} script ${script} registers test file(s) ${registeredFiles.join(', ')}; owner review must confirm they exist and run.`);
+    failed.push(...change.weakened);
   }
   return verdictOf([...new Set(findings)], [...new Set(failed)]);
 }
 
-function testDimension(repository, files, mergeBase, head, packages) {
+const defaultSelection = [/(?:^|\/)__tests__\/.*\.[jt]sx?$/, /(?:^|\/)(?:[^/]*\.)?(?:spec|test)\.[jt]sx?$/];
+const unsupportedGlob = /[{}[\]()!?+@]/;
+
+function jestSelection(directory, jest) {
+  const inside = file => directory === '.' || file.startsWith(`${directory}/`);
+  const rootDirectory = directory === '.' ? '' : directory;
+  const patterns = Array.isArray(jest.testMatch) ? jest.testMatch.map(glob => glob.replaceAll('<rootDir>', rootDirectory).replace(/^\//, '')) : null;
+  const regexes = [jest.testRegex ?? []].flat().map(value => new RegExp(value));
+  const unevaluable = Boolean(jest.roots || jest.projects || (jest.preset && !patterns && !regexes.length) || patterns?.some(glob => unsupportedGlob.test(glob)));
+  if (unevaluable) return { selects: file => inside(file) && testFile.test(file), unevaluable: JSON.stringify(jest) };
+  const includes = (patterns ?? []).map(globPattern);
+  const ignores = (jest.testPathIgnorePatterns ?? ['/node_modules/']).map(value => new RegExp(value.replaceAll('<rootDir>', rootDirectory ? `/${rootDirectory}` : '')));
+  const matches = file => {
+    if (patterns) return includes.some(pattern => pattern.test(file));
+    if (regexes.length) return regexes.some(pattern => pattern.test(`/${file}`));
+    return defaultSelection.some(pattern => pattern.test(file));
+  };
+  return { selects: file => inside(file) && matches(file) && !ignores.some(pattern => pattern.test(`/${file}`)), unevaluable: null };
+}
+
+function scriptSelection(directory, scripts) {
+  const targets = Object.values(scripts ?? {}).flatMap(command => commandSegments(command).flat())
+    .map(token => token.replace(/^['"]|['"]$/g, '')).filter(token => !token.startsWith('-'))
+    .map(token => (directory === '.' ? token : path.posix.join(directory, token)).replace(/^\.\//, ''));
+  const globs = targets.filter(target => target.includes('*')).map(globPattern);
+  return file => targets.some(target => target === file || file.startsWith(target.endsWith('/') ? target : `${target}/`)) || globs.some(pattern => pattern.test(file));
+}
+
+function testSelector(view) {
+  const selectors = [];
+  const unevaluable = new Map();
+  const presets = new Map();
+  for (const manifestPath of [...view.files].filter(file => manifestFile.test(file))) {
+    const manifest = parseJson(view.read(manifestPath));
+    if (!manifest || typeof manifest !== 'object') continue;
+    const directory = path.posix.dirname(manifestPath);
+    selectors.push(scriptSelection(directory, manifest.scripts));
+    const runsJest = Boolean(manifest.jest) || Object.values(manifest.scripts ?? {}).some(command => commandSegments(command).some(segment => segment.includes('jest')));
+    if (!runsJest) continue;
+    const jest = jestSelection(directory, manifest.jest ?? {});
+    selectors.push(jest.selects);
+    presets.set(manifestPath, manifest.jest?.preset ?? null);
+    if (jest.unevaluable) unevaluable.set(manifestPath, jest.unevaluable);
+  }
+  return { selects: file => selectors.some(selector => selector(file)), unevaluable, presets };
+}
+
+function selectionChecks(files, before, after) {
+  const findings = [];
+  const failed = [];
+  const was = testSelector(before);
+  const now = testSelector(after);
+  const runnable = file => testFile.test(file) && sourceFile.test(file);
+  for (const file of before.files) {
+    if (runnable(file) && after.has(file) && was.selects(file) && !now.selects(file)) failed.push(`${file}: still exists but no script or jest configuration selects it any more.`);
+  }
+  for (const [manifestPath, configuration] of now.unevaluable) {
+    if (was.unevaluable.get(manifestPath) !== configuration) findings.push(`${manifestPath}: the jest configuration uses patterns this review cannot evaluate and changed.`);
+  }
+  for (const [manifestPath, preset] of now.presets) {
+    if (was.presets.has(manifestPath) && was.presets.get(manifestPath) !== preset) findings.push(`${manifestPath}: the jest preset changed, which can change what runs.`);
+  }
+  for (const file of files) {
+    if ((file.status === 'A' || file.from) && runnable(file.path) && !now.selects(file.path)) findings.push(`${file.path}: no script or jest configuration selects this test file, so it will not run.`);
+    for (const name of [file.path, file.from].filter(Boolean)) {
+      if (configurationFile.test(name)) findings.push(`${name}: test discovery configuration changed in a file this review cannot evaluate.`);
+    }
+  }
+  return { findings, failed };
+}
+
+function testDimension(repository, files, mergeBase, head, views) {
   const findings = [];
   const failed = [];
   for (const file of files) {
@@ -416,39 +484,151 @@ function testDimension(repository, files, mergeBase, head, packages) {
     }
     if (removed.length) findings.push(`${file.path}: ${removed.length} assertion(s) removed, altered or moved behind control flow, first: ${removed[0].slice(0, 200)}`);
   }
-  if (packages && packages.dependencies.length === 0 && files.some(file => file.path === 'apps/mobile/package.json')) {
-    const jest = revision => JSON.stringify(JSON.parse(readAt(repository, revision, 'apps/mobile/package.json')).jest);
-    if (jest(mergeBase) !== jest(head)) findings.push('apps/mobile/package.json: the jest test selection changed.');
-  }
-  return verdictOf(findings, failed);
+  const selection = selectionChecks(files, views.before, views.after);
+  return verdictOf([...findings, ...selection.findings], [...failed, ...selection.failed]);
 }
 
-function deadCodeDimension(repository, files, mergeBase, head) {
+const moduleFile = file => sourceFile.test(file) && !testFile.test(file);
+const stemOf = file => path.posix.basename(file).replace(/(?:\.[^.]+)+$/, '');
+const sourceGlobs = ['*.ts', '*.tsx', '*.js', '*.jsx', '*.mjs', '*.cjs', '*.mts', '*.cts'];
+const dynamicLoad = ['(require|import)[[:space:]]*\\([[:space:]]*[^\'"`[:space:])]', '(require|import)[[:space:]]*\\([[:space:]]*`[^`]*\\$\\{'];
+
+function dynamicLoads(repository, head) {
+  const result = spawnSync('git', ['grep', '-n', '-E', ...dynamicLoad.flatMap(pattern => ['-e', pattern]), head, '--', ...sourceGlobs], { cwd: repository, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  if (result.error) throw result.error;
+  if (result.status > 1) throw new Error(`git grep failed for dynamic loads: ${result.stderr}`);
+  return result.stdout.split('\n').filter(Boolean).map(line => line.slice(head.length + 1));
+}
+
+function removedModuleChecks(repository, head, removed, before, after) {
+  const findings = [];
+  const failed = [];
+  if (!removed.length) return { findings, failed };
+  const gone = new Map(removed.map(file => [file.from ?? file.path, file]));
+  const origins = new Map(removed.filter(file => file.status === 'R').map(file => [file.path, file.from]));
+  const importers = new Set(origins.keys());
+  for (const file of removed) {
+    const original = file.from ?? file.path;
+    const mentioned = stemOf(original) === 'index' ? [...after.files] : grepHead(repository, head, stemOf(original)).map(line => line.split(':')[0]);
+    for (const candidate of mentioned) if (sourceFile.test(candidate)) importers.add(candidate);
+    const location = grepHead(repository, head, original.replace(/\.[^./]+$/, '')).filter(line => !line.startsWith(`${file.path}:`));
+    if (location.length) findings.push(`${original} was ${file.status === 'R' ? `renamed to ${file.path}` : 'removed'} but its path is still mentioned at ${location[0]}; owner review must confirm no reference was left behind.`);
+  }
+  const names = [...importers].filter(candidate => after.has(candidate));
+  const described = describeModules(names.map(file => ({ file, text: after.read(file) })));
+  described.forEach((module, index) => {
+    const importer = names[index];
+    if (!module) {
+      findings.push(`${importer}: references could not be compared: Invalid syntax in ${importer}.`);
+      return;
+    }
+    for (const use of module.uses) {
+      const resolution = resolveModule(after, importer, use.specifier);
+      if (!resolution || resolution.found.length) continue;
+      const lostTarget = resolution.candidates.find(candidate => gone.has(candidate));
+      const origin = origins.get(importer);
+      const movedAway = origin !== undefined && Boolean(resolveModule(before, origin, use.specifier)?.found.length);
+      if (!lostTarget && !movedAway) continue;
+      const lost = lostTarget ? gone.get(lostTarget) : null;
+      const reason = lost ? `${lostTarget} was ${lost.status === 'R' ? `renamed to ${lost.path}` : 'removed'}` : `${importer} moved from ${origin}`;
+      failed.push(`${importer}:${use.line}: ${use.specifier} no longer resolves because ${reason}.`);
+    }
+  });
+  const dynamic = dynamicLoads(repository, head);
+  if (dynamic.length) findings.push(`${dynamic[0].split(':').slice(0, 2).join(':')}: dynamic require or import cannot be resolved statically while ${removed.length} module(s) were removed or renamed; a runtime reference cannot be excluded.`);
+  return { findings, failed };
+}
+
+function removedExportChecks(repository, head, file, name, declaration, now, before, after) {
+  const findings = [];
+  const failed = [];
+  const mentions = grepHead(repository, head, name).filter(line => !line.startsWith(`${file.path}:`));
+  if (!mentions.length) {
+    findings.push(`${file.path}: export ${name} was removed and has no static reference left, but static absence is not proof of non-use (routes, configuration, runtime registration, backend contracts); uncertain usage means do not delete.`);
+    return { findings, failed };
+  }
+  if (now.star) {
+    findings.push(`${file.path}: export ${name} was removed while the file re-exports another module with export *; owner review must confirm consumers still receive it.`);
+    return { findings, failed };
+  }
+  const mentioning = [...new Set(mentions.map(line => line.split(':')[0]))];
+  const consumers = mentioning.filter(candidate => moduleOrSource(candidate) && after.has(candidate));
+  const lineOf = consumer => mentions.find(line => line.startsWith(`${consumer}:`));
+  for (const other of mentioning.filter(candidate => !consumers.includes(candidate))) findings.push(`${file.path}: export ${name} was removed but ${lineOf(other)} still mentions it outside source code; owner review must confirm it is unrelated.`);
+  const described = describeModules(consumers.map(consumer => ({ file: consumer, text: after.read(consumer) })));
+  consumers.forEach((consumer, index) => {
+    const module = described[index];
+    if (!module) {
+      findings.push(`${consumer}: references could not be compared: Invalid syntax in ${consumer}.`);
+      return;
+    }
+    if (module.exports.has(name)) return;
+    let bound = false;
+    for (const use of module.uses) {
+      const named = use.names.has(name);
+      const resolution = resolveModule(after, consumer, use.specifier);
+      const fromOriginal = Boolean(resolution?.found.includes(file.path));
+      if (named) bound = true;
+      if (fromOriginal && named) failed.push(`${file.path}: export ${name} was removed but is still referenced at ${lineOf(consumer)}.`);
+      else if (fromOriginal && use.names.has('*')) {
+        bound = true;
+        findings.push(`${file.path}: export ${name} was removed while ${consumer}:${use.line} loads the whole module; owner review must confirm it does not use ${name}.`);
+      } else if (named && resolution?.found.length) {
+        const destination = resolution.found[0];
+        const [target] = moduleOrSource(destination) ? describeModules([{ file: destination, text: after.read(destination) }]) : [null];
+        const prior = before.has(destination) && moduleOrSource(destination) ? describeModules([{ file: destination, text: before.read(destination) }])[0] : null;
+        const declared = target?.exports.get(name);
+        if (!target) findings.push(`${consumer}:${use.line}: ${name} is now imported from ${destination}, which cannot be compared; owner review required.`);
+        else if (declared === undefined && !target.star) failed.push(`${consumer}:${use.line}: ${name} is imported from ${destination}, which does not export it.`);
+        else if (declared === undefined || declared === null) findings.push(`${consumer}:${use.line}: ${name} is now imported from ${destination} through a re-export whose declaration cannot be compared with the removed one; owner review required.`);
+        else if (prior?.exports.has(name)) findings.push(`${consumer}:${use.line}: ${name} is now imported from ${destination}, which already exported a different ${name} before this change; owner review must confirm the symbol is the same.`);
+        else if (declared !== declaration) findings.push(`${consumer}:${use.line}: ${name} is now imported from ${destination}, whose declaration differs from the removed one; owner review must confirm the behavior is unchanged.`);
+      }
+    }
+    if (!bound) findings.push(`${consumer}: mentions ${name} without importing it, and ${file.path} no longer exports it; owner review must confirm the mention is unrelated.`);
+  });
+  return { findings, failed };
+}
+
+const moduleOrSource = file => sourceFile.test(file);
+
+function deadCodeDimension(repository, files, mergeBase, head, views) {
   const findings = [];
   const failed = [];
   const note = subject => `${subject} has no static reference left, but static absence is not proof of non-use (routes, configuration, runtime registration, backend contracts); uncertain usage means do not delete.`;
+  const removed = files.filter(file => (file.status === 'D' || file.status === 'R') && moduleFile(file.from ?? file.path));
   for (const file of files) {
     const original = file.from ?? file.path;
-    if (file.status === 'D' && sourceFile.test(original) && !testFile.test(original)) {
-      const stem = path.posix.basename(original).replace(/(?:\.[^.]+)+$/, '');
+    if (file.status === 'D' && moduleFile(original)) {
+      const stem = stemOf(original);
       const references = grepHead(repository, head, stem);
       if (references.length) failed.push(`${original} was removed but ${stem} is still referenced at ${references[0]}.`);
       else findings.push(note(`${original} was removed and`));
     }
-    if ((file.status === 'M' || file.status === 'R') && sourceFile.test(file.path) && !testFile.test(file.path)) {
-      const before = exportedNames(readAt(repository, mergeBase, original));
-      const after = exportedNames(readAt(repository, head, file.path));
-      for (const name of before) {
-        if (after.has(name)) continue;
-        const remaining = grepHead(repository, head, name).filter(line => !line.startsWith(`${file.path}:`));
-        const referencing = [...new Set(remaining.map(line => line.split(':')[0]))].filter(candidate => sourceFile.test(candidate));
-        if (referencing.some(candidate => exportedNames(readAt(repository, head, candidate)).has(name))) continue;
-        if (remaining.length) failed.push(`${file.path}: export ${name} was removed but is still referenced at ${remaining[0]}.`);
-        else findings.push(note(`${file.path}: export ${name} was removed and`));
+    if ((file.status === 'M' || file.status === 'R') && moduleFile(file.path)) {
+      let was;
+      let now;
+      try {
+        [was] = describeModules([{ file: original, text: readAt(repository, mergeBase, original) }]);
+        [now] = describeModules([{ file: file.path, text: readAt(repository, head, file.path) }]);
+      } catch (error) {
+        findings.push(`${file.path}: exports could not be compared: ${error.message}`);
+        continue;
+      }
+      if (!was || !now) {
+        findings.push(`${file.path}: exports could not be compared: Invalid syntax in ${was ? file.path : original}.`);
+        continue;
+      }
+      for (const [name, declaration] of was.exports) {
+        if (name === 'default' || now.exports.has(name)) continue;
+        const result = removedExportChecks(repository, head, file, name, declaration, now, views.before, views.after);
+        findings.push(...result.findings);
+        failed.push(...result.failed);
       }
     }
   }
-  return verdictOf(findings, failed);
+  const references = removedModuleChecks(repository, head, removed, views.before, views.after);
+  return verdictOf([...findings, ...references.findings], [...failed, ...references.failed]);
 }
 
 function runCommands(repository, scripts, head) {
@@ -482,7 +662,7 @@ function correctnessDimension(commands, required) {
   return verdictOf(findings, failed);
 }
 
-function codeHealthDimension(repository, files, mergeBase, head, reviewer) {
+function codeHealthDimension(repository, files, mergeBase, head, attestation) {
   const diagnostics = [];
   for (const file of files) {
     if (file.status === 'D' || !sourceFile.test(file.path)) continue;
@@ -491,12 +671,14 @@ function codeHealthDimension(repository, files, mergeBase, head, reviewer) {
     diagnostics.push({ path: file.path, linesBefore: before, linesAfter: after });
   }
   const findings = [];
-  if (!reviewer) findings.push('No read-only reviewer verdict was supplied; structural quality cannot be decided from line counts.');
-  else if (reviewer.independent !== true) findings.push('The reviewer is not independent of the implementation, so its verdict cannot count as assurance.');
-  else if (!['PASS', 'FAIL', 'INSUFFICIENT_EVIDENCE'].includes(reviewer.codeHealth?.verdict)) findings.push('The reviewer verdict must be PASS, FAIL or INSUFFICIENT_EVIDENCE.');
-  else if (reviewer.codeHealth.verdict === PASS && !(Array.isArray(reviewer.codeHealth.evidence) && reviewer.codeHealth.evidence.length)) findings.push('A PASS verdict needs file and line evidence.');
-  else if (reviewer.codeHealth.verdict === FAIL) return { ...verdictOf([], [`Reviewer reported a code-health failure: ${(reviewer.codeHealth.evidence ?? []).join('; ') || 'no evidence given'}`]), diagnostics };
-  else if (reviewer.codeHealth.verdict === INSUFFICIENT) findings.push('The reviewer could not reach a verdict.');
+  if (!attestation.attested) findings.push(...attestation.reasons);
+  else {
+    const { verdict, evidence, unresolved } = attestation.codeHealth;
+    if (verdict === FAIL) return { ...verdictOf([], [`Reviewer reported a code-health failure: ${evidence.join('; ') || 'no evidence given'}`]), diagnostics };
+    if (verdict === INSUFFICIENT) findings.push('The reviewer could not reach a verdict.');
+    else if (!evidence.length) findings.push('A PASS verdict needs file and line evidence.');
+    else if (unresolved.length) findings.push(`The PASS evidence does not resolve to existing lines at the head: ${unresolved.join(', ')}`);
+  }
   return { ...verdictOf(findings, []), diagnostics };
 }
 
@@ -505,21 +687,23 @@ export function reviewDiff({ repository = root, base = 'origin/main', head = 'HE
   const headSha = git(repository, ['rev-parse', '--verify', `${head}^{commit}`]).trim();
   const mergeBase = git(repository, ['merge-base', baseSha, headSha]).trim();
   const files = changedFiles(repository, mergeBase, headSha);
-  const packages = files.some(file => file.path === 'package.json' && file.status === 'M') ? packageChanges(repository, mergeBase, headSha) : null;
+  const views = { before: revisionView(repository, mergeBase), after: revisionView(repository, headSha) };
+  const packages = files.filter(file => manifestFile.test(file.path) && file.status === 'M').map(file => packageChanges(repository, mergeBase, headSha, file.path));
   const commands = runCommands(repository, run, headSha);
+  const attestation = verifyAttestation(repository, reviewer, { headSha, mergeBase, view: views.after });
   const dimensions = {
     correctness: correctnessDimension(commands, required),
-    codeHealth: codeHealthDimension(repository, files, mergeBase, headSha, reviewer),
-    deadCodeSafety: deadCodeDimension(repository, files, mergeBase, headSha),
-    scope: scopeDimension(files, scope, packages),
-    testIntegrity: testDimension(repository, files, mergeBase, headSha, packages),
+    codeHealth: codeHealthDimension(repository, files, mergeBase, headSha, attestation),
+    deadCodeSafety: deadCodeDimension(repository, files, mergeBase, headSha, views),
+    scope: scopeDimension(repository, files, mergeBase, headSha, scope, packages),
+    testIntegrity: testDimension(repository, files, mergeBase, headSha, views),
   };
   const verdicts = Object.values(dimensions).map(dimension => dimension.verdict);
   const verdict = verdicts.includes(FAIL) ? FAIL : verdicts.includes(INSUFFICIENT) ? INSUFFICIENT : PASS;
   return {
     base: { ref: base, sha: baseSha }, head: { ref: head, sha: headSha }, mergeBase,
     files: files.map(file => ({ status: file.status, path: file.path, ...(file.from ? { from: file.from } : {}) })),
-    commands: commands.results, reviewerIndependent: reviewer?.independent === true, dimensions, verdict,
+    commands: commands.results, reviewer: { tag: reviewer, attested: attestation.attested, signer: attestation.signer, key: attestation.key }, dimensions, verdict,
   };
 }
 
@@ -535,7 +719,6 @@ function parseArguments(argv) {
     else if (flag === '--run') options.run.push(value);
     else throw new Error(`Unknown argument ${flag}.`);
   }
-  if (options.reviewer) options.reviewer = JSON.parse(readFileSync(options.reviewer, 'utf8'));
   return options;
 }
 

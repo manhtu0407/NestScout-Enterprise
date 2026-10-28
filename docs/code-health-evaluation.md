@@ -178,7 +178,7 @@ needs manual evidence.
 `scripts/review-diff.mjs` reads a frozen base-to-head diff (resolved SHAs and the merge
 base) and returns a verdict of `PASS`, `FAIL` or `INSUFFICIENT_EVIDENCE` for each of five
 dimensions. `scripts/review-diff.test.mjs` exercises it on isolated temporary
-repositories, never production modules, with 27 tests:
+repositories, never production modules, with 32 tests:
 
 - test weakening: `it.skip`, `it.only` and a node-test `skip` option fail; a deleted test
   file fails, and so does a test file renamed to a name that no longer matches the test
@@ -209,11 +209,36 @@ repositories, never production modules, with 27 tests:
   reported as an altered assertion;
 - controlled behavioral regressions (wrong state transition, changed authorization
   check, broken idempotency) fail through the recorded command results;
-- removals: a still-referenced file or export fails, an unreferenced one is never
-  approved, a moved export is recognized as a move;
-- scope: a path outside the declared scope fails, a missing scope is insufficient,
-  protected areas and dependency changes need owner review, a gate removed from `check`
-  fails;
+- removals: a still-referenced file or export fails and an unreferenced one is never
+  approved. Exports and imports are read from the syntax tree. A removed export that a
+  consumer still imports from the original module fails, even when another file exports
+  the same name. A move is accepted only when the consumer now imports the name from a
+  module whose declaration text equals the removed one and which did not export it
+  before. A re-pointed import to a pre-existing or different declaration, a whole-module
+  import, a re-export that cannot be compared, or a mention without an import needs
+  owner review, and an import of a name the destination does not export fails;
+- renamed and removed modules: every static import, re-export, `require` and mocked path
+  (relative, or through the nearest `tsconfig.json` `paths`) that stops resolving at the
+  head because its target was removed or renamed fails, and so does a moved file whose
+  own relative imports stop resolving. A dynamic `import()` or `require()` with a
+  non-literal argument, or a remaining mention of the old path, makes the dimension
+  `INSUFFICIENT_EVIDENCE` whenever a module was removed or renamed;
+- scope: a path outside the declared scope fails, a missing scope is insufficient, and a
+  dependency change in any `package.json` needs owner review. The high-risk list now
+  covers all of `scripts/` and `supabase/`, all of `apps/mobile/src/features/access/`,
+  `scripts/tools.json`, tool and compiler configuration (`jest`, `babel`, `metro`,
+  `eslint`, `knip`, `stryker`, `tsconfig`), `.npmrc`, `.env*`, `.gitignore`,
+  `.gitattributes` and `.editorconfig`. Independently of paths, a changed line in a
+  source or SQL file that contains a word such as role, capability, permission, grant,
+  policy, authorization, credential or secret (camelCase split) needs owner review. Any
+  `check`, `test`, `lint`, `typecheck`, `scan` or `verify` script in any changed
+  `package.json` that stops running a command it ran before fails;
+- test selection is derived from the base and the head, whether or not the root manifest
+  changed: a test file that still exists but is no longer selected by any script argument
+  or by a jest `testMatch`, `testRegex` or `testPathIgnorePatterns` fails, a new test that
+  nothing selects needs review, and a jest `roots`, `projects`, glob or `preset` this
+  evaluator cannot evaluate, or a changed `jest.config.*`, needs review;
+- reviewer attestation (see the protocol below): a self-declared verdict is ignored;
 - artifacts: disposable file names and AI attribution lines fail;
 - evidence binding to the frozen head and a clean tree, and immunity to later commits.
 
@@ -296,19 +321,31 @@ Inputs, all frozen before review: base and head SHAs, the declared scope, the di
 baseline in this document, and command results recorded by the script itself.
 
 ```sh
-npm run health:review-diff -- --base origin/main --head HEAD --scope "apps/mobile/src/lib/**" --run check --run verify:negative --reviewer reviewer.json
+npm run health:review-diff -- --base origin/main --head HEAD --scope "apps/mobile/src/lib/**" --run check --run verify:negative --reviewer review/head
 ```
 
 `--run` executes `npm run <script>` only for scripts present in `package.json`, and only
 when `HEAD` equals the frozen head and the working tree is clean. Otherwise the commands
-are not recorded and correctness is `INSUFFICIENT_EVIDENCE`. The reviewer file is
-optional JSON: `reviewer`, `independent`, and `codeHealth` with a `verdict` and an
-`evidence` list of file and line references. Keep it outside the repository.
+are not recorded and correctness is `INSUFFICIENT_EVIDENCE`.
+
+`--reviewer` names a signed, annotated git tag whose message is JSON,
+`{"codeHealth":{"verdict":"PASS","evidence":["path:line"]}}`. The tag is accepted only
+when all of these hold: it points at the frozen head commit; `git verify-tag` reports a
+good SSH signature (`gpg.format=ssh`) against the `gpg.ssh.allowedSignersFile` of the
+machine that runs the evaluation; the signing principal and key fingerprint are not the
+author, committer or signing key of any commit between the merge base and the head; the
+verdict is PASS, FAIL or `INSUFFICIENT_EVIDENCE`; and a PASS carries at least one
+evidence reference whose file and line exist at the head. Anything else, including a
+JSON file or a verdict declared as independent, leaves `codeHealth` at
+`INSUFFICIENT_EVIDENCE`. This shows that a key the verifier trusts signed the verdict for
+this head and did not write the change. It does not show that the signer is a human, that
+the signer looked at the diff, or that a model and the implementation session do not share
+a key; the allowed-signers file is the trust root and belongs to the owner.
 
 | Dimension | Decided by | PASS requires | FAIL when |
 | --- | --- | --- | --- |
 | `correctness` | Recorded command results | `check` and `verify:negative` both run on the frozen head and exit 0 | Any recorded command exits non-zero |
-| `codeHealth` | An independent read-only reviewer | A verdict of PASS with file and line evidence from a reviewer marked independent | The reviewer reports FAIL |
+| `codeHealth` | A signed reviewer attestation verified by git | A verified attestation with a PASS verdict and file and line evidence that resolves at the head | The verified reviewer reports FAIL |
 | `deadCodeSafety` | Diff plus head search | No removed file or export | A removed file or export is still referenced at the head |
 | `scope` | Diff and declared scope | Every path inside the scope, no high-risk area, no dependency change | A path is outside the scope, or a gate was dropped from a `check` or `verify` script |
 | `testIntegrity` | Diff | No disabled test, deleted test, lost assertion or disposable artifact | A disabled test, a deleted test file, a disposable name or an AI attribution line |
@@ -322,8 +359,8 @@ Rules that follow from the policy:
 - A removal with no remaining reference is still `INSUFFICIENT_EVIDENCE`: static absence
   does not show routes, configuration, runtime registration or backend contracts are
   unused. Uncertain usage means do not delete.
-- A reviewer that is not independent, or a PASS without evidence, is capped at
-  `INSUFFICIENT_EVIDENCE`. A reviewer narrative never overrides a failed deterministic
+- A reviewer attestation that git cannot verify or that is not independent of the
+  change, or a PASS without resolvable evidence, is capped at `INSUFFICIENT_EVIDENCE`. A reviewer narrative never overrides a failed deterministic
   dimension.
 - Reviewer prompt: read-only access, the frozen diff, this table and the
   `thermo-nuclear-code-quality-review` skill when the owner asks for it. The reviewer
@@ -336,24 +373,30 @@ Heuristics to know: the high-risk path list encodes the areas the owner asked to
 files) and is data in `scripts/review-diff.mjs`.
 
 Known limits of the diff reviewer, found by a separate read-only review of
-`33a3e10..71ceb5d`. The test-weakening gaps it reported (a renamed test file, aliased or
-computed skips, line-based assertion matching) are fixed above, with regression tests.
-The following are open, so a PASS from the deterministic dimensions is not evidence that
-tests are intact:
+`33a3e10..71ceb5d`. The test-weakening gaps it reported are fixed in the sections above
+with regression tests, and so are reviewer provenance, same-name export moves, references
+to renamed files, the high-risk list gaps (the Client/Worker mode store, `scripts/tools.json`,
+configuration files) and test selection that depended on the root manifest. A PASS from the
+deterministic dimensions is still not evidence that behavior is intact. Open:
 
 - the assertion comparison follows same-file values only. Data that reaches an assertion
   through a callback parameter (for example an `it.each` table), through an import, or
   through a shadowed `expect` is not compared, and a helper in another file is compared
   only if that file is changed and contained an assertion before;
-- `reviewer.independent` is the reviewer's own statement. Its evidence paths are not
-  checked against the head, so the flag and the evidence prove nothing about who looked;
-- a removed export counts as moved when any other file exports the same name, and a
-  renamed non-test file is not searched for references to its old path;
-- the high-risk list does not yet cover the Client/Worker mode store, `scripts/tools.json`,
-  `.gitignore`, the phone module and `default-services.ts`; a changed `jest` selection in
-  the mobile manifest is noticed only when the root manifest is also edited;
-- only `check`, `verify:*` and `check:*` scripts are guarded against weakening;
-  attribution and comment rules are checked on added text, not with the canonical gate;
+- attestation checks the signature, the head binding, the signer's distance from the
+  commits and the evidence lines. It cannot show who the signer is or that the diff was
+  read, only SSH-signed tags are recognised, and verification needs `ssh-keygen` and an
+  allowed-signers file on the verifying machine;
+- reference analysis is syntactic: `tsconfig` `paths` are read from the nearest file
+  without `extends`, package imports are not resolved, a namespace or computed property
+  access that reaches a removed export is only reported as a review item, and a word-based
+  mention search is noisy for generic names. Every rename of a module in a repository with
+  any non-literal `import()` or `require()` is reported for review;
+- authorization detection is a word list on changed lines plus path rules, not an analysis
+  of the access model; new modules outside the listed paths that use other vocabulary are
+  not recognised. The jest evaluation handles `testMatch` globs without braces or
+  extglobs, `testRegex` and `testPathIgnorePatterns`; other forms are reported for review;
+- attribution and comment rules are checked on added text, not with the canonical gate;
 - an oversized file makes the evaluator throw, and an uncaught exception exits 1, the same
   code as a FAIL verdict;
 - `--run` executes the head's own scripts with the host environment, so run it in a

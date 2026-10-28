@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
@@ -71,19 +71,35 @@ const formatTotalTest = [
   '',
 ].join('\n');
 
+const baseManifest = JSON.stringify({
+  name: 'fixture', private: true,
+  scripts: { check: 'node --test scripts/order-state.test.mjs', 'verify:negative': 'node -e ""' },
+  dependencies: {},
+}, null, 2) + '\n';
+const rootManifest = (scripts, extra = {}) => `${JSON.stringify({ ...JSON.parse(baseManifest), scripts: { ...JSON.parse(baseManifest).scripts, ...scripts }, ...extra }, null, 2)}\n`;
+const mobileManifest = (jest = {}, scripts = {}) => `${JSON.stringify({
+  name: '@fixture/mobile', private: true, scripts: { test: 'jest --ci', ...scripts },
+  jest: { preset: 'jest-expo', testMatch: ['<rootDir>/src/**/*.test.ts', '<rootDir>/src/**/*.test.tsx'], ...jest },
+}, null, 2)}\n`;
+
 const baseFiles = {
   '.gitignore': 'node_modules/\n',
-  'package.json': JSON.stringify({
-    name: 'fixture', private: true,
-    scripts: { check: 'node --test scripts/order-state.test.mjs', 'verify:negative': 'node -e ""' },
-    dependencies: {},
-  }, null, 2) + '\n',
+  'package.json': baseManifest,
+  'apps/mobile/package.json': mobileManifest(),
+  'apps/mobile/tsconfig.json': `${JSON.stringify({ compilerOptions: { paths: { '@/*': ['./src/*'] } } }, null, 2)}\n`,
+  'scripts/tools.json': '{"pin":"a"}\n',
   'scripts/order-state.mjs': orderState,
   'scripts/order-state.test.mjs': orderStateTest,
   'apps/mobile/src/lib/currency.ts': "export const currency = 'd';\n",
   'apps/mobile/src/lib/format-total.ts': formatTotal,
   'apps/mobile/src/lib/format-total.test.ts': formatTotalTest,
   'apps/mobile/src/lib/consumer.ts': "import { formatTotal } from './format-total';\n\nexport const label = formatTotal(100);\n",
+  'apps/mobile/src/lib/aliased.ts': "import { currency } from '@/lib/currency';\n\nexport const aliasedCurrency = currency;\n",
+  'apps/mobile/src/lib/names-a.ts': 'export const tariff = 1;\n',
+  'apps/mobile/src/lib/names-b.ts': 'export const tariff = 2;\n',
+  'apps/mobile/src/lib/use-tariff.ts': "import { tariff } from './names-a';\n\nexport const used = tariff;\n",
+  'apps/mobile/src/lib/permissions.ts': "export const allowedRoles = ['client'];\n",
+  'apps/mobile/src/features/access/mode/preferred-mode-store.ts': "export const allowed = ['client'];\n",
   'apps/mobile/src/lib/standalone-helper.ts': "export const standalone = 1;\n",
   'apps/mobile/src/lib/legacy-names.ts': "export const legacyName = 'a';\nexport const retiredName = 'b';\nexport const usedName = 'c';\n",
   'apps/mobile/src/lib/use-names.ts': "import { usedName, retiredName } from './legacy-names';\n\nexport const names = [usedName, retiredName];\n",
@@ -120,7 +136,43 @@ function fixture(mutate, { commit = true, files = {} } = {}) {
 }
 
 const scope = ['apps/mobile/src/lib/**'];
-const independentReviewer = { reviewer: 'second session', independent: true, codeHealth: { verdict: 'PASS', evidence: ['apps/mobile/src/lib/format-total.ts:3 extracted helper'] } };
+const keyDirectory = mkdtempSync(path.join(directory, 'keys-'));
+function signingKey(principal) {
+  const file = path.join(keyDirectory, principal.replace(/\W/g, '-'));
+  const made = spawnSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', principal, '-f', file], { encoding: 'utf8' });
+  assert.equal(made.status, 0, made.stderr);
+  const publicKey = readFileSync(`${file}.pub`, 'utf8').trim().split(' ').slice(0, 2).join(' ');
+  return { principal, file, entry: `${principal} namespaces="git" ${publicKey}` };
+}
+const reviewerKey = signingKey('reviewer@example.invalid');
+const authorKey = signingKey('fixture@example.invalid');
+const strangerKey = signingKey('stranger@example.invalid');
+
+let signerLists = 0;
+function trustSigners(repository, keys) {
+  const allowed = path.join(keyDirectory, `allowed-${signerLists++}`);
+  writeFileSync(allowed, `${keys.map(key => key.entry).join('\n')}\n`);
+  git(repository, ['config', 'gpg.format', 'ssh']);
+  git(repository, ['config', 'gpg.ssh.allowedSignersFile', allowed]);
+}
+const verdictMessage = (verdict = 'PASS', evidence = ['apps/mobile/src/lib/format-total.ts:3 extracted helper']) => JSON.stringify({ codeHealth: { verdict, evidence } });
+function attest(repository, key, { message = verdictMessage(), tag = 'review/head', kind = 'signed' } = {}) {
+  const identity = ['-c', 'user.name=Reviewer', '-c', `user.email=${key.principal}`, '-c', `user.signingkey=${key.file}`];
+  const flags = { signed: ['-s', '-m', message], unsigned: ['-a', '-m', message], lightweight: [] }[kind];
+  git(repository, [...identity, 'tag', ...flags, tag]);
+  return tag;
+}
+const defaultChange = api => api.write('apps/mobile/src/lib/format-total.ts', formatTotal + 'export const unitLabel = currency;\n');
+function attestedRepository({ trusted = [reviewerKey], signer = reviewerKey, mutate = defaultChange, prepare = () => {}, ...tagOptions } = {}) {
+  const { repository, api } = fixture(mutate);
+  trustSigners(repository, trusted);
+  prepare(repository, api);
+  return { repository, api, tag: attest(repository, signer, tagOptions) };
+}
+const attestedReview = ({ review: options = {}, ...settings } = {}) => {
+  const { repository, tag } = attestedRepository(settings);
+  return reviewDiff({ repository, base: 'main', scope, reviewer: tag, ...options });
+};
 const review = (mutate, options = {}) => {
   const { repository } = fixture(mutate);
   return reviewDiff({ repository, base: 'main', scope, ...options });
@@ -128,36 +180,78 @@ const review = (mutate, options = {}) => {
 const verdicts = packet => Object.fromEntries(Object.entries(packet.dimensions).map(([name, dimension]) => [name, dimension.verdict]));
 const change = (file, from, to) => api => api.write(file, baseFiles[file].replace(from, to));
 
-test('a behavior-preserving refactor with passing evidence and an independent reviewer passes every dimension', () => {
-  const packet = review(api => api.write('apps/mobile/src/lib/format-total.ts', formatTotal.replace('(cents / 100).toFixed(2)', 'toDollars(cents)') + 'const toDollars = (cents: number) => (cents / 100).toFixed(2);\n'),
-    { run: ['check', 'verify:negative'], reviewer: independentReviewer });
+test('a behavior-preserving refactor with passing evidence and a verified attestation passes every dimension', () => {
+  const packet = attestedReview({
+    mutate: api => api.write('apps/mobile/src/lib/format-total.ts', formatTotal.replace('(cents / 100).toFixed(2)', 'toDollars(cents)') + 'const toDollars = (cents: number) => (cents / 100).toFixed(2);\n'),
+    review: { run: ['check', 'verify:negative'] },
+  });
   assert.deepEqual(verdicts(packet), { correctness: PASS, codeHealth: PASS, deadCodeSafety: PASS, scope: PASS, testIntegrity: PASS });
   assert.equal(packet.verdict, PASS);
-  assert.equal(packet.reviewerIndependent, true);
+  assert.equal(packet.reviewer.attested, true);
+  assert.equal(packet.reviewer.signer, reviewerKey.principal);
+  assert.match(packet.reviewer.key, /^SHA256:/);
   assert.match(packet.head.sha, /^[0-9a-f]{40}$/);
 });
 
 test('without a reviewer or command evidence the overall verdict is never PASS', () => {
-  const packet = review(api => api.write('apps/mobile/src/lib/format-total.ts', formatTotal + 'export const unitLabel = currency;\n'));
+  const packet = review(defaultChange);
   assert.equal(packet.dimensions.correctness.verdict, INSUFFICIENT);
   assert.equal(packet.dimensions.codeHealth.verdict, INSUFFICIENT);
   assert.equal(packet.verdict, INSUFFICIENT);
+  assert.equal(packet.reviewer.attested, false);
 });
 
-test('a reviewer that is not independent cannot lift code health above insufficient evidence', () => {
-  const packet = review(api => api.write('apps/mobile/src/lib/format-total.ts', formatTotal + 'export const unitLabel = currency;\n'),
-    { run: ['check', 'verify:negative'], reviewer: { ...independentReviewer, independent: false } });
+test('a self-declared independent verdict is not evidence', () => {
+  const declared = { reviewer: 'second session', independent: true, codeHealth: { verdict: 'PASS', evidence: ['apps/mobile/src/lib/format-total.ts:3 extracted helper'] } };
+  const packet = review(defaultChange, { run: ['check', 'verify:negative'], reviewer: declared });
   assert.equal(packet.dimensions.codeHealth.verdict, INSUFFICIENT);
-  assert.match(packet.dimensions.codeHealth.findings.join('\n'), /not independent/);
-  assert.equal(packet.reviewerIndependent, false);
+  assert.match(packet.dimensions.codeHealth.findings.join('\n'), /must name a signed git tag; a self-declared verdict is not evidence/);
+  assert.equal(packet.reviewer.attested, false);
   assert.equal(packet.verdict, INSUFFICIENT);
 });
 
-test('a reviewer PASS without file and line evidence is insufficient, and a reviewer FAIL fails the review', () => {
-  const mutate = api => api.write('apps/mobile/src/lib/format-total.ts', formatTotal + 'export const unitLabel = currency;\n');
-  const bare = review(mutate, { reviewer: { independent: true, codeHealth: { verdict: 'PASS' } } });
-  assert.equal(bare.dimensions.codeHealth.verdict, INSUFFICIENT);
-  const failing = review(mutate, { reviewer: { independent: true, codeHealth: { verdict: 'FAIL', evidence: ['format-total.ts:1 leaks currency'] } } });
+test('an attestation that git cannot verify or that is not independent of the change cannot lift code health above insufficient evidence', () => {
+  const signedCommit = (repository, api) => {
+    api.write('apps/mobile/src/lib/unit-label.ts', "export const unitLabel = 'd';\n");
+    git(repository, ['add', '--all']);
+    git(repository, ['-c', `user.signingkey=${reviewerKey.file}`, 'commit', '-S', '--quiet', '-m', 'refactor: signed change']);
+  };
+  const cases = [
+    ['signed by a key the verifier does not trust', { trusted: [authorKey], signer: strangerKey }, /was not verified against the allowed signers/],
+    ['an unsigned annotated tag', { kind: 'unsigned' }, /was not verified against the allowed signers/],
+    ['a lightweight tag', { kind: 'lightweight' }, /is not an annotated, signed tag/],
+    ['signed by the author of the reviewed commits', { trusted: [authorKey], signer: authorKey }, /authored, committed or signed the reviewed commits/],
+    ['signed with a key that signed the reviewed commits', { prepare: signedCommit }, /authored, committed or signed the reviewed commits/],
+    ['a message that is not a verdict', { message: 'looks good to me' }, /is not a JSON verdict/],
+    ['a verdict outside the allowed set', { message: verdictMessage('APPROVED') }, /must be PASS, FAIL or INSUFFICIENT_EVIDENCE/],
+  ];
+  for (const [label, settings, pattern] of cases) {
+    const packet = attestedReview(settings);
+    assert.equal(packet.dimensions.codeHealth.verdict, INSUFFICIENT, label);
+    assert.match(packet.dimensions.codeHealth.findings.join('\n'), pattern, label);
+    assert.equal(packet.reviewer.attested, false, label);
+    assert.notEqual(packet.verdict, PASS, label);
+  }
+  const { repository, api } = attestedRepository();
+  api.write('apps/mobile/src/lib/unit-label.ts', "export const unitLabel = 'd';\n");
+  git(repository, ['add', '--all']);
+  git(repository, ['commit', '--quiet', '-m', 'refactor: later change']);
+  const stale = reviewDiff({ repository, base: 'main', scope, reviewer: 'review/head' });
+  assert.match(stale.dimensions.codeHealth.findings.join('\n'), /covers [0-9a-f]{12}, not the frozen head [0-9a-f]{12}/);
+  assert.equal(stale.reviewer.attested, false);
+  assert.equal(reviewDiff({ repository, base: 'main', scope, reviewer: 'review/missing' }).reviewer.attested, false);
+});
+
+test('a verified PASS still needs evidence that resolves to lines at the head, and a verified FAIL fails the review', () => {
+  const unresolved = attestedReview({ message: verdictMessage('PASS', ['apps/mobile/src/lib/format-total.ts:99', 'apps/mobile/src/lib/missing.ts:1']) });
+  assert.equal(unresolved.reviewer.attested, true);
+  assert.equal(unresolved.dimensions.codeHealth.verdict, INSUFFICIENT);
+  assert.match(unresolved.dimensions.codeHealth.findings.join('\n'), /does not resolve to existing lines at the head: apps\/mobile\/src\/lib\/format-total\.ts:99, apps\/mobile\/src\/lib\/missing\.ts:1/);
+  const bare = attestedReview({ message: verdictMessage('PASS', []) });
+  assert.match(bare.dimensions.codeHealth.findings.join('\n'), /needs file and line evidence/);
+  const undecided = attestedReview({ message: verdictMessage('INSUFFICIENT_EVIDENCE', []) });
+  assert.match(undecided.dimensions.codeHealth.findings.join('\n'), /could not reach a verdict/);
+  const failing = attestedReview({ message: verdictMessage('FAIL', ['apps/mobile/src/lib/format-total.ts:1 leaks currency']) });
   assert.equal(failing.dimensions.codeHealth.verdict, FAIL);
   assert.equal(failing.verdict, FAIL);
 });
@@ -426,16 +520,15 @@ test('controlled behavioral regressions in an isolated fixture fail through the 
     ['broken idempotency', change('scripts/order-state.mjs', '  if (ledger.seen.has(key)) return ledger;\n', '')],
   ];
   for (const [label, mutate] of regressions) {
-    const packet = review(mutate, { scope: ['scripts/order-state.mjs'], run: ['check', 'verify:negative'], reviewer: independentReviewer });
+    const packet = review(mutate, { scope: ['scripts/order-state.mjs'], run: ['check', 'verify:negative'] });
     assert.equal(packet.dimensions.correctness.verdict, FAIL, label);
     assert.match(packet.dimensions.correctness.findings.join('\n'), /npm run check exited 1/, label);
     assert.equal(packet.verdict, FAIL, label);
   }
 });
 
-test('known limit: a behavior change that no existing test covers is not visible to the deterministic dimensions', () => {
-  const packet = review(change('scripts/order-state.mjs', "accepted: ['completed', 'cancelled']", "accepted: ['completed', 'cancelled', 'pending']"),
-    { scope: ['scripts/order-state.mjs'], run: ['check', 'verify:negative'] });
+test('known limit: a behavior change that no executed command covers is not visible to the deterministic dimensions', () => {
+  const packet = review(change('apps/mobile/src/lib/currency.ts', "'d'", "'x'"), { run: ['check', 'verify:negative'] });
   assert.equal(packet.dimensions.correctness.verdict, PASS);
   assert.equal(packet.dimensions.scope.verdict, PASS);
   assert.equal(packet.dimensions.testIntegrity.verdict, PASS);
@@ -450,7 +543,9 @@ test('removals are never approved without ownership evidence, and still-referenc
 
   const referenced = review(api => api.remove('apps/mobile/src/lib/currency.ts'));
   assert.equal(referenced.dimensions.deadCodeSafety.verdict, FAIL);
-  assert.match(referenced.dimensions.deadCodeSafety.findings.join('\n'), /still referenced at apps\/mobile\/src\/lib\/format-total\.ts/);
+  const referencedFindings = referenced.dimensions.deadCodeSafety.findings.join('\n');
+  assert.match(referencedFindings, /currency is still referenced at apps\/mobile\/src\/lib\/(?:aliased|format-total)\.ts/);
+  assert.match(referencedFindings, /format-total\.ts:1: \.\/currency no longer resolves because apps\/mobile\/src\/lib\/currency\.ts was removed/);
 
   const route = review(api => api.remove('apps/mobile/src/app/settings.tsx'), { scope: ['apps/mobile/src/**'] });
   assert.equal(route.dimensions.deadCodeSafety.verdict, INSUFFICIENT);
@@ -505,6 +600,152 @@ test('scope: dependency changes need review and a gate removed from the aggregat
   const dropped = reviewDiff({ repository, base: 'main', scope: ['package.json'] });
   assert.equal(dropped.dimensions.scope.verdict, FAIL);
   assert.match(dropped.dimensions.scope.findings.join('\n'), /script check no longer runs: npm run verify:negative/);
+});
+
+const lib = 'apps/mobile/src/lib/';
+const reviewWith = (files, mutate, options = {}) => {
+  const { repository } = fixture(mutate, { files });
+  return reviewDiff({ repository, base: 'main', scope, ...options });
+};
+
+test('a removed export is not treated as moved because another file exports the same name', () => {
+  const dropTariff = api => api.write(`${lib}names-a.ts`, 'export const other = 1;\n');
+  const consume = (api, specifier) => api.write(`${lib}use-tariff.ts`, `import { tariff } from '${specifier}';\n\nexport const used = tariff;\n`);
+  const cases = [
+    ['a consumer still imports the removed export', dropTariff, FAIL, /export tariff was removed but is still referenced at apps\/mobile\/src\/lib\/use-tariff\.ts/],
+    ['a consumer re-pointed to a pre-existing export of the same name', api => { dropTariff(api); consume(api, './names-b'); }, INSUFFICIENT, /already exported a different tariff before this change/],
+    ['a consumer re-pointed to a new export with another declaration', api => { dropTariff(api); api.write(`${lib}names-c.ts`, 'export const tariff = 3;\n'); consume(api, './names-c'); }, INSUFFICIENT, /whose declaration differs from the removed one/],
+    ['a consumer re-pointed to a module that does not export the name', api => { dropTariff(api); api.write(`${lib}names-d.ts`, 'export const other = 4;\n'); consume(api, './names-d'); }, FAIL, /which does not export it/],
+    ['a consumer that loads the whole module', api => { dropTariff(api); api.write(`${lib}use-tariff.ts`, "import * as rates from './names-a';\n\nexport const used = rates.tariff;\n"); }, INSUFFICIENT, /loads the whole module/],
+    ['a mention that is not an import', api => { dropTariff(api); api.write(`${lib}use-tariff.ts`, 'export const used = 1;\nexport const label = "tariff";\n'); }, INSUFFICIENT, /mentions tariff without importing it/],
+  ];
+  for (const [label, mutate, expected, pattern] of cases) {
+    const packet = review(mutate);
+    assert.equal(packet.dimensions.deadCodeSafety.verdict, expected, label);
+    assert.match(packet.dimensions.deadCodeSafety.findings.join('\n'), pattern, label);
+    assert.notEqual(packet.verdict, PASS, label);
+  }
+
+  const identicalMove = review(api => { dropTariff(api); api.write(`${lib}names-c.ts`, 'export const tariff = 1;\n'); consume(api, './names-c'); });
+  assert.equal(identicalMove.dimensions.deadCodeSafety.verdict, PASS, 'the same declaration moved to a new module');
+  const packageImport = review(api => { dropTariff(api); consume(api, 'date-fns'); });
+  assert.equal(packageImport.dimensions.deadCodeSafety.verdict, PASS, 'a consumer that takes the name from a package');
+});
+
+test('a renamed or moved module that leaves an importer unresolved fails, and a complete rename passes', () => {
+  const rename = (from, to, finish = () => {}) => api => {
+    api.write(`${lib}${to}`, baseFiles[`${lib}${from}`]);
+    api.remove(`${lib}${from}`);
+    finish(api);
+  };
+  const completeRename = rename('currency.ts', 'money.ts', api => {
+    api.write(`${lib}format-total.ts`, formatTotal.replace("'./currency'", "'./money'"));
+    api.write(`${lib}aliased.ts`, baseFiles[`${lib}aliased.ts`].replace('@/lib/currency', '@/lib/money'));
+  });
+
+  const broken = review(rename('currency.ts', 'money.ts'));
+  assert.equal(broken.dimensions.deadCodeSafety.verdict, FAIL);
+  const brokenFindings = broken.dimensions.deadCodeSafety.findings.join('\n');
+  assert.match(brokenFindings, /apps\/mobile\/src\/lib\/format-total\.ts:1: \.\/currency no longer resolves because apps\/mobile\/src\/lib\/currency\.ts was renamed to apps\/mobile\/src\/lib\/money\.ts/);
+  assert.match(brokenFindings, /apps\/mobile\/src\/lib\/aliased\.ts:1: @\/lib\/currency no longer resolves/);
+  assert.notEqual(broken.verdict, PASS);
+
+  const moved = review(rename('format-total.ts', 'nested/format-total.ts'));
+  assert.equal(moved.dimensions.deadCodeSafety.verdict, FAIL);
+  const movedFindings = moved.dimensions.deadCodeSafety.findings.join('\n');
+  assert.match(movedFindings, /nested\/format-total\.ts:1: \.\/currency no longer resolves because apps\/mobile\/src\/lib\/nested\/format-total\.ts moved from apps\/mobile\/src\/lib\/format-total\.ts/);
+  assert.match(movedFindings, /consumer\.ts:1: \.\/format-total no longer resolves because apps\/mobile\/src\/lib\/format-total\.ts was renamed to/);
+
+  const complete = review(completeRename);
+  assert.equal(complete.dimensions.deadCodeSafety.verdict, PASS, 'a rename that updates every importer');
+
+  const dynamic = reviewWith({ [`${lib}loader.ts`]: 'export const load = (name: string) => import(name);\n' }, completeRename);
+  assert.equal(dynamic.dimensions.deadCodeSafety.verdict, INSUFFICIENT);
+  assert.match(dynamic.dimensions.deadCodeSafety.findings.join('\n'), /loader\.ts:1: dynamic require or import cannot be resolved statically/);
+
+  const mentioned = reviewWith({ 'apps/mobile/metadata.json': '{"entry":"apps/mobile/src/lib/currency"}\n' }, completeRename);
+  assert.equal(mentioned.dimensions.deadCodeSafety.verdict, INSUFFICIENT);
+  assert.match(mentioned.dimensions.deadCodeSafety.findings.join('\n'), /currency\.ts was renamed to apps\/mobile\/src\/lib\/money\.ts but its path is still mentioned at apps\/mobile\/metadata\.json/);
+});
+
+test('authorization boundaries, role gates, tool pins and security configuration need owner review', () => {
+  const widenedGate = api => api.write('apps/mobile/src/features/access/mode/preferred-mode-store.ts', "export const allowed = ['client', 'worker', 'admin'];\n");
+  const cases = [
+    ['the access mode gate is widened', widenedGate, /preferred-mode-store\.ts is in a high-risk area/],
+    ['a tool pin is changed', api => api.write('scripts/tools.json', '{"pin":"b"}\n'), /scripts\/tools\.json is in a high-risk area/],
+    ['the package registry is redirected', api => api.write('.npmrc', 'registry=https://example.invalid/\n'), /\.npmrc is in a high-risk area/],
+    ['tests are ignored by version control', api => api.write('.gitignore', 'node_modules/\n*.test.ts\n'), /\.gitignore is in a high-risk area/],
+    ['the compiler path mapping changes', change('apps/mobile/tsconfig.json', './src/*', './src/lib/*'), /tsconfig\.json is in a high-risk area/],
+    ['a permission list is widened outside the listed paths', change(`${lib}permissions.ts`, "['client']", "['client', 'worker']"), /permissions\.ts: changed lines mention "roles"/],
+  ];
+  for (const [label, mutate, pattern] of cases) {
+    const packet = review(mutate, { scope: ['**'] });
+    assert.equal(packet.dimensions.scope.verdict, INSUFFICIENT, label);
+    assert.match(packet.dimensions.scope.findings.join('\n'), pattern, label);
+    assert.notEqual(packet.verdict, PASS, label);
+  }
+  const attested = attestedReview({ mutate: widenedGate, review: { scope: ['apps/mobile/**'], run: ['check', 'verify:negative'] } });
+  assert.equal(attested.reviewer.attested, true);
+  assert.equal(attested.dimensions.correctness.verdict, PASS);
+  assert.equal(attested.dimensions.scope.verdict, INSUFFICIENT);
+  assert.equal(attested.verdict, INSUFFICIENT);
+
+  assert.equal(review(defaultChange).dimensions.scope.verdict, PASS, 'an ordinary refactor outside every protected area');
+});
+
+test('test selection is compared at both revisions whether or not the root manifest changed', () => {
+  const mobile = 'apps/mobile/package.json';
+  const covered = 'apps/mobile/src/lib/format-total.test.ts';
+  const unselected = file => new RegExp(`${file.replaceAll('.', '\\.')}: still exists but no script or jest configuration selects it any more`);
+  const narrowing = [
+    ['the test match narrowed to nothing', mobileManifest({ testMatch: ['<rootDir>/src/**/nothing.test.ts'] })],
+    ['an ignore pattern covering the tests', mobileManifest({ testPathIgnorePatterns: ['/src/lib/'] })],
+    ['a test regex that matches no test', mobileManifest({ testMatch: undefined, testRegex: 'nothing\\.test\\.ts$' })],
+  ];
+  for (const [label, manifest] of narrowing) {
+    const packet = review(api => api.write(mobile, manifest), { scope: [mobile] });
+    assert.deepEqual(packet.files.map(file => file.path), [mobile], label);
+    assert.equal(packet.dimensions.testIntegrity.verdict, FAIL, label);
+    assert.match(packet.dimensions.testIntegrity.findings.join('\n'), unselected(covered), label);
+  }
+
+  const flagged = review(api => api.write(mobile, mobileManifest({}, { test: 'jest --ci --passWithNoTests' })), { scope: [mobile] });
+  assert.equal(flagged.dimensions.scope.verdict, FAIL);
+  assert.match(flagged.dimensions.scope.findings.join('\n'), /apps\/mobile\/package\.json script test no longer runs: jest --ci/);
+
+  const neutered = [
+    ['a root test script replaced', { 'test:mobile': 'npm run test --workspace apps/mobile' }, { 'test:mobile': 'echo skipped' }, /script test:mobile no longer runs: npm run test --workspace apps\/mobile/],
+    ['a root lint script replaced', { 'lint:markdown': 'markdownlint-cli2' }, { 'lint:markdown': 'true' }, /script lint:markdown no longer runs: markdownlint-cli2/],
+  ];
+  for (const [label, before, after, pattern] of neutered) {
+    const { repository } = fixture(api => api.write('package.json', rootManifest(after)), { files: { 'package.json': rootManifest(before) } });
+    const packet = reviewDiff({ repository, base: 'main', scope: ['package.json'] });
+    assert.equal(packet.dimensions.scope.verdict, FAIL, label);
+    assert.match(packet.dimensions.scope.findings.join('\n'), pattern, label);
+  }
+
+  const droppedFromScripts = review(api => api.write('package.json', rootManifest({ check: 'node -e ""' })), { scope: ['package.json'] });
+  assert.equal(droppedFromScripts.dimensions.scope.verdict, FAIL);
+  assert.equal(droppedFromScripts.dimensions.testIntegrity.verdict, FAIL);
+  assert.match(droppedFromScripts.dimensions.testIntegrity.findings.join('\n'), unselected('scripts/order-state.test.mjs'));
+
+  const unregistered = review(api => api.write('scripts/new-check.test.mjs', newTest), { scope: ['scripts/**'] });
+  assert.equal(unregistered.dimensions.testIntegrity.verdict, INSUFFICIENT);
+  assert.match(unregistered.dimensions.testIntegrity.findings.join('\n'), /scripts\/new-check\.test\.mjs: no script or jest configuration selects this test file/);
+
+  const unevaluable = review(api => api.write(mobile, mobileManifest({ roots: ['<rootDir>/src'] })), { scope: [mobile] });
+  assert.equal(unevaluable.dimensions.testIntegrity.verdict, INSUFFICIENT);
+  assert.match(unevaluable.dimensions.testIntegrity.findings.join('\n'), /uses patterns this review cannot evaluate and changed/);
+
+  const configuration = reviewWith({ 'apps/mobile/jest.config.js': 'module.exports = {};\n' }, api => api.write('apps/mobile/jest.config.js', 'module.exports = { testMatch: [] };\n'), { scope: ['apps/mobile/**'] });
+  assert.equal(configuration.dimensions.testIntegrity.verdict, INSUFFICIENT);
+  assert.match(configuration.dimensions.testIntegrity.findings.join('\n'), /jest\.config\.js: test discovery configuration changed/);
+  assert.equal(configuration.dimensions.scope.verdict, INSUFFICIENT);
+
+  const broadened = review(api => api.write(mobile, mobileManifest({ testMatch: ['<rootDir>/src/**/*.test.ts', '<rootDir>/src/**/*.test.tsx', '<rootDir>/src/**/*.check.ts'] })), { scope: [mobile] });
+  assert.equal(broadened.dimensions.testIntegrity.verdict, PASS, 'a test match that only gains patterns');
+  const added = review(api => api.write(`${lib}format-totals.test.ts`, formatTotalTest));
+  assert.equal(added.dimensions.testIntegrity.verdict, PASS, 'a new test that the jest configuration selects');
 });
 
 test('agent artifacts: disposable names and AI attribution in added lines fail', () => {
