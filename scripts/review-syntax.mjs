@@ -8,7 +8,7 @@ export const squash = value => value.replace(/\s+/g, ' ').replace(/ ?([.,;()[\]{
 
 export const sameNode = (left, right) => left.kind === right.kind && left.pos === right.pos && left.end === right.end;
 
-export const boundNames =name => (name.kind === SyntaxKind.Identifier ? [name.text] : name.elements.flatMap(element => (element.name ? boundNames(element.name) : [])));
+export const boundNames = name => (name.kind === SyntaxKind.Identifier ? [name.text] : name.elements.flatMap(element => (element.name ? boundNames(element.name) : [])));
 
 export function withSources(entries, use) {
   const directory = path.resolve(root, '.cache/review-diff-types').replaceAll('\\', '/');

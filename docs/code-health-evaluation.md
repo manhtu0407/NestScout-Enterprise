@@ -184,7 +184,7 @@ needs manual evidence.
 `scripts/review-diff.mjs` reads a frozen base-to-head diff (resolved SHAs and the merge
 base) and returns a verdict of `PASS`, `FAIL` or `INSUFFICIENT_EVIDENCE` for each of five
 dimensions. `scripts/review-diff.test.mjs` exercises it on isolated temporary
-repositories, never production modules, with 35 tests:
+repositories, never production modules, with 38 tests:
 
 - test weakening: `it.skip`, `it.only` and a node-test `skip` option fail; a deleted test
   file fails, and so does a test file renamed to a name that no longer matches the test
@@ -198,8 +198,10 @@ repositories, never production modules, with 35 tests:
   literal `false`, and `skip()` or `todo()` on the context parameter of a test callback;
 - assertions are the outermost `expect` and `assert` call chains, compared as a whole
   expression with every control-flow guard around them: an enclosing `if`, loop, `try` or
-  `catch`, `case`, conditional or `&&`, `||`, `??`, and any earlier statement in the block
-  that can return, throw, break or continue. Same-file `const` and `let` values that the
+  `catch`, `case`, conditional or `&&`, `||`, `??`, any earlier statement in the block
+  that can return, throw, break or continue, an enclosing function that is not the test
+  callback itself (an assertion moved into a closure nobody calls), and whether the
+  assertion is awaited or returned (an `await` dropped from `rejects`). Same-file `const` and `let` values that the
   expression names (looked up by scope, to three levels) are part of the comparison, so a
   weakened matcher, an early return, an unreachable branch or a changed expected constant
   is reported even when the assertion's own line is unchanged. A non-test file that
@@ -216,7 +218,8 @@ repositories, never production modules, with 35 tests:
 - controlled behavioral regressions (wrong state transition, changed authorization
   check, broken idempotency) fail through the recorded command results;
 - removals: a still-referenced file or export fails and an unreferenced one is never
-  approved. Exports and imports are read from the syntax tree. A removed export that a
+  approved. Exports, including default exports, and imports are read from the syntax
+  tree. A removed export that a
   consumer still imports from the original module fails, even when another file exports
   the same name. A move is accepted only when the consumer now imports the name from a
   module whose declaration text equals the removed one and which did not export it
@@ -233,7 +236,7 @@ repositories, never production modules, with 35 tests:
   dependency change in any `package.json` needs owner review. The high-risk list now
   covers all of `scripts/` and `supabase/`, all of `apps/mobile/src/features/access/`,
   `scripts/tools.json`, tool and compiler configuration (`jest`, `babel`, `metro`,
-  `eslint`, `knip`, `stryker`, `tsconfig`), `.npmrc`, `.env*`, `.gitignore`,
+  `eslint`, `knip` and `knip.json`, `stryker`, `tsconfig`), `.npmrc`, `.env*`, `.gitignore`,
   `.gitattributes` and `.editorconfig`. Independently of paths, a changed line in a
   source or SQL file that contains a word such as role, capability, permission, grant,
   policy, authorization, credential or secret (camelCase split) needs owner review. Any
@@ -251,8 +254,9 @@ repositories, never production modules, with 35 tests:
   string that merely contains `//` is not a comment;
 - the reference search and the recorded commands run without the caller's `GIT_*`
   variables, as every other Git call in the repository does;
-- an evaluation that cannot be completed, such as an unreadable ref or a file larger than
-  the 32 MiB Git buffer, prints `INSUFFICIENT_EVIDENCE` with the error and exits 3, so it
+- an evaluation that cannot be completed, such as an unreadable ref, a usage error or a
+  file larger than the 32 MiB Git buffer, prints `INSUFFICIENT_EVIDENCE` with the error
+  and exits 3, so it
   is never mistaken for a `FAIL` verdict (exit 1) or a `PASS` (exit 0). The list of
   required commands cannot be shortened by the caller;
 - evidence binding to the frozen head and a clean tree, and immunity to later commits.
@@ -355,7 +359,10 @@ author, committer or signing key of any commit between the merge base and the he
 verdict is PASS, FAIL or `INSUFFICIENT_EVIDENCE`; and a PASS carries at least one
 evidence reference whose file and line exist at the head. Anything else, including a
 JSON file or a verdict declared as independent, leaves `codeHealth` at
-`INSUFFICIENT_EVIDENCE`. This shows that a key the verifier trusts signed the verdict for
+`INSUFFICIENT_EVIDENCE`. The allowed-signers file must lie outside the repository under
+review, and `git verify-tag` runs without the caller's `GIT_*` variables, so neither the
+change nor an environment variable can add a trusted signer. This shows that a key the
+verifier trusts signed the verdict for
 this head and did not write the change. It does not show that the signer is a human, that
 the signer looked at the diff, or that a model and the implementation session do not share
 a key; the allowed-signers file is the trust root and belongs to the owner.
@@ -404,7 +411,8 @@ deterministic dimensions is still not evidence that behavior is intact. Open:
 - attestation checks the signature, the head binding, the signer's distance from the
   commits and the evidence lines. It cannot show who the signer is or that the diff was
   read, only SSH-signed tags are recognised, and verification needs `ssh-keygen` and an
-  allowed-signers file on the verifying machine;
+  allowed-signers file on the verifying machine. Who wrote that file is not checked, so an
+  implementer who controls the machine can still list their own second key;
 - reference analysis is syntactic: `tsconfig` `paths` are read from the nearest file
   without `extends`, package imports are not resolved, a namespace or computed property
   access that reaches a removed export is only reported as a review item, and a word-based

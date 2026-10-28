@@ -256,6 +256,34 @@ test('a verified PASS still needs evidence that resolves to lines at the head, a
   assert.equal(failing.verdict, FAIL);
 });
 
+test('the allowed signers file cannot live inside the reviewed repository, and the caller Git configuration cannot widen it', () => {
+  const { repository } = attestedRepository({ trusted: [authorKey], signer: strangerKey });
+  const baseline = reviewDiff({ repository, base: 'main', scope, reviewer: 'review/head' });
+  assert.equal(baseline.reviewer.attested, false);
+
+  const widened = path.join(keyDirectory, 'allowed-widened');
+  writeFileSync(widened, `${strangerKey.entry}\n`);
+  const saved = ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0'].map(name => [name, process.env[name]]);
+  Object.assign(process.env, { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'gpg.ssh.allowedSignersFile', GIT_CONFIG_VALUE_0: widened });
+  try {
+    const poisoned = reviewDiff({ repository, base: 'main', scope, reviewer: 'review/head' });
+    assert.equal(poisoned.reviewer.attested, false, 'GIT_CONFIG_* does not add a trusted signer');
+  } finally {
+    for (const [name, value] of saved) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+
+  const inside = attestedRepository({ prepare: (target, api) => {
+    api.write('trusted-signers', `${reviewerKey.entry}\n`);
+    git(target, ['config', 'gpg.ssh.allowedSignersFile', path.join(target, 'trusted-signers')]);
+  } });
+  const packet = reviewDiff({ repository: inside.repository, base: 'main', scope, reviewer: inside.tag });
+  assert.equal(packet.reviewer.attested, false);
+  assert.match(packet.dimensions.codeHealth.findings.join('\n'), /allowed signers file is inside the repository under review/);
+});
+
 test('a deliberate test weakening is caught: skipped, deleted, removed or altered assertions and tests', () => {
   const cases = [
     ['skipped test', change('apps/mobile/src/lib/format-total.test.ts', "it('formats fractions'", "it.skip('formats fractions'"), FAIL, /disabled tests increased/],
@@ -293,12 +321,16 @@ test('skip markers inside strings, templates and comments are not disabled tests
     "/* xit('commented', () => {}) */",
     '',
   ].join('\n');
-  for (const [label, mutate] of [
-    ['mjs', appendTo('scripts/order-state.test.mjs', javaScript)],
-    ['ts', appendTo('apps/mobile/src/lib/format-total.test.ts', typed)],
-  ]) {
-    const packet = review(mutate, { scope: ['scripts/**', 'apps/mobile/src/lib/**'] });
-    assert.equal(packet.dimensions.testIntegrity.verdict, PASS, label);
+  const withoutComments = text => text.split('\n').filter(line => !/^\s*(?:\/\/|\/\*)/.test(line)).join('\n');
+  const targets = [
+    ['mjs', 'scripts/order-state.test.mjs', javaScript],
+    ['ts', 'apps/mobile/src/lib/format-total.test.ts', typed],
+  ];
+  const everywhere = { scope: ['scripts/**', 'apps/mobile/src/lib/**'] };
+  for (const [label, file, text] of targets) {
+    assert.equal(review(appendTo(file, withoutComments(text)), everywhere).dimensions.testIntegrity.verdict, PASS, label);
+    const commented = review(appendTo(file, text), everywhere);
+    assert.deepEqual(commented.dimensions.testIntegrity.findings.filter(line => !/adds \d+ source comment/.test(line)), [], `${label}: commented skip markers are not disabled tests`);
   }
 });
 
@@ -399,6 +431,7 @@ test('assertions that are weakened without changing a matched line are reported:
     ['short-circuited', change(file, "    expect(formatTotal(500)).toBe('d5.00');", "    process.env.SLOW && expect(formatTotal(500)).toBe('d5.00');")],
     ['moved into a catch handler', change(file, "    expect(formatTotal(500)).toBe('d5.00');", "    try {\n      formatTotal(500);\n    } catch {\n      expect(formatTotal(500)).toBe('d5.00');\n    }")],
     ['looped over nothing', change(file, "    expect(formatTotal(500)).toBe('d5.00');", "    for (const unused of []) {\n      expect(formatTotal(500)).toBe('d5.00');\n    }")],
+    ['moved into a closure that is never called', change(file, "    expect(formatTotal(500)).toBe('d5.00');", "    const later = () => {\n      expect(formatTotal(500)).toBe('d5.00');\n    };")],
   ];
   for (const [label, mutate] of cases) {
     const packet = review(mutate);
@@ -406,6 +439,14 @@ test('assertions that are weakened without changing a matched line are reported:
     assert.match(packet.dimensions.testIntegrity.findings.join('\n'), /assertion\(s\) removed, altered or moved behind control flow/, label);
     assert.notEqual(packet.verdict, PASS, label);
   }
+
+  const awaitedBase = "  it('rejects', async () => {\n    await expect(Promise.reject(new Error('x'))).rejects.toThrow('x');\n  });\n";
+  const awaitedFile = formatTotalTest.replace('});\n', `${awaitedBase}});\n`);
+  const unawaited = withBase(file, awaitedFile, awaitedFile.replace('await expect', 'expect'));
+  assert.equal(unawaited.dimensions.testIntegrity.verdict, INSUFFICIENT, 'await dropped from an asynchronous assertion');
+  assert.match(unawaited.dimensions.testIntegrity.findings.join('\n'), /assertion\(s\) removed, altered or moved behind control flow/);
+  const keptAwait = withBase(file, awaitedFile, awaitedFile.replace("it('rejects'", "it('rejects with the message'"));
+  assert.equal(keptAwait.dimensions.testIntegrity.verdict, PASS, 'an awaited assertion that is left alone');
 
   const multiLine = withBase(file, wholeExpectation, wholeExpectation.replace('      .toBe(wholeExpected);', '      .toBeDefined();'));
   assert.equal(multiLine.dimensions.testIntegrity.verdict, INSUFFICIENT, 'multi-line matcher weakened');
@@ -632,6 +673,24 @@ test('a removed export is not treated as moved because another file exports the 
   assert.equal(packageImport.dimensions.deadCodeSafety.verdict, PASS, 'a consumer that takes the name from a package');
 });
 
+test('a removed default export that a consumer still imports fails, and a kept default export does not', () => {
+  const files = {
+    [`${lib}default-rate.ts`]: 'export default function rate() {\n  return 1;\n}\n',
+    [`${lib}use-rate.ts`]: "import rate from './default-rate';\n\nexport const used = rate();\n",
+  };
+  const removed = reviewWith(files, api => api.write(`${lib}default-rate.ts`, 'export function rate() {\n  return 1;\n}\n'));
+  assert.equal(removed.dimensions.deadCodeSafety.verdict, FAIL);
+  assert.match(removed.dimensions.deadCodeSafety.findings.join('\n'), /export default was removed but is still referenced at apps\/mobile\/src\/lib\/use-rate\.ts/);
+  const kept = reviewWith(files, api => api.write(`${lib}default-rate.ts`, 'export default function rate() {\n  return 2;\n}\n'));
+  assert.equal(kept.dimensions.deadCodeSafety.verdict, PASS);
+});
+
+test('the dead-code detector configuration is a high-risk area', () => {
+  const packet = review(api => api.write('knip.json', '{}\n'), { scope: ['knip.json'] });
+  assert.equal(packet.dimensions.scope.verdict, INSUFFICIENT);
+  assert.match(packet.dimensions.scope.findings.join('\n'), /knip\.json.*high-risk area|high-risk area.*knip\.json/);
+});
+
 test('a renamed or moved module that leaves an importer unresolved fails, and a complete rename passes', () => {
   const rename = (from, to, finish = () => {}) => api => {
     api.write(`${lib}${to}`, baseFiles[`${lib}${from}`]);
@@ -848,7 +907,7 @@ test('the command line prints the packet and exits 2 for insufficient evidence a
   assert.equal(second.status, 1);
   assert.equal(JSON.parse(second.stdout).dimensions.testIntegrity.verdict, FAIL);
   const unknown = run(insufficient.repository, '--unknown', 'value');
-  assert.notEqual(unknown.status, 0);
+  assert.equal(unknown.status, 3);
   assert.match(unknown.stderr, /Unknown argument --unknown/);
   const unreadable = spawnSync(process.execPath, [path.join(root, 'scripts/review-diff.mjs'), '--repository', insufficient.repository, '--base', 'no-such-ref'], { encoding: 'utf8' });
   assert.equal(unreadable.status, 3);

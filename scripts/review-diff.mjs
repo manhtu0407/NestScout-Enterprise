@@ -29,6 +29,7 @@ const highRisk = [
   /^apps\/mobile\/src\/features\/access\//,
   /^apps\/mobile\/src\/lib\/(?:config|chunked-storage|supabase-client|device-storage)\.ts$/,
   /(?:^|\/)(?:jest|babel|metro|eslint|knip|stryker|vitest|playwright)\.config\.[^/]+$/,
+  /(?:^|\/)\.?knip\.jsonc?$/,
   /(?:^|\/)(?:tsconfig(?:\.[^/]+)?\.json|\.npmrc|\.env(?:\.[^/]+)?|\.gitignore|\.gitattributes|\.editorconfig|\.nvmrc|\.node-version|\.markdownlint-cli2\.[^/]+)$/,
 ];
 const authorizationWord = /^(?:roles?|capabilit(?:y|ies)|permissions?|grants?|authori[sz]\w*|authenticat\w*|polic(?:y|ies)|rls|credentials?|secrets?)$/;
@@ -167,8 +168,11 @@ function testStructure(file, text) {
       }
       return lines.sort();
     };
+    const runsAsTest = fn => fn.parent?.kind === SyntaxKind.CallExpression && fn.parent.arguments.some(argument => sameNode(argument, fn)) && testRoots.has(chainOf(fn.parent)?.root);
     const guards = node => {
       const entries = [];
+      if (node.parent?.kind === SyntaxKind.AwaitExpression) entries.push('awaited');
+      if (node.parent?.kind === SyntaxKind.ReturnStatement) entries.push('returned');
       let child = node;
       for (let ancestor = node.parent; ancestor; child = ancestor, ancestor = ancestor.parent) {
         if (guardKinds.has(ancestor.kind) || (ancestor.kind === SyntaxKind.BinaryExpression && logicalOperators.has(ancestor.operatorToken.kind))) {
@@ -178,6 +182,7 @@ function testStructure(file, text) {
         if (blockKinds.has(ancestor.kind)) {
           for (const statement of ancestor.statements) if (statement.end <= child.pos && exits(statement)) entries.push(`after ${slice(statement)}`);
         }
+        if (functionKinds.has(ancestor.kind) && !runsAsTest(ancestor)) entries.push(`inside ${squash(text.slice(ancestor.getStart(source), (ancestor.body ?? ancestor).getStart(source)))}`);
       }
       return entries;
     };
@@ -464,10 +469,11 @@ function testDimension(repository, files, mergeBase, head, views) {
     const after = readAt(repository, head, file.path);
     try { checkAttribution(addedText(before, after), file.path); } catch (error) { failed.push(`${file.path}: ${error.message}`); }
     try {
-      checkAttribution(addedText(sourceComments(fromPath, before), sourceComments(file.path, after)), file.path);
+      const comments = [sourceComments(fromPath, before), sourceComments(file.path, after)];
+      try { checkAttribution(addedText(...comments), file.path); } catch (error) { failed.push(`${file.path}: ${error.message}`); }
       const introduced = commentViolations([{ file: file.path, text: after }], 'head').length - commentViolations([{ file: fromPath, text: before }], 'base').length;
       if (introduced > 0) failed.push(`${file.path}: adds ${introduced} source comment(s); the zero-comment policy applies to the delivered state.`);
-    } catch (error) { failed.push(`${file.path}: ${error.message}`); }
+    } catch (error) { findings.push(`${file.path}: comments could not be checked: ${error.message}`); }
     const isTest = testFile.test(file.path) || testFile.test(fromPath);
     const structured = sourceFile.test(file.path);
     if (!isTest && !(structured && guardsAssertions.test(before))) continue;
@@ -545,7 +551,8 @@ function removedModuleChecks(repository, head, removed, before, after) {
 function removedExportChecks(repository, head, file, name, declaration, now, before, after) {
   const findings = [];
   const failed = [];
-  const mentions = grepHead(repository, head, name).filter(line => !line.startsWith(`${file.path}:`));
+  const isDefault = name === 'default';
+  const mentions = grepHead(repository, head, isDefault ? stemOf(file.path) : name).filter(line => !line.startsWith(`${file.path}:`));
   if (!mentions.length) {
     findings.push(`${file.path}: export ${name} was removed and has no static reference left, but static absence is not proof of non-use (routes, configuration, runtime registration, backend contracts); uncertain usage means do not delete.`);
     return { findings, failed };
@@ -557,7 +564,7 @@ function removedExportChecks(repository, head, file, name, declaration, now, bef
   const mentioning = [...new Set(mentions.map(line => line.split(':')[0]))];
   const consumers = mentioning.filter(candidate => moduleOrSource(candidate) && after.has(candidate));
   const lineOf = consumer => mentions.find(line => line.startsWith(`${consumer}:`));
-  for (const other of mentioning.filter(candidate => !consumers.includes(candidate))) findings.push(`${file.path}: export ${name} was removed but ${lineOf(other)} still mentions it outside source code; owner review must confirm it is unrelated.`);
+  for (const other of isDefault ? [] : mentioning.filter(candidate => !consumers.includes(candidate))) findings.push(`${file.path}: export ${name} was removed but ${lineOf(other)} still mentions it outside source code; owner review must confirm it is unrelated.`);
   const described = describeModules(consumers.map(consumer => ({ file: consumer, text: after.read(consumer) })));
   consumers.forEach((consumer, index) => {
     const module = described[index];
@@ -565,7 +572,7 @@ function removedExportChecks(repository, head, file, name, declaration, now, bef
       findings.push(`${consumer}: references could not be compared: Invalid syntax in ${consumer}.`);
       return;
     }
-    if (module.exports.has(name)) return;
+    if (!isDefault && module.exports.has(name)) return;
     let bound = false;
     for (const use of module.uses) {
       const named = use.names.has(name);
@@ -588,7 +595,7 @@ function removedExportChecks(repository, head, file, name, declaration, now, bef
         else if (declared !== declaration) findings.push(`${consumer}:${use.line}: ${name} is now imported from ${destination}, whose declaration differs from the removed one; owner review must confirm the behavior is unchanged.`);
       }
     }
-    if (!bound) findings.push(`${consumer}: mentions ${name} without importing it, and ${file.path} no longer exports it; owner review must confirm the mention is unrelated.`);
+    if (!bound && !isDefault) findings.push(`${consumer}: mentions ${name} without importing it, and ${file.path} no longer exports it; owner review must confirm the mention is unrelated.`);
   });
   return { findings, failed };
 }
@@ -623,7 +630,7 @@ function deadCodeDimension(repository, files, mergeBase, head, views) {
         continue;
       }
       for (const [name, declaration] of was.exports) {
-        if (name === 'default' || now.exports.has(name)) continue;
+        if (now.exports.has(name)) continue;
         const result = removedExportChecks(repository, head, file, name, declaration, now, views.before, views.after);
         findings.push(...result.findings);
         failed.push(...result.failed);
@@ -726,12 +733,13 @@ function parseArguments(argv) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const options = parseArguments(process.argv.slice(2));
   try {
+    const options = parseArguments(process.argv.slice(2));
     const packet = reviewDiff(options);
     console.log(JSON.stringify(packet, null, 2));
     process.exitCode = { [PASS]: 0, [FAIL]: 1, [INSUFFICIENT]: 2 }[packet.verdict];
   } catch (error) {
+    console.error(error.message);
     console.log(JSON.stringify({ verdict: INSUFFICIENT, error: error.message }, null, 2));
     process.exitCode = 3;
   }

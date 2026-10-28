@@ -1,4 +1,7 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync, realpathSync } from 'node:fs';
+import path from 'node:path';
+import { gitEnvironment } from './git-environment.mjs';
 import { git } from './repository-files.mjs';
 
 const verdictNames = new Set(['PASS', 'FAIL', 'INSUFFICIENT_EVIDENCE']);
@@ -6,6 +9,22 @@ const goodSignature = /^Good "git" signature for (\S+) with \S+ key (SHA256:\S+)
 const evidenceReference = /^(.+?):(\d+)(?:-(\d+))?(?:\s.*)?$/;
 
 const refused = reasons => ({ attested: false, reasons, signer: null, key: null, codeHealth: null });
+
+function signersInside(repository) {
+  let configured;
+  try {
+    configured = git(repository, ['config', '--type=path', '--get', 'gpg.ssh.allowedSignersFile']).trim();
+  } catch {
+    return false;
+  }
+  const canonical = value => {
+    const resolved = path.resolve(repository, value);
+    const real = existsSync(resolved) ? realpathSync.native(resolved) : resolved;
+    return process.platform === 'win32' ? real.toLowerCase() : real;
+  };
+  const relative = path.relative(canonical(git(repository, ['rev-parse', '--show-toplevel']).trim()), canonical(configured));
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
 
 function lineCount(text) {
   return text.replace(/\n$/, '').split('\n').length;
@@ -26,7 +45,9 @@ export function verifyAttestation(repository, tag, { headSha, mergeBase, view })
   if (kind !== 'tag') return refused([`Reviewer attestation ${tag} is not an annotated, signed tag.`]);
   if (peeled !== headSha) return refused([`Reviewer attestation ${tag} covers ${peeled.slice(0, 12)}, not the frozen head ${headSha.slice(0, 12)}.`]);
 
-  const checked = spawnSync('git', ['verify-tag', reference], { cwd: repository, encoding: 'utf8' });
+  if (signersInside(repository)) return refused(['The allowed signers file is inside the repository under review, so the change under review could have written it.']);
+
+  const checked = spawnSync('git', ['verify-tag', reference], { cwd: repository, encoding: 'utf8', env: gitEnvironment() });
   const signature = goodSignature.exec(`${checked.stdout}${checked.stderr}`);
   if (checked.status !== 0 || !signature) {
     const reason = `${checked.stderr}${checked.stdout}`.split('\n').find(line => line.trim())?.trim() ?? 'no output';

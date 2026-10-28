@@ -12,7 +12,6 @@ function describe(source, text) {
   const lineOf = node => text.slice(0, node.getStart(source)).split('\n').length;
   const exported = new Map();
   const uses = [];
-  const dynamic = [];
   let star = false;
 
   for (const statement of source.statements) {
@@ -60,12 +59,11 @@ function describe(source, text) {
       const mocks = callee.kind === SyntaxKind.PropertyAccessExpression && mockCalls.has(callee.name.text);
       const argument = node.arguments[0];
       if ((loads || mocks) && argument && literalKinds.has(argument.kind)) use(node, argument.text, loads ? requiredNames(node) : new Set(['*']));
-      else if (loads) dynamic.push(lineOf(node));
     }
     node.forEachChild(visit);
   };
   visit(source);
-  return { exports: exported, star, uses, dynamic };
+  return { exports: exported, star, uses };
 }
 
 export function describeModules(entries) {
