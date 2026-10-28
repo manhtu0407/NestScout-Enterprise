@@ -312,25 +312,44 @@ author's check of one case, not independent review.
 
 ### Platform coverage
 
-Measured on Windows 11 with Node.js 24.19.0, and again on Linux in a
-`node:24-bookworm` container (Node.js 24.22.1, npm 11.19.1, x86_64) built from a Git
-bundle of the full history, so no Windows `node_modules` were reused. At the code commit
-that added signed reviewer attestations and the reference, risk and selection checks
-(`44550ef2b4eb684dcf5b78144698869fef2f9006`, only documentation changed after it), on
-Linux `npm ci --ignore-scripts`, `npm run tools:install`, the two evaluator test files
-(35 tests), `npm run check` (foundation 124 tests, mobile 272), `npm run verify:negative`
-(151) and `npm run health:dead-code` all passed; the container had OpenSSH 9.2
-(`ssh-keygen`), which the attestation tests need. `npm run check`, `npm run
-verify:negative` and `npm run health:dead-code` passed on Windows at the same commit, and
-both platforms report the same nine Knip items listed above.
+Measured at the code commit `abbe33a6ae22d8e98f772891bf3897ee081bf472`; only
+documentation changed after it. Each platform used a fresh clone with its own
+`node_modules`; the Linux container was built from a Git bundle of the full history.
 
-The first Linux pass found a real defect in this change: `review-diff.mjs` located the
-npm CLI only in the Windows layout, so recorded commands failed whenever it was not
-started through npm. It now also looks in the Linux layout, with a regression test that
-clears `npm_execpath`. Two other first-pass failures were environmental: `npm run
-identity` needs the `gh` CLI and the GitHub API, and was not run on Linux; three
-benchmark tests need a pinned commit that exists only outside `origin/main`, which a
-history-limited clone lacks. Hosted CI checks out with full history.
+| Platform | Environment |
+| --- | --- |
+| Windows | Windows 11, Node.js 24.19.0, npm 11.17.0, Git for Windows |
+| Linux | `node:24-bookworm` container (capped at 2 CPUs and 4 GiB), Node.js 24.22.1, npm 11.19.1, x86_64, OpenSSH 9.2 (`ssh-keygen`, needed by the attestation tests) |
+
+| Command | Windows | Linux |
+| --- | --- | --- |
+| `npm ci --ignore-scripts`, `npm run tools:install` | exit 0 | exit 0 |
+| the two evaluator test files | inside the 130 foundation tests below | 41 of 41, run on their own |
+| `npm run check` (foundation, mobile) | exit 0; 130 and 272 tests | exit 0; 130 and 272 tests |
+| `npm run verify:negative` | exit 0; 151 tests | exit 0; 151 tests |
+| `npm run health:dead-code` | exit 0; the nine items listed above | exit 0; the same nine |
+| `npm run health:review-diff`, scoped to `docs/**`, `scripts/**` and the two manifests | exit 2, `INSUFFICIENT_EVIDENCE` | exit 2, `INSUFFICIENT_EVIDENCE` |
+
+The review exits 2 on both platforms because no signed reviewer attestation exists for
+this branch, so code health stays at insufficient evidence; that is the intended result
+until the owner supplies one. Both platforms report the same nine Knip items.
+
+An earlier Windows run of `npm run check` failed 6 mobile tests in four access-state
+suites, all with the default 5 second timeout, while another process was loading the
+machine. At the code commit the same run passed 272 of 272, the four suites passed in
+five repeated, two serial and one randomized-order run, and an unchanged `origin/main`
+clone (`33a3e10`) failed the same six tests in one of two runs under artificial CPU
+load. This branch changes no mobile source, so the failures are not caused by it. The
+tests are sensitive to a starved host; the mechanism was not traced, and they were not
+changed.
+
+The first Linux pass of an earlier commit found a real defect in this change:
+`review-diff.mjs` located the npm CLI only in the Windows layout, so recorded commands
+failed whenever it was not started through npm. It now also looks in the Linux layout,
+with a regression test that clears `npm_execpath`. `npm run identity` needs the `gh`
+CLI and the GitHub API, and was not run on Linux; three benchmark tests need a pinned
+commit that exists only outside `origin/main`, which a history-limited clone lacks.
+Hosted CI checks out with full history.
 
 Not covered: macOS, arm64, a real GitHub-hosted runner, and the native device. Hosted CI
 remains the authoritative check.
