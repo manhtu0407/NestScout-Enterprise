@@ -195,7 +195,7 @@ repositories, never production modules, with 45 tests:
   TypeScript native API, so quoted, templated and commented `it.skip(` text is never
   counted. Disabled tests are counted for modifier chains (`it.concurrent.skip`,
   `xit.each`), computed access (`it['skip']`, a dynamic key), aliases and destructuring of
-  the test function, a stored `it.skip`, `skip`, `todo` or `only` options that are not the
+  the test function, a stored `it.skip`, `skip`, `todo` or `only` options, written inline or in a same-file options object, that are not the
   literal `false`, and `skip()` or `todo()` on the context parameter of a test callback;
 - assertions are the outermost `expect` and `assert` call chains, compared as a whole
   expression with every control-flow guard around them: an enclosing `if`, loop, `try` or
@@ -225,8 +225,8 @@ repositories, never production modules, with 45 tests:
   tree. A removed export that a
   consumer still imports from the original module fails, even when another file exports
   the same name or the consumer itself re-exports it; a default export written as
-  `export default value` is tracked like a declared one, and a barrel that stops using
-  `export *` needs owner review because the names it re-exported cannot be listed. A move is accepted only when the consumer now imports the name from a
+  `export default value` is tracked like a declared one, and a barrel that drops any
+  `export * from` source needs owner review because the names it re-exported cannot be listed. A move is accepted only when the consumer now imports the name from a
   module whose declaration text equals the removed one and which did not export it
   before. A re-pointed import to a pre-existing or different declaration, a whole-module
   import, a re-export that cannot be compared, or a mention without an import needs

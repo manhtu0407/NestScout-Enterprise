@@ -377,6 +377,7 @@ test('disabled tests are found through computed access, chained modifiers, alias
     ['dynamic modifier', typed, "describe[process.env.MODE]('hidden', () => {});\n"],
     ['conditional skip option', node, "test('hidden', { skip: process.platform !== 'none' }, () => {});\n"],
     ['skip option from a variable', node, "const parked = true;\ntest('hidden', { skip: parked }, () => {});\n"],
+    ['skip option in a stored options object', node, "const parked = { skip: true };\ntest('hidden', parked, () => {});\n"],
     ['todo option', node, "test('hidden', { todo: true }, () => {});\n"],
     ['context skip', node, "test('hidden', t => {\n  t.skip();\n});\n"],
     ['context todo with a reason', node, "test('hidden', async context => {\n  context.todo('later');\n});\n"],
@@ -730,7 +731,11 @@ test('a barrel that stops re-exporting a whole module cannot pass dead-code safe
   };
   const dropStar = reviewWith(files, api => api.write(`${lib}rates-barrel.ts`, 'export {};\n'));
   assert.equal(dropStar.dimensions.deadCodeSafety.verdict, INSUFFICIENT);
-  assert.match(dropStar.dimensions.deadCodeSafety.findings.join('\n'), /rates-barrel\.ts: export \* was removed/);
+  assert.match(dropStar.dimensions.deadCodeSafety.findings.join('\n'), /rates-barrel\.ts: export \* from \.\/rates was removed/);
+  const two = { ...files, [`${lib}rates-barrel.ts`]: "export * from './rates';\nexport * from './other';\n", [`${lib}other.ts`]: 'export const other = 1;\n' };
+  const dropOne = reviewWith(two, api => api.write(`${lib}rates-barrel.ts`, "export * from './other';\n"));
+  assert.equal(dropOne.dimensions.deadCodeSafety.verdict, INSUFFICIENT);
+  assert.match(dropOne.dimensions.deadCodeSafety.findings.join('\n'), /export \* from \.\/rates was removed/);
   const kept = reviewWith(files, api => api.write(`${lib}rates-barrel.ts`, "export * from './rates';\nexport const extra = 1;\n"));
   assert.equal(kept.dimensions.deadCodeSafety.verdict, PASS, 'a barrel that still re-exports the module');
 });

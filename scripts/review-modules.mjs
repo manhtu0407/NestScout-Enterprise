@@ -13,11 +13,15 @@ function describe(source, text) {
   const exported = new Map();
   const uses = [];
   let star = false;
+  const stars = [];
 
   for (const statement of source.statements) {
     if (statement.kind === SyntaxKind.ExportDeclaration) {
       const clause = statement.exportClause;
-      if (!clause) star = true;
+      if (!clause) {
+        star = true;
+        stars.push(statement.moduleSpecifier.text);
+      }
       else if (clause.kind === SyntaxKind.NamespaceExport) exported.set(clause.name.text, null);
       else for (const element of clause.elements) exported.set(element.name.text, null);
       continue;
@@ -67,7 +71,7 @@ function describe(source, text) {
     node.forEachChild(visit);
   };
   visit(source);
-  return { exports: exported, star, uses };
+  return { exports: exported, star, stars, uses };
 }
 
 export function describeModules(entries) {

@@ -190,10 +190,15 @@ function testStructure(file, text) {
     const structure = emptyStructure();
     for (const node of nodes) {
       if (node.kind === SyntaxKind.VariableDeclaration && node.initializer && aliasesTestRoot(node.initializer)) structure.disabled++;
-      if (node.kind === SyntaxKind.PropertyAssignment || node.kind === SyntaxKind.ShorthandPropertyAssignment) {
-        const call = node.parent?.kind === SyntaxKind.ObjectLiteralExpression ? node.parent.parent : null;
-        const switchedOff = node.kind === SyntaxKind.PropertyAssignment && node.initializer.kind === SyntaxKind.FalseKeyword;
-        if (call?.kind === SyntaxKind.CallExpression && testRoots.has(chainOf(call)?.root) && optionNames.has(node.name.text) && !switchedOff) structure.disabled++;
+      if (node.kind === SyntaxKind.CallExpression && testRoots.has(chainOf(node)?.root)) {
+        for (const argument of node.arguments) {
+          const options = argument.kind === SyntaxKind.Identifier ? lookup(argument) : argument;
+          if (options?.kind !== SyntaxKind.ObjectLiteralExpression) continue;
+          for (const property of options.properties) {
+            const switchedOff = property.kind === SyntaxKind.PropertyAssignment && property.initializer.kind === SyntaxKind.FalseKeyword;
+            if ((property.kind === SyntaxKind.PropertyAssignment || property.kind === SyntaxKind.ShorthandPropertyAssignment) && optionNames.has(property.name.text) && !switchedOff) structure.disabled++;
+          }
+        }
       }
       if (!chainKinds.has(node.kind) || continuesChain(node)) continue;
       const chain = chainOf(node);
@@ -632,7 +637,9 @@ function deadCodeDimension(repository, files, mergeBase, head, views) {
         findings.push(`${file.path}: exports could not be compared: Invalid syntax in ${was ? file.path : original}.`);
         continue;
       }
-      if (was.star && !now.star) findings.push(`${file.path}: export * was removed, so the names it re-exported cannot be listed; owner review must confirm no consumer still imports them.`);
+      for (const specifier of was.stars) {
+        if (!now.stars.includes(specifier)) findings.push(`${file.path}: export * from ${specifier} was removed, so the names it re-exported cannot be listed; owner review must confirm no consumer still imports them.`);
+      }
       for (const [name, declaration] of was.exports) {
         if (now.exports.has(name)) continue;
         const result = removedExportChecks(repository, head, file, name, declaration, now, views.before, views.after);
