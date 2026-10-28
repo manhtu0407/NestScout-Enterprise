@@ -116,17 +116,22 @@ With this configuration `npm run health:dead-code` reports only the items below.
 review items for the owner. None has been removed, and none is claimed to be dead:
 several are exported for tests or as part of a feature's public surface.
 
-| Kind | Item | Location |
-| --- | --- | --- |
-| export | `emptyTree` | `scripts/repository-files.mjs:29`, used only inside its own file at line 38 |
-| export | `classifyIdentityError` | `apps/mobile/src/features/access/auth/supabase-auth-gateway.ts:22` |
-| export | `useAccess` | `apps/mobile/src/features/access/index.ts:8` |
-| type | `CapabilityFailure` | `apps/mobile/src/features/access/capability/capability-repository.ts:5` |
-| type | `AccessServices` | `apps/mobile/src/features/access/index.ts:8` |
-| type | `AccessNotice` | `apps/mobile/src/features/access/state/access-reducer.ts:5` |
-| type | `SessionEventType` | `apps/mobile/src/features/access/state/access-reducer.ts:29` |
-| type | `WorkerStatus` | `apps/mobile/src/features/access/state/access-reducer.ts:204` |
-| binary | `ssh-keygen` | `scripts/review-diff.test.mjs`, a host tool that generates throwaway signing keys for the attestation tests; not a dependency |
+| Kind | Item | Location | Classification from a repository-wide word search |
+| --- | --- | --- | --- |
+| export | `emptyTree` | `scripts/repository-files.mjs:29` | Live code. Called at line 38 of the same file; only the `export` modifier is unused |
+| export | `classifyIdentityError` | `apps/mobile/src/features/access/auth/supabase-auth-gateway.ts:22` | Live code. Called at lines 36, 74 and 83 of the same file; only the `export` modifier is unused |
+| export | `useAccess` | `apps/mobile/src/features/access/index.ts:8` | Unresolved. The hook is used widely, but every consumer imports it from `state/access-provider`; whether the feature barrel is a public surface is an owner decision |
+| type | `CapabilityFailure` | `apps/mobile/src/features/access/capability/capability-repository.ts:5` | Live. Used by an exported type in the same file; exporting it lets callers name the failure reason |
+| type | `AccessServices` | `apps/mobile/src/features/access/index.ts:8` | Unresolved, with the same barrel question as `useAccess`; the type itself is used by the provider, the default services and the test fakes |
+| type | `AccessNotice` | `apps/mobile/src/features/access/state/access-reducer.ts:5` | Live. Used by the reducer state type in the same file |
+| type | `SessionEventType` | `apps/mobile/src/features/access/state/access-reducer.ts:29` | Live. Used by the reducer action type in the same file |
+| type | `WorkerStatus` | `apps/mobile/src/features/access/state/access-reducer.ts:204` | Live. Used by the access state type and its derivation in the same file |
+| binary | `ssh-keygen` | `scripts/review-diff.test.mjs` | False positive. A host tool that generates throwaway signing keys for the attestation tests, not a package dependency |
+
+No item is confirmed dead code, no dynamic or runtime reference was needed to explain
+any of them, and nothing was removed. The first eight are `export` modifiers or barrel
+re-exports that no other module imports; removing a modifier is an API decision for the
+owner of each module and is outside this change.
 
 ## Evaluating the evaluators
 
@@ -179,7 +184,7 @@ needs manual evidence.
 `scripts/review-diff.mjs` reads a frozen base-to-head diff (resolved SHAs and the merge
 base) and returns a verdict of `PASS`, `FAIL` or `INSUFFICIENT_EVIDENCE` for each of five
 dimensions. `scripts/review-diff.test.mjs` exercises it on isolated temporary
-repositories, never production modules, with 32 tests:
+repositories, never production modules, with 35 tests:
 
 - test weakening: `it.skip`, `it.only` and a node-test `skip` option fail; a deleted test
   file fails, and so does a test file renamed to a name that no longer matches the test
@@ -240,7 +245,16 @@ repositories, never production modules, with 32 tests:
   nothing selects needs review, and a jest `roots`, `projects`, glob or `preset` this
   evaluator cannot evaluate, or a changed `jest.config.*`, needs review;
 - reviewer attestation (see the protocol below): a self-declared verdict is ignored;
-- artifacts: disposable file names and AI attribution lines fail;
+- artifacts: disposable file names and AI attribution lines fail, and so does a comment
+  added to a source file after code or on its own line. The comment text of each changed
+  file is read with the canonical `sourceComments` and `commentViolations` rules, so a
+  string that merely contains `//` is not a comment;
+- the reference search and the recorded commands run without the caller's `GIT_*`
+  variables, as every other Git call in the repository does;
+- an evaluation that cannot be completed, such as an unreadable ref or a file larger than
+  the 32 MiB Git buffer, prints `INSUFFICIENT_EVIDENCE` with the error and exits 3, so it
+  is never mistaken for a `FAIL` verdict (exit 1) or a `PASS` (exit 0). The list of
+  required commands cannot be shortened by the caller;
 - evidence binding to the frozen head and a clean tree, and immunity to later commits.
 
 Two defects in the evaluator itself were found by these tests and fixed: a "moved
@@ -400,11 +414,22 @@ deterministic dimensions is still not evidence that behavior is intact. Open:
   of the access model; new modules outside the listed paths that use other vocabulary are
   not recognised. The jest evaluation handles `testMatch` globs without braces or
   extglobs, `testRegex` and `testPathIgnorePatterns`; other forms are reported for review;
-- attribution and comment rules are checked on added text, not with the canonical gate;
-- an oversized file makes the evaluator throw, and an uncaught exception exits 1, the same
-  code as a FAIL verdict;
-- `--run` executes the head's own scripts with the host environment, so run it in a
-  disposable worktree.
+- attribution and comment rules are applied to the text a diff adds, with the canonical
+  comment extraction, and not to the whole delivered tree, which `npm run check:comments`
+  still judges;
+- the word-based reference search uses whole-word matching, so an identifier containing
+  `$` can be missed, and a file named `index.*` is always reported for review because its
+  stem is too generic to search; both are conservative for the second case only;
+- `--run` executes the head's own scripts with the host environment minus `GIT_*` and
+  prints the last 1500 characters of their output in the packet, so run it in a
+  disposable worktree and do not share a packet produced with secrets in the environment.
+
+The later read-only review also reported eight lower findings. Their disposition: the
+`GIT_*` handling of the reference search and the recorded commands, the exit code of an
+oversized or unreadable input, the added-text comment and attribution depth, the dead
+`dimensionNames` export and the caller-supplied `required` list are fixed with tests; the
+guarded script list and the stale document facts were fixed earlier; the `index.*` and
+`$` search behavior and the `--run` environment are documented above as accepted limits.
 
 ## Pilot
 

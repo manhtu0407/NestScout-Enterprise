@@ -3,7 +3,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SyntaxKind } from 'typescript/unstable/ast';
-import { checkAttribution, checkPath } from './check-hygiene.mjs';
+import { commentViolations } from './check-comments.mjs';
+import { checkAttribution, checkPath, sourceComments } from './check-hygiene.mjs';
+import { gitEnvironment } from './git-environment.mjs';
 import { git } from './repository-files.mjs';
 import { verifyAttestation } from './review-attestation.mjs';
 import { describeModules, resolveModule } from './review-modules.mjs';
@@ -13,8 +15,7 @@ import { root } from './tool-path.mjs';
 export const PASS = 'PASS';
 export const FAIL = 'FAIL';
 export const INSUFFICIENT = 'INSUFFICIENT_EVIDENCE';
-export const requiredCommands = Object.freeze(['check', 'verify:negative']);
-export const dimensionNames = Object.freeze(['correctness', 'codeHealth', 'deadCodeSafety', 'scope', 'testIntegrity']);
+const requiredCommands = Object.freeze(['check', 'verify:negative']);
 
 const highRisk = [
   /^(?:AGENTS|README|CONTRIBUTING|SECURITY)\.md$/,
@@ -259,12 +260,14 @@ function changedFiles(repository, mergeBase, head) {
 
 const readAt = (repository, revision, file) => git(repository, ['show', `${revision}:${file}`]);
 
-function grepHead(repository, head, word) {
-  const result = spawnSync('git', ['grep', '-n', '-w', '-F', '-e', word, head], { cwd: repository, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+function grepRevision(repository, head, args, label) {
+  const result = spawnSync('git', ['grep', '-n', ...args], { cwd: repository, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, env: gitEnvironment() });
   if (result.error) throw result.error;
-  if (result.status > 1) throw new Error(`git grep failed for ${word}: ${result.stderr}`);
+  if (result.status > 1) throw new Error(`git grep failed for ${label}: ${result.stderr}`);
   return result.stdout.split('\n').filter(Boolean).map(line => line.slice(head.length + 1));
 }
+
+const grepHead = (repository, head, word) => grepRevision(repository, head, ['-w', '-F', '-e', word, head], word);
 
 function verdictOf(findings, failed) {
   if (failed.length) return { verdict: FAIL, findings: [...failed, ...findings] };
@@ -460,6 +463,11 @@ function testDimension(repository, files, mergeBase, head, views) {
     const before = file.status === 'A' ? '' : readAt(repository, mergeBase, fromPath);
     const after = readAt(repository, head, file.path);
     try { checkAttribution(addedText(before, after), file.path); } catch (error) { failed.push(`${file.path}: ${error.message}`); }
+    try {
+      checkAttribution(addedText(sourceComments(fromPath, before), sourceComments(file.path, after)), file.path);
+      const introduced = commentViolations([{ file: file.path, text: after }], 'head').length - commentViolations([{ file: fromPath, text: before }], 'base').length;
+      if (introduced > 0) failed.push(`${file.path}: adds ${introduced} source comment(s); the zero-comment policy applies to the delivered state.`);
+    } catch (error) { failed.push(`${file.path}: ${error.message}`); }
     const isTest = testFile.test(file.path) || testFile.test(fromPath);
     const structured = sourceFile.test(file.path);
     if (!isTest && !(structured && guardsAssertions.test(before))) continue;
@@ -493,12 +501,7 @@ const stemOf = file => path.posix.basename(file).replace(/(?:\.[^.]+)+$/, '');
 const sourceGlobs = ['*.ts', '*.tsx', '*.js', '*.jsx', '*.mjs', '*.cjs', '*.mts', '*.cts'];
 const dynamicLoad = ['(require|import)[[:space:]]*\\([[:space:]]*[^\'"`[:space:])]', '(require|import)[[:space:]]*\\([[:space:]]*`[^`]*\\$\\{'];
 
-function dynamicLoads(repository, head) {
-  const result = spawnSync('git', ['grep', '-n', '-E', ...dynamicLoad.flatMap(pattern => ['-e', pattern]), head, '--', ...sourceGlobs], { cwd: repository, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
-  if (result.error) throw result.error;
-  if (result.status > 1) throw new Error(`git grep failed for dynamic loads: ${result.stderr}`);
-  return result.stdout.split('\n').filter(Boolean).map(line => line.slice(head.length + 1));
-}
+const dynamicLoads = (repository, head) => grepRevision(repository, head, ['-E', ...dynamicLoad.flatMap(pattern => ['-e', pattern]), head, '--', ...sourceGlobs], 'dynamic loads');
 
 function removedModuleChecks(repository, head, removed, before, after) {
   const findings = [];
@@ -642,21 +645,21 @@ function runCommands(repository, scripts, head) {
   const results = scripts.map(script => {
     if (!manifest.scripts?.[script]) throw new Error(`package.json has no script named ${script}.`);
     const child = spawnSync(process.execPath, [cli, 'run', script], {
-      cwd: repository, env: Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^NODE_TEST_CONTEXT$/i.test(name))), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 30 * 60 * 1000, windowsHide: true,
+      cwd: repository, env: Object.fromEntries(Object.entries(gitEnvironment()).filter(([name]) => !/^NODE_TEST_CONTEXT$/i.test(name))), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 30 * 60 * 1000, windowsHide: true,
     });
     return { script, exitCode: child.status ?? 1, error: child.error?.message ?? null, outputTail: `${child.stdout}${child.stderr}`.slice(-1500) };
   });
   return { bound, results };
 }
 
-function correctnessDimension(commands, required) {
+function correctnessDimension(commands) {
   const findings = [];
   const failed = [];
   if (!commands.bound) findings.push('Command results were not recorded: HEAD differs from the frozen head or the working tree is dirty.');
   for (const result of commands.results) {
     if (result.exitCode !== 0) failed.push(`npm run ${result.script} exited ${result.exitCode}${result.error ? `: ${result.error}` : ''}.`);
   }
-  for (const script of required) {
+  for (const script of requiredCommands) {
     if (!commands.results.some(result => result.script === script)) findings.push(`npm run ${script} was not run on the frozen head.`);
   }
   return verdictOf(findings, failed);
@@ -682,7 +685,7 @@ function codeHealthDimension(repository, files, mergeBase, head, attestation) {
   return { ...verdictOf(findings, []), diagnostics };
 }
 
-export function reviewDiff({ repository = root, base = 'origin/main', head = 'HEAD', scope = [], run = [], reviewer = null, required = requiredCommands } = {}) {
+export function reviewDiff({ repository = root, base = 'origin/main', head = 'HEAD', scope = [], run = [], reviewer = null } = {}) {
   const baseSha = git(repository, ['rev-parse', '--verify', `${base}^{commit}`]).trim();
   const headSha = git(repository, ['rev-parse', '--verify', `${head}^{commit}`]).trim();
   const mergeBase = git(repository, ['merge-base', baseSha, headSha]).trim();
@@ -692,7 +695,7 @@ export function reviewDiff({ repository = root, base = 'origin/main', head = 'HE
   const commands = runCommands(repository, run, headSha);
   const attestation = verifyAttestation(repository, reviewer, { headSha, mergeBase, view: views.after });
   const dimensions = {
-    correctness: correctnessDimension(commands, required),
+    correctness: correctnessDimension(commands),
     codeHealth: codeHealthDimension(repository, files, mergeBase, headSha, attestation),
     deadCodeSafety: deadCodeDimension(repository, files, mergeBase, headSha, views),
     scope: scopeDimension(repository, files, mergeBase, headSha, scope, packages),
@@ -723,7 +726,13 @@ function parseArguments(argv) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const packet = reviewDiff(parseArguments(process.argv.slice(2)));
-  console.log(JSON.stringify(packet, null, 2));
-  process.exitCode = { [PASS]: 0, [FAIL]: 1, [INSUFFICIENT]: 2 }[packet.verdict];
+  const options = parseArguments(process.argv.slice(2));
+  try {
+    const packet = reviewDiff(options);
+    console.log(JSON.stringify(packet, null, 2));
+    process.exitCode = { [PASS]: 0, [FAIL]: 1, [INSUFFICIENT]: 2 }[packet.verdict];
+  } catch (error) {
+    console.log(JSON.stringify({ verdict: INSUFFICIENT, error: error.message }, null, 2));
+    process.exitCode = 3;
+  }
 }
