@@ -103,3 +103,17 @@ test.each(switches)('the draft of the previous %s does not carry over', async (_
   await waitFor(() => expect(screen.getByRole('button', { name: 'Submit work' })).toBeEnabled());
   expect(screen.getByLabelText('Work evidence').props.value).toBe('');
 });
+
+test('a locked form cannot be edited or submitted until it is unlocked', async () => {
+  const view = await render(<WorkSubmission userId="worker-a" job={job} onSettled={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Submit work' })).toBeEnabled());
+  await fireEvent.changeText(screen.getByLabelText('Work evidence'), 'Repaired tap');
+  await view.rerender(<WorkSubmission userId="worker-a" job={job} locked onSettled={() => undefined} />);
+  expect(screen.getByRole('button', { name: 'Submit work' })).toBeDisabled();
+  expect(screen.getByLabelText('Work evidence').props.editable).toBe(false);
+  await fireEvent.press(screen.getByRole('button', { name: 'Submit work' }));
+  expect(submitWork).not.toHaveBeenCalled();
+  await view.rerender(<WorkSubmission userId="worker-a" job={job} onSettled={() => undefined} />);
+  expect(screen.getByRole('button', { name: 'Submit work' })).toBeEnabled();
+  expect(screen.getByLabelText('Work evidence').props.value).toBe('Repaired tap');
+});

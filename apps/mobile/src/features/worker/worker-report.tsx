@@ -9,14 +9,14 @@ import { reportJob, type Job } from './worker-repository';
 
 type Pending = { key: string; version: number; kind: JobReport['kind']; details: string };
 
-type Props = { userId: string; job: Job; onRefresh(): void };
+type Props = { userId: string; job: Job; locked?: boolean; onRefresh(): void };
 
 export function WorkerReport(props: Props) {
   const storageKey = `nestscout.worker-report.${props.userId}.${props.job.job_id}`;
   return <WorkerReportDraft key={storageKey} storageKey={storageKey} {...props} />;
 }
 
-function WorkerReportDraft({ storageKey, userId, job, onRefresh }: Props & { storageKey: string }) {
+function WorkerReportDraft({ storageKey, userId, job, locked = false, onRefresh }: Props & { storageKey: string }) {
   const [details, setDetails] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   const [ready, setReady] = useState(false);
@@ -77,7 +77,7 @@ function WorkerReportDraft({ storageKey, userId, job, onRefresh }: Props & { sto
   };
 
   const submit = async (kind: JobReport['kind']) => {
-    if (!ready || running.current) return;
+    if (!ready || locked || running.current) return;
     const item = pending ?? { key: randomUUID(), version: job.version, kind, details: details.trim() };
     if (!item.details) {
       setMessage('Describe what happened.');
@@ -118,9 +118,9 @@ function WorkerReportDraft({ storageKey, userId, job, onRefresh }: Props & { sto
   return (
     <>
       <BodyText>{kind === 'delay' ? 'Report a delay without promising an exact arrival time.' : 'Report that the Customer did not answer; the report is not independently verified.'}</BodyText>
-      <TextInput accessibilityLabel="Report details" value={details} onChangeText={setDetails} editable={ready && !pending && !busy} multiline maxLength={4000} />
+      <TextInput accessibilityLabel="Report details" value={details} onChangeText={setDetails} editable={ready && !locked && !pending && !busy} multiline maxLength={4000} />
       <ActionButton secondary label={pending ? 'Retry report' : kind === 'delay' ? 'Report delay' : 'Report no answer'}
-        disabled={!ready} busy={busy} onPress={() => void submit(kind)} />
+        disabled={!ready || locked} busy={busy} onPress={() => void submit(kind)} />
       {unreadable ? <DraftRecovery onRetry={() => { setMessage(null); retry(); }} onDiscard={discardSaved} /> : null}
       {message ? <ErrorText>{message}</ErrorText> : null}
     </>

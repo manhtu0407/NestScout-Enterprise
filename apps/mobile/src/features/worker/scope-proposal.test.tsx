@@ -108,3 +108,17 @@ test.each(switches)('the draft of the previous %s does not carry over', async (_
   expect(screen.getByLabelText('Proposed scope').props.value).toBe('');
   expect(screen.getByLabelText('Proposed total VND').props.value).toBe('');
 });
+
+test('a locked form cannot be edited or submitted until it is unlocked', async () => {
+  const view = await render(<ScopeProposal userId="worker-a" job={job} hasPending={false} onRefresh={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Propose scope change' })).toBeEnabled());
+  await fireEvent.changeText(screen.getByLabelText('Proposed scope'), 'New fixture scope');
+  await view.rerender(<ScopeProposal userId="worker-a" job={job} hasPending={false} locked onRefresh={() => undefined} />);
+  expect(screen.getByRole('button', { name: 'Propose scope change' })).toBeDisabled();
+  expect(screen.getByLabelText('Proposed scope').props.editable).toBe(false);
+  await fireEvent.press(screen.getByRole('button', { name: 'Propose scope change' }));
+  expect(proposeScope).not.toHaveBeenCalled();
+  await view.rerender(<ScopeProposal userId="worker-a" job={job} hasPending={false} onRefresh={() => undefined} />);
+  expect(screen.getByRole('button', { name: 'Propose scope change' })).toBeEnabled();
+  expect(screen.getByLabelText('Proposed scope').props.value).toBe('New fixture scope');
+});

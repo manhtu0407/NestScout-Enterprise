@@ -418,11 +418,12 @@ test('acceptance, scope consent and safety races serialize at the job', async ()
       await race(`${auth(customer)} select public.decide_service_scope('${proposal}',2,1,'approved');`, `${auth(customer)} select public.decide_service_scope('${proposal}',2,1,'rejected');`);
       assert.equal(query(`select decision from public.service_scope_changes where id='${proposal}';`).trim(), 'approved');
       assert.equal(query(`select scope from public.service_quotes where id='${quoteB}';`).trim(), 'Fixture B');
-      await race(`${auth(worker)} select public.advance_service_job('${jobB}',3,'paused');`, `${auth(worker)} select public.submit_service_work('${jobB}',3,'${randomUUID()}','Fixture evidence');`);
+      await race(`${auth(worker)} select public.pause_service_job('${jobB}',3,'safety_concern');`, `${auth(worker)} select public.submit_service_work('${jobB}',3,'${randomUUID()}','Fixture evidence');`);
       assert.equal(query(`select stage from public.service_jobs where id='${jobB}';`).trim(), 'paused');
       assert.equal(query(`select count(*) from public.service_submissions where job_id='${jobB}';`).trim(), '0');
+      assert.equal(query(`select category from public.service_job_pauses where job_id='${jobB}' and resumed_at is null;`).trim(), 'safety_concern');
     } finally {
-      if (created) query(`delete from public.service_cases where job_id in ('${jobA}','${jobB}'); delete from public.service_submissions where job_id in ('${jobA}','${jobB}'); delete from public.service_scope_changes where job_id in ('${jobA}','${jobB}'); delete from public.service_job_events where job_id in ('${jobA}','${jobB}'); delete from public.service_jobs where id in ('${jobA}','${jobB}'); delete from public.service_invitations where id in ('${inviteA}','${inviteB}'); delete from public.service_quotes where id in ('${quoteA}','${quoteB}'); delete from public.service_requests where id in ('${requestA}','${requestB}'); delete from nestscout_private.worker_dispatch_eligibility where user_id='${worker}'; delete from public.worker_access_grants where user_id='${worker}'; delete from auth.users where id in ('${customer}','${worker}');`);
+      if (created) query(`delete from public.service_cases where job_id in ('${jobA}','${jobB}'); delete from public.service_job_pauses where job_id in ('${jobA}','${jobB}'); delete from public.service_submissions where job_id in ('${jobA}','${jobB}'); delete from public.service_scope_changes where job_id in ('${jobA}','${jobB}'); delete from public.service_job_events where job_id in ('${jobA}','${jobB}'); delete from public.service_jobs where id in ('${jobA}','${jobB}'); delete from public.service_invitations where id in ('${inviteA}','${inviteB}'); delete from public.service_quotes where id in ('${quoteA}','${quoteB}'); delete from public.service_requests where id in ('${requestA}','${requestB}'); delete from nestscout_private.worker_dispatch_eligibility where user_id='${worker}'; delete from public.worker_access_grants where user_id='${worker}'; delete from auth.users where id in ('${customer}','${worker}');`);
     }
   });
 });
@@ -471,10 +472,14 @@ test('a correction request reaches only the assigned Worker through real Auth an
       query(`begin; insert into public.worker_access_grants (user_id) values ('${worker.id}'), ('${foreign.id}'); insert into nestscout_private.worker_dispatch_eligibility (user_id,basis,active) values ('${worker.id}','local_fixture',true), ('${foreign.id}','local_fixture',true); insert into public.service_requests (id,owner_id,submission_key,description) values ('${request}','${customer.id}','${requestKey}','Correction fixture'); insert into public.service_quotes (id,request_id,version,scope,amount_minor,currency,expires_at,accepted_at,accepted_by) values ('${quote}','${request}',1,'Correction fixture',100,'VND',clock_timestamp()+interval '1 hour',clock_timestamp(),'${customer.id}'); insert into public.service_invitations (id,request_id,quote_id,worker_id,expires_at,state) values ('${invitation}','${request}','${quote}','${worker.id}',clock_timestamp()+interval '1 hour','accepted'); insert into public.service_jobs (id,request_id,quote_id,invitation_id,worker_id,stage,version) values ('${job}','${request}','${quote}','${invitation}','${worker.id}','submitted',2); insert into public.service_submissions (id,job_id,submitted_by,submission_key,submitted_from_version,evidence) values ('${submission}','${job}','${worker.id}','${workKey}',1,'Fixture evidence'); commit;`);
       fixtures = true;
       const read = token => call(`/rest/v1/service_submissions?select=id,job_id,decision,correction_note,created_at&job_id=eq.${job}`, token);
+      const corrections = token => call('/rest/v1/rpc/worker_corrections', token, { method: 'POST', body: '{}' });
       const states = async response => (await response.json()).map(row => [row.decision, row.correction_note]);
       const waiting = await read(worker.token);
       assert.equal(waiting.status, 200);
       assert.deepEqual(await states(waiting), [['pending', null]]);
+      const none = await corrections(worker.token);
+      assert.equal(none.status, 200);
+      assert.deepEqual(await none.json(), []);
       const decision = await call('/rest/v1/rpc/decide_service_submission', customer.token, {
         method: 'POST', body: JSON.stringify({ p_submission_id: submission, p_version: 2, p_decision: 'revision_requested', p_reason: 'Synthetic correction' }),
       });
@@ -482,6 +487,17 @@ test('a correction request reaches only the assigned Worker through real Auth an
       const assigned = await read(worker.token);
       assert.equal(assigned.status, 200);
       assert.deepEqual(await states(assigned), [['revision_requested', 'Synthetic correction']]);
+      const projected = await corrections(worker.token);
+      assert.equal(projected.status, 200);
+      assert.deepEqual(await projected.json(), [{ job_id: job, submitted_from_version: 1, note: 'Synthetic correction' }]);
+      const asCustomer = await corrections(customer.token);
+      assert.equal(asCustomer.status, 200);
+      assert.deepEqual(await asCustomer.json(), []);
+      const asForeign = await corrections(foreign.token);
+      assert.equal(asForeign.status, 200);
+      assert.deepEqual(await asForeign.json(), []);
+      assert.equal((await corrections(publicKey)).status, 401);
+      assert.ok((await call('/rest/v1/rpc/worker_corrections?select=decision_reason', worker.token, { method: 'POST', body: '{}' })).status >= 400);
       const owner = await read(customer.token);
       assert.equal(owner.status, 200);
       assert.deepEqual(await states(owner), [['revision_requested', 'Synthetic correction']]);
@@ -499,6 +515,9 @@ test('a correction request reaches only the assigned Worker through real Auth an
       const revoked = await read(worker.token);
       assert.equal(revoked.status, 200);
       assert.deepEqual(await revoked.json(), []);
+      const revokedProjection = await corrections(worker.token);
+      assert.equal(revokedProjection.status, 200);
+      assert.deepEqual(await revokedProjection.json(), []);
     } finally {
       if (fixtures) query(`delete from public.service_cases where job_id='${job}'; delete from public.service_submissions where job_id='${job}'; delete from public.service_job_events where job_id='${job}'; delete from public.service_jobs where id='${job}'; delete from public.service_invitations where id='${invitation}'; delete from public.service_quotes where id='${quote}'; delete from public.service_requests where id='${request}';`);
       for (const account of accounts) {
@@ -506,6 +525,313 @@ test('a correction request reaches only the assigned Worker through real Auth an
         query(`delete from nestscout_private.worker_dispatch_eligibility where user_id='${id}'; delete from public.worker_access_grants where user_id='${id}';`);
         const removed = await fetch(`${origin}/auth/v1/admin/users/${id}`, { method: 'DELETE', headers: admin });
         assert.equal(removed.status, 200, 'Local test account cleanup failed');
+      }
+    }
+  });
+});
+
+test('the correction projection stays complete beyond the API row limit', { timeout: 300000 }, async () => {
+  await withLocalLock(async () => {
+    const runtime = localRuntime();
+    const stack = runtime.verify();
+    const status = runtime.status();
+    const serviceKey = status.env.SERVICE_ROLE_KEY;
+    const publicKey = status.env.ANON_KEY;
+    assert.ok(serviceKey && publicKey);
+    const origin = stack.endpoints['rest.http'].url.replace(/\/$/, '');
+    const ids = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/);
+    assert.equal(ids.length, 1);
+    assert.match(ids[0], /^[a-f0-9]{12,64}$/);
+    const query = sql => execFileSync('docker', ['exec', '-i', ids[0], 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], { input: sql, encoding: 'utf8' });
+    const admin = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
+    const call = (path, token, options = {}) => fetch(`${origin}${path}`, {
+      ...options,
+      headers: { apikey: publicKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+    const accounts = [];
+    const tag = `Scale fixture ${randomUUID()}`;
+    const limit = 1000;
+    let fixtures = false;
+    try {
+      for (let index = 0; index < 2; index++) {
+        const email = `${randomUUID()}@example.invalid`;
+        const password = randomUUID();
+        const created = await fetch(`${origin}/auth/v1/admin/users`, {
+          method: 'POST', headers: admin, body: JSON.stringify({ email, password, email_confirm: true }),
+        });
+        assert.equal(created.status, 200, 'Local test account creation failed');
+        const account = await created.json();
+        accounts.push(account.id);
+        const login = await fetch(`${origin}/auth/v1/token?grant_type=password`, {
+          method: 'POST', headers: { apikey: publicKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
+        });
+        assert.equal(login.status, 200, 'Local test login failed');
+        accounts[index] = { id: account.id, token: (await login.json()).access_token };
+      }
+      const [customer, worker] = accounts;
+      const jobCount = limit + 10;
+      const history = limit + 200;
+      query(`begin;
+        insert into public.worker_access_grants (user_id) values ('${worker.id}');
+        insert into nestscout_private.worker_dispatch_eligibility (user_id,basis,active) values ('${worker.id}','local_fixture',true);
+        create temporary table scale_jobs on commit drop as
+          select n, gen_random_uuid() as request_id, gen_random_uuid() as quote_id, gen_random_uuid() as invitation_id, gen_random_uuid() as job_id
+          from generate_series(1, ${jobCount}) n;
+        insert into public.service_requests (id,owner_id,submission_key,description)
+          select request_id,'${customer.id}',gen_random_uuid(),'${tag}' from scale_jobs;
+        insert into public.service_quotes (id,request_id,version,scope,amount_minor,currency,expires_at,accepted_at,accepted_by)
+          select quote_id,request_id,1,'${tag}',100,'VND',clock_timestamp()+interval '1 hour',clock_timestamp(),'${customer.id}' from scale_jobs;
+        insert into public.service_invitations (id,request_id,quote_id,worker_id,expires_at,state)
+          select invitation_id,request_id,quote_id,'${worker.id}',clock_timestamp()+interval '1 hour','accepted' from scale_jobs;
+        insert into public.service_jobs (id,request_id,quote_id,invitation_id,worker_id,stage,version)
+          select job_id,request_id,quote_id,invitation_id,'${worker.id}','working',1 from scale_jobs;
+        insert into public.service_submissions (job_id,submitted_by,submission_key,submitted_from_version,evidence,decision,decided_by,decided_at,decided_from_version,decision_reason,correction_note)
+          select (select job_id from scale_jobs where n = 1),'${worker.id}',gen_random_uuid(),v,'Evidence',
+            case when v % 2 = 1 then 'revision_requested' else 'accepted' end,'${customer.id}',clock_timestamp(),v + 1,
+            case when v % 2 = 1 then 'Private ' || v else null end,
+            case when v % 2 = 1 then 'Older note ' || v else null end
+          from generate_series(1, ${history - 1}) v;
+        insert into public.service_submissions (job_id,submitted_by,submission_key,submitted_from_version,evidence,decision,decided_by,decided_at,decided_from_version,decision_reason,correction_note)
+          select job_id,'${worker.id}',gen_random_uuid(),${history + 1},'Evidence','revision_requested','${customer.id}',clock_timestamp(),${history + 2},'Private newest','Newest correction'
+          from scale_jobs where n = 1;
+        commit;`);
+      fixtures = true;
+      const target = query(`select id from public.service_jobs j where j.request_id in (select id from public.service_requests where description='${tag}') and exists (select 1 from public.service_submissions s where s.job_id=j.id);`).trim();
+      assert.match(target, /^[a-f0-9-]{36}$/);
+      const plain = await call(`/rest/v1/service_submissions?select=id,job_id,decision,correction_note,created_at&job_id=eq.${target}`, worker.token);
+      assert.equal(plain.status, 200);
+      const plainRows = await plain.json();
+      assert.equal(plainRows.length, limit, 'A plain table read is silently capped by the API row limit');
+      assert.ok(plainRows.length < history);
+      const listed = await call('/rest/v1/rpc/worker_jobs', worker.token, { method: 'POST', body: '{}' });
+      assert.equal(listed.status, 200);
+      assert.equal((await listed.json()).length, limit, 'The Worker job list is capped by the API row limit');
+      const projected = await call('/rest/v1/rpc/worker_corrections', worker.token, { method: 'POST', body: '{}' });
+      assert.equal(projected.status, 200);
+      const rows = await projected.json();
+      assert.deepEqual(rows, [{ job_id: target, submitted_from_version: history + 1, note: 'Newest correction' }]);
+    } finally {
+      if (fixtures) query(`begin;
+        create temporary table scale_cleanup on commit drop as select id from public.service_requests where description='${tag}';
+        delete from public.service_submissions where job_id in (select id from public.service_jobs where request_id in (select id from scale_cleanup));
+        delete from public.service_job_events where job_id in (select id from public.service_jobs where request_id in (select id from scale_cleanup));
+        delete from public.service_jobs where request_id in (select id from scale_cleanup);
+        delete from public.service_invitations where request_id in (select id from scale_cleanup);
+        delete from public.service_quotes where request_id in (select id from scale_cleanup);
+        delete from public.service_requests where id in (select id from scale_cleanup);
+        commit;`);
+      for (const account of accounts) {
+        const id = typeof account === 'string' ? account : account.id;
+        query(`delete from nestscout_private.worker_dispatch_eligibility where user_id='${id}'; delete from public.worker_access_grants where user_id='${id}';`);
+        const removed = await fetch(`${origin}/auth/v1/admin/users/${id}`, { method: 'DELETE', headers: admin });
+        assert.equal(removed.status, 200, 'Local test account cleanup failed');
+      }
+    }
+  });
+});
+
+test('a classified pause is resumed only with both parties through real Auth and REST', { timeout: 300000 }, async () => {
+  await withLocalLock(async () => {
+    const runtime = localRuntime();
+    const stack = runtime.verify();
+    const status = runtime.status();
+    const serviceKey = status.env.SERVICE_ROLE_KEY;
+    const publicKey = status.env.ANON_KEY;
+    assert.ok(serviceKey && publicKey);
+    const origin = stack.endpoints['rest.http'].url.replace(/\/$/, '');
+    const ids = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/);
+    assert.equal(ids.length, 1);
+    assert.match(ids[0], /^[a-f0-9]{12,64}$/);
+    const query = sql => execFileSync('docker', ['exec', '-i', ids[0], 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], { input: sql, encoding: 'utf8' });
+    const admin = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
+    const call = (path, token, options = {}) => fetch(`${origin}${path}`, {
+      ...options,
+      headers: { apikey: publicKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+    const command = (name, token, body) => call(`/rest/v1/rpc/${name}`, token, { method: 'POST', body: JSON.stringify(body) });
+    const accounts = [];
+    const [request, quote, invitation, job, requestKey] = Array.from({ length: 5 }, () => randomUUID());
+    let fixtures = false;
+    try {
+      for (let index = 0; index < 4; index++) {
+        const email = `${randomUUID()}@example.invalid`;
+        const password = randomUUID();
+        const created = await fetch(`${origin}/auth/v1/admin/users`, {
+          method: 'POST', headers: admin, body: JSON.stringify({ email, password, email_confirm: true }),
+        });
+        assert.equal(created.status, 200, 'Local test account creation failed');
+        const account = await created.json();
+        accounts.push(account.id);
+        const login = await fetch(`${origin}/auth/v1/token?grant_type=password`, {
+          method: 'POST', headers: { apikey: publicKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
+        });
+        assert.equal(login.status, 200, 'Local test login failed');
+        accounts[index] = { id: account.id, token: (await login.json()).access_token };
+      }
+      const [customer, worker, foreignWorker, otherCustomer] = accounts;
+      query(`begin; insert into public.worker_access_grants (user_id) values ('${worker.id}'), ('${foreignWorker.id}'); insert into nestscout_private.worker_dispatch_eligibility (user_id,basis,active) values ('${worker.id}','local_fixture',true), ('${foreignWorker.id}','local_fixture',true); insert into public.service_requests (id,owner_id,submission_key,description) values ('${request}','${customer.id}','${requestKey}','Pause fixture'); insert into public.service_quotes (id,request_id,version,scope,amount_minor,currency,expires_at,accepted_at,accepted_by) values ('${quote}','${request}',1,'Pause fixture',100,'VND',clock_timestamp()+interval '1 hour',clock_timestamp(),'${customer.id}'); insert into public.service_invitations (id,request_id,quote_id,worker_id,expires_at,state) values ('${invitation}','${request}','${quote}','${worker.id}',clock_timestamp()+interval '1 hour','accepted'); insert into public.service_jobs (id,request_id,quote_id,invitation_id,worker_id,stage,version) values ('${job}','${request}','${quote}','${invitation}','${worker.id}','working',1); commit;`);
+      fixtures = true;
+      const stage = () => query(`select stage || ':' || version from public.service_jobs where id='${job}';`).trim();
+      const failure = async response => {
+        const body = await response.json();
+        return [response.status, body.code, body.message];
+      };
+
+      assert.equal((await command('pause_service_job', publicKey, { p_job_id: job, p_version: 1, p_category: 'ordinary_interruption' })).status, 401);
+      assert.deepEqual(await failure(await command('pause_service_job', customer.token, { p_job_id: job, p_version: 1, p_category: 'ordinary_interruption' })).then(value => value.slice(1)), ['42501', 'worker unavailable']);
+      assert.equal((await command('pause_service_job', foreignWorker.token, { p_job_id: job, p_version: 1, p_category: 'ordinary_interruption' })).status, 403);
+      assert.equal((await command('pause_service_job', worker.token, { p_job_id: job, p_version: 1, p_category: 'holiday' })).status, 400);
+      assert.equal(stage(), 'working:1');
+
+      const paused = await command('pause_service_job', worker.token, { p_job_id: job, p_version: 1, p_category: 'ordinary_interruption' });
+      assert.equal(paused.status, 200);
+      assert.equal(await paused.json(), 2);
+      assert.equal(stage(), 'paused:2');
+      const replay = await command('pause_service_job', worker.token, { p_job_id: job, p_version: 1, p_category: 'ordinary_interruption' });
+      assert.equal(await replay.json(), 2);
+
+      for (const person of [customer, worker]) {
+        const seen = await command('open_job_pauses', person.token, {});
+        assert.equal(seen.status, 200);
+        const rows = await seen.json();
+        assert.equal(rows.length, 1);
+        assert.deepEqual({ ...rows[0], created_at: undefined }, { job_id: job, category: 'ordinary_interruption', prior_stage: 'working', paused_from_version: 1, resume_requested: false, created_at: undefined });
+      }
+      for (const stranger of [foreignWorker, otherCustomer]) {
+        const none = await command('open_job_pauses', stranger.token, {});
+        assert.equal(none.status, 200);
+        assert.deepEqual(await none.json(), []);
+      }
+      assert.equal((await command('open_job_pauses', publicKey, {})).status, 401);
+
+      for (const person of [customer, worker]) {
+        for (const column of ['paused_by', 'resume_requested_by', 'resumed_by']) {
+          assert.equal((await call(`/rest/v1/service_job_pauses?select=${column}`, person.token)).status, 403);
+          assert.equal((await call(`/rest/v1/service_job_pauses?select=id&${column}=not.is.null`, person.token)).status, 403);
+        }
+        assert.equal((await call('/rest/v1/service_job_pauses?select=*', person.token)).status, 403);
+        assert.equal((await call('/rest/v1/service_job_pauses?select=id,category,prior_stage', person.token)).status, 200);
+        const write = await call('/rest/v1/service_job_pauses', person.token, { method: 'POST', body: JSON.stringify({ job_id: job, category: 'ordinary_interruption', prior_stage: 'working', paused_by: person.id, paused_from_version: 1 }) });
+        assert.equal(write.status, 403);
+        assert.equal((await call(`/rest/v1/service_job_pauses?job_id=eq.${job}`, person.token, { method: 'PATCH', body: JSON.stringify({ category: 'safety_concern' }) })).status, 403);
+        assert.equal((await call(`/rest/v1/service_job_pauses?job_id=eq.${job}`, person.token, { method: 'DELETE' })).status, 403);
+      }
+      for (const table of ['service_jobs', 'service_submissions', 'service_job_events', 'service_scope_changes', 'service_job_reports']) {
+        for (const person of [customer, worker]) {
+          assert.equal((await call(`/rest/v1/${table}?select=*`, person.token)).status, 403, `${table} must refuse an unrestricted column list`);
+        }
+      }
+
+      assert.deepEqual((await failure(await command('consent_service_resume', customer.token, { p_job_id: job, p_version: 2 }))), [400, '22023', 'invalid transition']);
+      assert.equal((await command('consent_service_resume', worker.token, { p_job_id: job, p_version: 2 })).status, 403);
+      assert.equal((await command('request_service_resume', customer.token, { p_job_id: job, p_version: 2 })).status, 403);
+      assert.equal((await command('request_service_resume', foreignWorker.token, { p_job_id: job, p_version: 2 })).status, 403);
+      const stale = await failure(await command('request_service_resume', worker.token, { p_job_id: job, p_version: 1 }));
+      assert.deepEqual([stale[1], stale[2]], ['40001', 'stale job']);
+      const requested = await command('request_service_resume', worker.token, { p_job_id: job, p_version: 2 });
+      assert.equal(requested.status, 200);
+      assert.equal(await requested.json(), 3);
+      assert.equal(stage(), 'paused:3');
+      const waiting = await (await command('open_job_pauses', customer.token, {})).json();
+      assert.equal(waiting[0].resume_requested, true);
+
+      assert.equal((await command('consent_service_resume', otherCustomer.token, { p_job_id: job, p_version: 3 })).status, 403);
+      const earlier = await failure(await command('consent_service_resume', customer.token, { p_job_id: job, p_version: 2 }));
+      assert.deepEqual([earlier[1], earlier[2]], ['40001', 'stale job']);
+      assert.equal(stage(), 'paused:3');
+
+      const agreed = await command('consent_service_resume', customer.token, { p_job_id: job, p_version: 3 });
+      assert.equal(agreed.status, 200);
+      assert.equal(await agreed.json(), 4);
+      assert.equal(stage(), 'working:4');
+      assert.equal(await (await command('consent_service_resume', customer.token, { p_job_id: job, p_version: 3 })).json(), 4);
+      assert.equal(query(`select count(*) from public.service_job_events where job_id='${job}' and event in ('paused','resume_requested','resumed');`).trim(), '3');
+      assert.deepEqual(await (await command('open_job_pauses', customer.token, {})).json(), []);
+
+      const safety = await command('pause_service_job', worker.token, { p_job_id: job, p_version: 4, p_category: 'safety_concern' });
+      assert.equal(await safety.json(), 5);
+      assert.deepEqual(await failure(await command('request_service_resume', worker.token, { p_job_id: job, p_version: 5 })), [400, '22023', 'invalid transition']);
+      assert.deepEqual(await failure(await command('consent_service_resume', customer.token, { p_job_id: job, p_version: 5 })), [400, '22023', 'invalid transition']);
+      assert.equal(stage(), 'paused:5');
+      assert.equal(query(`select count(*) from public.service_job_pauses where job_id='${job}' and resumed_at is null and category='safety_concern';`).trim(), '1');
+    } finally {
+      if (fixtures) query(`delete from public.service_job_pauses where job_id='${job}'; delete from public.service_job_events where job_id='${job}'; delete from public.service_jobs where id='${job}'; delete from public.service_invitations where id='${invitation}'; delete from public.service_quotes where id='${quote}'; delete from public.service_requests where id='${request}';`);
+      for (const account of accounts) {
+        const id = typeof account === 'string' ? account : account.id;
+        query(`delete from nestscout_private.worker_dispatch_eligibility where user_id='${id}'; delete from public.worker_access_grants where user_id='${id}';`);
+        const removed = await fetch(`${origin}/auth/v1/admin/users/${id}`, { method: 'DELETE', headers: admin });
+        assert.equal(removed.status, 200, 'Local test account cleanup failed');
+      }
+    }
+  });
+});
+
+test('resume consent, safety escalation and duplicate consent serialize at the job', { timeout: 300000 }, async () => {
+  await withLocalLock(async () => {
+    const runtime = localRuntime();
+    const stack = runtime.verify();
+    const ids = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/);
+    assert.equal(ids.length, 1);
+    assert.match(ids[0], /^[a-f0-9]{12,64}$/);
+    const args = ['exec', '-i', ids[0], 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'];
+    const query = sql => execFileSync('docker', args, { input: sql, encoding: 'utf8' });
+    const run = sql => new Promise((resolve, reject) => {
+      const child = spawn('docker', args);
+      let errors = '';
+      child.stderr.on('data', chunk => { errors += chunk; });
+      child.stdout.resume();
+      child.on('error', reject);
+      child.on('close', code => resolve({ code, errors }));
+      child.stdin.end(sql);
+    });
+    const [customer, worker, ...rest] = Array.from({ length: 14 }, () => randomUUID());
+    const jobs = [0, 1, 2].map(index => ({ request: rest[index * 4], quote: rest[index * 4 + 1], invitation: rest[index * 4 + 2], job: rest[index * 4 + 3] }));
+    const keys = Array.from({ length: 3 }, () => randomUUID());
+    let created = false;
+    try {
+      query(`insert into auth.users (id,aud,role) values ('${customer}','authenticated','authenticated'),('${worker}','authenticated','authenticated');`);
+      created = true;
+      query(`insert into public.worker_access_grants (user_id) values ('${worker}'); insert into nestscout_private.worker_dispatch_eligibility (user_id,basis,active) values ('${worker}','local_fixture',true);`);
+      jobs.forEach((item, index) => {
+        query(`insert into public.service_requests (id,owner_id,submission_key,description) values ('${item.request}','${customer}','${keys[index]}','Pause race ${index}'); insert into public.service_quotes (id,request_id,version,scope,amount_minor,currency,expires_at,accepted_at,accepted_by) values ('${item.quote}','${item.request}',1,'Pause race',100,'VND',clock_timestamp()+interval '1 hour',clock_timestamp(),'${customer}'); insert into public.service_invitations (id,request_id,quote_id,worker_id,expires_at,state) values ('${item.invitation}','${item.request}','${item.quote}','${worker}',clock_timestamp()+interval '1 hour','accepted'); insert into public.service_jobs (id,request_id,quote_id,invitation_id,worker_id,stage,version) values ('${item.job}','${item.request}','${item.quote}','${item.invitation}','${worker}','paused',3); insert into public.service_job_pauses (job_id,category,prior_stage,paused_by,paused_from_version,resume_requested_by,resume_requested_from_version,resume_requested_at) values ('${item.job}','ordinary_interruption','working','${worker}',1,'${worker}',2,clock_timestamp());`);
+      });
+      const auth = actor => `set local role authenticated; select set_config('request.jwt.claims', '{"sub":"${actor}","role":"authenticated"}', true);`;
+      const race = async (firstSql, secondSql) => {
+        const barrier = barrierKey();
+        const first = run(`begin; ${firstSql} ${holdBarrier(barrier)} commit;`);
+        await waitForBarrier(query, barrier);
+        const started = Date.now();
+        const second = run(`begin; ${secondSql} commit;`).then(result => ({ ...result, elapsed: Date.now() - started }));
+        const [winner, loser] = await Promise.all([first, second]);
+        return { winner, loser };
+      };
+
+      const consentFirst = await race(`${auth(customer)} select public.consent_service_resume('${jobs[0].job}',3);`, `${auth(worker)} select public.pause_service_job('${jobs[0].job}',3,'safety_concern');`);
+      assert.equal(consentFirst.winner.code, 0);
+      assert.notEqual(consentFirst.loser.code, 0);
+      assert.match(consentFirst.loser.errors, /stale job/);
+      assert.ok(consentFirst.loser.elapsed >= 1500, 'The escalation must wait for the consent transaction');
+      assert.equal(query(`select stage || ':' || version from public.service_jobs where id='${jobs[0].job}';`).trim(), 'working:4');
+      assert.equal(query(`select count(*) from public.service_job_pauses where job_id='${jobs[0].job}' and category='safety_concern';`).trim(), '0');
+
+      const escalationFirst = await race(`${auth(worker)} select public.pause_service_job('${jobs[1].job}',3,'safety_concern');`, `${auth(customer)} select public.consent_service_resume('${jobs[1].job}',3);`);
+      assert.equal(escalationFirst.winner.code, 0);
+      assert.notEqual(escalationFirst.loser.code, 0);
+      assert.match(escalationFirst.loser.errors, /stale job/);
+      assert.ok(escalationFirst.loser.elapsed >= 1500, 'The consent must wait for the escalation transaction');
+      assert.equal(query(`select stage || ':' || version from public.service_jobs where id='${jobs[1].job}';`).trim(), 'paused:4');
+      assert.equal(query(`select count(*) from public.service_job_pauses where job_id='${jobs[1].job}' and category='safety_concern' and resumed_at is null;`).trim(), '1');
+
+      const duplicate = await race(`${auth(customer)} select public.consent_service_resume('${jobs[2].job}',3);`, `${auth(customer)} select public.consent_service_resume('${jobs[2].job}',3);`);
+      assert.equal(duplicate.winner.code, 0);
+      assert.equal(duplicate.loser.code, 0);
+      assert.ok(duplicate.loser.elapsed >= 1500, 'The duplicate consent must wait for the first transaction');
+      assert.equal(query(`select stage || ':' || version from public.service_jobs where id='${jobs[2].job}';`).trim(), 'working:4');
+      assert.equal(query(`select count(*) from public.service_job_events where job_id='${jobs[2].job}' and event='resumed';`).trim(), '1');
+    } finally {
+      if (created) {
+        const jobIds = jobs.map(item => `'${item.job}'`).join(',');
+        query(`delete from public.service_job_pauses where job_id in (${jobIds}); delete from public.service_job_events where job_id in (${jobIds}); delete from public.service_jobs where id in (${jobIds}); delete from public.service_invitations where id in (${jobs.map(item => `'${item.invitation}'`).join(',')}); delete from public.service_quotes where id in (${jobs.map(item => `'${item.quote}'`).join(',')}); delete from public.service_requests where id in (${jobs.map(item => `'${item.request}'`).join(',')}); delete from nestscout_private.worker_dispatch_eligibility where user_id='${worker}'; delete from public.worker_access_grants where user_id='${worker}'; delete from auth.users where id in ('${customer}','${worker}');`);
       }
     }
   });

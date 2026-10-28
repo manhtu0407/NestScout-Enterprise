@@ -58,7 +58,7 @@ select is(public.advance_service_job((select id from public.service_jobs), 1, 'e
 select is(public.advance_service_job((select id from public.service_jobs), 1, 'en_route'), 2, 'Identical stage retry is safe');
 select throws_ok($$select public.advance_service_job((select id from public.service_jobs), 1, 'arrived')$$,
   '40001', 'stale job', 'A stale version cannot advance');
-select is(public.advance_service_job((select id from public.service_jobs), 2, 'paused'), 3, 'Safety pause is available during travel');
+select is(public.pause_service_job((select id from public.service_jobs), 2, 'safety_concern'), 3, 'Safety pause is available during travel');
 select throws_ok($$select public.advance_service_job((select id from public.service_jobs), 3, 'arrived')$$,
   '22023', 'invalid transition', 'Paused work cannot progress');
 reset role;

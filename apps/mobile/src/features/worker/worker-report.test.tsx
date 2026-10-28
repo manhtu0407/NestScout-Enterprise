@@ -92,3 +92,17 @@ test.each(switches)('the draft of the previous %s does not carry over', async (_
   await waitFor(() => expect(screen.getByRole('button', { name: 'Report delay' })).toBeEnabled());
   expect(screen.getByLabelText('Report details').props.value).toBe('');
 });
+
+test('a locked form cannot be edited or submitted until it is unlocked', async () => {
+  const view = await render(<WorkerReport userId="worker-a" job={job} onRefresh={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Report delay' })).toBeEnabled());
+  await fireEvent.changeText(screen.getByLabelText('Report details'), 'Traffic');
+  await view.rerender(<WorkerReport userId="worker-a" job={job} locked onRefresh={() => undefined} />);
+  expect(screen.getByRole('button', { name: 'Report delay' })).toBeDisabled();
+  expect(screen.getByLabelText('Report details').props.editable).toBe(false);
+  await fireEvent.press(screen.getByRole('button', { name: 'Report delay' }));
+  expect(reportJob).not.toHaveBeenCalled();
+  await view.rerender(<WorkerReport userId="worker-a" job={job} onRefresh={() => undefined} />);
+  expect(screen.getByRole('button', { name: 'Report delay' })).toBeEnabled();
+  expect(screen.getByLabelText('Report details').props.value).toBe('Traffic');
+});

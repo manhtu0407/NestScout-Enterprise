@@ -354,7 +354,10 @@ a test and refuse to accept any other basis.
 | Accept or reject quote | Owner; current quote, exact version and server expiry | Actor and decision time recorded; exact replay returns the quote |
 | Accept invitation | Invited Worker; current grant, fixture eligibility, accepted exact quote and unexpired invitation | Request lock and unique job permit one winner; replay returns that job |
 | Decline invitation | Invited Worker; current grant, fixture eligibility, exact quote and expiry | Decline recorded; replay returns the invitation; no rematching starts |
-| Advance or pause work | Assigned Worker; current grant, fixture eligibility, job version and legal stage; pause only before submission | Job and versioned event commit together; identical replay returns its original version; a submitted job cannot be paused, and a paused job leaves only through an approved safety process |
+| Advance work | Assigned Worker; current grant, fixture eligibility, job version and legal stage | Job and versioned event commit together; identical replay returns its original version; a pause is not an advance |
+| Pause work | Assigned Worker; a category of ordinary interruption or safety concern; legal stage before submission | Pause record (category, prior stage, version), job version and event commit together; an identical retry returns the original version; a submitted, disputed or completed job cannot be paused; an ordinary pause can be escalated to a safety stop |
+| Request to resume | Assigned Worker with current grant and eligibility; ordinary pause only; no undecided scope proposal; no dispute | Request, new job version and event commit together; a safety stop has no request path |
+| Agree to resume | Owner; the exact job version produced by the request; the requesting Worker still holds an active grant and eligibility; no dispute | The job returns to the recorded prior stage; a duplicate agreement returns the original version; a concurrent escalation or agreement resolves to one transition |
 | Report delay or no answer | Assigned Worker; grant, fixture eligibility, stage and version | Report, version and event commit together; key binds details; no automatic fee or schedule change |
 | Propose fixture scope | Assigned Worker; grant, fixture eligibility, working job and version | Immutable old/new terms, rationale and event; key binds payload |
 | Decide fixture scope | Owner; exact proposal sequence and job version; job working or paused | Decision and event commit together; original quote stays unchanged; a safety pause never leaves a proposal undecidable |
@@ -362,6 +365,42 @@ a test and refuse to accept any other basis.
 | Accept, request correction or dispute | Owner; pending submission, job version and required reason | One decision and event; dispute creates a separate case; exact replay is safe; only the correction note is Worker-readable and the private reason is not exposed to any client; the Worker screen shows the note while the newest submission of the job is the correction request |
 | Open aftercare | Owner; completed job and case key | Linked case created once without changing the job or event history |
 | Read Kael context | Owner of request or currently eligible assigned Worker | Redacted deterministic projection; allowed and unavailable calls audited within a per-minute budget; the first rate-limited call in each minute is audited |
+
+A pause carries its category, the stage it interrupted and the job version it
+was made from. An ordinary interruption can be resumed only when the Worker
+asks and the owner then agrees to the exact job version produced by that
+request, so a scope decision, a second pause or a revocation in between makes
+the agreement stale. A safety stop never resumes in this local foundation: no
+clearance authority, operator role or override exists, and the database refuses
+to record a resume for it. A disputed job accepts no further command, and a
+no-answer report blocks the start of work, whatever pause cycle precedes it.
+Neither case applies a fee, refund, penalty or payout; both screens say that a
+manual process outside the application is required.
+
+The Worker correction note comes from `worker_corrections()`, which returns at
+most one row for each job of the caller: the newest submission, chosen by the
+submission version that is unique within the job and never by timestamp, and
+only when that submission is a correction request. The Worker screen refuses a
+page of 1000 rows as possibly truncated, because the API row limit is 1000.
+When any part of the Worker snapshot, including the correction projection,
+cannot be verified, the screen keeps the last verified state as stale
+read-only information, disables every action and form, and offers a refresh.
+
+Workflow failures are classified by the database error class together with a
+closed set of the domain messages written in the migrations, and the client
+shows a fixed text for each class, never the server text. The classes are
+authorization, stale version, expired agreement, unavailable offer, invalid
+input and a step that is no longer available; anything else is an uncertain
+outcome that keeps its idempotency key.
+
+Request intake has no per-account quota or rate limit. The direct insert and
+the command share the size bounds and the owner and guest checks, but only the
+command replays a key. The mobile configuration refuses every hosted target, so
+this repository enables no public intake. A quota needs numbers approved by the
+owner and one enforcement point that covers both paths.
+
+The Worker job list is not paginated. Beyond 1000 jobs the Worker screen reports
+that activity cannot be verified instead of showing a truncated list.
 
 No endpoint confirms payment. A quote, work submission, acceptance, support case
 or status explanation cannot establish settlement. No model provider,
@@ -387,6 +426,8 @@ status tool is unavailable.
 | create_job_reports migration | Stage-guarded Worker reports with no financial or scheduling effect | Report pgTAP and participant projections |
 | close_workflow_audit_gaps migration | Pause that cannot strand a decision, column-restricted submission reads, fixture provenance on quotes and invitations, audited rate limits | Audit-gap pgTAP, Kael pgTAP and Auth/REST race |
 | expose_fixture_basis_and_hide_counterparty_ids migration | Fixture basis in the Worker offer projection; column-level reads that omit account ids, idempotency tokens and private reasons on shared workflow tables | Counterparty visibility pgTAP and Auth/REST denial checks |
+| project_worker_corrections migration | Unique submission version per job and the latest-correction projection | Projection pgTAP, API row-limit and Auth/REST checks |
+| classify_job_pauses migration | Pause categories, resume request and agreement, safety stop and conservative classification of pauses recorded earlier | Pause pgTAP, Auth/REST commands and two-session races |
 | Supabase database tests and local integration test | Database ACL and real transaction/API evidence | Canonical isolated stack and test runner |
 | Supabase generated database types | CLI-generated public schema artifact | Local type generation and drift check |
 | Mobile package manifest and lockfile | Pinned native UUID source for durable operation keys | Expo compatibility and mobile checks |

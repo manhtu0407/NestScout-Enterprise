@@ -16,7 +16,7 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
   const { attempt, unreadable, setUnreadable, retry } = useDraftRecovery();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [quotes, setQuotes] = useState<ServiceQuote[]>([]);
-  const [activity, setActivity] = useState<CustomerActivity>({ jobs: [], submissions: [], cases: [], changes: [], reports: [] });
+  const [activity, setActivity] = useState<CustomerActivity>({ jobs: [], submissions: [], cases: [], changes: [], reports: [], pauses: [] });
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
@@ -192,7 +192,8 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
               submissions={activity.submissions.filter((submission) => submission.job_id === job.id)}
               cases={activity.cases.filter((item) => item.job_id === job.id)}
               changes={activity.changes.filter((change) => change.job_id === job.id)}
-              reports={activity.reports.filter((report) => report.job_id === job.id)} onRefresh={() => void reload()} />
+              reports={activity.reports.filter((report) => report.job_id === job.id)}
+              pause={activity.pauses.find((pause) => pause.job_id === job.id)} onRefresh={() => void reload()} />
           ))}
         </Fragment>
       ))}

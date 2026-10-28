@@ -77,6 +77,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"service_job_pauses": {
+                  Row: {
+                    "category": string,"created_at": string,"escalated_at": string | null,"escalated_from_version": number | null,"id": string,"job_id": string,"paused_by": string,"paused_from_version": number,"prior_stage": string,"resume_requested_at": string | null,"resume_requested_by": string | null,"resume_requested_from_version": number | null,"resumed_at": string | null,"resumed_by": string | null,"resumed_from_version": number | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "category": string,"created_at"?: string,"escalated_at"?: string | null,"escalated_from_version"?: number | null,"id"?: string,"job_id": string,"paused_by": string,"paused_from_version": number,"prior_stage": string,"resume_requested_at"?: string | null,"resume_requested_by"?: string | null,"resume_requested_from_version"?: number | null,"resumed_at"?: string | null,"resumed_by"?: string | null,"resumed_from_version"?: number | null
+                  }
+                  Update: {
+                    "category"?: string,"created_at"?: string,"escalated_at"?: string | null,"escalated_from_version"?: number | null,"id"?: string,"job_id"?: string,"paused_by"?: string,"paused_from_version"?: number,"prior_stage"?: string,"resume_requested_at"?: string | null,"resume_requested_by"?: string | null,"resume_requested_from_version"?: number | null,"resumed_at"?: string | null,"resumed_by"?: string | null,"resumed_from_version"?: number | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_job_pauses_job_id_fkey"
+      columns: ["job_id"]
+isOneToOne: false
+      referencedRelation: "service_jobs"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"service_job_reports": {
                   Row: {
                     "actor_id": string,"created_at": string,"details": string,"id": string,"job_id": string,"kind": string,"report_key": string,"reported_from_version": number
@@ -232,6 +252,9 @@ isOneToOne: false
 "advance_service_job":
 { Args: { "p_job_id": string,"p_next": string,"p_version": number }; Returns: number
                            },
+"consent_service_resume":
+{ Args: { "p_job_id": string,"p_version": number }; Returns: number
+                           },
 "decide_service_scope":
 { Args: { "p_decision": string,"p_job_version": number,"p_proposal_id": string,"p_sequence": number }; Returns: string
                            },
@@ -244,8 +267,16 @@ isOneToOne: false
 "kael_read_context":
 { Args: { "p_kind": string,"p_resource_id": string }; Returns: Json
                            },
+"open_job_pauses":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "category": string,"created_at": string,"job_id": string,"paused_from_version": number,"prior_stage": string,"resume_requested": boolean
+            }[]
+                           },
 "open_service_aftercare":
 { Args: { "p_job_id": string,"p_key": string,"p_reason": string }; Returns: string
+                           },
+"pause_service_job":
+{ Args: { "p_category": string,"p_job_id": string,"p_version": number }; Returns: number
                            },
 "propose_service_scope":
 { Args: { "p_amount": number,"p_job_id": string,"p_key": string,"p_rationale": string,"p_scope": string,"p_version": number }; Returns: string
@@ -256,11 +287,19 @@ isOneToOne: false
 "report_service_job":
 { Args: { "p_details": string,"p_job_id": string,"p_key": string,"p_kind": string,"p_version": number }; Returns: string
                            },
+"request_service_resume":
+{ Args: { "p_job_id": string,"p_version": number }; Returns: number
+                           },
 "submit_service_request":
 { Args: { "p_description": string,"p_submission_key": string }; Returns: string
                            },
 "submit_service_work":
 { Args: { "p_evidence": string,"p_job_id": string,"p_key": string,"p_version": number }; Returns: string
+                           },
+"worker_corrections":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "job_id": string,"note": string,"submitted_from_version": number
+            }[]
                            },
 "worker_jobs":
 { Args: Record<PropertyKey, never>; Returns: {

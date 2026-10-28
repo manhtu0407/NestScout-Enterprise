@@ -9,14 +9,14 @@ import { proposeScope, type Job } from './worker-repository';
 
 type Pending = { key: string; version: number; scope: string; amount: number; rationale: string };
 
-type Props = { userId: string; job: Job; hasPending: boolean; onRefresh(): void };
+type Props = { userId: string; job: Job; hasPending: boolean; locked?: boolean; onRefresh(): void };
 
 export function ScopeProposal(props: Props) {
   const storageKey = `nestscout.scope-proposal.${props.userId}.${props.job.job_id}`;
   return <ScopeProposalDraft key={storageKey} storageKey={storageKey} {...props} />;
 }
 
-function ScopeProposalDraft({ storageKey, userId, job, hasPending, onRefresh }: Props & { storageKey: string }) {
+function ScopeProposalDraft({ storageKey, userId, job, hasPending, locked = false, onRefresh }: Props & { storageKey: string }) {
   const [scope, setScope] = useState('');
   const [amount, setAmount] = useState('');
   const [rationale, setRationale] = useState('');
@@ -82,7 +82,7 @@ function ScopeProposalDraft({ storageKey, userId, job, hasPending, onRefresh }: 
   };
 
   const submit = async () => {
-    if (!ready || running.current || (hasPending && !pending)) return;
+    if (!ready || locked || running.current || (hasPending && !pending)) return;
     const numericAmount = Number(amount);
     const item = pending ?? { key: randomUUID(), version: job.version, scope: scope.trim(), amount: numericAmount, rationale: rationale.trim() };
     if (!item.scope || !item.rationale || (!pending && !/^\d+$/.test(amount)) || !Number.isSafeInteger(item.amount) || item.amount < 0) {
@@ -125,11 +125,11 @@ function ScopeProposalDraft({ storageKey, userId, job, hasPending, onRefresh }: 
   return (
     <>
       <BodyText>Propose test-only scope and VND amount. Real pricing authority is not configured.</BodyText>
-      <TextInput accessibilityLabel="Proposed scope" value={scope} onChangeText={setScope} editable={ready && !pending && !busy && !hasPending} multiline maxLength={4000} />
-      <TextInput accessibilityLabel="Proposed total VND" value={amount} onChangeText={setAmount} editable={ready && !pending && !busy && !hasPending} keyboardType="number-pad" />
-      <TextInput accessibilityLabel="Reason for change" value={rationale} onChangeText={setRationale} editable={ready && !pending && !busy && !hasPending} multiline maxLength={4000} />
+      <TextInput accessibilityLabel="Proposed scope" value={scope} onChangeText={setScope} editable={ready && !locked && !pending && !busy && !hasPending} multiline maxLength={4000} />
+      <TextInput accessibilityLabel="Proposed total VND" value={amount} onChangeText={setAmount} editable={ready && !locked && !pending && !busy && !hasPending} keyboardType="number-pad" />
+      <TextInput accessibilityLabel="Reason for change" value={rationale} onChangeText={setRationale} editable={ready && !locked && !pending && !busy && !hasPending} multiline maxLength={4000} />
       <ActionButton secondary label={pending ? 'Retry scope proposal' : 'Propose scope change'} onPress={() => void submit()}
-        disabled={!ready || (!pending && (hasPending || job.stage !== 'working'))} busy={busy} />
+        disabled={!ready || locked || (!pending && (hasPending || job.stage !== 'working'))} busy={busy} />
       {unreadable ? <DraftRecovery onRetry={() => { setMessage(null); retry(); }} onDiscard={discardSaved} /> : null}
       {message ? <ErrorText>{message}</ErrorText> : null}
     </>

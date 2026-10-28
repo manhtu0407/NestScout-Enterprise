@@ -41,7 +41,7 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}', true);
 select lives_ok($$select public.submit_service_work('50000000-0000-4000-8000-000000000001', 1, '60000000-0000-4000-8000-000000000001', 'Work evidence')$$,
   'Worker submits evidence');
-select throws_ok($$select public.advance_service_job('50000000-0000-4000-8000-000000000001', 2, 'paused')$$,
+select throws_ok($$select public.pause_service_job('50000000-0000-4000-8000-000000000001', 2, 'safety_concern')$$,
   '22023', 'invalid transition', 'A job awaiting the Customer decision cannot be paused into a dead end');
 select is((select stage from public.service_jobs where id = '50000000-0000-4000-8000-000000000001'), 'submitted',
   'The rejected pause leaves the job awaiting the decision');
@@ -57,12 +57,12 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}', true);
 select is((select correction_note from public.service_submissions where job_id = '50000000-0000-4000-8000-000000000001'),
   'Reseal the joint', 'The Worker sees the correction text meant for them');
-select is(public.advance_service_job('50000000-0000-4000-8000-000000000001', 3, 'paused'), 4,
+select is(public.pause_service_job('50000000-0000-4000-8000-000000000001', 3, 'safety_concern'), 4,
   'Safety pause remains available while work is in progress');
 
 select lives_ok($$select public.propose_service_scope('50000000-0000-4000-8000-000000000002', 1, '60000000-0000-4000-8000-000000000002', 'Larger scope', 150, 'More work found')$$,
   'Worker proposes a scope change');
-select is(public.advance_service_job('50000000-0000-4000-8000-000000000002', 2, 'paused'), 3,
+select is(public.pause_service_job('50000000-0000-4000-8000-000000000002', 2, 'safety_concern'), 3,
   'Safety pause is available with a proposal pending');
 reset role;
 

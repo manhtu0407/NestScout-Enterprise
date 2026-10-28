@@ -3,14 +3,14 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { WorkflowError } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
-import { decideScope, decideSubmission, openAftercare, type CustomerJob, type Submission } from './customer-activity-repository';
+import { consentResume, decideScope, decideSubmission, openAftercare, type CustomerJob, type JobPause, type Submission } from './customer-activity-repository';
 import { CustomerJobActivity } from './customer-job-activity';
 
 jest.mock('expo-crypto', () => ({ randomUUID: () => '00000000-0000-4000-8000-000000000123' }));
 jest.mock('@/lib/device-storage', () => ({ deviceStorage: {
   getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn(),
 } }));
-jest.mock('./customer-activity-repository', () => ({ decideScope: jest.fn(), decideSubmission: jest.fn(), openAftercare: jest.fn() }));
+jest.mock('./customer-activity-repository', () => ({ consentResume: jest.fn(), decideScope: jest.fn(), decideSubmission: jest.fn(), openAftercare: jest.fn() }));
 
 const submitted: CustomerJob = { id: 'job', request_id: 'request', stage: 'submitted', version: 2 };
 const evidence: Submission = { id: 'submission', job_id: 'job', evidence: 'Fixed tap', decision: 'pending' };
@@ -174,4 +174,67 @@ test.each(switches)('the draft of the previous %s does not carry over', async (_
   await view.rerender(<CustomerJobActivity userId={userId} job={job} submissions={[]} cases={[]} onRefresh={() => undefined} />);
   await waitFor(() => expect(screen.getByRole('button', { name: 'Open support case' })).toBeEnabled());
   expect(screen.getByLabelText('Correction or support details').props.value).toBe('');
+});
+
+const pausedJob: CustomerJob = { id: 'job', request_id: 'request', stage: 'paused', version: 6 };
+const ordinary: JobPause = { job_id: 'job', category: 'ordinary_interruption', resume_requested: true };
+
+test('the Customer agrees to the displayed job version when the Worker asks to resume', async () => {
+  jest.mocked(consentResume).mockResolvedValue();
+  await render(<CustomerJobActivity userId="customer-a" job={pausedJob} submissions={[]} cases={[]} pause={ordinary} onRefresh={() => undefined} />);
+  await screen.findByText(/The Worker asks to resume work\. Agreeing resumes this job on its current version and approved scope/);
+  await fireEvent.press(screen.getByRole('button', { name: 'Agree to resume work' }));
+  await screen.findByText('Resume agreed. Refreshing the current state.');
+  expect(consentResume).toHaveBeenCalledWith('customer-a', pausedJob, expect.anything());
+});
+
+test('an ordinary pause without a Worker request offers no consent', async () => {
+  await render(<CustomerJobActivity userId="customer-a" job={pausedJob} submissions={[]} cases={[]} pause={{ ...ordinary, resume_requested: false }} onRefresh={() => undefined} />);
+  await screen.findByText('Work is paused for an ordinary interruption. The Worker has not asked to resume.');
+  expect(screen.queryByRole('button', { name: 'Agree to resume work' })).toBeNull();
+});
+
+test('a safety stop offers no consent and says that support is needed', async () => {
+  await render(<CustomerJobActivity userId="customer-a" job={pausedJob} submissions={[]} cases={[]} pause={{ ...ordinary, category: 'safety_concern', resume_requested: false }} onRefresh={() => undefined} />);
+  await screen.findByText(/Work was stopped for a safety concern\. No safety clearance process is configured/);
+  expect(screen.queryByRole('button', { name: 'Agree to resume work' })).toBeNull();
+});
+
+test('a paused job whose pause cannot be identified offers no consent', async () => {
+  await render(<CustomerJobActivity userId="customer-a" job={pausedJob} submissions={[]} cases={[]} onRefresh={() => undefined} />);
+  await screen.findByText('The pause state of this job could not be verified. Refresh before acting.');
+  expect(screen.queryByRole('button', { name: 'Agree to resume work' })).toBeNull();
+});
+
+test('a job that is not paused shows no pause text', async () => {
+  await render(<CustomerJobActivity userId="customer-a" job={{ ...pausedJob, stage: 'working' }} submissions={[]} cases={[]} pause={ordinary} onRefresh={() => undefined} />);
+  await screen.findByText(/Work stage: working/);
+  expect(screen.queryByRole('button', { name: 'Agree to resume work' })).toBeNull();
+  expect(screen.queryByText(/The Worker asks to resume work/)).toBeNull();
+});
+
+test.each([
+  ['a stale version', new WorkflowError('stale'), /changed after it was loaded/],
+  ['a revoked Worker', new WorkflowError('forbidden'), /not available for your account/],
+  ['a state that moved on', new WorkflowError('rejected'), /no longer available/],
+  ['a lost connection', new Error('offline'), /The result was not confirmed/],
+])('consent refused for %s is explained without claiming the work resumed', async (_label, failure, text) => {
+  jest.mocked(consentResume).mockRejectedValue(failure);
+  await render(<CustomerJobActivity userId="customer-a" job={pausedJob} submissions={[]} cases={[]} pause={ordinary} onRefresh={() => undefined} />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Agree to resume work' }));
+  await screen.findByText(text);
+  expect(screen.queryByText('Resume agreed. Refreshing the current state.')).toBeNull();
+});
+
+test('a dispute is shown as a manual process with no automatic outcome', async () => {
+  await render(<CustomerJobActivity userId="customer-a" job={submitted} submissions={[{ ...evidence, decision: 'disputed' }]} cases={[{ id: 'case', job_id: 'job', kind: 'dispute', reason: 'Still leaking' }]} onRefresh={() => undefined} />);
+  await screen.findByText('This job is under dispute. No automatic refund, fee or resolution applies; a manual review outside this app is required.');
+  expect(screen.queryByRole('button', { name: 'Accept submitted work' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Open dispute' })).toBeNull();
+});
+
+test('a no-answer report is shown as a manual recovery with no fee', async () => {
+  const report = { id: 'report', job_id: 'job', kind: 'customer_absent' as const, details: 'Nobody answered', created_at: '2026-10-28T10:00:00Z', reported_from_version: 1 };
+  await render(<CustomerJobActivity userId="customer-a" job={{ ...submitted, stage: 'arrived' }} submissions={[]} cases={[]} reports={[report]} onRefresh={() => undefined} />);
+  await screen.findByText('A no-answer report was filed. No fee or cancellation was applied; work cannot start until a manual recovery process outside this app is available.');
 });

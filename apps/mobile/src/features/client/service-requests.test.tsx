@@ -28,7 +28,7 @@ beforeEach(() => {
   read.mockResolvedValue([]);
   jest.mocked(readQuotes).mockResolvedValue([]);
   jest.mocked(loadPendingRequest).mockResolvedValue(null);
-  jest.mocked(readCustomerActivity).mockResolvedValue({ jobs: [], submissions: [], cases: [], changes: [], reports: [] });
+  jest.mocked(readCustomerActivity).mockResolvedValue({ jobs: [], submissions: [], cases: [], changes: [], reports: [], pauses: [] });
 });
 
 test('an uncertain submission retains its key and retries the same description', async () => {

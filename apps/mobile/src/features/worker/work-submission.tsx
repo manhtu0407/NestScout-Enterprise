@@ -9,14 +9,14 @@ import { submitWork, type Job } from './worker-repository';
 
 type Pending = { key: string; version: number; evidence: string };
 
-type Props = { userId: string; job: Job; scopePending?: boolean; onSettled(): void };
+type Props = { userId: string; job: Job; scopePending?: boolean; locked?: boolean; onSettled(): void };
 
 export function WorkSubmission(props: Props) {
   const storageKey = `nestscout.work-submission.${props.userId}.${props.job.job_id}`;
   return <WorkSubmissionDraft key={storageKey} storageKey={storageKey} {...props} />;
 }
 
-function WorkSubmissionDraft({ storageKey, userId, job, scopePending = false, onSettled }: Props & { storageKey: string }) {
+function WorkSubmissionDraft({ storageKey, userId, job, scopePending = false, locked = false, onSettled }: Props & { storageKey: string }) {
   const [evidence, setEvidence] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   const [ready, setReady] = useState(false);
@@ -78,7 +78,7 @@ function WorkSubmissionDraft({ storageKey, userId, job, scopePending = false, on
   };
 
   const submit = async () => {
-    if (!ready || inFlight.current || (scopePending && !pending)) return;
+    if (!ready || locked || inFlight.current || (scopePending && !pending)) return;
     const item = pending ?? { key: randomUUID(), version: job.version, evidence: evidence.trim() };
     if (!item.evidence || item.evidence.length > 4000) {
       setMessage('Describe the completed work in 1 to 4000 characters.');
@@ -120,8 +120,8 @@ function WorkSubmissionDraft({ storageKey, userId, job, scopePending = false, on
       <BodyText>Describe the work for Customer review.</BodyText>
       {scopePending ? <BodyText>Wait for the Customer to decide on the scope before submitting new work.</BodyText> : null}
       <TextInput accessibilityLabel="Work evidence" value={evidence} onChangeText={setEvidence}
-        editable={ready && !pending && !busy && !scopePending} multiline maxLength={4000} />
-      <ActionButton label={pending ? 'Retry work submission' : 'Submit work'} onPress={() => void submit()} disabled={!ready || (!pending && (job.stage !== 'working' || scopePending))} busy={busy} />
+        editable={ready && !locked && !pending && !busy && !scopePending} multiline maxLength={4000} />
+      <ActionButton label={pending ? 'Retry work submission' : 'Submit work'} onPress={() => void submit()} disabled={!ready || locked || (!pending && (job.stage !== 'working' || scopePending))} busy={busy} />
       {unreadable ? <DraftRecovery onRetry={() => { setMessage(null); retry(); }} onDiscard={discardSaved} /> : null}
       {message ? <ErrorText>{message}</ErrorText> : null}
     </>

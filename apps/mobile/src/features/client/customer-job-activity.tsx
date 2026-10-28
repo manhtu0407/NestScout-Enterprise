@@ -5,7 +5,7 @@ import { TextInput } from 'react-native';
 import { ActionButton, BodyText, DraftRecovery, ErrorText, failureMessage, isDefinitiveFailure, useDraftRecovery, type JobReport, type ScopeChange } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
-import { decideScope, decideSubmission, openAftercare, type CustomerJob, type Submission, type SupportCase } from './customer-activity-repository';
+import { consentResume, decideScope, decideSubmission, openAftercare, type CustomerJob, type JobPause, type Submission, type SupportCase } from './customer-activity-repository';
 
 type PendingCase = { key: string; reason: string };
 
@@ -16,6 +16,7 @@ type Props = {
   cases: SupportCase[];
   changes?: ScopeChange[];
   reports?: JobReport[];
+  pause?: JobPause;
   onRefresh(): void;
 };
 
@@ -24,7 +25,7 @@ export function CustomerJobActivity(props: Props) {
   return <CustomerJobDraft key={storageKey} storageKey={storageKey} {...props} />;
 }
 
-function CustomerJobDraft({ storageKey, userId, job, submissions, cases, changes = [], reports = [], onRefresh }: Props & { storageKey: string }) {
+function CustomerJobDraft({ storageKey, userId, job, submissions, cases, changes = [], reports = [], pause, onRefresh }: Props & { storageKey: string }) {
   const [reason, setReason] = useState('');
   const [pendingCase, setPendingCase] = useState<PendingCase | null>(null);
   const [ready, setReady] = useState(false);
@@ -146,6 +147,25 @@ function CustomerJobDraft({ storageKey, userId, job, submissions, cases, changes
         <BodyText key={submission.id}>{`Work evidence: ${submission.evidence}; decision: ${submission.decision}`}</BodyText>
       ))}
       {cases.map((item) => <BodyText key={item.id}>{`Support case (${item.kind}): ${item.reason}`}</BodyText>)}
+      {submissions.some((submission) => submission.decision === 'disputed') || cases.some((item) => item.kind === 'dispute')
+        ? <BodyText>This job is under dispute. No automatic refund, fee or resolution applies; a manual review outside this app is required.</BodyText> : null}
+      {reports.some((report) => report.kind === 'customer_absent')
+        ? <BodyText>A no-answer report was filed. No fee or cancellation was applied; work cannot start until a manual recovery process outside this app is available.</BodyText> : null}
+      {job.stage === 'paused' ? (
+        !pause ? <BodyText>The pause state of this job could not be verified. Refresh before acting.</BodyText>
+          : pause.category === 'safety_concern'
+            ? <BodyText>Work was stopped for a safety concern. No safety clearance process is configured, so work cannot resume in this app; contact support.</BodyText>
+            : (
+              <>
+                <BodyText>{pause.resume_requested
+                  ? 'The Worker asks to resume work. Agreeing resumes this job on its current version and approved scope.'
+                  : 'Work is paused for an ordinary interruption. The Worker has not asked to resume.'}</BodyText>
+                {pause.resume_requested ? (
+                  <ActionButton label="Agree to resume work" disabled={busy} onPress={() => void run((signal) => consentResume(userId, job, signal), 'Resume agreed. Refreshing the current state.')} />
+                ) : null}
+              </>
+            )
+      ) : null}
       {reports.map((report) => <BodyText key={report.id}>{`Worker report (${report.kind}): ${report.details}. This report has not been independently verified.`}</BodyText>)}
       {changes.map((change) => (
         <Fragment key={change.id}>
