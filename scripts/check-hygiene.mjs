@@ -22,7 +22,7 @@ const fixedPaths = new Set([
   '.github/dependabot.yml', '.githooks/pre-commit', '.githooks/commit-msg', '.githooks/pre-push',
   'supabase/.gitignore', 'supabase/config.toml', 'supabase/database.types.ts',
   'supabase/seed.sql', 'supabase/supabase.lock', 'supabase/migrations/.gitkeep',
-  'apps/mobile/package.json', 'apps/mobile/app.json', 'apps/mobile/tsconfig.json', 'apps/mobile/eslint.config.mjs',
+  'apps/mobile/package.json', 'apps/mobile/app.json', 'apps/mobile/eas.json', 'apps/mobile/tsconfig.json', 'apps/mobile/eslint.config.mjs',
   'apps/mobile/.env.example', 'docs/processes/.gitkeep',
 ]);
 const word = '[a-z0-9]+(?:-[a-z0-9]+)*';

@@ -83,52 +83,58 @@ operations; none was performed for this increment. On a Mac, a compatible Expo G
 simulator build is another path without a physical-device provisioning profile.
 
 An [EAS development build](https://docs.expo.dev/develop/development-builds/introduction/)
-can build iOS from Windows and include custom native modules, but requires a project
-development client, EAS configuration, signing, an approved bundle identifier and
-an Apple Developer account for a physical device. Build cost and provisioning must
-be checked before invoking EAS. This repository has not configured or verified
-that path; no cloud build, account or signing changes were made.
+can build iOS from Windows. `apps/mobile/eas.json` defines only an internal
+development profile and `expo-dev-client@58.0.17` is locked to the installed SDK's
+matrix. Expo's EAS JSON parser accepts the profile, but `eas config` cannot resolve
+the unlinked project. No cloud build or native runtime has been verified.
 
-The minimal preparation is to confirm the owner-approved Expo project and bundle
-identifier, restore a working EAS CLI, and install `expo-dev-client@58.0.17` in the
-mobile workspace with the lockfile updated. The installed Expo matrix selects that
-version. Add a development-only `apps/mobile/eas.json` profile as below after the
-repository's path policy is updated and validated. Link the approved EAS project
-and configure existing signing only with the owner's authorization. The configuration
-and build must not be inferred to be valid until exercised; no profile or client is
-installed by this increment.
+The owner must identify an existing approved Expo project ID and iOS bundle
+identifier, confirm that the signed-in Expo account can access the project, and
+confirm the Apple Developer team, build allowance, and an iPhone with existing
+internal-distribution signing and provisioning. Verify that the iPhone is included
+in the provisioning profile. Availability of project-specific Apple credentials has
+not been inspected because the project is unlinked. Do not generate, replace or
+change credentials or register a device without explicit authorization.
 
-```json
-{
-  "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal"
-    },
-    "development-simulator": {
-      "extends": "development",
-      "ios": { "simulator": true }
-    }
-  }
-}
-```
+The installed global `eas` command fails because its pnpm `@oclif/core` installation
+cannot resolve `tinyglobby`. On this Windows host, `npx --yes eas-cli@27.1.0 --version`
+starts successfully without repairing the global installation; `whoami` confirmed an
+Expo login without proving project access. From `apps/mobile`, after owner approval:
 
-After those prerequisites and explicit build authorization, run
-`eas build --platform ios --profile development` from `apps/mobile` for an approved
-device, or use `development-simulator` for a Mac simulator. The build artifact and
-runtime checks must be recorded separately from the Metro and Jest results.
+1. Link the exact approved existing project using `npx --yes eas-cli@27.1.0 init --id`
+   with the owner's project ID, and set `expo.ios.bundleIdentifier` in `app.json` to
+   the owner's approved identifier. Review and commit the approved app configuration
+   on the authorized branch before building so the source revision can be recorded.
+   Do not use `--force` or create a new project by inference.
+2. Run `npx --yes eas-cli@27.1.0 config --platform ios --profile development` to
+   inspect the resolved configuration. Confirm signing availability and device
+   provisioning through the owner, without exposing credentials in logs or Git.
+3. Only after explicit authorization to submit a build, run
+   `npx --yes eas-cli@27.1.0 build --platform ios --profile development`. If prompted
+   to generate or change signing credentials, stop unless separately authorized.
+   Record the resulting build ID and source revision; no build was submitted here.
 
-For a device or simulator session, check out the intended committed revision in a
-clean worktree, record `git rev-parse HEAD` and `git status --short --branch`, and
-run the SDK check. In PowerShell, from `apps/mobile`, set
+For an iPhone session, install the approved internal development build, enable
+[Developer Mode](https://docs.expo.dev/guides/ios-developer-mode/) if required, and
+use a network path between the phone and Metro. Check out the intended committed
+revision in a clean worktree, record `git rev-parse HEAD` and `git status --short
+--branch`, and run the SDK check. In PowerShell, from `apps/mobile`, set
 `$env:EXPO_PUBLIC_DESIGN_SHOWCASE = '1'` and
 `$env:EXPO_PUBLIC_DESIGN_REVISION = (git rev-parse HEAD)`, then run
-`npm run start -- --clear`. Open that server in the compatible client. Confirm the
+`npm run start -- --dev-client --clear`. Open that server in the development client. Confirm the
 displayed revision against the recorded commit and retain the server launch record,
 device and OS build with each capture. The displayed label can be stale or manually
 set, so it must not be treated as an attestation. Do not use secrets in either
 public environment variable. Record the scenario, settings and observed outcome;
 then stop the task-owned server and remove the two variables from the shell.
+For application navigation and Worker deep links, restart Metro with the showcase
+variable removed; the showcase replaces the application stack. Use authorized test
+accounts and an accessible local test service, not production credentials, and record
+the route, role, outcome and side effects. A phone's loopback address is not the
+development computer's loopback address. Record Light/Dark, large Dynamic Type,
+Vietnamese text, pressed/focus feedback, VoiceOver and measured touch targets on the
+device. Retain device, OS, build ID, source revision and results; automated checks and
+Metro bundling alone do not establish native behavior.
 
 The showcase shows the current normal, secondary, disabled and busy actions and
 records a completed press. `ActionButton` draws pressed and focus feedback in a

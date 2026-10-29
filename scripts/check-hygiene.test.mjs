@@ -117,7 +117,7 @@ test('unknown architecture, case variants, scratch names, archives and unsafe pa
   }
 });
 test('approved Expo application, Kael boundary and empty process paths pass', () => {
-  for (const file of ['apps/mobile/package.json', 'apps/mobile/app.json', 'apps/mobile/tsconfig.json',
+  for (const file of ['apps/mobile/package.json', 'apps/mobile/app.json', 'apps/mobile/eas.json', 'apps/mobile/tsconfig.json',
     'apps/mobile/eslint.config.mjs', 'apps/mobile/.env.example',
     'apps/mobile/src/app/_layout.tsx', 'apps/mobile/src/app/index.tsx', 'apps/mobile/src/app/(guest)/explore.tsx',
     'apps/mobile/src/app/(auth)/phone.tsx', 'apps/mobile/src/lib/config.ts', 'apps/mobile/src/lib/config.test.ts',
@@ -132,7 +132,7 @@ test('unapproved application, native, service and process paths still fail', () 
     'apps/mobile/src/app/(guest)/Explore.tsx', 'apps/mobile/src/App.tsx', 'apps/mobile/src/features/Access/index.ts',
     'apps/mobile/src/features/access/Foo.tsx', 'apps/mobile/src/features/access/report.ts', 'apps/mobile/src/features/(group)/x.ts',
     'apps/mobile/src/(guest)/_layout.tsx', 'apps/mobile/src/lib/script.js', 'apps/mobile/src/lib/types.d.ts',
-    'apps/mobile/assets/icon.png', 'apps/mobile/babel.config.js', 'apps/mobile/metro.config.js', 'apps/mobile/package-lock.json',
+    'apps/mobile/assets/icon.png', 'apps/mobile/babel.config.js', 'apps/mobile/metro.config.js', 'apps/mobile/package-lock.json', 'apps/mobile/EAS.json', 'apps/mobile/credentials.json',
     'apps/mobile/.env', 'apps/mobile/.env.local', 'apps/mobile/ios/Podfile', 'apps/mobile/android/build.gradle',
     'apps/api/index.ts', 'packages/shared/index.ts', 'services/kael-core/server.ts', 'services/kael-core/package.json',
     'services/kael-core/agent.mjs', 'process.bpmn', 'docs/order.bpmn']) {
