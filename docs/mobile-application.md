@@ -17,9 +17,14 @@ provides the Reduce Motion query and change event.
 
 `src/theme/palette.ts` owns semantic Light/Dark colors; `src/theme/layout.ts`
 owns spacing, geometry, opacity, elevation, motion durations and typography.
-The Ocean Mint direction is represented by the teal and mint palette, but no
-approved color specification or visual reference is present in this repository.
-Exact brand fidelity remains unverified and the values require owner review.
+The prior NestScout Horizon design discussion records Sea Glass Mint `#A5E6D8`,
+Ocean Mist `#8FE3D4`, Sea Teal `#145C57`, Dark Neutral `#253436` and Soft
+Background `#F5FBF9` as reference colors. The palette uses these exact values for
+brand roles, light canvas and text, the light action accent, and the dark action
+accent and foreground. Other semantic colors remain application values; an exact
+approved dark, high-contrast and component-state specification was not found.
+The supplied iOS foundation ZIP explicitly marks its example colors provisional.
+Native fidelity and the role mappings remain subject to visual review.
 Text uses the platform system font and React Native's default font scaling.
 Text styles are semantic roles rather than a claim of native Dynamic Type ramps.
 
@@ -33,10 +38,13 @@ messages supplement the border and are included in the accessibility hint.
 
 Icon-button feedback uses React Native animation with the system Reduce Motion
 setting and starts conservatively without motion while the setting is unknown.
-Other shared button feedback is immediate. Haptics are not emitted automatically:
-no haptics module is installed. A future real consumer may add a compatible,
-optional native haptic for meaningful actions, with a no-op fallback and no haptic
-required for understanding state. No native material or glass effect is claimed.
+Other shared button feedback is immediate. Shared controls intentionally emit no
+haptics: ordinary presses, typing, scrolling and animation do not justify them.
+If a future meaningful confirmation, destructive action or stage change warrants
+haptics, its owner must use a compatible platform API only when available, avoid
+duplicate feedback, and keep the action functional when haptics are unavailable,
+disabled or fail. Text and visual state must communicate the outcome independently.
+No haptics module, native haptic implementation or native material is claimed.
 
 Use the public `features/shared` exports and semantic tokens for Client and Worker
 interfaces. The existing `design-governance.test.ts` checks visual literals in
@@ -49,88 +57,12 @@ The label is operator-supplied, not an attestation. The root requires `__DEV__`;
 the showcase does not mount application flows and cannot be selected in production.
 Remove the variables and restart Metro to return to the application.
 
-### iOS validation procedure
+### SDK metadata
 
-On 2026-10-29, Expo's [SDK version endpoint](https://exp.host/--/api/v2/versions)
-reported React Native `0.88.0` for SDK 58, while its
-[native-module endpoint](https://exp.host/--/api/v2/sdks/58.0.0/native-modules)
-and the `expo@58.0.21` bundled matrix reported `0.88.1`. The CLI prefers the first
-endpoint. The lockfile now selects the patch releases and React Native `0.88.1`
-from the bundled matrix; `npm ci --ignore-scripts` succeeds, but the online
-`npm run verify:mobile-sdk` rejects `0.88.1` and expects `0.88.0`. Expo's
-[issue #52454](https://github.com/expo/expo/issues/52454) tracks the same discrepancy
-and its CLI override. SDK compatibility remains blocked until the sources agree and
-the online check passes. An offline success is not a substitute for the online check.
-
-For the least intrusive device check, use an already installed Expo Go build that
-matches SDK 58. Expo's [version-mismatch guidance](https://docs.expo.dev/troubleshooting/expo-go-version-mismatch/)
-says the iOS App Store version stops at SDK 54; SDK 58 on a physical iPhone needs a
-compatible build distributed through an internal TestFlight team using `eas go`
-and an Apple Developer Program membership. Expo's
-[physical-device setup](https://docs.expo.dev/get-started/set-up-your-environment/?device=physical&mode=expo-go&platform=ios)
-also requires Expo CLI and Expo Go to be signed in to the same account. Building or
-distributing that client, creating accounts and changing credentials are separate
-operations; none was performed for this increment. On a Mac, a compatible Expo Go
-simulator build is another path without a physical-device provisioning profile.
-
-An [EAS development build](https://docs.expo.dev/develop/development-builds/introduction/)
-can build iOS from Windows. `apps/mobile/eas.json` defines only an internal
-development profile and `expo-dev-client@58.0.17` is locked to the installed SDK's
-matrix. The repository is linked to the existing `@nestscout/nestscout` project,
-whose ID is `d984de7d-3c69-41a5-841f-a604d10d4f11`. The separate development
-bundle identifier is `com.phanmanhtu.nestscout.dev`; its availability on the Apple
-Developer portal remains unverified. `eas config` resolves the internal development
-profile. No cloud build or native runtime has been verified.
-
-On 2026-10-29, EAS showed an Apple team and existing certificates, but no registered
-devices and no provisioning profile for the development identifier. The only stored
-profile identified in the account belongs to the separate Home Services app. Do not
-revoke or modify that app's certificate or profile. Apple authentication, team access,
-identifier availability and device registration still require confirmation through
-the official Apple and EAS flow. Confirm included build allowance immediately before
-submitting a build; do not incur charges without separate authorization.
-
-The installed global `eas` command fails because its pnpm `@oclif/core` installation
-cannot resolve `tinyglobby`. On this Windows host, `npx.cmd --yes eas-cli@27.1.0 --version`
-starts successfully without repairing the global installation or changing the
-PowerShell execution policy; `whoami` confirmed an Expo login, and the selected project
-resolved successfully. From `apps/mobile`:
-
-1. Start `npx.cmd --yes eas-cli@27.1.0 device:create`. The owner confirms the
-   `nestscout` account and completes Apple authentication and iPhone registration
-   in the official flow. Never send credentials or device identifiers in chat or
-   commit them to Git.
-2. Confirm that `com.phanmanhtu.nestscout.dev` is available to the authorized team,
-   then configure a separate development provisioning profile for that identifier
-   and registered device. Prefer an existing valid certificate without changing or
-   revoking it. Any Apple authentication or MFA stays with the owner.
-3. Review and commit the intended configuration, record the clean source revision,
-   and run `npx.cmd --yes eas-cli@27.1.0 config --platform ios --profile development`.
-   After confirming allowance and build authorization, submit one build with
-   `npx.cmd --yes eas-cli@27.1.0 build --platform ios --profile development`. Record the
-   build ID and result separately from device runtime results.
-
-For an iPhone session, install the approved internal development build, enable
-[Developer Mode](https://docs.expo.dev/guides/ios-developer-mode/) if required, and
-use a network path between the phone and Metro. Check out the intended committed
-revision in a clean worktree, record `git rev-parse HEAD` and `git status --short
---branch`, and run the SDK check. In PowerShell, from `apps/mobile`, set
-`$env:EXPO_PUBLIC_DESIGN_SHOWCASE = '1'` and
-`$env:EXPO_PUBLIC_DESIGN_REVISION = (git rev-parse HEAD)`, then run
-`npm run start -- --dev-client --clear`. Open that server in the development client. Confirm the
-displayed revision against the recorded commit and retain the server launch record,
-device and OS build with each capture. The displayed label can be stale or manually
-set, so it must not be treated as an attestation. Do not use secrets in either
-public environment variable. Record the scenario, settings and observed outcome;
-then stop the task-owned server and remove the two variables from the shell.
-For application navigation and Worker deep links, restart Metro with the showcase
-variable removed; the showcase replaces the application stack. Use authorized test
-accounts and an accessible local test service, not production credentials, and record
-the route, role, outcome and side effects. A phone's loopback address is not the
-development computer's loopback address. Record Light/Dark, large Dynamic Type,
-Vietnamese text, pressed/focus feedback, VoiceOver and measured touch targets on the
-device. Retain device, OS, build ID, source revision and results; automated checks and
-Metro bundling alone do not establish native behavior.
+The existing Expo SDK 58 metadata disagreement is tracked in
+[Expo issue #52454](https://github.com/expo/expo/issues/52454). The installed
+lockfile retains the bundled matrix versions; the online SDK check previously
+rejected React Native `0.88.1` in favor of `0.88.0`. No workaround is applied.
 
 ### Native verification boundary
 

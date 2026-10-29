@@ -7,15 +7,6 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "platforms": ["ios"],
-    "plugins": ["expo-router"],
-    "ios": {
-      "bundleIdentifier": "com.phanmanhtu.nestscout.dev"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "d984de7d-3c69-41a5-841f-a604d10d4f11"
-      }
-    },
-    "owner": "nestscout"
+    "plugins": ["expo-router"]
   }
 }
