@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { usePalette } from '@/theme/palette';
+import { layout } from '@/theme/layout';
 
 export function Screen({ children }: { children: ReactNode }) {
   const palette = usePalette();
@@ -17,5 +18,5 @@ export function Screen({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  content: { flexGrow: 1, padding: 24, gap: 16, justifyContent: 'center' },
+  content: { flexGrow: 1, ...layout.screen, justifyContent: 'center' },
 });

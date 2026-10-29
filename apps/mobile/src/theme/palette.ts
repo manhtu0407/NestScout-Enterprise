@@ -24,6 +24,10 @@ const dark: typeof light = {
 
 export type Palette = typeof light;
 
+export function paletteForAppearance(appearance: 'light' | 'dark' | null | undefined): Palette {
+  return appearance === 'dark' ? dark : light;
+}
+
 export function usePalette(): Palette {
-  return useColorScheme() === 'dark' ? dark : light;
+  return paletteForAppearance(useColorScheme());
 }

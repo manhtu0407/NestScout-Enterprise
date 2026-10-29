@@ -6,6 +6,77 @@ Client/Worker mode gates. It contains technical placeholders only: no service
 catalog, booking, worker job, earnings, pricing or Kael behavior exists, and the
 owner has not yet supplied process documents or final UI.
 
+## Design fidelity contract
+
+`src/theme/palette.ts` existed at base `3d1926f`. The new
+`src/theme/layout.ts` gathers spacing, geometry and typography values copied
+from existing components and authentication inputs at that base. These inherited
+values preserve the application shell; they are not Apple system constants, an
+approved NestScout brand specification or evidence of device fidelity. Changes to
+shared values and approved screen hierarchy require explicit design review.
+
+`Text` and `TextInput` retain their prior React Native scaling behavior. No new
+Dynamic Type ramps or `allowFontScaling` override are applied. Native scaling,
+Vietnamese wrapping and large text remain unverified on iOS.
+
+The inherited Light/Dark palette remains the single color owner. Its input and
+secondary-action borders are the only outlines in those controls. Computed border
+contrast is approximately 1.68:1 and 2.30:1 against the Light/Dark backgrounds,
+and 1.51:1 and 1.86:1 against their surfaces, below the 3:1 non-text contrast
+criterion where that criterion applies. An owner-reviewed accessible design is
+needed before changing these values. Increased Contrast and Bold Text handling
+require native investigation; no high-contrast palette is claimed.
+
+Native Liquid Glass belongs primarily to functional controls and navigation.
+Prefer system controls or a compatible native material when a real use case
+justifies it. Do not describe blur or opacity as native Liquid Glass. This phase
+has no glass adapter, native bridge, accessibility preference observer, haptic
+provider or motion policy. Future implementation must use real consumers, check
+compiled and runtime availability, honor system settings and provide an opaque
+fallback. Apple's [materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials)
+and [Liquid Glass APIs](https://developer.apple.com/documentation/SwiftUI/Applying-Liquid-Glass-to-custom-views)
+provide platform guidance; project-specific decisions require owner review.
+
+`foundation.test.tsx` pins the complete inherited layout, typography and palettes,
+checks flattened shared and authentication input styles in simulated Light/Dark,
+and asserts that new text ramps and scaling overrides are absent. The contrast
+checks expose the existing border gap; unit tests are not native visual evidence.
+
+`design-governance.test.ts` checks feature source reachable from `StyleSheet.create`,
+style-valued JSX props and recognized color-valued JSX props. It examines named and
+other color literals, typography, dimensions, borders, shadows, logical spacing and
+selected local aliases, assignments and expressions. Reviewed layout and typography imports, transparent, zero, opacity one and
+non-style text are permitted. New direct theme imports used in styles require
+review and guard coverage. Exact reviewed exceptions require
+file, property, value and reason; the exception list is currently empty. Theme values
+are pinned separately. This is a bounded static check: it does not resolve arbitrary
+imports, runtime-generated objects, computed property names, all alias chains or
+scope shadowing, and it cannot judge whether a new theme value is approved. Human
+review remains necessary; adding a value to the theme does not approve it.
+
+### Coverage and native verification
+
+| Area | Phase A evidence | Remaining work |
+| --- | --- | --- |
+| Palette | Base values and contrast pairs pinned in tests | Owner decision on border contrast; native Light/Dark and Increased Contrast |
+| Typography | Base values and default scaling props pinned | Native Dynamic Type, Bold Text, Vietnamese wrapping and keyboard |
+| Layout and components | Flattened shared and authentication styles compared with base values | Actual hit regions, focus and approved references on devices |
+| Material, motion and haptics | No native implementation claimed | Implement only for a real consumer; verify fallback and system settings |
+| Governance | Tested AST guard for documented patterns | Review unresolved static-analysis limits and theme changes |
+| Visual regression | No screenshot pipeline or approved reference | Capture, decode, review and store approved native baselines |
+
+On macOS/Xcode, establish the deployment target, toolchain and source revision.
+Build and launch on the reference simulator and a physical iPhone. Capture matching
+Light/Dark and Increased Contrast states, default and largest Dynamic Type,
+Vietnamese/English, keyboard open, disabled/loading/error and relevant surfaces.
+Exercise VoiceOver focus and labels, Switch Control where applicable, Reduce Motion,
+Reduce Transparency, back and dismiss gestures, touch targets and long text. If a
+native glass adapter is introduced, verify capability failure, opaque fallback,
+regular and reviewed clear glass over plain and busy content, scrolling, transitions
+and device performance. Record device, OS build, source revision and capture settings;
+compare against an owner-approved reference. Do not update a baseline automatically
+to conceal a mismatch. These checks are not performed by unit tests.
+
 ## Versions
 
 Expo SDK 58 (React Native 0.88, React 19.3.0, Expo Router 58) with TypeScript
