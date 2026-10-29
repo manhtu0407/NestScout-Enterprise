@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { ActionButton, BodyText, ErrorText, Heading, Screen } from '@/features/shared';
+import { ActionButton, AppText, BodyText, Divider, ErrorText, Heading, IconButton, LoadingView, Screen, StateView, StatusIndicator, Surface, TextField } from '@/features/shared';
 import { layout } from '@/theme/layout';
 import { usePalette } from '@/theme/palette';
 
 export function FoundationShowcase() {
   const palette = usePalette();
   const [pressed, setPressed] = useState(false);
+  const [value, setValue] = useState('');
 
   return (
     <Screen>
@@ -30,6 +31,20 @@ export function FoundationShowcase() {
       <ActionButton label="Secondary action" secondary onPress={() => setPressed(!pressed)} />
       <ActionButton label="Disabled action" disabled onPress={() => setPressed(!pressed)} />
       <ActionButton label="Loading action" busy onPress={() => setPressed(!pressed)} />
+      <ActionButton label="Selected action" secondary selected onPress={() => setPressed(!pressed)} />
+      <IconButton label="Toggle selection" selected={pressed} onPress={() => setPressed(!pressed)}><AppText>★</AppText></IconButton>
+      <Heading>Typography</Heading>
+      <AppText variant="title">Tiêu đề lớn</AppText>
+      <AppText variant="subheading">Thông tin dịch vụ</AppText>
+      <AppText variant="caption" muted>Thông tin bổ sung</AppText>
+      <Heading>Fields and surfaces</Heading>
+      <TextField label="Your name" value={value} onChangeText={setValue} hint="Enter a name" />
+      <TextField label="Example error" value="" error="This field is required" />
+      <TextField label="Unavailable field" value="" editable={false} />
+      <Surface elevated><AppText variant="subheading">Surface</AppText><Divider /><BodyText>Shared content for Client and Worker.</BodyText><StatusIndicator label="Ready" tone="success" /><StatusIndicator label="Needs attention" tone="warning" /><StatusIndicator label="Unavailable" tone="danger" /></Surface>
+      <StateView title="Nothing here yet" message="Items will appear here when available." />
+      <StateView title="Unable to load" message="Please try again." action={{ label: 'Retry', onPress: () => setPressed(!pressed) }} />
+      <LoadingView label="Loading example" />
     </Screen>
   );
 }

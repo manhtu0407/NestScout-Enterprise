@@ -8,55 +8,46 @@ owner has not yet supplied process documents or final UI.
 
 ## Design fidelity contract
 
-### Phase B coverage and development showcase
+### Design foundation and development showcase
 
-The first Phase B increment exposes shared typography, palette and action states in
-a development-only root. It adds no production route. It also changes shared
-production controls: input and secondary-action borders use higher-contrast colors,
-and enabled buttons display pressed and focus feedback. These controls are used in
-access, Client and Worker screens, so the changes need native and owner visual review.
-From `apps/mobile`, start a development server with
-`EXPO_PUBLIC_DESIGN_SHOWCASE=1` in its environment. Set
-`EXPO_PUBLIC_DESIGN_REVISION` to the checked-out commit to label captures; the label
-is supplied by the operator and is not proof of the bundled source. Remove both
-environment variables and restart Metro to return to the application. The root also
-requires React Native's `__DEV__`; a production build cannot select the showcase
-through this flag. The showcase does not mount the access provider or business flow.
+The [Apple HIG accessibility guidance](https://developer.apple.com/design/human-interface-guidelines/accessibility)
+and [haptics guidance](https://developer.apple.com/design/human-interface-guidelines/playing-haptics)
+inform the foundation. React Native's [AccessibilityInfo](https://reactnative.dev/docs/accessibilityinfo)
+provides the Reduce Motion query and change event.
 
-| Foundation area | Current owner and status | Evidence still needed |
-| --- | --- | --- |
-| Color | `palette.ts`: Light/Dark application values with adjusted control borders, not approved brand or Apple system colors | Owner-approved brand reference, increased contrast design and native resolution |
-| Typography | `layout.ts`: inherited heading, body, control and input roles | Approved SF roles and actual iOS Dynamic Type, Bold Text and Vietnamese layout |
-| Spacing and geometry | `layout.ts`: inherited screen, control, input and loading metrics | Reference comparison and real touch-target measurement |
-| Elevation and icons | No canonical tokens or consumers established | Approved design and actual consumers |
-| Components | Existing shared text, button, screen and loading components; showcase covers text, color and button states | Inputs, navigation, other states and native visual/accessibility review |
-| Native materials, motion and haptics | No implementation claimed | Real consumer, compatibility, system settings and device tests |
-| Visual regression | No approved golden images or automated native capture | Reproducible simulator capture, comparison and owner approval |
+`src/theme/palette.ts` owns semantic Light/Dark colors; `src/theme/layout.ts`
+owns spacing, geometry, opacity, elevation, motion durations and typography.
+The Ocean Mint direction is represented by the teal and mint palette, but no
+approved color specification or visual reference is present in this repository.
+Exact brand fidelity remains unverified and the values require owner review.
+Text uses the platform system font and React Native's default font scaling.
+Text styles are semantic roles rather than a claim of native Dynamic Type ramps.
 
-The [Apple design resources](https://developer.apple.com/design/resources/) list an
-iOS 27 UI Kit. The listing is not an inspection of its components, a 27.2-specific
-reference or owner approval. No approved NestScout brand reference was available in
-the inspected repository. Apple system values, semantic choices, approved brand
-values and inherited values must remain distinguishable; no inherited number or
-color is presented as an Apple constant or approved brand value.
+`features/shared` exports text, actions, icon actions, fields, surfaces, dividers,
+status and state views, loading and safe-area screens. Existing specialized inputs
+retain their behavior. Labels, state, non-color status text, 48-point minimum control
+sizes and Light/Dark contrast are part of the component contract. Layout and
+VoiceOver behavior at large sizes still need native verification. Icon buttons must
+receive a meaningful label and a decorative child. Fields require a label; error
+messages supplement the border and are included in the accessibility hint.
 
-Expo SDK 58 documents [GlassEffect](https://docs.expo.dev/versions/v58.0.0/sdk/glass-effect/),
-[Symbols](https://docs.expo.dev/versions/v58.0.0/sdk/symbols/) and
-[Haptics](https://docs.expo.dev/versions/v58.0.0/sdk/haptics/). Documentation is
-compatibility guidance, not evidence of a compiled or running implementation.
-GlassEffect exposes separate compiled-availability and runtime-API checks; an
-unsupported-platform `View` fallback alone does not establish an opaque accessible
-fallback. No dependency is added until a real consumer and verification exist.
+Icon-button feedback uses React Native animation with the system Reduce Motion
+setting and starts conservatively without motion while the setting is unknown.
+Other shared button feedback is immediate. Haptics are not emitted automatically:
+no haptics module is installed. A future real consumer may add a compatible,
+optional native haptic for meaningful actions, with a no-op fallback and no haptic
+required for understanding state. No native material or glass effect is claimed.
 
-For visual review, record the revision, Xcode and iOS build, device, appearance,
-accessibility settings, locale and reference identifier. Launch the development
-showcase on a simulator, capture with `xcrun simctl io booted screenshot` to a
-chosen evidence path, and compare like-for-like with an owner-approved reference.
-Repeat on a physical device where required and record discrepancies for review;
-do not promote captures to golden baselines automatically. Include Light/Dark,
-Increased Contrast, Dynamic Type and Bold Text, VoiceOver, Reduce Motion and
-Transparency, Vietnamese long text, keyboard and actual hit targets. This checklist
-is not a capture pipeline or evidence that any case passed.
+Use the public `features/shared` exports and semantic tokens for Client and Worker
+interfaces. The existing `design-governance.test.ts` checks visual literals in
+feature and showcase styles; it does not prove semantic appropriateness or resolve
+all dynamic styles. Review additions to the canonical tokens and component APIs.
+
+Set `EXPO_PUBLIC_DESIGN_SHOWCASE=1` before starting Metro to open the development
+showcase, and optionally set `EXPO_PUBLIC_DESIGN_REVISION` to label the source.
+The label is operator-supplied, not an attestation. The root requires `__DEV__`;
+the showcase does not mount application flows and cannot be selected in production.
+Remove the variables and restart Metro to return to the application.
 
 ### iOS validation procedure
 
@@ -141,79 +132,12 @@ Vietnamese text, pressed/focus feedback, VoiceOver and measured touch targets on
 device. Retain device, OS, build ID, source revision and results; automated checks and
 Metro bundling alone do not establish native behavior.
 
-The showcase shows the current normal, secondary, disabled and busy actions and
-records a completed press. `ActionButton` draws pressed and focus feedback in a
-non-interactive overlay without changing its layout; native appearance remains
-unverified. Its minimum height
-is 48 logical units, but the actual two-dimensional touch target and large-text
-layout need device measurement. Default scaling props are retained, not evidence
-of semantic SF Dynamic Type. No color is approved by the showcase.
+### Native verification boundary
 
-`src/theme/palette.ts` existed at base `3d1926f`. The new
-`src/theme/layout.ts` gathers spacing, geometry and typography values from existing
-components and authentication inputs and adds a feedback border width. They are not
-Apple system constants, an approved NestScout brand specification or evidence of
-device fidelity. Changes to shared values require explicit design review.
-
-`Text` and `TextInput` retain their prior React Native scaling behavior. No new
-Dynamic Type ramps or `allowFontScaling` override are applied. Native scaling,
-Vietnamese wrapping and large text remain unverified on iOS.
-
-The Light/Dark palette remains the single color owner. Input and secondary-action
-border colors were adjusted to reach at least 3:1 against their background and
-surface colors. The adjustment needs native visual and owner design review.
-Increased Contrast and Bold Text handling require native investigation; no
-high-contrast palette is claimed.
-
-Native Liquid Glass belongs primarily to functional controls and navigation.
-Prefer system controls or a compatible native material when a real use case
-justifies it. Do not describe blur or opacity as native Liquid Glass. This phase
-has no glass adapter, native bridge, accessibility preference observer, haptic
-provider or motion policy. Future implementation must use real consumers, check
-compiled and runtime availability, honor system settings and provide an opaque
-fallback. Apple's [materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials)
-and [Liquid Glass APIs](https://developer.apple.com/documentation/SwiftUI/Applying-Liquid-Glass-to-custom-views)
-provide platform guidance; project-specific decisions require owner review.
-
-`foundation.test.tsx` pins the layout, typography and palettes,
-checks flattened shared and authentication input styles in simulated Light/Dark,
-and asserts that new text ramps and scaling overrides are absent. The contrast
-checks cover the adjusted borders; unit tests are not native visual evidence.
-
-`design-governance.test.ts` checks feature and showcase source reachable from `StyleSheet.create`,
-style-valued JSX props and recognized color-valued JSX props. It examines named and
-other color literals, typography, dimensions, borders, shadows, logical spacing and
-selected local aliases, assignments and expressions. Reviewed layout and typography imports, transparent, zero, opacity one and
-non-style text are permitted. New direct theme imports used in styles require
-review and guard coverage. Exact reviewed exceptions require
-file, property, value and reason; the exception list is currently empty. Theme values
-are pinned separately. This is a bounded static check: it does not resolve arbitrary
-imports, runtime-generated objects, computed property names, all alias chains or
-scope shadowing, and it cannot judge whether a new theme value is approved. Human
-review remains necessary; adding a value to the theme does not approve it.
-
-### Coverage and native verification
-
-| Area | Phase A evidence | Remaining work |
-| --- | --- | --- |
-| Palette | Values and contrast pairs pinned in tests | Owner design review; native Light/Dark and Increased Contrast |
-| Typography | Base values and default scaling props pinned | Native Dynamic Type, Bold Text, Vietnamese wrapping and keyboard |
-| Layout and components | Flattened shared and authentication styles compared with base values | Actual hit regions, focus and approved references on devices |
-| Material, motion and haptics | No native implementation claimed | Implement only for a real consumer; verify fallback and system settings |
-| Governance | Tested AST guard for documented patterns | Review unresolved static-analysis limits and theme changes |
-| Visual regression | No screenshot pipeline or approved reference | Capture, decode, review and store approved native baselines |
-
-On macOS/Xcode, establish the deployment target, toolchain and source revision.
-Build and launch on the reference simulator and a physical iPhone. Capture matching
-Light/Dark and Increased Contrast states, default and largest Dynamic Type,
-Vietnamese/English, keyboard open, disabled/loading/error and relevant surfaces.
-Exercise VoiceOver focus and labels, Switch Control where applicable, Reduce Motion,
-Reduce Transparency, back and dismiss gestures, touch targets and long text. If a
-native glass adapter is introduced, verify capability failure, opaque fallback,
-regular and reviewed clear glass over plain and busy content, scrolling, transitions
-and device performance. Record device, OS build, source revision and capture settings;
-compare against an owner-approved reference. Do not update a baseline automatically
-to conceal a mismatch. These checks are not performed by unit tests.
+Automated component and contrast tests do not establish native iOS appearance,
+Dynamic Type, VoiceOver, Reduce Motion, touch geometry or Vietnamese wrapping.
+Verify those on a simulator or device against an owner-approved reference when one
+is available. Browser or static output is not native-device evidence.
 
 ## Versions
 

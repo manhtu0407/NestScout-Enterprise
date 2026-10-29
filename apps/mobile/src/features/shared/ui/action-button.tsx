@@ -11,9 +11,10 @@ type Props = {
   busy?: boolean;
   secondary?: boolean;
   hint?: string;
+  selected?: boolean;
 };
 
-export function ActionButton({ label, onPress, disabled = false, busy = false, secondary = false, hint }: Props) {
+export function ActionButton({ label, onPress, disabled = false, busy = false, secondary = false, hint, selected }: Props) {
   const palette = usePalette();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -31,7 +32,7 @@ export function ActionButton({ label, onPress, disabled = false, busy = false, s
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={hint}
-      accessibilityState={{ disabled: inactive, busy }}
+      accessibilityState={{ disabled: inactive, busy, selected }}
       disabled={inactive}
       onPress={onPress}
       onFocus={() => setFocused(true)}
@@ -49,7 +50,7 @@ export function ActionButton({ label, onPress, disabled = false, busy = false, s
       ) : (
         <Text style={[styles.label, { color: secondary ? palette.text : palette.onAccent }]}>{label}</Text>
       )}
-      {!inactive && (focused || pressed) && (
+      {!inactive && (focused || pressed || selected) && (
         <View testID="action-feedback" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none" style={[styles.feedback, { borderColor: secondary ? palette.accent : palette.onAccent }]} />
       )}
     </Pressable>

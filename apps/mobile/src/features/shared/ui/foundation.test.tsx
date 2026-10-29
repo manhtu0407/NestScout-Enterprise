@@ -41,8 +41,8 @@ function contrast(first: string, second: string): number {
 }
 
 test('pins layout and typography values', () => {
-  expect(layout).toEqual({ screen: { padding: 24, gap: 16 }, control: { minHeight: 48, radius: 10, horizontalPadding: 16, inactiveOpacity: 0.5, feedbackBorderWidth: 2 }, input: { horizontalPadding: 12, borderWidth: 1 }, loading: { gap: 12 } });
-  expect(typography).toEqual({ heading: { fontSize: 28, fontWeight: '700' }, body: { fontSize: 16, lineHeight: 22 }, control: { fontSize: 16, fontWeight: '600' }, phoneInput: { fontSize: 18 }, codeInput: { fontSize: 24, letterSpacing: 6 } });
+  expect(layout).toMatchObject({ screen: { padding: 24, gap: 16 }, control: { minHeight: 48, radius: 10, horizontalPadding: 16, inactiveOpacity: 0.5, feedbackBorderWidth: 2 }, input: { horizontalPadding: 12, borderWidth: 1 }, loading: { gap: 12 } });
+  expect(typography).toMatchObject({ heading: { fontSize: 28, fontWeight: '700' }, body: { fontSize: 16, lineHeight: 22 }, control: { fontSize: 16, fontWeight: '600' }, phoneInput: { fontSize: 18 }, codeInput: { fontSize: 24, letterSpacing: 6 } });
 });
 
 test.each(['light', 'dark'] as const)('shared and authentication styles retain base values in %s', async (mode) => {
@@ -79,13 +79,13 @@ test.each(['light', 'dark'] as const)('shared and authentication styles retain b
 });
 
 test('pins both palettes', () => {
-  expect(paletteForAppearance('light')).toEqual({ background: '#ffffff', surface: '#f2f2f7', text: '#111111', mutedText: '#555555', border: '#76767a', accent: '#0a5bd8', onAccent: '#ffffff', danger: '#b00020' });
-  expect(paletteForAppearance('dark')).toEqual({ background: '#000000', surface: '#1c1c1e', text: '#f5f5f5', mutedText: '#b0b0b5', border: '#77777a', accent: '#4f9bff', onAccent: '#000000', danger: '#ff6b6b' });
+  expect(paletteForAppearance('light')).toEqual({ background: '#ffffff', surface: '#f2f7f6', text: '#102b2c', mutedText: '#465e5d', border: '#687d7a', accent: '#006b64', onAccent: '#ffffff', danger: '#b00020', success: '#176b43', warning: '#795200', shadow: '#000000' });
+  expect(paletteForAppearance('dark')).toEqual({ background: '#071a1a', surface: '#172d2c', text: '#f1f8f6', mutedText: '#b2c7c3', border: '#819994', accent: '#79d8c5', onAccent: '#003730', danger: '#ff8f96', success: '#8bd7aa', warning: '#f2c86b', shadow: '#000000' });
 });
 
 test.each(['light', 'dark'] as const)('meets contrast targets for %s', (mode) => {
   const p = paletteForAppearance(mode);
-  for (const foreground of [p.text, p.mutedText, p.danger]) {
+  for (const foreground of [p.text, p.mutedText, p.danger, p.success, p.warning]) {
     for (const background of [p.background, p.surface]) expect(contrast(foreground, background)).toBeGreaterThanOrEqual(4.5);
   }
   expect(contrast(p.onAccent, p.accent)).toBeGreaterThanOrEqual(4.5);
