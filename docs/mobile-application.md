@@ -100,21 +100,23 @@ the official Apple and EAS flow. Confirm included build allowance immediately be
 submitting a build; do not incur charges without separate authorization.
 
 The installed global `eas` command fails because its pnpm `@oclif/core` installation
-cannot resolve `tinyglobby`. On this Windows host, `npx --yes eas-cli@27.1.0 --version`
-starts successfully without repairing the global installation; `whoami` confirmed an
-Expo login; the selected project resolved successfully. From `apps/mobile`:
+cannot resolve `tinyglobby`. On this Windows host, `npx.cmd --yes eas-cli@27.1.0 --version`
+starts successfully without repairing the global installation or changing the
+PowerShell execution policy; `whoami` confirmed an Expo login, and the selected project
+resolved successfully. From `apps/mobile`:
 
-1. The owner runs `npx --yes eas-cli@27.1.0 device:create`, selects the `nestscout`
-   account and completes Apple authentication and iPhone registration in the official
-   flow. Never send credentials or device identifiers in chat or commit them to Git.
+1. Start `npx.cmd --yes eas-cli@27.1.0 device:create`. The owner confirms the
+   `nestscout` account and completes Apple authentication and iPhone registration
+   in the official flow. Never send credentials or device identifiers in chat or
+   commit them to Git.
 2. Confirm that `com.phanmanhtu.nestscout.dev` is available to the authorized team,
    then configure a separate development provisioning profile for that identifier
    and registered device. Prefer an existing valid certificate without changing or
    revoking it. Any Apple authentication or MFA stays with the owner.
 3. Review and commit the intended configuration, record the clean source revision,
-   and run `npx --yes eas-cli@27.1.0 config --platform ios --profile development`.
+   and run `npx.cmd --yes eas-cli@27.1.0 config --platform ios --profile development`.
    After confirming allowance and build authorization, submit one build with
-   `npx --yes eas-cli@27.1.0 build --platform ios --profile development`. Record the
+   `npx.cmd --yes eas-cli@27.1.0 build --platform ios --profile development`. Record the
    build ID and result separately from device runtime results.
 
 For an iPhone session, install the approved internal development build, enable
