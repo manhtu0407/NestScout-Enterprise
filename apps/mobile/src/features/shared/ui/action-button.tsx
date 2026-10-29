@@ -1,6 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 
 import { usePalette } from '@/theme/palette';
+import { layout, typography } from '@/theme/layout';
 
 type Props = {
   label: string;
@@ -24,7 +25,7 @@ export function ActionButton({ label, onPress, disabled = false, busy = false, s
       onPress={onPress}
       style={[
         styles.button,
-        secondary ? { borderColor: palette.border, borderWidth: 1 } : { backgroundColor: palette.accent },
+        secondary ? { borderColor: palette.border, borderWidth: layout.input.borderWidth } : { backgroundColor: palette.accent },
         inactive && styles.inactive,
       ]}
     >
@@ -38,7 +39,7 @@ export function ActionButton({ label, onPress, disabled = false, busy = false, s
 }
 
 const styles = StyleSheet.create({
-  button: { minHeight: 48, borderRadius: 10, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
-  inactive: { opacity: 0.5 },
-  label: { fontSize: 16, fontWeight: '600' },
+  button: { minHeight: layout.control.minHeight, borderRadius: layout.control.radius, paddingHorizontal: layout.control.horizontalPadding, alignItems: 'center', justifyContent: 'center' },
+  inactive: { opacity: layout.control.inactiveOpacity },
+  label: typography.control,
 });

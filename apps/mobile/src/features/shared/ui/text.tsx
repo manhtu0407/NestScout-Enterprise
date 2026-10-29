@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
 import { usePalette } from '@/theme/palette';
+import { typography } from '@/theme/layout';
 
 export function Heading({ children }: { children: ReactNode }) {
   const palette = usePalette();
@@ -27,6 +28,6 @@ export function ErrorText({ children }: { children: ReactNode }) {
 }
 
 const styles = StyleSheet.create({
-  heading: { fontSize: 28, fontWeight: '700' },
-  body: { fontSize: 16, lineHeight: 22 },
+  heading: typography.heading,
+  body: typography.body,
 });

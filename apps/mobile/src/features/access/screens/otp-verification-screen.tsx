@@ -4,6 +4,7 @@ import { StyleSheet, Text, TextInput } from 'react-native';
 
 import { ActionButton, BodyText, ErrorText, Heading, Screen } from '@/features/shared';
 import { usePalette } from '@/theme/palette';
+import { layout, typography } from '@/theme/layout';
 
 import { authMessages } from '../auth/auth-messages';
 import { otpLength, usePhoneSignIn } from '../auth/use-phone-sign-in';
@@ -64,5 +65,5 @@ export function OtpVerificationScreen() {
 }
 
 const styles = StyleSheet.create({
-  input: { minHeight: 48, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, fontSize: 24, letterSpacing: 6 },
+  input: { minHeight: layout.control.minHeight, borderWidth: layout.input.borderWidth, borderRadius: layout.control.radius, paddingHorizontal: layout.input.horizontalPadding, ...typography.codeInput },
 });
