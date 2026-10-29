@@ -85,34 +85,37 @@ simulator build is another path without a physical-device provisioning profile.
 An [EAS development build](https://docs.expo.dev/develop/development-builds/introduction/)
 can build iOS from Windows. `apps/mobile/eas.json` defines only an internal
 development profile and `expo-dev-client@58.0.17` is locked to the installed SDK's
-matrix. Expo's EAS JSON parser accepts the profile, but `eas config` cannot resolve
-the unlinked project. No cloud build or native runtime has been verified.
+matrix. The repository is linked to the existing `@nestscout/nestscout` project,
+whose ID is `d984de7d-3c69-41a5-841f-a604d10d4f11`. The separate development
+bundle identifier is `com.phanmanhtu.nestscout.dev`; its availability on the Apple
+Developer portal remains unverified. `eas config` resolves the internal development
+profile. No cloud build or native runtime has been verified.
 
-The owner must identify an existing approved Expo project ID and iOS bundle
-identifier, confirm that the signed-in Expo account can access the project, and
-confirm the Apple Developer team, build allowance, and an iPhone with existing
-internal-distribution signing and provisioning. Verify that the iPhone is included
-in the provisioning profile. Availability of project-specific Apple credentials has
-not been inspected because the project is unlinked. Do not generate, replace or
-change credentials or register a device without explicit authorization.
+On 2026-10-29, EAS showed an Apple team and existing certificates, but no registered
+devices and no provisioning profile for the development identifier. The only stored
+profile identified in the account belongs to the separate Home Services app. Do not
+revoke or modify that app's certificate or profile. Apple authentication, team access,
+identifier availability and device registration still require confirmation through
+the official Apple and EAS flow. Confirm included build allowance immediately before
+submitting a build; do not incur charges without separate authorization.
 
 The installed global `eas` command fails because its pnpm `@oclif/core` installation
 cannot resolve `tinyglobby`. On this Windows host, `npx --yes eas-cli@27.1.0 --version`
 starts successfully without repairing the global installation; `whoami` confirmed an
-Expo login without proving project access. From `apps/mobile`, after owner approval:
+Expo login; the selected project resolved successfully. From `apps/mobile`:
 
-1. Link the exact approved existing project using `npx --yes eas-cli@27.1.0 init --id`
-   with the owner's project ID, and set `expo.ios.bundleIdentifier` in `app.json` to
-   the owner's approved identifier. Review and commit the approved app configuration
-   on the authorized branch before building so the source revision can be recorded.
-   Do not use `--force` or create a new project by inference.
-2. Run `npx --yes eas-cli@27.1.0 config --platform ios --profile development` to
-   inspect the resolved configuration. Confirm signing availability and device
-   provisioning through the owner, without exposing credentials in logs or Git.
-3. Only after explicit authorization to submit a build, run
-   `npx --yes eas-cli@27.1.0 build --platform ios --profile development`. If prompted
-   to generate or change signing credentials, stop unless separately authorized.
-   Record the resulting build ID and source revision; no build was submitted here.
+1. The owner runs `npx --yes eas-cli@27.1.0 device:create`, selects the `nestscout`
+   account and completes Apple authentication and iPhone registration in the official
+   flow. Never send credentials or device identifiers in chat or commit them to Git.
+2. Confirm that `com.phanmanhtu.nestscout.dev` is available to the authorized team,
+   then configure a separate development provisioning profile for that identifier
+   and registered device. Prefer an existing valid certificate without changing or
+   revoking it. Any Apple authentication or MFA stays with the owner.
+3. Review and commit the intended configuration, record the clean source revision,
+   and run `npx --yes eas-cli@27.1.0 config --platform ios --profile development`.
+   After confirming allowance and build authorization, submit one build with
+   `npx --yes eas-cli@27.1.0 build --platform ios --profile development`. Record the
+   build ID and result separately from device runtime results.
 
 For an iPhone session, install the approved internal development build, enable
 [Developer Mode](https://docs.expo.dev/guides/ios-developer-mode/) if required, and
