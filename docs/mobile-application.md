@@ -10,9 +10,12 @@ owner has not yet supplied process documents or final UI.
 
 ### Phase B coverage and development showcase
 
-The first Phase B increment exposes the existing shared typography, palette and
-action states in a development-only root. It adds no production route and does not
-change production style values. From `apps/mobile`, start a development server with
+The first Phase B increment exposes shared typography, palette and action states in
+a development-only root. It adds no production route. It also changes shared
+production controls: input and secondary-action borders use higher-contrast colors,
+and enabled buttons display pressed and focus feedback. These controls are used in
+access, Client and Worker screens, so the changes need native and owner visual review.
+From `apps/mobile`, start a development server with
 `EXPO_PUBLIC_DESIGN_SHOWCASE=1` in its environment. Set
 `EXPO_PUBLIC_DESIGN_REVISION` to the checked-out commit to label captures; the label
 is supplied by the operator and is not proof of the bundled source. Remove both
@@ -63,9 +66,10 @@ reported React Native `0.88.0` for SDK 58, while its
 and the `expo@58.0.21` bundled matrix reported `0.88.1`. The CLI prefers the first
 endpoint. The lockfile now selects the patch releases and React Native `0.88.1`
 from the bundled matrix; `npm ci --ignore-scripts` succeeds, but the online
-`npm run verify:mobile-sdk` rejects `0.88.1` and expects `0.88.0`. SDK compatibility
-remains blocked until the sources agree and the online check passes. An offline
-success is not a substitute for the online check.
+`npm run verify:mobile-sdk` rejects `0.88.1` and expects `0.88.0`. Expo's
+[issue #52454](https://github.com/expo/expo/issues/52454) tracks the same discrepancy
+and its CLI override. SDK compatibility remains blocked until the sources agree and
+the online check passes. An offline success is not a substitute for the online check.
 
 For the least intrusive device check, use an already installed Expo Go build that
 matches SDK 58. Expo's [version-mismatch guidance](https://docs.expo.dev/troubleshooting/expo-go-version-mismatch/)
@@ -85,6 +89,35 @@ an Apple Developer account for a physical device. Build cost and provisioning mu
 be checked before invoking EAS. This repository has not configured or verified
 that path; no cloud build, account or signing changes were made.
 
+The minimal preparation is to confirm the owner-approved Expo project and bundle
+identifier, restore a working EAS CLI, and install `expo-dev-client@58.0.17` in the
+mobile workspace with the lockfile updated. The installed Expo matrix selects that
+version. Add a development-only `apps/mobile/eas.json` profile as below after the
+repository's path policy is updated and validated. Link the approved EAS project
+and configure existing signing only with the owner's authorization. The configuration
+and build must not be inferred to be valid until exercised; no profile or client is
+installed by this increment.
+
+```json
+{
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "development-simulator": {
+      "extends": "development",
+      "ios": { "simulator": true }
+    }
+  }
+}
+```
+
+After those prerequisites and explicit build authorization, run
+`eas build --platform ios --profile development` from `apps/mobile` for an approved
+device, or use `development-simulator` for a Mac simulator. The build artifact and
+runtime checks must be recorded separately from the Metro and Jest results.
+
 For a device or simulator session, check out the intended committed revision in a
 clean worktree, record `git rev-parse HEAD` and `git status --short --branch`, and
 run the SDK check. In PowerShell, from `apps/mobile`, set
@@ -98,18 +131,18 @@ public environment variable. Record the scenario, settings and observed outcome;
 then stop the task-owned server and remove the two variables from the shell.
 
 The showcase shows the current normal, secondary, disabled and busy actions and
-records a completed press. `ActionButton` provides pressed and focus border
-feedback; their native appearance remains unverified. Its minimum height
+records a completed press. `ActionButton` draws pressed and focus feedback in a
+non-interactive overlay without changing its layout; native appearance remains
+unverified. Its minimum height
 is 48 logical units, but the actual two-dimensional touch target and large-text
 layout need device measurement. Default scaling props are retained, not evidence
 of semantic SF Dynamic Type. No color is approved by the showcase.
 
 `src/theme/palette.ts` existed at base `3d1926f`. The new
-`src/theme/layout.ts` gathers spacing, geometry and typography values copied
-from existing components and authentication inputs at that base. These inherited
-values preserve the application shell; they are not Apple system constants, an
-approved NestScout brand specification or evidence of device fidelity. Changes to
-shared values and approved screen hierarchy require explicit design review.
+`src/theme/layout.ts` gathers spacing, geometry and typography values from existing
+components and authentication inputs and adds a feedback border width. They are not
+Apple system constants, an approved NestScout brand specification or evidence of
+device fidelity. Changes to shared values require explicit design review.
 
 `Text` and `TextInput` retain their prior React Native scaling behavior. No new
 Dynamic Type ramps or `allowFontScaling` override are applied. Native scaling,

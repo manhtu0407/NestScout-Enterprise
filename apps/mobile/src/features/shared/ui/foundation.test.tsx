@@ -109,13 +109,20 @@ test.each(['light', 'dark'] as const)('enabled actions show pressed and focus fe
   const palette = paletteForAppearance(mode);
   await render(<ActionButton label="Continue" onPress={() => undefined} secondary />);
   const button = screen.getByRole('button', { name: 'Continue' });
+  const restingStyle = StyleSheet.flatten(button.props.style);
   await fireEvent(button, 'pressIn');
-  expect(StyleSheet.flatten(button.props.style)).toMatchObject({ borderColor: palette.accent, borderWidth: layout.control.feedbackBorderWidth });
+  expect(StyleSheet.flatten(button.props.style)).toEqual(restingStyle);
+  const feedback = screen.getByTestId('action-feedback', { includeHiddenElements: true });
+  expect(StyleSheet.flatten(feedback.props.style)).toMatchObject({ position: 'absolute', borderColor: palette.accent, borderWidth: layout.control.feedbackBorderWidth });
+  expect(feedback.props).toMatchObject({ accessible: false, accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants', pointerEvents: 'none' });
   await fireEvent(button, 'pressOut');
+  expect(screen.queryByTestId('action-feedback', { includeHiddenElements: true })).toBeNull();
   expect(StyleSheet.flatten(button.props.style)).toMatchObject({ borderColor: palette.border, borderWidth: layout.input.borderWidth });
   await fireEvent(button, 'focus');
-  expect(StyleSheet.flatten(button.props.style)).toMatchObject({ borderColor: palette.accent, borderWidth: layout.control.feedbackBorderWidth });
+  expect(StyleSheet.flatten(button.props.style)).toEqual(restingStyle);
+  expect(StyleSheet.flatten(screen.getByTestId('action-feedback', { includeHiddenElements: true }).props.style)).toMatchObject({ borderColor: palette.accent, borderWidth: layout.control.feedbackBorderWidth });
   await fireEvent(button, 'blur');
+  expect(screen.queryByTestId('action-feedback', { includeHiddenElements: true })).toBeNull();
   expect(StyleSheet.flatten(button.props.style)).toMatchObject({ borderColor: palette.border, borderWidth: layout.input.borderWidth });
 });
 
@@ -124,15 +131,21 @@ test.each(['light', 'dark'] as const)('primary feedback preserves label and inac
   const palette = paletteForAppearance(mode);
   const view = await render(<ActionButton label="Continue" onPress={() => undefined} />);
   const button = screen.getByRole('button', { name: 'Continue' });
+  const restingStyle = StyleSheet.flatten(button.props.style);
   await fireEvent(button, 'pressIn');
-  expect(StyleSheet.flatten(button.props.style)).toMatchObject({ backgroundColor: palette.accent, borderColor: palette.onAccent, borderWidth: layout.control.feedbackBorderWidth });
+  expect(StyleSheet.flatten(button.props.style)).toEqual(restingStyle);
+  expect(StyleSheet.flatten(screen.getByTestId('action-feedback', { includeHiddenElements: true }).props.style)).toMatchObject({ borderColor: palette.onAccent, borderWidth: layout.control.feedbackBorderWidth });
   expect(StyleSheet.flatten(screen.getByText('Continue').props.style).color).toBe(palette.onAccent);
   await fireEvent(button, 'pressOut');
   await fireEvent(button, 'focus');
-  expect(StyleSheet.flatten(button.props.style)).toMatchObject({ borderColor: palette.onAccent, borderWidth: layout.control.feedbackBorderWidth });
+  expect(StyleSheet.flatten(button.props.style)).toEqual(restingStyle);
+  expect(StyleSheet.flatten(screen.getByTestId('action-feedback', { includeHiddenElements: true }).props.style)).toMatchObject({ borderColor: palette.onAccent, borderWidth: layout.control.feedbackBorderWidth });
   await view.rerender(<ActionButton label="Continue" onPress={() => undefined} disabled />);
   expect(StyleSheet.flatten(screen.getByRole('button', { name: 'Continue' }).props.style)).toMatchObject({ backgroundColor: palette.accent, opacity: layout.control.inactiveOpacity });
   expect(StyleSheet.flatten(screen.getByRole('button', { name: 'Continue' }).props.style).borderWidth).toBeUndefined();
+  expect(screen.queryByTestId('action-feedback', { includeHiddenElements: true })).toBeNull();
+  await view.rerender(<ActionButton label="Continue" onPress={() => undefined} />);
+  expect(screen.queryByTestId('action-feedback', { includeHiddenElements: true })).toBeNull();
 });
 
 test('disabled and busy actions expose their state and do not invoke the action', async () => {
