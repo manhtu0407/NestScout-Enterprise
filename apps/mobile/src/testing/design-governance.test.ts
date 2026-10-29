@@ -3,11 +3,11 @@ import path from 'node:path';
 import ts from 'typescript';
 
 const visualNumbers = new Set([
-  'fontSize', 'lineHeight', 'letterSpacing', 'opacity', 'elevation', 'gap', 'rowGap', 'columnGap',
+  'fontSize', 'lineHeight', 'letterSpacing', 'opacity', 'elevation', 'outlineWidth', 'outlineOffset', 'gap', 'rowGap', 'columnGap',
   'width', 'height', 'minHeight', 'minWidth', 'maxHeight', 'maxWidth', 'top', 'bottom', 'left', 'right', 'start', 'end',
 ]);
 const visualStrings = new Set(['fontFamily', 'fontWeight']);
-const colorProps = new Set(['color', 'backgroundColor', 'borderColor', 'shadowColor', 'tintColor', 'textShadowColor', 'placeholderTextColor', 'selectionColor', 'cursorColor', 'underlineColorAndroid']);
+const colorProps = new Set(['color', 'backgroundColor', 'borderColor', 'shadowColor', 'tintColor', 'textShadowColor', 'textDecorationColor', 'outlineColor', 'overlayColor', 'placeholderTextColor', 'selectionColor', 'cursorColor', 'underlineColorAndroid']);
 const numericProperty = (name: string) => visualNumbers.has(name) || /^(padding|margin|border.*(?:Width|Radius)|shadow(?:Opacity|Radius)|textShadowRadius)/.test(name);
 const colorProperty = (name: string) => colorProps.has(name) || /^border.*Color$/.test(name);
 
@@ -159,6 +159,10 @@ function sourceFiles(directory: string): string[] {
 test.each([
   ["<View style={{ color: 'red', backgroundColor: 'white' }} />", ['color:', 'backgroundColor:']],
   ['<ActivityIndicator color="#f00" placeholderTextColor="red" tintColor="white" />', ['color:', 'placeholderTextColor:', 'tintColor:']],
+  ["<Text style={{ textDecorationColor: 'red' }} />", ['textDecorationColor:']],
+  ["const s = StyleSheet.create({ label: { textDecorationColor: 'red' } });", ['textDecorationColor:']],
+  ["<View style={{ outlineColor: 'red', outlineWidth: 2, outlineOffset: 3, overlayColor: 'white' }} />", ['outlineColor:', 'outlineWidth:', 'outlineOffset:', 'overlayColor:']],
+  ["const s = StyleSheet.create({ item: { outlineColor: 'red', outlineWidth: 2, outlineOffset: 3, overlayColor: 'white' } });", ['outlineColor:', 'outlineWidth:', 'outlineOffset:', 'overlayColor:']],
   ['<List contentContainerStyle={{ paddingStart: 4 }} columnWrapperStyle={{ marginEnd: 3 }} />', ['paddingStart:', 'marginEnd:']],
   ["<View style={{ borderTopLeftRadius: 8, borderTopRightRadius: 4, borderTopColor: 'red', borderBottomColor: 'blue', shadowColor: 'black', shadowRadius: 2, elevation: 4, textShadowColor: 'red', fontFamily: 'Arial', fontWeight: '700' }} />", ['borderTopLeftRadius:', 'borderTopRightRadius:', 'borderTopColor:', 'borderBottomColor:', 'shadowColor:', 'shadowRadius:', 'elevation:', 'textShadowColor:', 'fontFamily:', 'fontWeight:']],
   ['<View style={{ padding: 8 * 2, margin: (12), gap: cond ? 12 : 16, width: x || 12 }} />', ['padding:', 'margin:', 'gap:', 'width:']],
