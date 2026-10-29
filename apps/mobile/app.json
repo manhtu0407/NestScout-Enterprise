@@ -6,7 +6,7 @@
     "scheme": "nestscout",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "platforms": ["ios"],
+    "platforms": ["ios", "web"],
     "plugins": ["expo-router"]
   }
 }

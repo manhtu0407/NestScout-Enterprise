@@ -11,6 +11,11 @@ jest.mock('@/features/access/default-services', () => ({
   getDefaultAccessServices: () => mockServices,
 }));
 
+jest.mock('@/features/horizon/intro-sequence', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return { IntroSequence: ({ onComplete }: { onComplete: () => void }) => { React.useEffect(() => { onComplete(); }, [onComplete]); return null; } };
+});
+
 const user = { userId: 'user-a' };
 const grant = (worker: 'none' | 'active' | 'revoked') => ({ kind: 'resolved', worker }) as const;
 
@@ -21,11 +26,23 @@ async function start(options: FakeOptions, initialUrl = '/') {
   return fake;
 }
 
-const heading = (name: string) => screen.findByRole('header', { name });
+const heading = async (name: string) => {
+  if (['NestScout', 'Client mode', 'Worker mode'].includes(name)) {
+    await waitFor(() => {
+      if (!screen.queryByLabelText('Mở thanh bên') && !screen.queryByRole('header', { name })) throw new Error('Waiting for entry');
+    });
+    const menu = screen.queryByLabelText('Mở thanh bên');
+    if (menu) {
+      await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+      await fireEvent.press(screen.getByText('Xem hồ sơ'));
+    }
+  }
+  return screen.findByRole('header', { name });
+};
 const press = async (name: string) => fireEvent.press(screen.getByRole('button', { name }));
 
 describe('cold start', () => {
-  test('a signed-out launch lands on the guest shell with no role chooser or forced login', async () => {
+  test('a guest can reach the existing guest shell without forced login', async () => {
     await start({ session: null });
     expect(await heading('NestScout')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sign in with phone' })).toBeTruthy();
@@ -333,4 +350,78 @@ describe('guest protected action', () => {
     await press('Verify code');
     expect(await heading('Worker mode')).toBeTruthy();
   });
+});
+
+
+describe('Horizon guest entry', () => {
+  test('intro leads through Welcome to Home and the sidebar', async () => {
+    await start({ session: null });
+    expect(await screen.findByLabelText('Mở thanh bên')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    expect(await screen.findByText('Dịch vụ nhanh')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Đóng thanh bên'));
+    expect(screen.queryByText('Dịch vụ nhanh')).toBeNull();
+  });
+
+  test('guest Worker selection requires phone sign-in and does not grant Worker access', async () => {
+    await start({ session: null, capability: grant('none') });
+    await screen.findByLabelText('Mở thanh bên');
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    await fireEvent.press(screen.getByText('Thợ'));
+    await heading('Sign in with your phone');
+    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '0912345678');
+    await press('Send code');
+    await heading('Enter the code');
+    await fireEvent.changeText(screen.getByLabelText('One-time code'), '654321');
+    await press('Verify code');
+    expect(await heading('Client mode')).toBeTruthy();
+    expect(screen.queryByRole('header', { name: 'Worker mode' })).toBeNull();
+    expect(screen.getByText('Worker mode is not available for this account.')).toBeTruthy();
+  });
+});
+
+
+describe('Horizon authenticated role selection', () => {
+  test.each(['none', 'revoked'] as const)('a %s Worker grant cannot open Worker from Horizon', async (worker) => {
+    const fake = await start({ session: user, capability: grant(worker) });
+    await screen.findByLabelText('Mở thanh bên');
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    await fireEvent.press(screen.getByText('Thợ'));
+    await waitFor(() => expect(fake.calls.capability).toBeGreaterThan(1));
+    await fireEvent.press(screen.getByText('Xem hồ sơ'));
+    expect(await heading('Client mode')).toBeTruthy();
+    expect(screen.queryByRole('header', { name: 'Worker mode' })).toBeNull();
+  });
+
+  test('an active Worker grant is rechecked before Horizon opens the Worker area', async () => {
+    const fake = await start({ session: user, capability: grant('active') });
+    await screen.findByLabelText('Mở thanh bên');
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    await fireEvent.press(screen.getByText('Thợ'));
+    await waitFor(() => expect(fake.storedMode()).toEqual({ userId: 'user-a', mode: 'worker' }));
+    await fireEvent.press(screen.getByText('Xem hồ sơ'));
+    expect(await heading('Worker mode')).toBeTruthy();
+  });
+});
+
+
+test('Horizon conversation state is cleared when the account changes', async () => {
+  await start({ session: null, capability: grant('none') });
+  await screen.findByLabelText('Mở thanh bên');
+  await fireEvent.changeText(screen.getByLabelText('Nhắn Kael'), 'Private guest message');
+  await fireEvent.press(screen.getByLabelText('Gửi'));
+  expect(await screen.findByText('Private guest message')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+  await fireEvent.press(screen.getByText('Xem hồ sơ'));
+  await heading('NestScout');
+  await press('Sign in with phone');
+  await heading('Sign in with your phone');
+  await fireEvent.changeText(screen.getByLabelText('Mobile number'), '0912345678');
+  await press('Send code');
+  await heading('Enter the code');
+  await fireEvent.changeText(screen.getByLabelText('One-time code'), '654321');
+  await press('Verify code');
+  await screen.findByLabelText('Mở thanh bên');
+  await screen.findByLabelText('Mở thanh bên');
+  expect(screen.queryByText('Private guest message')).toBeNull();
 });

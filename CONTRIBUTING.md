@@ -56,6 +56,7 @@ in the existing module. Do not add a source file merely to split a short functio
 | Tool data | `scripts/<kebab-name>.json` in lowercase kebab directories |
 | Technical documentation | `docs/<kebab-name>.md`; dotted technical names such as `claude.architecture.md` remain valid |
 | Mobile application | `apps/mobile/{package,app,tsconfig}.json`, `eslint.config.mjs`, `.env.example`; `apps/mobile/src/**/<kebab-name>[.test].ts[x]`; routes `apps/mobile/src/app/**/<kebab-name>.tsx`, `_layout.tsx` and `(group)` directories only under `src/app` |
+| Mobile visual assets | `apps/mobile/assets/feature/semantic-purpose.ext` (PNG, JPEG, WebP or JSON); lowercase kebab-case, no standalone numeric or temporary/revision labels |
 | Empty process folder | `docs/processes/.gitkeep`, exactly 0 bytes; nothing else may live in `docs/processes/` |
 | Workflows and Issue Forms | `.github/workflows/<kebab-name>.yml`, `.github/ISSUE_TEMPLATE/<kebab-name>.yml` |
 | Supabase migrations | `supabase/migrations/<14-digit-timestamp>_<snake_case_name>.sql` |
@@ -69,8 +70,17 @@ as a complete hyphen/dot-delimited prefix are rejected. Existing required names 
 exact exemptions, not folder-wide exclusions. For a genuinely required new framework
 filename, generated artifact, fixture format, dependency snapshot or module convention,
 review its purpose and add the smallest tested path rule in the same change. There
-is no naming policy for application modules beyond the rows above; assets, native
-folders, extra configuration files and other services need their own reviewed rules.
+is no naming policy for application modules beyond the rows above; native folders,
+extra configuration files and other services need their own reviewed rules.
+
+Name mobile assets by their function, not their origin or revision. Identify the owning
+feature, choose the shortest unambiguous responsibility, use lowercase kebab-case,
+remove export and revision labels, check for collisions and semantic duplicates, and
+confirm the name remains meaningful after a redesign. Keep one canonical asset per
+visual responsibility; density variants are not part of this convention. The checker
+rejects revision and density labels, standalone numbers, temporary words, unsupported
+formats, duplicate names across extensions and unsafe paths, and validates
+image signatures. Semantic suitability and duplicate artwork require human review.
 
 Disposable evidence belongs in ignored task-owned `.cache/` directories or outside
 the checkout. Forced staging still fails. Permanent PDF/ZIP input is accepted only

@@ -367,3 +367,21 @@ npm --workspace apps/mobile run start
 
 `npm run check` includes `check:mobile`. Native iOS builds, signing, TestFlight
 and real SMS delivery are not part of this foundation.
+
+## Horizon development preview
+
+From the repository root in PowerShell, run:
+
+```powershell
+$env:EXPO_PUBLIC_DESIGN_SHOWCASE = '1'
+$env:EXPO_PUBLIC_HORIZON_PREVIEW = '1'
+npm run start --workspace apps/mobile -- --web --localhost --port 8085
+```
+
+Open `http://localhost:8085` and use the preview controls to inspect the passive Welcome,
+Transition, and Kael Home. Replay flow runs the automatic
+Welcome-to-Transition-to-Home sequence; the individual buttons hold a scene for
+inspection. The Welcome background is the cleaned mountain artwork supplied in the
+Horizon Intro Flow source package. The sidebar role switch is a visual demonstration; it does
+not change an account or grant access. The preview runs only in development and
+uses local demo content. Browser rendering does not verify the native iOS runtime.

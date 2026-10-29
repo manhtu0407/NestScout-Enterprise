@@ -1,3 +1,3 @@
-import { EntryRedirect } from '@/features/access';
+import { HorizonRoute } from '@/features/horizon';
 
-export default EntryRedirect;
+export default HorizonRoute;

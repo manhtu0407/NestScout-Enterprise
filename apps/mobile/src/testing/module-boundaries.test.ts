@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 const src = path.resolve(__dirname, '..');
-const features = ['access', 'client', 'worker', 'shared'] as const;
+const features = ['access', 'client', 'worker', 'shared', 'horizon'] as const;
 type Feature = (typeof features)[number];
 
 const allowed: Record<Feature, Feature[]> = {
@@ -10,6 +10,7 @@ const allowed: Record<Feature, Feature[]> = {
   client: ['access', 'shared'],
   worker: ['access', 'shared'],
   shared: [],
+  horizon: ['access'],
 };
 
 function sourceFiles(directory: string): string[] {
