@@ -1,6 +1,6 @@
 export const layout = {
   screen: { padding: 24, gap: 16 },
-  control: { minHeight: 48, radius: 10, horizontalPadding: 16, inactiveOpacity: 0.5 },
+  control: { minHeight: 48, radius: 10, horizontalPadding: 16, inactiveOpacity: 0.5, feedbackBorderWidth: 2 },
   input: { horizontalPadding: 12, borderWidth: 1 },
   loading: { gap: 12 },
 } as const;

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 
 import { usePalette } from '@/theme/palette';
@@ -14,6 +15,8 @@ type Props = {
 
 export function ActionButton({ label, onPress, disabled = false, busy = false, secondary = false, hint }: Props) {
   const palette = usePalette();
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
   const inactive = disabled || busy;
   return (
     <Pressable
@@ -23,9 +26,14 @@ export function ActionButton({ label, onPress, disabled = false, busy = false, s
       accessibilityState={{ disabled: inactive, busy }}
       disabled={inactive}
       onPress={onPress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       style={[
         styles.button,
         secondary ? { borderColor: palette.border, borderWidth: layout.input.borderWidth } : { backgroundColor: palette.accent },
+        !inactive && (focused || pressed) && { borderColor: secondary ? palette.accent : palette.onAccent, borderWidth: layout.control.feedbackBorderWidth },
         inactive && styles.inactive,
       ]}
     >

@@ -22,7 +22,7 @@ through this flag. The showcase does not mount the access provider or business f
 
 | Foundation area | Current owner and status | Evidence still needed |
 | --- | --- | --- |
-| Color | `palette.ts`: inherited Light/Dark application values, not approved brand or Apple system colors | Owner-approved brand reference, increased contrast design and native resolution |
+| Color | `palette.ts`: Light/Dark application values with adjusted control borders, not approved brand or Apple system colors | Owner-approved brand reference, increased contrast design and native resolution |
 | Typography | `layout.ts`: inherited heading, body, control and input roles | Approved SF roles and actual iOS Dynamic Type, Bold Text and Vietnamese layout |
 | Spacing and geometry | `layout.ts`: inherited screen, control, input and loading metrics | Reference comparison and real touch-target measurement |
 | Elevation and icons | No canonical tokens or consumers established | Approved design and actual consumers |
@@ -61,10 +61,11 @@ On 2026-10-29, Expo's [SDK version endpoint](https://exp.host/--/api/v2/versions
 reported React Native `0.88.0` for SDK 58, while its
 [native-module endpoint](https://exp.host/--/api/v2/sdks/58.0.0/native-modules)
 and the `expo@58.0.21` bundled matrix reported `0.88.1`. The CLI prefers the first
-endpoint. Confirm that these sources agree, then select versions and rerun the
-online `npm run verify:mobile-sdk` before treating SDK compatibility as verified.
-An offline success is not a substitute for the online check. The existing lockfile
-is retained while this conflict is unresolved.
+endpoint. The lockfile now selects the patch releases and React Native `0.88.1`
+from the bundled matrix; `npm ci --ignore-scripts` succeeds, but the online
+`npm run verify:mobile-sdk` rejects `0.88.1` and expects `0.88.0`. SDK compatibility
+remains blocked until the sources agree and the online check passes. An offline
+success is not a substitute for the online check.
 
 For the least intrusive device check, use an already installed Expo Go build that
 matches SDK 58. Expo's [version-mismatch guidance](https://docs.expo.dev/troubleshooting/expo-go-version-mismatch/)
@@ -97,12 +98,11 @@ public environment variable. Record the scenario, settings and observed outcome;
 then stop the task-owned server and remove the two variables from the shell.
 
 The showcase shows the current normal, secondary, disabled and busy actions and
-records a completed press. The inherited `ActionButton` has no explicit pressed or
-focus visual style; neither state is verified by this showcase. Its minimum height
+records a completed press. `ActionButton` provides pressed and focus border
+feedback; their native appearance remains unverified. Its minimum height
 is 48 logical units, but the actual two-dimensional touch target and large-text
 layout need device measurement. Default scaling props are retained, not evidence
-of semantic SF Dynamic Type. Existing border contrast limitations remain as
-described below; no new color is approved by the showcase.
+of semantic SF Dynamic Type. No color is approved by the showcase.
 
 `src/theme/palette.ts` existed at base `3d1926f`. The new
 `src/theme/layout.ts` gathers spacing, geometry and typography values copied
@@ -115,13 +115,11 @@ shared values and approved screen hierarchy require explicit design review.
 Dynamic Type ramps or `allowFontScaling` override are applied. Native scaling,
 Vietnamese wrapping and large text remain unverified on iOS.
 
-The inherited Light/Dark palette remains the single color owner. Its input and
-secondary-action borders are the only outlines in those controls. Computed border
-contrast is approximately 1.68:1 and 2.30:1 against the Light/Dark backgrounds,
-and 1.51:1 and 1.86:1 against their surfaces, below the 3:1 non-text contrast
-criterion where that criterion applies. An owner-reviewed accessible design is
-needed before changing these values. Increased Contrast and Bold Text handling
-require native investigation; no high-contrast palette is claimed.
+The Light/Dark palette remains the single color owner. Input and secondary-action
+border colors were adjusted to reach at least 3:1 against their background and
+surface colors. The adjustment needs native visual and owner design review.
+Increased Contrast and Bold Text handling require native investigation; no
+high-contrast palette is claimed.
 
 Native Liquid Glass belongs primarily to functional controls and navigation.
 Prefer system controls or a compatible native material when a real use case
@@ -133,10 +131,10 @@ fallback. Apple's [materials guidance](https://developer.apple.com/design/human-
 and [Liquid Glass APIs](https://developer.apple.com/documentation/SwiftUI/Applying-Liquid-Glass-to-custom-views)
 provide platform guidance; project-specific decisions require owner review.
 
-`foundation.test.tsx` pins the complete inherited layout, typography and palettes,
+`foundation.test.tsx` pins the layout, typography and palettes,
 checks flattened shared and authentication input styles in simulated Light/Dark,
 and asserts that new text ramps and scaling overrides are absent. The contrast
-checks expose the existing border gap; unit tests are not native visual evidence.
+checks cover the adjusted borders; unit tests are not native visual evidence.
 
 `design-governance.test.ts` checks feature and showcase source reachable from `StyleSheet.create`,
 style-valued JSX props and recognized color-valued JSX props. It examines named and
@@ -154,7 +152,7 @@ review remains necessary; adding a value to the theme does not approve it.
 
 | Area | Phase A evidence | Remaining work |
 | --- | --- | --- |
-| Palette | Base values and contrast pairs pinned in tests | Owner decision on border contrast; native Light/Dark and Increased Contrast |
+| Palette | Values and contrast pairs pinned in tests | Owner design review; native Light/Dark and Increased Contrast |
 | Typography | Base values and default scaling props pinned | Native Dynamic Type, Bold Text, Vietnamese wrapping and keyboard |
 | Layout and components | Flattened shared and authentication styles compared with base values | Actual hit regions, focus and approved references on devices |
 | Material, motion and haptics | No native implementation claimed | Implement only for a real consumer; verify fallback and system settings |
@@ -430,7 +428,8 @@ device, and real SMS delivery. Metro serving the bundle proves bundling only.
 
 ## Known dependency advisories
 
-`npm audit` reports three high findings, all in Expo's command-line tooling, which
+On 2026-10-29, `npm audit` reports 13 low and six high findings. Three high findings
+are in Expo's command-line dependency chain, which
 runs on developer machines and is not part of the iOS bundle: an `expo export
 --platform ios` bundle on 2026-10-27 contained no `node-forge`, `zod` or `@expo/cli`
 strings, and `npm ls --omit=dev` reaches them only through `expo` → `@expo/cli`. One advisory was resolved on 2026-10-27 by a lockfile-only update of
@@ -451,6 +450,11 @@ The other two findings (`@expo/cli`, `expo`) are only chains to that advisory.
 residual risk is **unresolved and requires owner acceptance**; it is not accepted by
 the agent. Mitigations: run Expo tooling only on trusted developer machines and CI,
 and re-run `npm audit` on every Expo SDK patch update.
+
+The other three high findings are the `re2js` lookbehind denial-of-service advisory
+and its `markdownlint` and `markdownlint-cli2` dependency chains. They affect the
+repository lint path rather than the mobile bundle. `markdownlint` pins the affected
+version, and npm proposes a major downgrade; no unsupported override was applied.
 
 ## Commands
 
