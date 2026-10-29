@@ -8,6 +8,52 @@ owner has not yet supplied process documents or final UI.
 
 ## Design fidelity contract
 
+### Phase B coverage and development showcase
+
+The first Phase B increment exposes the existing shared typography, palette and
+action states in a development-only root. It adds no production route and does not
+change production style values. From `apps/mobile`, start a development server with
+`EXPO_PUBLIC_DESIGN_SHOWCASE=1` in its environment; for PowerShell use
+`$env:EXPO_PUBLIC_DESIGN_SHOWCASE = '1'` followed by `npm run start`. Remove that
+environment variable and restart Metro to return to the application. The root also
+requires React Native's `__DEV__`; a production build cannot select the showcase
+through this flag. The showcase does not mount the access provider or business flow.
+
+| Foundation area | Current owner and status | Evidence still needed |
+| --- | --- | --- |
+| Color | `palette.ts`: inherited Light/Dark application values, not approved brand or Apple system colors | Owner-approved brand reference, increased contrast design and native resolution |
+| Typography | `layout.ts`: inherited heading, body, control and input roles | Approved SF roles and actual iOS Dynamic Type, Bold Text and Vietnamese layout |
+| Spacing and geometry | `layout.ts`: inherited screen, control, input and loading metrics | Reference comparison and real touch-target measurement |
+| Elevation and icons | No canonical tokens or consumers established | Approved design and actual consumers |
+| Components | Existing shared text, button, screen and loading components; showcase covers text, color and button states | Inputs, navigation, other states and native visual/accessibility review |
+| Native materials, motion and haptics | No implementation claimed | Real consumer, compatibility, system settings and device tests |
+| Visual regression | No approved golden images or automated native capture | Reproducible simulator capture, comparison and owner approval |
+
+The [Apple design resources](https://developer.apple.com/design/resources/) list an
+iOS 27 UI Kit. The listing is not an inspection of its components, a 27.2-specific
+reference or owner approval. No approved NestScout brand reference was available in
+the inspected repository. Apple system values, semantic choices, approved brand
+values and inherited values must remain distinguishable; no inherited number or
+color is presented as an Apple constant or approved brand value.
+
+Expo SDK 58 documents [GlassEffect](https://docs.expo.dev/versions/v58.0.0/sdk/glass-effect/),
+[Symbols](https://docs.expo.dev/versions/v58.0.0/sdk/symbols/) and
+[Haptics](https://docs.expo.dev/versions/v58.0.0/sdk/haptics/). Documentation is
+compatibility guidance, not evidence of a compiled or running implementation.
+GlassEffect exposes separate compiled-availability and runtime-API checks; an
+unsupported-platform `View` fallback alone does not establish an opaque accessible
+fallback. No dependency is added until a real consumer and verification exist.
+
+For visual review, record the revision, Xcode and iOS build, device, appearance,
+accessibility settings, locale and reference identifier. Launch the development
+showcase on a simulator, capture with `xcrun simctl io booted screenshot` to a
+chosen evidence path, and compare like-for-like with an owner-approved reference.
+Repeat on a physical device where required and record discrepancies for review;
+do not promote captures to golden baselines automatically. Include Light/Dark,
+Increased Contrast, Dynamic Type and Bold Text, VoiceOver, Reduce Motion and
+Transparency, Vietnamese long text, keyboard and actual hit targets. This checklist
+is not a capture pipeline or evidence that any case passed.
+
 `src/theme/palette.ts` existed at base `3d1926f`. The new
 `src/theme/layout.ts` gathers spacing, geometry and typography values copied
 from existing components and authentication inputs at that base. These inherited
@@ -42,7 +88,7 @@ checks flattened shared and authentication input styles in simulated Light/Dark,
 and asserts that new text ramps and scaling overrides are absent. The contrast
 checks expose the existing border gap; unit tests are not native visual evidence.
 
-`design-governance.test.ts` checks feature source reachable from `StyleSheet.create`,
+`design-governance.test.ts` checks feature and showcase source reachable from `StyleSheet.create`,
 style-valued JSX props and recognized color-valued JSX props. It examines named and
 other color literals, typography, dimensions, borders, shadows, logical spacing and
 selected local aliases, assignments and expressions. Reviewed layout and typography imports, transparent, zero, opacity one and

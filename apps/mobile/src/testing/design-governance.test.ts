@@ -193,11 +193,12 @@ test('a reviewed exception is restricted to its exact file, property and value',
   expect(literals('const s = StyleSheet.create({ x: { width: 7 } });', 'access/example.tsx', [{ ...exception, reason: '' }])).toEqual(['width: 7']);
 });
 
-test('feature styles use theme values for guarded visual properties', () => {
-  const root = path.resolve(__dirname, '../features');
-  const violations = sourceFiles(root).flatMap((file) => {
+test('feature and showcase styles use theme values for guarded visual properties', () => {
+  const roots = [path.resolve(__dirname, '../features'), path.resolve(__dirname, '../showcase')];
+  const violations = roots.flatMap((root) => sourceFiles(root).flatMap((file) => {
     const relative = path.relative(root, file).split(path.sep).join('/');
-    return literals(readFileSync(file, 'utf8'), relative, approvedExceptions).map((value) => `${relative}: ${value}`);
-  });
+    const exceptionPath = path.basename(root) === 'showcase' ? `showcase/${relative}` : relative;
+    return literals(readFileSync(file, 'utf8'), exceptionPath, approvedExceptions).map((value) => `${path.basename(root)}/${relative}: ${value}`);
+  }));
   expect(violations).toEqual([]);
 });
