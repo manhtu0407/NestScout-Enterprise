@@ -13,9 +13,10 @@ owner has not yet supplied process documents or final UI.
 The first Phase B increment exposes the existing shared typography, palette and
 action states in a development-only root. It adds no production route and does not
 change production style values. From `apps/mobile`, start a development server with
-`EXPO_PUBLIC_DESIGN_SHOWCASE=1` in its environment; for PowerShell use
-`$env:EXPO_PUBLIC_DESIGN_SHOWCASE = '1'` followed by `npm run start`. Remove that
-environment variable and restart Metro to return to the application. The root also
+`EXPO_PUBLIC_DESIGN_SHOWCASE=1` in its environment. Set
+`EXPO_PUBLIC_DESIGN_REVISION` to the checked-out commit to label captures; the label
+is supplied by the operator and is not proof of the bundled source. Remove both
+environment variables and restart Metro to return to the application. The root also
 requires React Native's `__DEV__`; a production build cannot select the showcase
 through this flag. The showcase does not mount the access provider or business flow.
 
@@ -53,6 +54,55 @@ do not promote captures to golden baselines automatically. Include Light/Dark,
 Increased Contrast, Dynamic Type and Bold Text, VoiceOver, Reduce Motion and
 Transparency, Vietnamese long text, keyboard and actual hit targets. This checklist
 is not a capture pipeline or evidence that any case passed.
+
+### iOS validation procedure
+
+On 2026-10-29, Expo's [SDK version endpoint](https://exp.host/--/api/v2/versions)
+reported React Native `0.88.0` for SDK 58, while its
+[native-module endpoint](https://exp.host/--/api/v2/sdks/58.0.0/native-modules)
+and the `expo@58.0.21` bundled matrix reported `0.88.1`. The CLI prefers the first
+endpoint. Confirm that these sources agree, then select versions and rerun the
+online `npm run verify:mobile-sdk` before treating SDK compatibility as verified.
+An offline success is not a substitute for the online check. The existing lockfile
+is retained while this conflict is unresolved.
+
+For the least intrusive device check, use an already installed Expo Go build that
+matches SDK 58. Expo's [version-mismatch guidance](https://docs.expo.dev/troubleshooting/expo-go-version-mismatch/)
+says the iOS App Store version stops at SDK 54; SDK 58 on a physical iPhone needs a
+compatible build distributed through an internal TestFlight team using `eas go`
+and an Apple Developer Program membership. Expo's
+[physical-device setup](https://docs.expo.dev/get-started/set-up-your-environment/?device=physical&mode=expo-go&platform=ios)
+also requires Expo CLI and Expo Go to be signed in to the same account. Building or
+distributing that client, creating accounts and changing credentials are separate
+operations; none was performed for this increment. On a Mac, a compatible Expo Go
+simulator build is another path without a physical-device provisioning profile.
+
+An [EAS development build](https://docs.expo.dev/develop/development-builds/introduction/)
+can build iOS from Windows and include custom native modules, but requires a project
+development client, EAS configuration, signing, an approved bundle identifier and
+an Apple Developer account for a physical device. Build cost and provisioning must
+be checked before invoking EAS. This repository has not configured or verified
+that path; no cloud build, account or signing changes were made.
+
+For a device or simulator session, check out the intended committed revision in a
+clean worktree, record `git rev-parse HEAD` and `git status --short --branch`, and
+run the SDK check. In PowerShell, from `apps/mobile`, set
+`$env:EXPO_PUBLIC_DESIGN_SHOWCASE = '1'` and
+`$env:EXPO_PUBLIC_DESIGN_REVISION = (git rev-parse HEAD)`, then run
+`npm run start -- --clear`. Open that server in the compatible client. Confirm the
+displayed revision against the recorded commit and retain the server launch record,
+device and OS build with each capture. The displayed label can be stale or manually
+set, so it must not be treated as an attestation. Do not use secrets in either
+public environment variable. Record the scenario, settings and observed outcome;
+then stop the task-owned server and remove the two variables from the shell.
+
+The showcase shows the current normal, secondary, disabled and busy actions and
+records a completed press. The inherited `ActionButton` has no explicit pressed or
+focus visual style; neither state is verified by this showcase. Its minimum height
+is 48 logical units, but the actual two-dimensional touch target and large-text
+layout need device measurement. Default scaling props are retained, not evidence
+of semantic SF Dynamic Type. Existing border contrast limitations remain as
+described below; no new color is approved by the showcase.
 
 `src/theme/palette.ts` existed at base `3d1926f`. The new
 `src/theme/layout.ts` gathers spacing, geometry and typography values copied

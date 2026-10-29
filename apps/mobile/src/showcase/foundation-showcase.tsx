@@ -12,6 +12,7 @@ export function FoundationShowcase() {
   return (
     <Screen>
       <Heading>Development component showcase</Heading>
+      <BodyText>Revision: {process.env.EXPO_PUBLIC_DESIGN_REVISION || 'not supplied'}</BodyText>
       <BodyText>Typography and long text</BodyText>
       <BodyText>Tiếng Việt có dấu: Yêu cầu hỗ trợ căn hộ, thông tin chi tiết và hướng dẫn tiếp theo.</BodyText>
       <BodyText muted>Muted text</BodyText>
