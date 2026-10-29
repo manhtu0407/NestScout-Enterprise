@@ -8,74 +8,68 @@ owner has not yet supplied process documents or final UI.
 
 ## Design fidelity contract
 
-`src/theme/palette.ts` existed at base `3d1926f`. The new
-`src/theme/layout.ts` gathers spacing, geometry and typography values copied
-from existing components and authentication inputs at that base. These inherited
-values preserve the application shell; they are not Apple system constants, an
-approved NestScout brand specification or evidence of device fidelity. Changes to
-shared values and approved screen hierarchy require explicit design review.
+### Design foundation and development showcase
 
-`Text` and `TextInput` retain their prior React Native scaling behavior. No new
-Dynamic Type ramps or `allowFontScaling` override are applied. Native scaling,
-Vietnamese wrapping and large text remain unverified on iOS.
+The [Apple HIG accessibility guidance](https://developer.apple.com/design/human-interface-guidelines/accessibility)
+and [haptics guidance](https://developer.apple.com/design/human-interface-guidelines/playing-haptics)
+inform the foundation. React Native's [AccessibilityInfo](https://reactnative.dev/docs/accessibilityinfo)
+provides the Reduce Motion query and change event.
 
-The inherited Light/Dark palette remains the single color owner. Its input and
-secondary-action borders are the only outlines in those controls. Computed border
-contrast is approximately 1.68:1 and 2.30:1 against the Light/Dark backgrounds,
-and 1.51:1 and 1.86:1 against their surfaces, below the 3:1 non-text contrast
-criterion where that criterion applies. An owner-reviewed accessible design is
-needed before changing these values. Increased Contrast and Bold Text handling
-require native investigation; no high-contrast palette is claimed.
+`src/theme/palette.ts` owns semantic Light/Dark colors; `src/theme/layout.ts`
+owns spacing, geometry, opacity, elevation, motion durations and typography.
+The prior NestScout Horizon design discussion records Sea Glass Mint `#A5E6D8`,
+Ocean Mist `#8FE3D4`, Sea Teal `#145C57`, Dark Neutral `#253436` and Soft
+Background `#F5FBF9` as reference colors. The palette uses these exact values for
+brand roles, light canvas and text, the light action accent, and the dark action
+accent and foreground. Other semantic colors remain application values; an exact
+approved dark, high-contrast and component-state specification was not found.
+The supplied iOS foundation ZIP explicitly marks its example colors provisional.
+Native fidelity and the role mappings remain subject to visual review.
+Text uses the platform system font and React Native's default font scaling.
+Text styles are semantic roles rather than a claim of native Dynamic Type ramps.
 
-Native Liquid Glass belongs primarily to functional controls and navigation.
-Prefer system controls or a compatible native material when a real use case
-justifies it. Do not describe blur or opacity as native Liquid Glass. This phase
-has no glass adapter, native bridge, accessibility preference observer, haptic
-provider or motion policy. Future implementation must use real consumers, check
-compiled and runtime availability, honor system settings and provide an opaque
-fallback. Apple's [materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials)
-and [Liquid Glass APIs](https://developer.apple.com/documentation/SwiftUI/Applying-Liquid-Glass-to-custom-views)
-provide platform guidance; project-specific decisions require owner review.
+`features/shared` exports text, actions, icon actions, fields, surfaces, dividers,
+status and state views, loading and safe-area screens. Existing specialized inputs
+retain their behavior. Labels, state, non-color status text, 48-point minimum control
+sizes and Light/Dark contrast are part of the component contract. Layout and
+VoiceOver behavior at large sizes still need native verification. Icon buttons must
+receive a meaningful label and a decorative child. Fields require a label; error
+messages supplement the border and are included in the accessibility hint.
 
-`foundation.test.tsx` pins the complete inherited layout, typography and palettes,
-checks flattened shared and authentication input styles in simulated Light/Dark,
-and asserts that new text ramps and scaling overrides are absent. The contrast
-checks expose the existing border gap; unit tests are not native visual evidence.
+Icon-button feedback uses React Native animation with the system Reduce Motion
+setting and starts conservatively without motion while the setting is unknown.
+Other shared button feedback is immediate. Shared controls intentionally emit no
+haptics: ordinary presses, typing, scrolling and animation do not justify them.
+If a future meaningful confirmation, destructive action or stage change warrants
+haptics, its owner must use a compatible platform API only when available, avoid
+duplicate feedback, and keep the action functional when haptics are unavailable,
+disabled or fail. Text and visual state must communicate the outcome independently.
+No haptics module, native haptic implementation or native material is claimed.
 
-`design-governance.test.ts` checks feature source reachable from `StyleSheet.create`,
-style-valued JSX props and recognized color-valued JSX props. It examines named and
-other color literals, typography, dimensions, borders, shadows, logical spacing and
-selected local aliases, assignments and expressions. Reviewed layout and typography imports, transparent, zero, opacity one and
-non-style text are permitted. New direct theme imports used in styles require
-review and guard coverage. Exact reviewed exceptions require
-file, property, value and reason; the exception list is currently empty. Theme values
-are pinned separately. This is a bounded static check: it does not resolve arbitrary
-imports, runtime-generated objects, computed property names, all alias chains or
-scope shadowing, and it cannot judge whether a new theme value is approved. Human
-review remains necessary; adding a value to the theme does not approve it.
+Use the public `features/shared` exports and semantic tokens for Client and Worker
+interfaces. The existing `design-governance.test.ts` checks visual literals in
+feature and showcase styles; it does not prove semantic appropriateness or resolve
+all dynamic styles. Review additions to the canonical tokens and component APIs.
 
-### Coverage and native verification
+Set `EXPO_PUBLIC_DESIGN_SHOWCASE=1` before starting Metro to open the development
+showcase, and optionally set `EXPO_PUBLIC_DESIGN_REVISION` to label the source.
+The label is operator-supplied, not an attestation. The root requires `__DEV__`;
+the showcase does not mount application flows and cannot be selected in production.
+Remove the variables and restart Metro to return to the application.
 
-| Area | Phase A evidence | Remaining work |
-| --- | --- | --- |
-| Palette | Base values and contrast pairs pinned in tests | Owner decision on border contrast; native Light/Dark and Increased Contrast |
-| Typography | Base values and default scaling props pinned | Native Dynamic Type, Bold Text, Vietnamese wrapping and keyboard |
-| Layout and components | Flattened shared and authentication styles compared with base values | Actual hit regions, focus and approved references on devices |
-| Material, motion and haptics | No native implementation claimed | Implement only for a real consumer; verify fallback and system settings |
-| Governance | Tested AST guard for documented patterns | Review unresolved static-analysis limits and theme changes |
-| Visual regression | No screenshot pipeline or approved reference | Capture, decode, review and store approved native baselines |
+### SDK metadata
 
-On macOS/Xcode, establish the deployment target, toolchain and source revision.
-Build and launch on the reference simulator and a physical iPhone. Capture matching
-Light/Dark and Increased Contrast states, default and largest Dynamic Type,
-Vietnamese/English, keyboard open, disabled/loading/error and relevant surfaces.
-Exercise VoiceOver focus and labels, Switch Control where applicable, Reduce Motion,
-Reduce Transparency, back and dismiss gestures, touch targets and long text. If a
-native glass adapter is introduced, verify capability failure, opaque fallback,
-regular and reviewed clear glass over plain and busy content, scrolling, transitions
-and device performance. Record device, OS build, source revision and capture settings;
-compare against an owner-approved reference. Do not update a baseline automatically
-to conceal a mismatch. These checks are not performed by unit tests.
+The existing Expo SDK 58 metadata disagreement is tracked in
+[Expo issue #52454](https://github.com/expo/expo/issues/52454). The installed
+lockfile retains the bundled matrix versions; the online SDK check previously
+rejected React Native `0.88.1` in favor of `0.88.0`. No workaround is applied.
+
+### Native verification boundary
+
+Automated component and contrast tests do not establish native iOS appearance,
+Dynamic Type, VoiceOver, Reduce Motion, touch geometry or Vietnamese wrapping.
+Verify those on a simulator or device against an owner-approved reference when one
+is available. Browser or static output is not native-device evidence.
 
 ## Versions
 
@@ -334,7 +328,8 @@ device, and real SMS delivery. Metro serving the bundle proves bundling only.
 
 ## Known dependency advisories
 
-`npm audit` reports three high findings, all in Expo's command-line tooling, which
+On 2026-10-29, `npm audit` reports 13 low and six high findings. Three high findings
+are in Expo's command-line dependency chain, which
 runs on developer machines and is not part of the iOS bundle: an `expo export
 --platform ios` bundle on 2026-10-27 contained no `node-forge`, `zod` or `@expo/cli`
 strings, and `npm ls --omit=dev` reaches them only through `expo` → `@expo/cli`. One advisory was resolved on 2026-10-27 by a lockfile-only update of
@@ -355,6 +350,11 @@ The other two findings (`@expo/cli`, `expo`) are only chains to that advisory.
 residual risk is **unresolved and requires owner acceptance**; it is not accepted by
 the agent. Mitigations: run Expo tooling only on trusted developer machines and CI,
 and re-run `npm audit` on every Expo SDK patch update.
+
+The other three high findings are the `re2js` lookbehind denial-of-service advisory
+and its `markdownlint` and `markdownlint-cli2` dependency chains. They affect the
+repository lint path rather than the mobile bundle. `markdownlint` pins the affected
+version, and npm proposes a major downgrade; no unsupported override was applied.
 
 ## Commands
 

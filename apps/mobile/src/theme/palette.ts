@@ -1,28 +1,32 @@
 import { useColorScheme } from 'react-native';
 
-const light = {
-  background: '#ffffff',
-  surface: '#f2f2f7',
-  text: '#111111',
-  mutedText: '#555555',
-  border: '#c7c7cc',
-  accent: '#0a5bd8',
-  onAccent: '#ffffff',
-  danger: '#b00020',
+export type Palette = Readonly<{
+  background: string;
+  surface: string;
+  text: string;
+  mutedText: string;
+  border: string;
+  accent: string;
+  onAccent: string;
+  danger: string;
+  success: string;
+  warning: string;
+  shadow: string;
+  brandPrimary: string;
+  brandSecondary: string;
+}>;
+
+const light: Palette = {
+  background: '#f5fbf9', surface: '#ffffff', text: '#253436', mutedText: '#465e5d',
+  border: '#687d7a', accent: '#145c57', onAccent: '#ffffff', danger: '#b00020',
+  success: '#176b43', warning: '#795200', shadow: '#000000', brandPrimary: '#a5e6d8', brandSecondary: '#8fe3d4',
 };
 
-const dark: typeof light = {
-  background: '#000000',
-  surface: '#1c1c1e',
-  text: '#f5f5f5',
-  mutedText: '#b0b0b5',
-  border: '#48484a',
-  accent: '#4f9bff',
-  onAccent: '#000000',
-  danger: '#ff6b6b',
+const dark: Palette = {
+  background: '#071a1a', surface: '#172d2c', text: '#f1f8f6', mutedText: '#b2c7c3',
+  border: '#819994', accent: '#a5e6d8', onAccent: '#253436', danger: '#ff8f96',
+  success: '#8bd7aa', warning: '#f2c86b', shadow: '#000000', brandPrimary: '#a5e6d8', brandSecondary: '#8fe3d4',
 };
-
-export type Palette = typeof light;
 
 export function paletteForAppearance(appearance: 'light' | 'dark' | null | undefined): Palette {
   return appearance === 'dark' ? dark : light;

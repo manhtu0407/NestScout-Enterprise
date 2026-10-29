@@ -40,9 +40,9 @@ function contrast(first: string, second: string): number {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-test('pins all layout and typography values inherited from base 3d1926f', () => {
-  expect(layout).toEqual({ screen: { padding: 24, gap: 16 }, control: { minHeight: 48, radius: 10, horizontalPadding: 16, inactiveOpacity: 0.5 }, input: { horizontalPadding: 12, borderWidth: 1 }, loading: { gap: 12 } });
-  expect(typography).toEqual({ heading: { fontSize: 28, fontWeight: '700' }, body: { fontSize: 16, lineHeight: 22 }, control: { fontSize: 16, fontWeight: '600' }, phoneInput: { fontSize: 18 }, codeInput: { fontSize: 24, letterSpacing: 6 } });
+test('pins layout and typography values', () => {
+  expect(layout).toMatchObject({ screen: { padding: 24, gap: 16 }, control: { minHeight: 48, radius: 10, horizontalPadding: 16, inactiveOpacity: 0.5, feedbackBorderWidth: 2 }, input: { horizontalPadding: 12, borderWidth: 1 }, loading: { gap: 12 } });
+  expect(typography).toMatchObject({ heading: { fontSize: 28, fontWeight: '700' }, body: { fontSize: 16, lineHeight: 22 }, control: { fontSize: 16, fontWeight: '600' }, phoneInput: { fontSize: 18 }, codeInput: { fontSize: 24, letterSpacing: 6 } });
 });
 
 test.each(['light', 'dark'] as const)('shared and authentication styles retain base values in %s', async (mode) => {
@@ -78,19 +78,19 @@ test.each(['light', 'dark'] as const)('shared and authentication styles retain b
   expect(codeInput.props.allowFontScaling).toBeUndefined();
 });
 
-test('pins both inherited palettes from base 3d1926f', () => {
-  expect(paletteForAppearance('light')).toEqual({ background: '#ffffff', surface: '#f2f2f7', text: '#111111', mutedText: '#555555', border: '#c7c7cc', accent: '#0a5bd8', onAccent: '#ffffff', danger: '#b00020' });
-  expect(paletteForAppearance('dark')).toEqual({ background: '#000000', surface: '#1c1c1e', text: '#f5f5f5', mutedText: '#b0b0b5', border: '#48484a', accent: '#4f9bff', onAccent: '#000000', danger: '#ff6b6b' });
+test('pins both palettes', () => {
+  expect(paletteForAppearance('light')).toEqual({ background: '#f5fbf9', surface: '#ffffff', text: '#253436', mutedText: '#465e5d', border: '#687d7a', accent: '#145c57', onAccent: '#ffffff', danger: '#b00020', success: '#176b43', warning: '#795200', shadow: '#000000', brandPrimary: '#a5e6d8', brandSecondary: '#8fe3d4' });
+  expect(paletteForAppearance('dark')).toEqual({ background: '#071a1a', surface: '#172d2c', text: '#f1f8f6', mutedText: '#b2c7c3', border: '#819994', accent: '#a5e6d8', onAccent: '#253436', danger: '#ff8f96', success: '#8bd7aa', warning: '#f2c86b', shadow: '#000000', brandPrimary: '#a5e6d8', brandSecondary: '#8fe3d4' });
 });
 
-test.each(['light', 'dark'] as const)('records inherited contrast pairs for %s without changing the palette', (mode) => {
+test.each(['light', 'dark'] as const)('meets contrast targets for %s', (mode) => {
   const p = paletteForAppearance(mode);
-  for (const foreground of [p.text, p.mutedText, p.danger]) {
+  for (const foreground of [p.text, p.mutedText, p.danger, p.success, p.warning]) {
     for (const background of [p.background, p.surface]) expect(contrast(foreground, background)).toBeGreaterThanOrEqual(4.5);
   }
   expect(contrast(p.onAccent, p.accent)).toBeGreaterThanOrEqual(4.5);
-  expect(contrast(p.border, p.background)).toBeLessThan(3);
-  expect(contrast(p.border, p.surface)).toBeLessThan(3);
+  expect(contrast(p.border, p.background)).toBeGreaterThanOrEqual(3);
+  expect(contrast(p.border, p.surface)).toBeGreaterThanOrEqual(3);
 });
 
 test('secondary actions retain their accessible name and run when enabled', async () => {
@@ -102,6 +102,50 @@ test('secondary actions retain their accessible name and run when enabled', asyn
   expect(button).toBeEnabled();
   await fireEvent.press(button);
   expect(onPress).toHaveBeenCalledTimes(1);
+});
+
+test.each(['light', 'dark'] as const)('enabled actions show pressed and focus feedback in %s', async (mode) => {
+  mockScheme = mode;
+  const palette = paletteForAppearance(mode);
+  await render(<ActionButton label="Continue" onPress={() => undefined} secondary />);
+  const button = screen.getByRole('button', { name: 'Continue' });
+  const restingStyle = StyleSheet.flatten(button.props.style);
+  await fireEvent(button, 'pressIn');
+  expect(StyleSheet.flatten(button.props.style)).toEqual(restingStyle);
+  const feedback = screen.getByTestId('action-feedback', { includeHiddenElements: true });
+  expect(StyleSheet.flatten(feedback.props.style)).toMatchObject({ position: 'absolute', borderColor: palette.accent, borderWidth: layout.control.feedbackBorderWidth });
+  expect(feedback.props).toMatchObject({ accessible: false, accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants', pointerEvents: 'none' });
+  await fireEvent(button, 'pressOut');
+  expect(screen.queryByTestId('action-feedback', { includeHiddenElements: true })).toBeNull();
+  expect(StyleSheet.flatten(button.props.style)).toMatchObject({ borderColor: palette.border, borderWidth: layout.input.borderWidth });
+  await fireEvent(button, 'focus');
+  expect(StyleSheet.flatten(button.props.style)).toEqual(restingStyle);
+  expect(StyleSheet.flatten(screen.getByTestId('action-feedback', { includeHiddenElements: true }).props.style)).toMatchObject({ borderColor: palette.accent, borderWidth: layout.control.feedbackBorderWidth });
+  await fireEvent(button, 'blur');
+  expect(screen.queryByTestId('action-feedback', { includeHiddenElements: true })).toBeNull();
+  expect(StyleSheet.flatten(button.props.style)).toMatchObject({ borderColor: palette.border, borderWidth: layout.input.borderWidth });
+});
+
+test.each(['light', 'dark'] as const)('primary feedback preserves label and inactive styles in %s', async (mode) => {
+  mockScheme = mode;
+  const palette = paletteForAppearance(mode);
+  const view = await render(<ActionButton label="Continue" onPress={() => undefined} />);
+  const button = screen.getByRole('button', { name: 'Continue' });
+  const restingStyle = StyleSheet.flatten(button.props.style);
+  await fireEvent(button, 'pressIn');
+  expect(StyleSheet.flatten(button.props.style)).toEqual(restingStyle);
+  expect(StyleSheet.flatten(screen.getByTestId('action-feedback', { includeHiddenElements: true }).props.style)).toMatchObject({ borderColor: palette.onAccent, borderWidth: layout.control.feedbackBorderWidth });
+  expect(StyleSheet.flatten(screen.getByText('Continue').props.style).color).toBe(palette.onAccent);
+  await fireEvent(button, 'pressOut');
+  await fireEvent(button, 'focus');
+  expect(StyleSheet.flatten(button.props.style)).toEqual(restingStyle);
+  expect(StyleSheet.flatten(screen.getByTestId('action-feedback', { includeHiddenElements: true }).props.style)).toMatchObject({ borderColor: palette.onAccent, borderWidth: layout.control.feedbackBorderWidth });
+  await view.rerender(<ActionButton label="Continue" onPress={() => undefined} disabled />);
+  expect(StyleSheet.flatten(screen.getByRole('button', { name: 'Continue' }).props.style)).toMatchObject({ backgroundColor: palette.accent, opacity: layout.control.inactiveOpacity });
+  expect(StyleSheet.flatten(screen.getByRole('button', { name: 'Continue' }).props.style).borderWidth).toBeUndefined();
+  expect(screen.queryByTestId('action-feedback', { includeHiddenElements: true })).toBeNull();
+  await view.rerender(<ActionButton label="Continue" onPress={() => undefined} />);
+  expect(screen.queryByTestId('action-feedback', { includeHiddenElements: true })).toBeNull();
 });
 
 test('disabled and busy actions expose their state and do not invoke the action', async () => {

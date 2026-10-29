@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, type TextProps } from 'react-native';
 
 import { usePalette } from '@/theme/palette';
 import { typography } from '@/theme/layout';
@@ -31,3 +31,10 @@ const styles = StyleSheet.create({
   heading: typography.heading,
   body: typography.body,
 });
+
+export type TextVariant = 'title' | 'heading' | 'subheading' | 'body' | 'caption';
+
+export function AppText({ variant = 'body', muted = false, style, ...props }: TextProps & { variant?: TextVariant; muted?: boolean }) {
+  const palette = usePalette();
+  return <Text {...props} style={[typography[variant], { color: muted ? palette.mutedText : palette.text }, style]} />;
+}
