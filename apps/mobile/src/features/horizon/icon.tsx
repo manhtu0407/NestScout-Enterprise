@@ -1,7 +1,8 @@
 import React from 'react';
-import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
+import Svg, { Circle, G, Line, Path, Polyline, Rect } from 'react-native-svg';
+import { horizonColors } from '@/theme/palette';
 
-export type IconName = 'menu' | 'plus' | 'arrowUp' | 'arrowRight' | 'chevron' | 'close' | 'mic' | 'search' | 'chat' | 'home' | 'briefcase' | 'clock' | 'heart' | 'wrench' | 'drop' | 'sofa' | 'grid' | 'gear' | 'bolt' | 'user' | 'help' | 'bell' | 'back' | 'check' | 'send';
+export type IconName = 'camera' | 'menu' | 'plus' | 'arrowUp' | 'arrowRight' | 'chevron' | 'close' | 'mic' | 'search' | 'chat' | 'home' | 'briefcase' | 'clock' | 'heart' | 'wrench' | 'drop' | 'sofa' | 'grid' | 'gear' | 'bolt' | 'user' | 'help' | 'bell' | 'requests' | 'receipt' | 'compose' | 'history' | 'back' | 'check' | 'send' | 'more' | 'share' | 'pin' | 'archive' | 'trash';
 
 type Props = {
   name: IconName;
@@ -10,10 +11,11 @@ type Props = {
   strokeWidth?: number;
 };
 
-export function Icon({ name, size = 22, color = '#F5F7FA', strokeWidth = 1.8 }: Props) {
+export function Icon({ name, size = 22, color = horizonColors.label, strokeWidth = 1.8 }: Props) {
   const common = { fill: 'none', stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   const shapes: Record<IconName, React.ReactNode> = {
-    menu: <><Line x1="4" y1="7" x2="20" y2="7" {...common}/><Line x1="4" y1="12" x2="20" y2="12" {...common}/><Line x1="4" y1="17" x2="20" y2="17" {...common}/></>,
+    camera: <><Rect x={3.25} y={5.25} width={17.5} height={15.5} rx={5.2} {...common}/><Circle cx={12} cy={13} r={3.8} {...common}/><Circle cx={17.35} cy={9.4} r={1.35} fill={color}/></>,
+    menu: <><Line x1="4" y1="8.5" x2="20" y2="8.5" {...common}/><Line x1="4" y1="15.5" x2="13.5" y2="15.5" {...common}/></>,
     plus: <><Line x1="12" y1="4" x2="12" y2="20" {...common}/><Line x1="4" y1="12" x2="20" y2="12" {...common}/></>,
     arrowUp: <><Line x1="12" y1="21" x2="12" y2="3" {...common}/><Polyline points="5,10 12,3 19,10" {...common}/></>,
     arrowRight: <><Line x1="4" y1="12" x2="20" y2="12" {...common}/><Polyline points="13,5 20,12 13,19" {...common}/></>,
@@ -22,22 +24,31 @@ export function Icon({ name, size = 22, color = '#F5F7FA', strokeWidth = 1.8 }: 
     mic: <><Rect x="9" y="3" width="6" height="12" rx="3" {...common}/><Path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" {...common}/></>,
     search: <><Circle cx="10.5" cy="10.5" r="6.5" {...common}/><Line x1="16" y1="16" x2="21" y2="21" {...common}/></>,
     chat: <Path d="M4 4h16v12H9l-5 4V4z" {...common}/>,
-    home: <><Path d="M3 11.5 12 4l9 7.5V21H3v-9.5" {...common}/><Path d="M9 21v-7h6v7" {...common}/></>,
-    briefcase: <><Rect x="3" y="7" width="18" height="14" rx="2" {...common}/><Path d="M9 7V4h6v3M3 12h18M11 12v2h2v-2" {...common}/></>,
-    clock: <><Circle cx="12" cy="12" r="9" {...common}/><Polyline points="12,6 12,12 16,14" {...common}/></>,
-    heart: <Path d="M20.8 8.8c0 4-8.8 10.7-8.8 10.7S3.2 12.8 3.2 8.8A5 5 0 0 1 12 6.3a5 5 0 0 1 8.8 2.5z" {...common}/>,
-    wrench: <><Path d="M21 7a6 6 0 0 1-8 5.6L7.6 18a2.4 2.4 0 0 1-3.4-3.4L9.6 9A6 6 0 0 1 17 3l-4 4 4 4 4-4z" {...common}/></>,
-    drop: <Path d="M12 2S5 11.2 5 15a7 7 0 0 0 14 0C19 11.2 12 2 12 2z" {...common}/>,
-    sofa: <><Path d="M4 12V9a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v3" {...common}/><Rect x="3" y="11" width="18" height="8" rx="2" {...common}/><Path d="M6 19v2m12-2v2" {...common}/></>,
-    grid: <><Rect x="3" y="3" width="7" height="7" rx="1" {...common}/><Rect x="14" y="3" width="7" height="7" rx="1" {...common}/><Rect x="3" y="14" width="7" height="7" rx="1" {...common}/><Rect x="14" y="14" width="7" height="7" rx="1" {...common}/></>,
-    gear: <><Circle cx="12" cy="12" r="3" {...common}/><Path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2.2 2.2m9.6 9.6L19 19M19 5l-2.2 2.2m-9.6 9.6L5 19" {...common}/></>,
-    bolt: <Path d="M13 2 5 13h6l-1 9 9-13h-6l0-7z" {...common}/>,
+    home: <><Path d="M4 10.6 12 4l8 6.6V18.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5z" {...common}/><Path d="M10 21v-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5" {...common}/></>,
+    briefcase: <><Rect x="3" y="7.5" width="18" height="12.5" rx="3" {...common}/><Path d="M9 7.5v-1A2 2 0 0 1 11 4.5h2a2 2 0 0 1 2 2v1M3 13h6.5M14.5 13H21" {...common}/><Rect x="10" y="11.5" width="4" height="3" rx="1" {...common}/></>,
+    clock: <><Circle cx="12" cy="12" r="9" {...common}/><Path d="M12 7v5l3 2" {...common}/></>,
+    heart: <Path d="M12 20.2C7.2 16.6 3.5 13.4 3.5 9.3A4.6 4.6 0 0 1 8.1 4.7c1.6 0 3 .8 3.9 2.1.9-1.3 2.3-2.1 3.9-2.1a4.6 4.6 0 0 1 4.6 4.6c0 4.1-3.7 7.3-8.5 10.9z" {...common}/>,
+    wrench: <G transform="rotate(45 12 12)"><Path d="M8.8 3.4 10.5 7.2h3L15.2 3.4A4.9 4.9 0 0 1 17 9.4c0 1.6-.9 3-2.3 3.8V19a2.7 2.7 0 0 1-5.4 0v-5.8C7.9 12.4 7 11 7 9.4a4.9 4.9 0 0 1 1.8-6z" {...common}/></G>,
+    drop: <><Path d="M12 3c-.4.5-6.5 7-6.5 12a6.5 6.5 0 0 0 13 0C18.5 10 12.4 3.5 12 3z" {...common}/><Path d="M8.9 15.2a3.1 3.1 0 0 0 2.3 2.9" {...common}/></>,
+    sofa: <><Path d="M7.5 12.5V8a3 3 0 0 1 3-3h3a3 3 0 0 1 3 3v4.5" {...common}/><Path d="M3.5 12.5a2 2 0 0 1 4 0V14h9v-1.5a2 2 0 0 1 4 0V17a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 17z" {...common}/><Path d="M6.5 18.5v2M17.5 18.5v2" {...common}/></>,
+    grid: <><Rect x="4" y="4" width="6.5" height="6.5" rx="2" {...common}/><Rect x="13.5" y="4" width="6.5" height="6.5" rx="2" {...common}/><Rect x="4" y="13.5" width="6.5" height="6.5" rx="2" {...common}/><Rect x="13.5" y="13.5" width="6.5" height="6.5" rx="2" {...common}/></>,
+    gear: <><Path d="M9.87 5.02 L10.33 2.55 L13.67 2.55 L14.13 5.02 A7.3 7.3 0 0 1 15.43 5.55 L17.51 4.14 L19.86 6.49 L18.45 8.57 A7.3 7.3 0 0 1 18.98 9.87 L21.45 10.33 L21.45 13.67 L18.98 14.13 A7.3 7.3 0 0 1 18.45 15.43 L19.86 17.51 L17.51 19.86 L15.43 18.45 A7.3 7.3 0 0 1 14.13 18.98 L13.67 21.45 L10.33 21.45 L9.87 18.98 A7.3 7.3 0 0 1 8.57 18.45 L6.49 19.86 L4.14 17.51 L5.55 15.43 A7.3 7.3 0 0 1 5.02 14.13 L2.55 13.67 L2.55 10.33 L5.02 9.87 A7.3 7.3 0 0 1 5.55 8.57 L4.14 6.49 L6.49 4.14 L8.57 5.55 A7.3 7.3 0 0 1 9.87 5.02 z" {...common}/><Circle cx="12" cy="12" r="3" {...common}/></>,
+    bolt: <Path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z" {...common}/>,
     user: <><Circle cx="12" cy="8" r="4" {...common}/><Path d="M4 21a8 8 0 0 1 16 0" {...common}/></>,
-    help: <><Circle cx="12" cy="12" r="9" {...common}/><Path d="M9.3 9a3 3 0 0 1 5.4 2c0 2-2.7 2.2-2.7 4" {...common}/><Circle cx="12" cy="18" r=".5" fill={color}/></>,
-    bell: <><Path d="M6 16V9a6 6 0 0 1 12 0v7l2 2H4z" {...common}/><Path d="M10 21h4" {...common}/></>,
+    help: <><Circle cx="12" cy="12" r="9" {...common}/><Path d="M9.5 9.4a2.6 2.6 0 0 1 5.1.6c0 1.7-2.6 2-2.6 3.6" {...common}/><Circle cx="12" cy="17" r="0.9" fill={color}/></>,
+    bell: <><Path d="M5.5 17.5h13c-1.2-1-1.8-2.3-1.8-4V10a4.7 4.7 0 0 0-9.4 0v3.5c0 1.7-.6 3-1.8 4z" {...common}/><Path d="M12 3.4v1.4M10 20.2a2.2 2.2 0 0 0 4 0" {...common}/></>,
     back: <><Polyline points="14,4 6,12 14,20" {...common}/></>,
+    requests: <><Path d="M9 4H8a3 3 0 0 0-3 3v11.5a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3h-1" {...common}/><Rect x="9" y="2.25" width="6" height="3.5" rx="1.75" {...common}/><Path d="M9 11h6M9 15h4" {...common}/></>,
+    receipt: <><Path d="M5 4.5A1.5 1.5 0 0 1 6.5 3h11A1.5 1.5 0 0 1 19 4.5v16l-2.33-1.5L14.33 20.5 12 19l-2.33 1.5L7.33 19 5 20.5z" {...common}/><Path d="M9 8h6M9 11.5h6M9 15h3" {...common}/></>,
+    compose: <><Path d="M10.5 4H8A4 4 0 0 0 4 8v8a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4v-2.5" {...common}/><Path d="M16.6 3.9a1.9 1.9 0 0 1 2.7 0l.8.8a1.9 1.9 0 0 1 0 2.7L12.2 15.3 8.4 16l.7-3.8z" {...common}/></>,
+    history: <><Path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5" {...common}/><Polyline points="3.5,4.2 3.5,8.5 7.8,8.5" {...common}/><Path d="M12 8v4l2.8 1.8" {...common}/></>,
     check: <Polyline points="4,12 10,18 20,6" {...common}/>,
-    send: <><Path d="M3 12 21 4l-6 17-4-7-8-2z" {...common}/><Path d="m11 14 10-10" {...common}/></>
+    send: <><Path d="M3 12 21 4l-6 17-4-7-8-2z" {...common}/><Path d="m11 14 10-10" {...common}/></>,
+    more: <><Circle cx="5.5" cy="12" r="1.7" fill={color}/><Circle cx="12" cy="12" r="1.7" fill={color}/><Circle cx="18.5" cy="12" r="1.7" fill={color}/></>,
+    share: <><Path d="M12 14.5V3.8M8 7.6l4-3.9 4 3.9" {...common}/><Path d="M8.5 10.5H8A3.5 3.5 0 0 0 4.5 14v3A3.5 3.5 0 0 0 8 20.5h8a3.5 3.5 0 0 0 3.5-3.5v-3a3.5 3.5 0 0 0-3.5-3.5h-.5" {...common}/></>,
+    pin: <G transform="rotate(40 12 12)"><Path d="M8.5 3.5h7M9.7 3.5l-.5 5.2-2.4 3.3h10.4l-2.4-3.3-.5-5.2M12 12v8.5" {...common}/></G>,
+    archive: <><Rect x="3.5" y="4" width="17" height="4.5" rx="1.8" {...common}/><Path d="M5 8.5V16a3.5 3.5 0 0 0 3.5 3.5h7A3.5 3.5 0 0 0 19 16V8.5M10 12.5h4" {...common}/></>,
+    trash: <><Path d="M4.5 7h15M9.5 7V5.2a1.7 1.7 0 0 1 1.7-1.7h1.6a1.7 1.7 0 0 1 1.7 1.7V7" {...common}/><Path d="M6.5 7l.8 11.3A2.2 2.2 0 0 0 9.5 20.4h5a2.2 2.2 0 0 0 2.2-2.1L17.5 7M10 11v5.5M14 11v5.5" {...common}/></>
   };
   return <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityRole="image">{shapes[name]}</Svg>;
 }

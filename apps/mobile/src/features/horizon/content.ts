@@ -1,42 +1,4 @@
-export type ServiceIcon = 'wrench' | 'drop' | 'sofa' | 'grid';
-export type Service = {
-  id: string;
-  title: string;
-  subtitle: string;
-  icon: ServiceIcon;
-  suggestedMessage: string;
-};
-
-export const services: Service[] = [
-  {
-    id: 'aircon',
-    title: 'Sửa máy lạnh',
-    subtitle: 'Kiểm tra, vệ sinh, sửa chữa',
-    icon: 'wrench',
-    suggestedMessage: 'Máy lạnh nhà mình đang gặp vấn đề, Kael giúp mình nhé.'
-  },
-  {
-    id: 'plumbing',
-    title: 'Xử lý rò nước',
-    subtitle: 'Kiểm tra, sửa chữa đường ống',
-    icon: 'drop',
-    suggestedMessage: 'Nhà mình đang bị rò nước, Kael tư vấn giúp mình.'
-  },
-  {
-    id: 'sofa',
-    title: 'Vệ sinh sofa',
-    subtitle: 'Làm sạch, khử mùi, diệt khuẩn',
-    icon: 'sofa',
-    suggestedMessage: 'Mình muốn vệ sinh sofa tại nhà.'
-  },
-  {
-    id: 'other',
-    title: 'Công việc khác',
-    subtitle: 'Mô tả chi tiết nhu cầu của cậu',
-    icon: 'grid',
-    suggestedMessage: 'Mình có một vấn đề tại nhà cần Kael hỗ trợ.'
-  }
-];
+import type { IconName } from './icon';
 
 export const quickServices = [
   { title: 'Sửa điện', icon: 'bolt' },
@@ -47,10 +9,37 @@ export const quickServices = [
   { title: 'Dịch vụ khác', icon: 'grid' }
 ] as const;
 
-export const menuEntries = [
-  { title: 'Trò chuyện mới', icon: 'chat', id: 'new' },
-  { title: 'Trang chủ', icon: 'home', id: 'home' },
-  { title: 'Công việc đang xử lý', icon: 'briefcase', id: 'tasks' },
-  { title: 'Lịch sử', icon: 'clock', id: 'history' },
-  { title: 'Yêu thích', icon: 'heart', id: 'favorites' }
-] as const;
+export type SidebarItem = { id: string; title: string; icon: IconName };
+
+export const sidebarGroups: readonly { title: string; items: readonly SidebarItem[] }[] = [
+  {
+    title: 'Việc của tôi',
+    items: [
+      { id: 'requests', title: 'Yêu cầu của tôi', icon: 'requests' },
+      { id: 'quotes', title: 'Báo giá', icon: 'receipt' },
+      { id: 'tasks', title: 'Công việc đang xử lý', icon: 'briefcase' },
+      { id: 'history', title: 'Lịch sử', icon: 'history' },
+      { id: 'favorites', title: 'Yêu thích', icon: 'heart' },
+    ],
+  },
+  {
+    title: 'Hỗ trợ',
+    items: [
+      { id: 'notifications', title: 'Thông báo', icon: 'bell' },
+      { id: 'settings', title: 'Cài đặt', icon: 'gear' },
+      { id: 'help', title: 'Trợ giúp', icon: 'help' },
+    ],
+  },
+];
+
+export const screenTitles: Record<string, string> = {
+  search: 'Tìm kiếm',
+  requests: 'Yêu cầu của tôi',
+  quotes: 'Báo giá',
+  tasks: 'Công việc đang xử lý',
+  history: 'Lịch sử',
+  favorites: 'Yêu thích',
+  notifications: 'Thông báo',
+  settings: 'Cài đặt',
+  help: 'Trợ giúp',
+};

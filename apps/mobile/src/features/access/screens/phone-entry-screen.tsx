@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput } from 'react-native';
 
 import { ActionButton, BodyText, ErrorText, Heading, Screen } from '@/features/shared';
@@ -8,12 +8,16 @@ import { layout, typography } from '@/theme/layout';
 
 import { authMessages, phoneMessages } from '../auth/auth-messages';
 import { usePhoneSignIn } from '../auth/use-phone-sign-in';
+import { useAccess } from '../state/access-provider';
 
 export function PhoneEntryScreen() {
   const router = useRouter();
   const palette = usePalette();
   const signIn = usePhoneSignIn();
+  const { cancelHorizonTransfer } = useAccess();
   const [phone, setPhone] = useState('');
+
+  useEffect(() => () => cancelHorizonTransfer(), [cancelHorizonTransfer]);
 
   const submit = () => {
     void signIn.submitPhone(phone).then((sent) => {

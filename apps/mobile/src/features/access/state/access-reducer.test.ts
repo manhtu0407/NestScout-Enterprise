@@ -9,6 +9,49 @@ test('a guest draft binds to the first signed-in account and is discarded on acc
   expect(deriveAccess(accessReducer(signedIn, { type: 'session_ended' })).guestDraft).toBeNull();
 });
 
+test('a Horizon draft transfers only through the requested sign-in and remains bound to the verified account', () => {
+  const draft = { text: 'Bản nháp riêng', images: [{ uri: 'file:///photo.png', mimeType: 'image/png' }] };
+  const guest = accessReducer(initialAccessState, { type: 'horizon_draft_updated', ownerId: null, draft });
+  const ordinarySignIn = accessReducer(guest, { type: 'otp_verified', userId: 'account-a' });
+  expect(deriveAccess(ordinarySignIn).horizonDraft).toBeNull();
+  const prepared = accessReducer(guest, { type: 'horizon_draft_transfer_requested', draft });
+  const unverified = accessReducer(prepared, { type: 'session_event', event: 'signed_in', userId: 'account-a' });
+  expect(deriveAccess(unverified).horizonDraft).toBeNull();
+  expect(deriveAccess(unverified).horizonDraftLocked).toBe(true);
+  const verified = accessReducer(unverified, { type: 'otp_verified', userId: 'account-a' });
+  expect(deriveAccess(verified).horizonDraft).toEqual(draft);
+  const other = accessReducer(verified, { type: 'session_event', event: 'signed_in', userId: 'account-b' });
+  expect(deriveAccess(other).horizonDraft).toBeNull();
+  expect(deriveAccess(accessReducer(verified, { type: 'session_ended' })).horizonDraft).toBeNull();
+});
+
+test('cancelling a guest mode sign-in prevents a later unrelated account from receiving the draft', () => {
+  const draft = { text: 'Nội dung đang soạn', images: [] };
+  const prepared = accessReducer(initialAccessState, { type: 'horizon_draft_transfer_requested', draft });
+  const cancelled = accessReducer(prepared, { type: 'horizon_transfer_cancelled' });
+  expect(deriveAccess(cancelled).horizonDraft).toEqual(draft);
+  expect(deriveAccess(accessReducer(cancelled, { type: 'otp_verified', userId: 'account-a' })).horizonDraft).toBeNull();
+});
+
+test('a stale or unverified account cannot replace another Horizon draft', () => {
+  const draft = { text: 'Riêng tư', images: [{ uri: 'file:///private.png' }] };
+  const verified = accessReducer(accessReducer(initialAccessState, { type: 'otp_verified', userId: 'account-a' }), { type: 'horizon_draft_updated', ownerId: 'account-a', draft });
+  const stale = accessReducer(verified, { type: 'horizon_draft_updated', ownerId: 'account-b', draft: { text: 'Sai', images: [] } });
+  expect(deriveAccess(stale).horizonDraft).toEqual(draft);
+  const unverified = accessReducer(accessReducer(initialAccessState, { type: 'horizon_draft_transfer_requested', draft }), { type: 'session_event', event: 'signed_in', userId: 'account-a' });
+  const attempted = accessReducer(unverified, { type: 'horizon_draft_updated', ownerId: 'account-a', draft: { text: 'Sai', images: [] } });
+  expect(attempted.horizonDraft?.text).toBe(draft.text);
+});
+
+test('a new draft entered while identity is unverified is scoped to that account and cleared on a different account', () => {
+  const account = accessReducer(initialAccessState, { type: 'session_event', event: 'signed_in', userId: 'account-a' });
+  const draft = { text: 'Mới soạn trên máy', images: [{ uri: 'file:///new.png' }] };
+  const edited = accessReducer(account, { type: 'horizon_draft_updated', ownerId: 'account-a', draft });
+  expect(deriveAccess(edited).horizonDraft).toEqual(draft);
+  const switched = accessReducer(edited, { type: 'session_event', event: 'signed_in', userId: 'account-b' });
+  expect(deriveAccess(switched).horizonDraft).toBeNull();
+});
+
 const user = 'user-a';
 
 function run(actions: AccessAction[], from: AccessState = initialAccessState): AccessState {
@@ -51,6 +94,15 @@ describe('worker entitlement', () => {
     const base = signedIn();
     return run([received(base, worker), { type: 'preference_loaded', userId: user, mode }], base);
   };
+
+  test('cancelling a pending Worker request prevents a late grant from switching modes', () => {
+    const initial = resolve('active', 'client');
+    const pending = accessReducer(initial, { type: 'mode_requested', mode: 'worker' });
+    expect(deriveAccess(pending).pendingMode).toBe('worker');
+    const cancelled = accessReducer(pending, { type: 'mode_request_cancelled' });
+    const late = accessReducer(cancelled, received(cancelled, 'active'));
+    expect(deriveAccess(late)).toMatchObject({ phase: 'client', pendingMode: null, canUseWorker: true });
+  });
 
   test.each([['none'], ['revoked']] as const)('a forged Worker preference never enters Worker with a %s grant', (worker) => {
     const view = deriveAccess(resolve(worker, 'worker'));

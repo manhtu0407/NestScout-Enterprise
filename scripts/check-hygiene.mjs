@@ -34,7 +34,7 @@ const approvedLogo = Object.freeze({
   sha256: 'b4dbdd2eb0c742e36f61b41f87744f32f709cbdfc4441c93f17a494a87fde446',
 });
 
-const mobileAssetPath = /^apps\/mobile\/assets\/[a-z][a-z0-9]*(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\.(?:png|jpg|jpeg|webp|json)$/;
+const mobileAssetPath = /^apps\/mobile\/assets\/[a-z][a-z0-9]*(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\.(?:png|jpg|jpeg|webp|json|mp4)$/;
 const prohibitedAssetWords = new Set(['final', 'latest', 'new', 'updated', 'copy', 'backup', 'version']);
 
 export const generatedFiles = Object.freeze(['supabase/database.types.ts']);
@@ -398,8 +398,9 @@ export function checkHygiene(repository = root) {
         throw new Error(`docs/processes/.gitkeep must be exactly 0 bytes: ${state}`);
       }
       if (hasArtifactSignature(content)) throw new Error(`PDF/ZIP content requires its registered artifact extension: ${state} ${file}`);
-      if (mobileAssetPath.test(file) && /\.(?:png|jpg|jpeg|webp)$/.test(file)) {
-        const valid = file.endsWith('.png') ? content.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+      if (mobileAssetPath.test(file) && /\.(?:png|jpg|jpeg|webp|mp4)$/.test(file)) {
+        const valid = file.endsWith('.mp4') ? content.subarray(4, 8).toString('ascii') === 'ftyp'
+          : file.endsWith('.png') ? content.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
           : /\.jpe?g$/.test(file) ? content.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex'))
             : content.subarray(0, 4).toString('ascii') === 'RIFF' && content.subarray(8, 12).toString('ascii') === 'WEBP';
         if (!valid) throw new Error(`Invalid mobile image content: ${state} ${file}`);

@@ -1,12 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react';
-import { AppState } from 'react-native';
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import { AppState, Platform } from 'react-native';
 
 import type { AuthGateway, AuthOutcome } from '../auth/auth-gateway';
 import type { CapabilityRepository } from '../capability/capability-repository';
 import type { AppMode } from '../mode/app-mode';
 import type { PreferredModeStore } from '../mode/preferred-mode-store';
 import { withDeadline } from './deadline';
-import { accessReducer, deriveAccess, initialAccessState, type AccessView } from './access-reducer';
+import { accessReducer, deriveAccess, initialAccessState, type AccessView, type HorizonDraft } from './access-reducer';
 
 export type AccessServices = {
   auth: AuthGateway;
@@ -25,6 +25,11 @@ export type AccessApi = AccessView & {
   dismissNotice(): void;
   editGuestDraft(text: string): void;
   clearGuestDraft(): void;
+  updateHorizonDraft(ownerId: string | null, draft: HorizonDraft): void;
+  prepareHorizonDraftTransfer(draft: HorizonDraft): void;
+  clearHorizonDraft(ownerId: string | null): void;
+  cancelHorizonTransfer(): void;
+  cancelModeRequest(): void;
 };
 
 const AccessContext = createContext<AccessApi | null>(null);
@@ -35,7 +40,20 @@ const resendCooldownMs = 60_000;
 export function AccessProvider({ services, children }: { services: AccessServices; children: ReactNode }) {
   const { auth, capabilities, preferredMode } = services;
   const [state, dispatch] = useReducer(accessReducer, initialAccessState);
+  const ownedDraftUrls = useRef(new Set<string>());
   const { userId, requestId, bootstrapped, preferenceLoaded, selectedMode, otpPhone, identityPending, identityRequest } = state;
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const next = new Set((state.horizonDraft?.images ?? []).map(image => image.uri).filter(uri => uri.startsWith('blob:')));
+    for (const uri of ownedDraftUrls.current) if (!next.has(uri)) URL.revokeObjectURL(uri);
+    ownedDraftUrls.current = next;
+  }, [state.horizonDraft]);
+
+  useEffect(() => {
+    const owned = ownedDraftUrls;
+    return () => { if (Platform.OS === 'web') for (const uri of owned.current) URL.revokeObjectURL(uri); };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -131,6 +149,7 @@ export function AccessProvider({ services, children }: { services: AccessService
   );
 
   const signOut = useCallback(() => auth.signOut(), [auth]);
+  const cancelHorizonTransfer = useCallback(() => dispatch({ type: 'horizon_transfer_cancelled' }), []);
 
   const view = useMemo(() => deriveAccess(state), [state]);
   const api = useMemo<AccessApi>(
@@ -146,8 +165,13 @@ export function AccessProvider({ services, children }: { services: AccessService
       dismissNotice: () => dispatch({ type: 'notice_dismissed' }),
       editGuestDraft: (text) => dispatch({ type: 'guest_draft_edited', text }),
       clearGuestDraft: () => dispatch({ type: 'guest_draft_cleared' }),
+      updateHorizonDraft: (ownerId, draft) => dispatch({ type: 'horizon_draft_updated', ownerId, draft }),
+      prepareHorizonDraftTransfer: (draft) => dispatch({ type: 'horizon_draft_transfer_requested', draft }),
+      clearHorizonDraft: (ownerId) => dispatch({ type: 'horizon_draft_cleared', ownerId }),
+      cancelHorizonTransfer,
+      cancelModeRequest: () => dispatch({ type: 'mode_request_cancelled' }),
     }),
-    [view, requestOtp, verifyOtp, signOut],
+    [view, requestOtp, verifyOtp, signOut, cancelHorizonTransfer],
   );
 
   return <AccessContext.Provider value={api}>{children}</AccessContext.Provider>;

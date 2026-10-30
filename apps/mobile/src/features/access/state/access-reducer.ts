@@ -3,6 +3,9 @@ import type { CapabilityResult, WorkerGrant } from '../capability/capability-rep
 import type { AppMode } from '../mode/app-mode';
 
 export type AccessNotice = 'worker_unavailable' | 'worker_unverified';
+export type HorizonDraftImage = { uri: string; mimeType?: string; fileSize?: number };
+export type HorizonDraft = { text: string; images: readonly HorizonDraftImage[] };
+type OwnedHorizonDraft = HorizonDraft & { ownerId: string | null; transferOnSignIn: boolean; requiresVerified: boolean };
 
 type CapabilityState =
   | { status: 'loading' }
@@ -25,6 +28,7 @@ export type AccessState = {
   otpPhone: string | null;
   resendAvailableAt: number | null;
   guestDraft: { text: string; ownerId: string | null } | null;
+  horizonDraft: OwnedHorizonDraft | null;
 };
 
 export type SessionEventType = 'signed_in' | 'refreshed' | 'updated';
@@ -45,7 +49,12 @@ export type AccessAction =
   | { type: 'otp_cleared' }
   | { type: 'notice_dismissed' }
   | { type: 'guest_draft_edited'; text: string }
-  | { type: 'guest_draft_cleared' };
+  | { type: 'guest_draft_cleared' }
+  | { type: 'horizon_draft_updated'; ownerId: string | null; draft: HorizonDraft }
+  | { type: 'horizon_draft_transfer_requested'; draft: HorizonDraft }
+  | { type: 'horizon_draft_cleared'; ownerId: string | null }
+  | { type: 'horizon_transfer_cancelled' }
+  | { type: 'mode_request_cancelled' };
 
 export const initialAccessState: AccessState = {
   bootstrapped: false,
@@ -63,6 +72,7 @@ export const initialAccessState: AccessState = {
   otpPhone: null,
   resendAvailableAt: null,
   guestDraft: null,
+  horizonDraft: null,
 };
 
 function reset(state: AccessState, userId: string | null, identity: AccessState['identity'], keep: Partial<AccessState> = {}): AccessState {
@@ -122,15 +132,19 @@ export function accessReducer(state: AccessState, action: AccessAction): AccessS
         intent: state.intent,
         guestDraft: state.userId === null && state.guestDraft?.ownerId === null
           ? { ...state.guestDraft, ownerId: action.userId } : null,
+        horizonDraft: state.userId === null && state.horizonDraft?.ownerId === null && state.horizonDraft.transferOnSignIn
+          ? { ...state.horizonDraft, ownerId: action.userId, transferOnSignIn: false, requiresVerified: true } : null,
       }), bootstrapped: state.bootstrapped });
 
     case 'otp_verified':
       return state.userId === action.userId
-        ? { ...state, bootstrapped: true, identity: 'verified', identityRequest: state.identityRequest + 1, identityPending: false, otpPhone: null }
+        ? { ...state, bootstrapped: true, identity: 'verified', identityRequest: state.identityRequest + 1, identityPending: false, otpPhone: null, horizonDraft: state.horizonDraft?.ownerId === action.userId ? { ...state.horizonDraft, requiresVerified: true } : state.horizonDraft }
         : reset(state, action.userId, 'verified', {
           intent: state.intent,
           guestDraft: state.userId === null && state.guestDraft?.ownerId === null
             ? { ...state.guestDraft, ownerId: action.userId } : null,
+          horizonDraft: state.userId === null && state.horizonDraft?.ownerId === null && state.horizonDraft.transferOnSignIn
+            ? { ...state.horizonDraft, ownerId: action.userId, transferOnSignIn: false, requiresVerified: true } : null,
         });
 
     case 'session_ended':
@@ -141,7 +155,7 @@ export function accessReducer(state: AccessState, action: AccessAction): AccessS
       const { check } = action;
       if (check.status === 'invalid') return signedOut(state);
       const verified = check.status === 'valid' && check.identity.userId === state.userId;
-      return settleWorkerRequest({ ...state, bootstrapped: true, identity: verified ? 'verified' : 'unverified', identityPending: false });
+      return settleWorkerRequest({ ...state, bootstrapped: true, identity: verified ? 'verified' : 'unverified', identityPending: false, horizonDraft: verified && state.horizonDraft?.ownerId === state.userId ? { ...state.horizonDraft, requiresVerified: true } : state.horizonDraft });
     }
 
     case 'recheck_requested': {
@@ -215,6 +229,24 @@ export function accessReducer(state: AccessState, action: AccessAction): AccessS
 
     case 'guest_draft_cleared':
       return { ...state, guestDraft: null };
+
+    case 'horizon_draft_updated':
+      if (state.userId !== action.ownerId || (state.identity !== 'verified' && state.horizonDraft?.requiresVerified)) return state;
+      return { ...state, horizonDraft: { ...action.draft, ownerId: action.ownerId, transferOnSignIn: state.horizonDraft?.transferOnSignIn ?? false, requiresVerified: state.userId !== null && state.identity === 'verified' } };
+
+    case 'horizon_draft_transfer_requested':
+      if (state.userId !== null) return state;
+      return { ...state, horizonDraft: action.draft.text.length || action.draft.images.length ? { ...action.draft, ownerId: null, transferOnSignIn: true, requiresVerified: false } : null };
+
+    case 'horizon_draft_cleared':
+      return state.userId === action.ownerId ? { ...state, horizonDraft: null } : state;
+
+    case 'horizon_transfer_cancelled':
+      if (state.userId !== null) return state;
+      return { ...state, intent: null, horizonDraft: state.horizonDraft ? { ...state.horizonDraft, transferOnSignIn: false } : null };
+
+    case 'mode_request_cancelled':
+      return { ...state, pendingMode: null, intent: null, notice: null };
   }
 }
 
@@ -225,12 +257,16 @@ export type AccessView = {
   phase: AccessPhase;
   userId: string | null;
   identity: AccessState['identity'];
+  identityPending: boolean;
   workerStatus: WorkerStatus;
   canUseWorker: boolean;
   notice: AccessNotice | null;
   otpPhone: string | null;
   resendAvailableAt: number | null;
   guestDraft: string | null;
+  horizonDraft: HorizonDraft | null;
+  horizonDraftLocked: boolean;
+  pendingMode: AppMode | null;
 };
 
 export function deriveAccess(state: AccessState): AccessView {
@@ -251,6 +287,7 @@ export function deriveAccess(state: AccessState): AccessView {
     phase,
     userId: state.userId,
     identity: state.identity,
+    identityPending: state.identityPending,
     workerStatus,
     canUseWorker,
     notice: state.notice,
@@ -258,5 +295,9 @@ export function deriveAccess(state: AccessState): AccessView {
     resendAvailableAt: state.resendAvailableAt,
     guestDraft: state.guestDraft && (state.userId === null || (verified && state.guestDraft.ownerId === state.userId))
       ? state.guestDraft.text : null,
+    horizonDraft: state.horizonDraft && state.horizonDraft.ownerId === state.userId && (!state.horizonDraft.requiresVerified || verified)
+      ? { text: state.horizonDraft.text, images: state.horizonDraft.images } : null,
+    horizonDraftLocked: state.horizonDraft !== null && state.horizonDraft.ownerId === state.userId && state.horizonDraft.requiresVerified && !verified,
+    pendingMode: state.pendingMode,
   };
 }

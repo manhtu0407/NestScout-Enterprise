@@ -636,7 +636,7 @@ test('metadata ranges expose the exact local and hosted revisions that the quali
 });
 
 test('mobile assets require semantic names and approved feature locations', () => {
-  for (const file of ['apps/mobile/assets/horizon/kael-orb.png', 'apps/mobile/assets/welcome/background.jpg', 'apps/mobile/assets/horizon/intro-transition.json', 'apps/mobile/assets/sidebar/icon.webp', 'apps/mobile/assets/horizon/3d-preview.png']) {
+  for (const file of ['apps/mobile/assets/horizon/kael-orb.png', 'apps/mobile/assets/welcome/background.jpg', 'apps/mobile/assets/horizon/intro-transition.json', 'apps/mobile/assets/sidebar/icon.webp', 'apps/mobile/assets/horizon/3d-preview.png', 'apps/mobile/assets/horizon/kael-researching.mp4']) {
     assert.doesNotThrow(() => checkPath(file), file);
   }
   for (const file of ['apps/mobile/assets/horizon/orb-v7.png', 'apps/mobile/assets/horizon/orb@2x.png', 'apps/mobile/assets/horizon/orb-final.png', 'apps/mobile/assets/horizon/new-orb.png', 'apps/mobile/assets/horizon/orb-20261029.png', 'apps/mobile/assets/horizon/orb.svg', 'apps/mobile/assets/orb.png', 'apps/mobile/assets/horizon/../orb.png', 'apps/mobile/other/horizon/orb.png']) {
@@ -657,6 +657,12 @@ test('mobile image signatures and asset name collisions are checked in working a
   write(png, valid);
   assert.throws(() => checkHygiene(repository), /Invalid mobile image content: index/);
   run(['add', '--', png]);
+  const video = 'apps/mobile/assets/horizon/kael-researching.mp4';
+  write(video, Buffer.concat([Buffer.alloc(4), Buffer.from('ftyp')]));
+  assert.doesNotThrow(() => checkHygiene(repository));
+  write(video, 'not a video');
+  assert.throws(() => checkHygiene(repository), /Invalid mobile image content: working/);
+  rmSync(path.join(repository, video), { force: true });
   write('apps/mobile/assets/horizon/kael-orb.jpg', Buffer.from('ffd8ff', 'hex'));
   assert.throws(() => checkHygiene(repository), /Colliding mobile asset name/);
 });

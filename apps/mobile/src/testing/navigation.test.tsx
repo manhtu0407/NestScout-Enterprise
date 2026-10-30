@@ -1,4 +1,5 @@
 import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
+import * as ImagePicker from 'expo-image-picker';
 
 import '@/features/access';
 import '@/features/client';
@@ -11,10 +12,7 @@ jest.mock('@/features/access/default-services', () => ({
   getDefaultAccessServices: () => mockServices,
 }));
 
-jest.mock('@/features/horizon/intro-sequence', () => {
-  const React = jest.requireActual<typeof import('react')>('react');
-  return { IntroSequence: ({ onComplete }: { onComplete: () => void }) => { React.useEffect(() => { onComplete(); }, [onComplete]); return null; } };
-});
+jest.mock('expo-image-picker', () => ({ launchImageLibraryAsync: jest.fn() }));
 
 const user = { userId: 'user-a' };
 const grant = (worker: 'none' | 'active' | 'revoked') => ({ kind: 'resolved', worker }) as const;
@@ -34,12 +32,15 @@ const heading = async (name: string) => {
     const menu = screen.queryByLabelText('Mở thanh bên');
     if (menu) {
       await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
-      await fireEvent.press(screen.getByText('Xem hồ sơ'));
+      await openAccountArea();
     }
   }
   return screen.findByRole('header', { name });
 };
 const press = async (name: string) => fireEvent.press(screen.getByRole('button', { name }));
+const openAccount = async () => fireEvent.press(await screen.findByRole('button', { name: /^Tài khoản .*đang dùng:/ }));
+const openModePicker = async () => { await openAccount(); await press('Chuyển chế độ'); await screen.findByRole('radio', { name: 'Khách hàng' }); };
+const openAccountArea = async () => { await openAccount(); await press('Tài khoản và đăng nhập'); await waitFor(() => expect(screen.queryByRole('button', { name: 'Tài khoản và đăng nhập' })).toBeNull()); };
 
 describe('cold start', () => {
   test('a guest can reach the existing guest shell without forced login', async () => {
@@ -354,41 +355,147 @@ describe('guest protected action', () => {
 
 
 describe('Horizon guest entry', () => {
-  test('intro leads through Welcome to Home and the sidebar', async () => {
+  test('guest opens Kael Home directly and can use the sidebar', async () => {
     await start({ session: null });
     expect(await screen.findByLabelText('Mở thanh bên')).toBeTruthy();
+    expect(screen.getByLabelText('Kael đang sẵn sàng')).toBeTruthy();
+    expect(screen.getByLabelText('Nhắn Kael')).toBeTruthy();
+    expect(screen.queryByLabelText('NestScout Horizon, đang khởi động')).toBeNull();
     await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
-    expect(await screen.findByText('Dịch vụ nhanh')).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText('Đóng thanh bên'));
-    expect(screen.queryByText('Dịch vụ nhanh')).toBeNull();
+    expect(await screen.findByText('Yêu cầu của tôi')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Đóng sidebar'));
+    expect(screen.queryByText('Yêu cầu của tôi')).toBeNull();
+  });
+
+  test('one account card shows the guest mode and opens the account actions', async () => {
+    await start({ session: null });
+    await screen.findByLabelText('Mở thanh bên');
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    expect(screen.getByRole('button', { name: 'Tài khoản Khách, đang dùng: Khách' })).toBeTruthy();
+    expect(screen.queryByText('Chế độ hoạt động')).toBeNull();
+    await openAccount();
+    expect(screen.getByRole('button', { name: 'Chuyển chế độ' })).toBeTruthy();
+    expect(screen.getByText('Hồ sơ cá nhân trong Cài đặt chưa được kết nối.')).toBeTruthy();
+    await press('Đóng bảng tài khoản');
+    expect(await screen.findByRole('button', { name: 'Tài khoản Khách, đang dùng: Khách' })).toBeTruthy();
   });
 
   test('guest Worker selection requires phone sign-in and does not grant Worker access', async () => {
     await start({ session: null, capability: grant('none') });
     await screen.findByLabelText('Mở thanh bên');
     await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
-    await fireEvent.press(screen.getByText('Thợ'));
+    await openModePicker();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Thợ' }));
     await heading('Sign in with your phone');
     await fireEvent.changeText(screen.getByLabelText('Mobile number'), '0912345678');
     await press('Send code');
     await heading('Enter the code');
     await fireEvent.changeText(screen.getByLabelText('One-time code'), '654321');
     await press('Verify code');
+    expect(await screen.findByText('Không thể chuyển sang chế độ Thợ vì tài khoản chưa có quyền.')).toBeTruthy();
     expect(await heading('Client mode')).toBeTruthy();
     expect(screen.queryByRole('header', { name: 'Worker mode' })).toBeNull();
     expect(screen.getByText('Worker mode is not available for this account.')).toBeTruthy();
+  });
+
+  test('the explicit Worker sign-in preserves the guest chat text and selected photo', async () => {
+    let finishPicking: ((result: ImagePicker.ImagePickerResult) => void) | undefined;
+    jest.mocked(ImagePicker.launchImageLibraryAsync).mockImplementationOnce(() => new Promise(resolve => { finishPicking = resolve; }));
+    await start({ session: null, capability: grant('active') });
+    await screen.findByLabelText('Nhắn Kael');
+    await fireEvent.press(screen.getByRole('button', { name: 'Đính kèm' }));
+    await fireEvent.changeText(screen.getByLabelText('Nhắn Kael'), 'Nước bị rò rỉ');
+    await act(async () => finishPicking?.({ canceled: false, assets: [{ uri: 'file:///draft-photo.png', width: 10, height: 10, type: 'image' }] }));
+    expect(await screen.findByLabelText('Ảnh đã chọn')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    await openModePicker();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Thợ' }));
+    await heading('Sign in with your phone');
+    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '0912345678');
+    await press('Send code');
+    await heading('Enter the code');
+    await fireEvent.changeText(screen.getByLabelText('One-time code'), '654321');
+    await press('Verify code');
+    await waitFor(() => expect(screen.getByLabelText('Nhắn Kael').props.value).toBe('Nước bị rò rỉ'));
+    expect(screen.getByLabelText('Ảnh đã chọn')).toBeTruthy();
+  });
+
+  test('backing out of Worker sign-in keeps the guest draft without enabling transfer for a later sign-in', async () => {
+    await start({ session: null, capability: grant('none') });
+    await screen.findByLabelText('Nhắn Kael');
+    await fireEvent.changeText(screen.getByLabelText('Nhắn Kael'), 'Bản nháp của khách');
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    await openModePicker();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Thợ' }));
+    await heading('Sign in with your phone');
+    await press('Back');
+    await waitFor(() => expect(screen.getByLabelText('Nhắn Kael').props.value).toBe('Bản nháp của khách'));
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    await openAccountArea();
+    await heading('NestScout');
+    await press('Sign in with phone');
+    await heading('Sign in with your phone');
+    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '0912345678');
+    await press('Send code');
+    await heading('Enter the code');
+    await fireEvent.changeText(screen.getByLabelText('One-time code'), '654321');
+    await press('Verify code');
+    await waitFor(() => expect(screen.getByLabelText('Nhắn Kael').props.value).toBe(''));
   });
 });
 
 
 describe('Horizon authenticated role selection', () => {
+  test('closing the mode picker leaves the current mode and draft untouched', async () => {
+    const fake = await start({ session: user, capability: grant('active') });
+    await screen.findByLabelText('Nhắn Kael');
+    await fireEvent.changeText(screen.getByLabelText('Nhắn Kael'), 'Bản nháp chưa gửi');
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    const before = fake.calls.capability;
+    await openModePicker();
+    await fireEvent.press(screen.getByRole('button', { name: 'Đóng bảng chọn chế độ' }));
+    expect(fake.calls.capability).toBe(before);
+    expect(screen.getByRole('button', { name: /^Tài khoản .*đang dùng: Khách hàng/ })).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Đóng sidebar'));
+    expect(screen.getByLabelText('Nhắn Kael').props.value).toBe('Bản nháp chưa gửi');
+  });
+
+  test('an unavailable permission check explains the failure and keeps the current mode', async () => {
+    let failing = false;
+    await start({ session: user, capability: async () => failing ? { kind: 'error', reason: 'unavailable' } : grant('active') });
+    await screen.findByLabelText('Mở thanh bên');
+    failing = true;
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    await openModePicker();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Thợ' }));
+    expect(await screen.findByText('Chưa thể kiểm tra quyền sử dụng chế độ Thợ. Vui lòng thử lại.')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Khách hàng' }).props.accessibilityState.checked).toBe(true);
+  });
+
+  test('cancelling while permission is checked does not switch after a late response', async () => {
+    let delayed = false;
+    let finish: ((result: ReturnType<typeof grant>) => void) | undefined;
+    await start({ session: user, capability: async () => delayed ? new Promise<ReturnType<typeof grant>>(resolve => { finish = resolve; }) : grant('active') });
+    await screen.findByLabelText('Mở thanh bên');
+    delayed = true;
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    await openModePicker();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Thợ' }));
+    expect(await screen.findByText('Đang kiểm tra quyền sử dụng chế độ Thợ…')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Đóng bảng chọn chế độ' }));
+    await act(async () => finish?.(grant('active')));
+    expect(screen.getByRole('button', { name: /^Tài khoản .*đang dùng: Khách hàng/ })).toBeTruthy();
+  });
   test.each(['none', 'revoked'] as const)('a %s Worker grant cannot open Worker from Horizon', async (worker) => {
     const fake = await start({ session: user, capability: grant(worker) });
     await screen.findByLabelText('Mở thanh bên');
     await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
-    await fireEvent.press(screen.getByText('Thợ'));
+    await openModePicker();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Thợ' }));
     await waitFor(() => expect(fake.calls.capability).toBeGreaterThan(1));
-    await fireEvent.press(screen.getByText('Xem hồ sơ'));
+    expect(await screen.findByText('Tài khoản này chưa có quyền sử dụng chế độ Thợ.')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Đóng bảng chọn chế độ' }));
+    await openAccountArea();
     expect(await heading('Client mode')).toBeTruthy();
     expect(screen.queryByRole('header', { name: 'Worker mode' })).toBeNull();
   });
@@ -397,10 +504,50 @@ describe('Horizon authenticated role selection', () => {
     const fake = await start({ session: user, capability: grant('active') });
     await screen.findByLabelText('Mở thanh bên');
     await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
-    await fireEvent.press(screen.getByText('Thợ'));
+    await openModePicker();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Thợ' }));
     await waitFor(() => expect(fake.storedMode()).toEqual({ userId: 'user-a', mode: 'worker' }));
-    await fireEvent.press(screen.getByText('Xem hồ sơ'));
+    await openAccountArea();
     expect(await heading('Worker mode')).toBeTruthy();
+  });
+
+  test('switching in both directions preserves the signed-in text and selected photo', async () => {
+    jest.mocked(ImagePicker.launchImageLibraryAsync).mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///same-account.png', width: 10, height: 10, type: 'image' }] });
+    const fake = await start({ session: user, capability: grant('active') });
+    await screen.findByLabelText('Nhắn Kael');
+    await fireEvent.changeText(screen.getByLabelText('Nhắn Kael'), 'Nội dung chưa gửi');
+    await fireEvent.press(screen.getByRole('button', { name: 'Đính kèm' }));
+    expect(await screen.findByLabelText('Ảnh đã chọn')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    await openModePicker();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Thợ' }));
+    await waitFor(() => expect(fake.storedMode()).toEqual({ userId: 'user-a', mode: 'worker' }));
+    await fireEvent.press(screen.getByLabelText('Đóng sidebar'));
+    expect(screen.getByLabelText('Nhắn Kael').props.value).toBe('Nội dung chưa gửi');
+    expect(screen.getByLabelText('Ảnh đã chọn')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    await openModePicker();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Khách hàng' }));
+    await waitFor(() => expect(fake.storedMode()).toEqual({ userId: 'user-a', mode: 'client' }));
+    await fireEvent.press(screen.getByLabelText('Đóng sidebar'));
+    expect(screen.getByLabelText('Nhắn Kael').props.value).toBe('Nội dung chưa gửi');
+    expect(screen.getByLabelText('Ảnh đã chọn')).toBeTruthy();
+  });
+
+  test('a protected draft is hidden while identity is unverified and returns after a successful recheck', async () => {
+    let valid = true;
+    await start({ session: user, capability: async () => valid ? grant('active') : { kind: 'unauthenticated' }, verifyIdentity: async () => valid ? { status: 'valid', identity: user } : { status: 'unreachable' } });
+    await screen.findByLabelText('Nhắn Kael');
+    await fireEvent.changeText(screen.getByLabelText('Nhắn Kael'), 'Bản nháp riêng tư');
+    valid = false;
+    await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
+    await openModePicker();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Thợ' }));
+    expect(await screen.findByText('Không thể mở bản nháp')).toBeTruthy();
+    expect(screen.queryByLabelText('Nhắn Kael')).toBeNull();
+    valid = true;
+    await fireEvent.press(screen.getByRole('button', { name: 'Thử xác minh lại' }));
+    await waitFor(() => expect(screen.getByLabelText('Nhắn Kael').props.value).toBe('Bản nháp riêng tư'));
   });
 });
 
@@ -410,9 +557,10 @@ test('Horizon conversation state is cleared when the account changes', async () 
   await screen.findByLabelText('Mở thanh bên');
   await fireEvent.changeText(screen.getByLabelText('Nhắn Kael'), 'Private guest message');
   await fireEvent.press(screen.getByLabelText('Gửi'));
-  expect(await screen.findByText('Private guest message')).toBeTruthy();
+  expect(await screen.findByText('Kael chưa được kết nối. Tin nhắn của bạn chưa được gửi.')).toBeTruthy();
+  expect(screen.getByLabelText('Nhắn Kael').props.value).toBe('Private guest message');
   await fireEvent.press(screen.getByLabelText('Mở thanh bên'));
-  await fireEvent.press(screen.getByText('Xem hồ sơ'));
+  await openAccountArea();
   await heading('NestScout');
   await press('Sign in with phone');
   await heading('Sign in with your phone');
@@ -423,5 +571,5 @@ test('Horizon conversation state is cleared when the account changes', async () 
   await press('Verify code');
   await screen.findByLabelText('Mở thanh bên');
   await screen.findByLabelText('Mở thanh bên');
-  expect(screen.queryByText('Private guest message')).toBeNull();
+  expect(screen.getByLabelText('Nhắn Kael').props.value).toBe('');
 });

@@ -1,39 +1,45 @@
-import { useCallback, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { horizonColors } from '@/theme/palette';
 import { horizonLayout } from '@/theme/layout';
-import { IntroSequence } from './intro-sequence';
+import { horizonColors } from '@/theme/palette';
 import { KaelHomeScreen } from './kael-home-screen';
+import type { ComposerImage } from './composer-media';
 import { Sidebar } from './sidebar';
-import { TransitionScreen } from './transition-screen';
-import { WelcomeScreen } from './welcome-screen';
+import { KaelHomeLoading } from './skeleton-layouts';
 
-type PreviewScreen = 'sequence' | 'welcome' | 'transition' | 'home';
+function useSimulatedLoading(active: boolean) {
+  const [previous, setPrevious] = useState(active);
+  const [done, setDone] = useState(false);
+  if (previous !== active) { setPrevious(active); setDone(false); }
+  useEffect(() => {
+    if (!active) return;
+    const timer = setTimeout(() => setDone(true), horizonLayout.skeleton.previewDuration);
+    return () => clearTimeout(timer);
+  }, [active]);
+  return active && !done;
+}
+
 export function HorizonPreview() {
-  const [screen, setScreen] = useState<PreviewScreen>('sequence');
-  const [replay, setReplay] = useState(0);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<{ id: string; role: 'user' | 'assistant'; text: string }[]>([]);
   const [drawer, setDrawer] = useState(false);
   const [worker, setWorker] = useState(false);
-  const finishSequence = useCallback(() => setScreen('home'), []);
-  const start = () => {
-    if (input.trim()) setMessages([{ id: 'preview-message', role: 'user', text: input.trim() }]);
-    setInput('');
-    setScreen('home');
+  const [conversationKey, setConversationKey] = useState(0);
+  const [composerError, setComposerError] = useState<string | null>(null);
+  const start = (images: readonly ComposerImage[]) => {
+    setComposerError(images.length > 0
+      ? 'Ảnh chưa được gửi vì chức năng phân tích ảnh chưa được kết nối.'
+      : 'Kael chưa được kết nối. Tin nhắn của bạn chưa được gửi.');
   };
-  const reset = () => { setMessages([]); setInput(''); setDrawer(false); setScreen('home'); };
+  const reset = () => { setMessages([]); setInput(''); setConversationKey(key => key + 1); setComposerError(null); setDrawer(false); };
+  const homeLoading = useSimulatedLoading(true);
+  const recentLoading = useSimulatedLoading(drawer);
+  if (homeLoading) return <SafeAreaProvider><KaelHomeLoading label="Đang tải Kael"/></SafeAreaProvider>;
   return <SafeAreaProvider><SafeAreaView style={{ flex: 1, backgroundColor: horizonColors.bg }}>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: horizonLayout.preview.controlGap, paddingVertical: horizonLayout.preview.controlPadding }}>
-      {(['sequence', 'welcome', 'transition', 'home'] as const).map(item => <Pressable key={item} accessibilityRole="button" onPress={() => { if (item === 'sequence') setReplay(value => value + 1); setScreen(item); }}><Text style={{ color: horizonColors.white }}>{item === 'sequence' ? 'Replay flow' : item === 'welcome' ? 'Welcome' : item === 'transition' ? 'Transition' : 'Kael Home'}</Text></Pressable>)}
-    </View>
     <View style={{ flex: 1 }}>
-      {screen === 'welcome' && <WelcomeScreen />}
-      {screen === 'transition' && <TransitionScreen />}
-      {(screen === 'home' || screen === 'sequence') && <View style={{ flex: 1 }} pointerEvents={screen === 'sequence' ? 'none' : 'auto'} accessibilityElementsHidden={screen === 'sequence'} importantForAccessibility={screen === 'sequence' ? 'no-hide-descendants' : 'auto'}><KaelHomeScreen input={input} onInput={setInput} onSubmit={start} onMenu={() => setDrawer(true)} onNew={reset} onService={service => setInput(service.suggestedMessage)} messages={messages} onAttach={() => setInput('Đính kèm')} onVoice={() => setInput('Giọng nói')} /></View>}
-      {screen === 'sequence' && <IntroSequence key={replay} onComplete={finishSequence} />}
+      <KaelHomeScreen input={input} onInput={value => { setInput(value); setComposerError(null); }} onSubmit={start} onMenu={() => setDrawer(true)} onNew={reset} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} />
     </View>
-    <Sidebar visible={drawer} onClose={() => setDrawer(false)} workerMode={worker} onWorkerToggle={() => setWorker(value => !value)} onNavigate={id => { if (id === 'new' || id === 'home') reset(); else { setInput(id); setDrawer(false); } }} />
+    <Sidebar previewName="Nguyễn Minh" recentLoading={recentLoading} visible={drawer} onClose={() => setDrawer(false)} mode={worker ? 'worker' : 'client'} modePending={false} modeNotice={null} onModeSelect={mode => setWorker(mode === 'worker')} onModeCancel={() => undefined} onDismissModeNotice={() => undefined} onNavigate={id => { if (id === 'new' || id === 'home') reset(); else if (id === 'profile') { setDrawer(false); setComposerError('Tài khoản chưa được kết nối trong bản xem trước.'); } else { setInput(id); setDrawer(false); } }} />
   </SafeAreaView></SafeAreaProvider>;
 }

@@ -4,7 +4,7 @@ import { root } from './tool-path.mjs';
 import { git, repositoryFiles, indexEntries, readBlobs, checkHookIndex, headRevision } from './repository-files.mjs';
 import { generatedFiles } from './check-hygiene.mjs';
 
-const binaryFile = /\.(?:png|jpe?g|zip|gz|bundle|pdf)$/i;
+const binaryFile = /\.(?:png|jpe?g|mp4|zip|gz|bundle|pdf)$/i;
 
 export function formatViolations(content) {
   if (content.includes(0)) return [];

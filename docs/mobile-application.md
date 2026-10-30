@@ -378,10 +378,83 @@ $env:EXPO_PUBLIC_HORIZON_PREVIEW = '1'
 npm run start --workspace apps/mobile -- --web --localhost --port 8085
 ```
 
-Open `http://localhost:8085` and use the preview controls to inspect the passive Welcome,
-Transition, and Kael Home. Replay flow runs the automatic
-Welcome-to-Transition-to-Home sequence; the individual buttons hold a scene for
-inspection. The Welcome background is the cleaned mountain artwork supplied in the
-Horizon Intro Flow source package. The sidebar role switch is a visual demonstration; it does
-not change an account or grant access. The preview runs only in development and
-uses local demo content. Browser rendering does not verify the native iOS runtime.
+Open `http://localhost:8085` to view the chat screen directly. The
+sidebar account card uses a clearly labeled sample name in this preview. Its
+mode picker is a visual demonstration; it does not change an account or grant
+access. Profile editing and saved profile data are not connected; the account
+sheet states that limitation and retains access to the existing account shell.
+
+In the application, selecting Worker from a guest session starts phone sign-in;
+an authenticated Worker request rechecks the existing access capability. A
+cancelled request cannot switch modes when a late check returns. Horizon draft
+text and selected images are held in memory, remain with the current account,
+and are transferred from a guest only when the guest starts the Worker sign-in
+from the mode picker. An unrelated sign-in, account change or sign-out clears
+the prior account's Horizon draft. Browser object URLs are released when images
+are removed or their owning draft is cleared. Drafts do not survive an app
+restart. Chat and image analysis are not connected; an attempted send preserves
+the draft and reports that it was not sent.
+Browser rendering does not verify the native iOS runtime.
+
+### Liquid Glass controls
+
+The three controls in the chat header (sidebar button, new-conversation and
+options pill), the conversation options menu and the three sidebar controls
+(search button, floating new-conversation capsule and account button) are the
+only glass surfaces in the Horizon flow. Glass is reserved for the control and navigation layer; list
+rows, chat bubbles, the composer and every other content surface stay solid,
+and glass is never stacked on glass. The recipe follows the sibling HomeServices
+prototype (`GlassSurface`, `LiquidControlButton`, `LiquidPillButton`,
+`LiquidPopUpButton`) adapted to this workspace's tokens in `src/theme`.
+
+`GlassSurface` renders one of three paths. Where `expo-glass-effect` reports both
+`isLiquidGlassAvailable()` and `isGlassEffectAPIAvailable()` it draws a native
+`GlassView` with the regular style and no custom tint, so the system owns the
+refraction and the person's Liquid Glass setting. Only the primary action, the
+sidebar new-conversation capsule, uses the `accent` tone: a mint `tintColor` on
+the native view, a translucent mint fill with a soft shadow on the fallback and
+a solid mint surface under Reduce Transparency. Otherwise it draws a
+translucent surface with a frost highlight and a gradient rim (react-native-svg);
+on web a CSS backdrop filter supplies the blur. Reduce Transparency replaces
+glass with a solid neutral surface on every path, and Reduce Motion replaces the
+press and menu springs with short fades.
+Opacity is never animated on a glass surface because it flattens the native
+effect; the menu fades its content and the scrim instead.
+
+The press spring (stiffness 320, damping 22), the menu pop spring (stiffness
+200, damping 14) and the control sizes live in `horizonLayout.glass`; the fills,
+shadows and gradient stops live in `horizonColors.liquid`. The native `GlassView`
+path, Reduce Transparency on a device and the iOS 26 or later refraction are NOT
+VERIFIED: only the web fallback and Jest were exercised. There is no `expo-blur`
+fallback, so Android and older iOS show the translucent surface without blur.
+
+### Skeleton loading states
+
+A skeleton is a placeholder shaped like the content that is still loading: grey
+blocks for avatars and text lines with a soft mint highlight sweeping across
+them. It replaces a spinner only while something is genuinely loading and never
+stands in for an error or for invented data.
+
+Two places use it. The first-open screen of the Horizon home flow renders
+`KaelHomeLoading` while the access state is `bootstrapping` or `resolving`
+(`EntryRedirect` takes a `pending` render prop and keeps its original
+accessibility label, so the busy announcement is unchanged). Its blocks match the
+real header, the Kael avatar position, the chat area and the composer, so the
+screen does not jump when the home screen replaces it. The sidebar renders
+`RecentSkeleton` in the "Gần đây" group while `recentLoading` is true. The other
+sidebar rows are static content and are never skeletonised.
+
+`Skeleton` is the labelled root (progress bar role, `aria-busy`) and owns one
+shared sweep so every block moves in step; `SkeletonBlock` is a single block.
+Skeletons are content, not controls, so they are solid and never glass. With
+Reduce Motion the sweep is stopped and the blocks stay still. Sizes and the sweep
+timing live in `horizonLayout.skeleton`; the base colour and highlight stops live
+in `horizonColors.skeleton`.
+
+No conversation history source exists yet, so the real sidebar never sets
+`recentLoading`. Only the design preview (`HorizonPreview`) simulates the load,
+for `horizonLayout.skeleton.previewDuration` after the preview opens and every
+time the sidebar opens, so the states can be reviewed. When a history query is
+added, its pending flag should drive `recentLoading`. The preview timer is not a
+real loading signal. On a device, the sweep and Reduce Motion are NOT VERIFIED:
+only the web preview and Jest were exercised.
