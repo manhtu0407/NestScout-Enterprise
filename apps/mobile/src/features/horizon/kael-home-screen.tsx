@@ -60,12 +60,12 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messag
         </GlassPill>
       </View>
     </View>
-    {messages.length === 0 ? <View style={styles.empty} /> : <ScrollView style={styles.chat} contentContainerStyle={styles.chatContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.chat} contentContainerStyle={styles.chatContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       {messages.map(m => <View key={m.id} style={[styles.bubble, m.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
         {m.role === 'assistant' && <KaelOrb compact size={36}/>}
         <Text style={styles.bubbleText}>{m.text}</Text>
       </View>)}
-    </ScrollView>}
+    </ScrollView>
     <View style={styles.footer}><ChatComposer key={conversationKey} value={input} onChange={value => { setMenuNotice(null); onInput(value); }} onSubmit={onSubmit} error={composerError ?? menuNotice} onMediaChange={() => { setMenuNotice(null); onClearComposerError(); }} initialImages={draftImages} onImagesChange={onDraftImagesChange} mediaExternallyManaged={Boolean(onDraftImagesChange)} locked={draftLocked}/>
       <Text style={styles.disclaimer}>Kael có thể mắc sai sót. Hãy kiểm tra thông tin quan trọng.</Text>
     </View>
@@ -79,7 +79,6 @@ const styles = StyleSheet.create({
   slotStart: { flex: 1, flexDirection: 'row', justifyContent: 'flex-start' },
   slotEnd: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end' },
   lifted: { position: 'relative', top: -horizonLayout.kaelHomeScreen.controlLift },
-  empty: { flex: 1 },
   footer: { paddingBottom: horizonLayout.kaelHomeScreen.footerPaddingBottom },
   disclaimer: { color: horizonColors.kaelHomeScreen.disclaimerColor, fontSize: horizonLayout.kaelHomeScreen.disclaimerFontSize, lineHeight: horizonLayout.kaelHomeScreen.disclaimerLineHeight, textAlign: 'center', marginTop: horizonLayout.kaelHomeScreen.disclaimerMarginTop },
   chat: { flex: 1 },
