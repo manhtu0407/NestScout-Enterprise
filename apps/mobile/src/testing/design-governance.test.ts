@@ -32,7 +32,8 @@ function literals(source: string, filePath = '', exceptions: readonly StyleExcep
           if (node.moduleSpecifier.text === 'react-native' && (element.propertyName?.text ?? element.name.text) === 'StyleSheet') sheetNames.add(element.name.text);
           if (node.moduleSpecifier.text.startsWith('@/theme/')) {
             const original = element.propertyName?.text ?? element.name.text;
-            if (node.moduleSpecifier.text === '@/theme/layout' && ['layout', 'typography'].includes(original)) themeNames.add(element.name.text);
+            if ((node.moduleSpecifier.text === '@/theme/layout' && ['layout', 'typography', 'horizonLayout'].includes(original))
+              || (node.moduleSpecifier.text === '@/theme/palette' && original === 'horizonColors')) themeNames.add(element.name.text);
             else if (original !== 'usePalette') unreviewedThemeNames.add(element.name.text);
           }
         }
@@ -183,6 +184,11 @@ test.each([
 test('guard accepts theme values, neutral styles and non-style text', () => {
   expect(literals("import { layout, typography } from '@/theme/layout'; const copy = 'red'; <View testID=\"red\" style={{ color: palette.text, backgroundColor: 'transparent', borderColor: PlatformColor('separator'), padding: 0.0, opacity: 1, gap: layout.screen.gap, ...typography.body, flex: 1 }} />"))
     .toEqual([]);
+});
+
+test('guard accepts the scoped Horizon palette and continues rejecting unreviewed theme exports', () => {
+  expect(literals("import { horizonColors as colors } from '@/theme/palette'; <View style={{ backgroundColor: colors.bg }} />")).toEqual([]);
+  expect(literals("import { arbitrary } from '@/theme/palette'; <View style={{ backgroundColor: arbitrary.bg }} />")).toEqual(['backgroundColor: arbitrary.bg']);
 });
 
 test('a reviewed exception is restricted to its exact file, property and value', () => {

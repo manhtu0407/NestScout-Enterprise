@@ -22,7 +22,10 @@ jest.mock('@/features/access/auth/use-phone-sign-in', () => ({
   otpLength: 6,
   usePhoneSignIn: () => ({ busy: false, submitPhone: jest.fn(), submitCode: jest.fn(), cancel: jest.fn(), resend: jest.fn(), resendSeconds: 0 }),
 }));
-jest.mock('@/features/access/state/access-provider', () => ({ useAccess: () => ({ otpPhone: '+84912345678' }) }));
+jest.mock('@/features/access/state/access-provider', () => {
+  const cancelHorizonTransfer = jest.fn();
+  return { useAccess: () => ({ otpPhone: '+84912345678', cancelHorizonTransfer }) };
+});
 jest.mock('react-native-safe-area-context', () => ({ SafeAreaView: jest.requireActual<typeof import('react-native')>('react-native').View }));
 
 afterEach(() => { mockScheme = 'light'; });

@@ -1,8 +1,17 @@
 import { act, render, screen, waitFor } from '@testing-library/react-native';
-import { AppState, Text } from 'react-native';
+import { useEffect } from 'react';
+import { AppState, Platform, Text } from 'react-native';
 
 import { createFakeAccessServices, type FakeOptions } from '../testing/fake-access-services';
-import { AccessProvider, useAccess } from './access-provider';
+import { AccessProvider, useAccess, type AccessApi } from './access-provider';
+
+let draftAccess: AccessApi;
+
+function DraftProbe() {
+  const access = useAccess();
+  useEffect(() => { draftAccess = access; });
+  return null;
+}
 
 function Probe() {
   const access = useAccess();
@@ -37,6 +46,33 @@ async function mount(options: FakeOptions) {
 const phase = () => screen.getByTestId('phase').props.children as string;
 
 describe('access provider lifecycle', () => {
+  test('web draft image URLs survive the permitted handoff and are released on removal or account change', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(Platform, 'OS');
+    if (descriptor?.get) jest.spyOn(Platform, 'OS', 'get').mockReturnValue('web');
+    else jest.replaceProperty(Platform, 'OS', 'web');
+    const revoke = jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const fake = createFakeAccessServices({ session: null });
+    const view = await render(<AccessProvider services={fake.services}><DraftProbe /></AccessProvider>);
+    await waitFor(() => expect(draftAccess.phase).toBe('guest'));
+    const secondImage = { uri: 'blob:https://example.test/b' };
+    const draft = { text: 'Bản nháp', images: [{ uri: 'blob:https://example.test/a' }, secondImage] };
+    await act(async () => draftAccess.updateHorizonDraft(null, draft));
+    expect(revoke).not.toHaveBeenCalled();
+    const remaining = { ...draft, images: [secondImage] };
+    await act(async () => draftAccess.updateHorizonDraft(null, remaining));
+    expect(revoke).toHaveBeenCalledWith('blob:https://example.test/a');
+    await act(async () => draftAccess.prepareHorizonDraftTransfer(remaining));
+    await act(async () => fake.emit({ type: 'signed_in', identity: { userId: 'user-a' } }));
+    await waitFor(() => expect(draftAccess.identity).toBe('verified'));
+    expect(draftAccess.horizonDraft).toEqual(remaining);
+    expect(revoke).toHaveBeenCalledTimes(1);
+    await act(async () => fake.emit({ type: 'signed_in', identity: { userId: 'user-b' } }));
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:https://example.test/b'));
+    expect(draftAccess.horizonDraft).toBeNull();
+    await view.unmount();
+    expect(revoke).toHaveBeenCalledTimes(2);
+  });
+
   test('releases the auth subscription and app-state listener on unmount', async () => {
     const subscribe = jest.fn(() => jest.fn());
     const fake = createFakeAccessServices({ session: null });

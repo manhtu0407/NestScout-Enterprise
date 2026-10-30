@@ -6,7 +6,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { parseDocument } from 'yaml';
 import { root } from './tool-path.mjs';
-import { git } from './repository-files.mjs';
+import { git, repositoryFiles } from './repository-files.mjs';
 import { checkPath, commentRecords, sourceComments, hasCommentGrammar } from './check-hygiene.mjs';
 import {
   commentCategory, commentViolations, isMandatoryComment, normalizeComment,
@@ -417,12 +417,25 @@ test('invalid UTF-8 and malformed sources fail instead of being skipped', () => 
   assert.throws(() => checkStagedComments(repository), /Invalid JavaScript in scripts\/example\.mjs/);
 });
 
+function deliveredCommentFiles(repository) {
+  return repositoryFiles(repository).filter(record => hasCommentGrammar(record.file))
+    .map(record => ({ file: record.file, state: record.state, text: record.content.toString('utf8') }));
+}
+
+test('delivered source inspection retains index content after a working file is deleted', () => {
+  const { repository } = repositoryFixture({ 'scripts/deleted.mjs': 'export const value = 1; // prohibited\n' });
+  rmSync(path.join(repository, 'scripts/deleted.mjs'));
+  const records = deliveredCommentFiles(repository).filter(record => record.file === 'scripts/deleted.mjs');
+  assert.equal(records.length, 1);
+  assert.equal(records[0].state, 'index');
+  assert.notDeepEqual(violations(records[0].file, records[0].text), []);
+});
+
 test('the delivered repository sources contain no prohibited comment and only the verified mandatory ones', () => {
-  const files = git(root, ['ls-files', '-z']).split('\0').filter(file => file && hasCommentGrammar(file));
+  const files = deliveredCommentFiles(root);
   assert.ok(files.length > 40);
   const mandatory = [];
-  for (const file of files) {
-    const text = readFileSync(path.join(root, file), 'utf8');
+  for (const { file, text } of files) {
     assert.deepEqual(violations(file, text, 'repository'), [], file);
     for (const record of commentRecords(file, text)) {
       assert.equal(text.slice(record.start, record.start + record.text.length), record.text, file);

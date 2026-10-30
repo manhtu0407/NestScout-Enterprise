@@ -34,6 +34,9 @@ const approvedLogo = Object.freeze({
   sha256: 'b4dbdd2eb0c742e36f61b41f87744f32f709cbdfc4441c93f17a494a87fde446',
 });
 
+const mobileAssetPath = /^apps\/mobile\/assets\/[a-z][a-z0-9]*(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\.(?:png|jpg|jpeg|webp|json|mp4)$/;
+const prohibitedAssetWords = new Set(['final', 'latest', 'new', 'updated', 'copy', 'backup', 'version']);
+
 export const generatedFiles = Object.freeze(['supabase/database.types.ts']);
 
 export function checkPath(file, artifacts = []) {
@@ -41,6 +44,11 @@ export function checkPath(file, artifacts = []) {
     throw new Error(`Unsafe repository path: ${JSON.stringify(file)}`);
   }
   if (fixedPaths.has(file) || file === approvedLogo.path) return;
+  if (mobileAssetPath.test(file)) {
+    const parts = path.posix.basename(file).split('.')[0].split('-');
+    if (parts.some(part => prohibitedAssetWords.has(part) || /^(?:v|version)?[0-9]+$/.test(part) || /^[0-9]+(?:x|p)$/.test(part))) throw new Error(`Prohibited mobile asset name: ${JSON.stringify(file)}`);
+    return;
+  }
   if (/\.(?:pdf|zip)$/i.test(file)) {
     if (!new RegExp(`^docs/artifacts/${word}\\.(?:pdf|zip)$`).test(file) || !artifacts.some(item => item.path === file)) {
       throw new Error(`Unregistered permanent artifact: ${JSON.stringify(file)}`);
@@ -360,11 +368,17 @@ export function checkHygiene(repository = root) {
       if (!files.some(item => item.file === required && item.state === state)) throw new Error(`Missing ${state} attribution configuration: ${required}`);
     }
     const seen = new Set();
+    const assetNames = new Set();
     for (const { file, content } of files.filter(item => item.state === state)) {
       checkPath(file, artifacts);
       const folded = file.toLowerCase();
       if (seen.has(folded)) throw new Error(`Case-colliding repository path: ${JSON.stringify(file)}`);
       seen.add(folded);
+      if (mobileAssetPath.test(file)) {
+        const identity = folded.replace(/\.[^.]+$/, '');
+        if (assetNames.has(identity)) throw new Error(`Colliding mobile asset name: ${JSON.stringify(file)}`);
+        assetNames.add(identity);
+      }
       if (inspected.get(file)?.equals(content)) continue;
       if (file === approvedLogo.path) {
         if (createHash('sha256').update(content).digest('hex') !== approvedLogo.sha256) {
@@ -384,6 +398,15 @@ export function checkHygiene(repository = root) {
         throw new Error(`docs/processes/.gitkeep must be exactly 0 bytes: ${state}`);
       }
       if (hasArtifactSignature(content)) throw new Error(`PDF/ZIP content requires its registered artifact extension: ${state} ${file}`);
+      if (mobileAssetPath.test(file) && /\.(?:png|jpg|jpeg|webp|mp4)$/.test(file)) {
+        const valid = file.endsWith('.mp4') ? content.subarray(4, 8).toString('ascii') === 'ftyp'
+          : file.endsWith('.png') ? content.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+          : /\.jpe?g$/.test(file) ? content.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex'))
+            : content.subarray(0, 4).toString('ascii') === 'RIFF' && content.subarray(8, 12).toString('ascii') === 'WEBP';
+        if (!valid) throw new Error(`Invalid mobile image content: ${state} ${file}`);
+        inspected.set(file, content);
+        continue;
+      }
       const text = new TextDecoder('utf-8', { fatal: true }).decode(content);
       if (text.includes('\0')) throw new Error(`Unexpected binary content: ${JSON.stringify(file)}`);
       if (file.endsWith('.json')) parseConfiguration(JSON.parse, text, `${state} ${file}`);

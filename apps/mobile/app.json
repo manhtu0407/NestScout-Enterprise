@@ -5,8 +5,8 @@
     "version": "0.0.0",
     "scheme": "nestscout",
     "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
-    "platforms": ["ios"],
-    "plugins": ["expo-router"]
+    "userInterfaceStyle": "light",
+    "platforms": ["ios", "web"],
+    "plugins": ["expo-router", ["expo-image-picker", { "photosPermission": "NestScout cần quyền truy cập ảnh để bạn chọn ảnh đính kèm.", "cameraPermission": false, "microphonePermission": false }]]
   }
 }
