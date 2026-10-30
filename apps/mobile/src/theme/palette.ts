@@ -38,7 +38,7 @@ export function usePalette(): Palette {
 
 export const horizonColors = {
   sidebarList: {
-    pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', accent: '#91E5D6', onAccent: '#0B0F14',
+    pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', accent: '#91E5D6', onAccent: '#0B0F14', badge: '#11161C', onBadge: '#FFFFFF',
   },
   kaelAvatar: { background: '#FFFFFF', border: '#E3E9EE', shadow: '#4F7482', ring: 'rgba(255,255,255,0.74)' },
   chatComposer: {
@@ -46,11 +46,11 @@ export const horizonColors = {
     mediaRemoveSurface: '#DDE1E6',
     errorText: '#C0262D',
     surfaceBorder: 'rgba(60,60,67,0.16)',
-    focusedSurfaceBorder: 'rgba(13,167,151,0.90)',
-    surfaceShadow: '0 0 0 3px rgba(60,60,67,0.03), 0 6px 22px rgba(60,60,67,0.10)',
+    surfaceShadow: '0 2px 12px rgba(60,60,67,0.08)',
     inputText: '#0B0F14',
     placeholder: '#8A8A90',
-    mediaIcon: '#0B0F14',
+    mediaIcon: '#1C2127',
+    voiceIcon: '#4A525C',
     idleSendSurface: 'rgba(118,118,128,0.16)',
     idleSendBorder: 'rgba(60,60,67,0.06)',
     idleSendIcon: '#8E8E93',
@@ -71,7 +71,9 @@ export const horizonColors = {
     controlShadow: '0 8px 18px rgba(20,73,66,0.08), inset 0 1px 0 rgba(255,255,255,0.40)',
     sheetShadow: '0 18px 38px rgba(20,73,66,0.14), inset 0 1px 0 rgba(255,255,255,0.40)',
     pressHighlight: 'rgba(60,60,67,0.08)',
-    tint: { neutral: undefined, accent: '#91E5D6' },
+    tint: { neutral: undefined, accent: '#91E5D6', light: '#FFFFFF' },
+    lightFill: 'rgba(255,255,255,0.97)',
+    lightShadow: '0 10px 26px rgba(20,30,40,0.16), inset 0 1px 0 rgba(255,255,255,0.9)',
     accentFill: 'rgba(145,229,214,0.62)',
     accentSolid: '#91E5D6',
     accentShadow: '0 10px 22px rgba(20,120,105,0.20), inset 0 1px 0 rgba(255,255,255,0.45)',
@@ -93,6 +95,23 @@ export const horizonColors = {
       { offset: 0.5, color: '#91E5D6', opacity: 0.42 },
       { offset: 1, color: '#91E5D6', opacity: 0 },
     ],
+  },
+  recentSession: {
+    activeFill: 'rgba(118,118,128,0.12)', busyText: '#4A525C', actionIcon: '#1C2127',
+  },
+  requestsScreen: {
+    tabsFill: 'rgba(118,118,128,0.12)', indicator: '#FFFFFF', indicatorShadow: '0 1px 4px rgba(0,0,0,0.12)',
+    tabText: '#5B6672', tabTextActive: '#11161C', cardFill: '#F5F6F8', tileFill: '#FFFFFF',
+    chipFill: '#11161C', chipText: '#FFFFFF', emptyIcon: '#8A8A90',
+  },
+  accountSheet: {
+    handle: 'rgba(60,60,67,0.22)', closeFill: 'rgba(118,118,128,0.12)', closeFocus: 'rgba(118,118,128,0.24)',
+    avatarFill: '#ECEEF1', avatarRing: '#FFFFFF', avatarInitial: '#11161C',
+    chipFill: 'rgba(118,118,128,0.12)', chipText: '#3C4650',
+    cardFill: '#F5F6F8', tileFill: '#FFFFFF', separator: 'rgba(60,60,67,0.10)', rowActive: 'rgba(60,60,67,0.07)',
+  },
+  composerMenu: {
+    scrim: 'rgba(0,0,0,0.06)', pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', detail: '#8A8A90',
   },
   conversationMenu: {
     scrim: 'rgba(0,0,0,0.12)', pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', title: '#6B7683', danger: '#D4322C',
@@ -122,6 +141,7 @@ export const horizonColors = {
     pillTextColor: '#FFFFFF',
   },
   modePicker: {
+    popoverScrim: 'rgba(0,0,0,0.12)', popoverFill: '#FFFFFF', popoverShadow: '0 8px 28px rgba(0,0,0,0.16)', popoverPressed: 'rgba(118,118,128,0.12)', optionIcon: '#1C2127', popoverCheck: '#11161C',
     rowSurface: '#F2F4F7',
     sheetSurface: '#FFFFFF',
     iconSurface: '#E3F5F2',

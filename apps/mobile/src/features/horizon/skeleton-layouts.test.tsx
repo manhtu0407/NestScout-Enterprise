@@ -10,7 +10,7 @@ afterEach(() => jest.restoreAllMocks());
 const initialMetrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, bottom: 0, left: 0, right: 0 } };
 
 function renderSidebar(recentLoading?: boolean) {
-  return render(<SafeAreaProvider initialMetrics={initialMetrics}><Sidebar visible onClose={jest.fn()} onNavigate={jest.fn()} mode="client" modePending={false} modeNotice={null} onModeSelect={jest.fn()} onModeCancel={jest.fn()} onDismissModeNotice={jest.fn()} previewName="Nguyễn Minh" recentLoading={recentLoading}/></SafeAreaProvider>);
+  return render(<SafeAreaProvider initialMetrics={initialMetrics}><Sidebar visible onClose={jest.fn()} onNavigate={jest.fn()} mode="client" modePending={false} modeNotice={null} onModeSelect={jest.fn()} onModeCancel={jest.fn()} onDismissModeNotice={jest.fn()} profileName="Nguyễn Minh" recentLoading={recentLoading}/></SafeAreaProvider>);
 }
 
 test('a skeleton announces itself as a busy progress indicator with its label', async () => {

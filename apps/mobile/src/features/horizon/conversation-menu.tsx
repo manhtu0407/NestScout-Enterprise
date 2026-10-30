@@ -35,7 +35,7 @@ export function ConversationMenu({ title, items, onClose }: Props) {
     if (leaving.current) return;
     leaving.current = true;
     animation.current?.stop();
-    const exit = Animated.timing(progress, { toValue: 0, duration: reduceMotion ? glass.reducedDuration : glass.exitDuration, easing: Easing.in(Easing.cubic), useNativeDriver: true });
+    const exit = Animated.timing(progress, { toValue: 0, duration: reduceMotion ? glass.reducedDuration : glass.exitDuration, easing: Easing.bezier(0.23, 1, 0.32, 1), useNativeDriver: true });
     animation.current = exit;
     exit.start(({ finished }) => { if (finished && alive.current) { onClose(); action?.(); } });
   };

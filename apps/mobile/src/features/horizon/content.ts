@@ -17,17 +17,15 @@ export const sidebarGroups: readonly { title: string; items: readonly SidebarIte
     items: [
       { id: 'requests', title: 'Yêu cầu của tôi', icon: 'requests' },
       { id: 'quotes', title: 'Báo giá', icon: 'receipt' },
-      { id: 'tasks', title: 'Công việc đang xử lý', icon: 'briefcase' },
-      { id: 'history', title: 'Lịch sử', icon: 'history' },
-      { id: 'favorites', title: 'Yêu thích', icon: 'heart' },
+      { id: 'saved', title: 'Thợ đã lưu', icon: 'heart' },
     ],
   },
   {
     title: 'Hỗ trợ',
     items: [
       { id: 'notifications', title: 'Thông báo', icon: 'bell' },
-      { id: 'settings', title: 'Cài đặt', icon: 'gear' },
       { id: 'help', title: 'Trợ giúp', icon: 'help' },
+      { id: 'settings', title: 'Cài đặt', icon: 'gear' },
     ],
   },
 ];
@@ -36,9 +34,7 @@ export const screenTitles: Record<string, string> = {
   search: 'Tìm kiếm',
   requests: 'Yêu cầu của tôi',
   quotes: 'Báo giá',
-  tasks: 'Công việc đang xử lý',
-  history: 'Lịch sử',
-  favorites: 'Yêu thích',
+  saved: 'Thợ đã lưu',
   notifications: 'Thông báo',
   settings: 'Cài đặt',
   help: 'Trợ giúp',

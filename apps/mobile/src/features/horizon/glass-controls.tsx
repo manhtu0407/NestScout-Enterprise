@@ -1,5 +1,5 @@
 import { Animated, Pressable, StyleSheet } from 'react-native';
-import type { StyleProp, ViewStyle } from 'react-native';
+import type { PressableProps, StyleProp, ViewStyle } from 'react-native';
 import type { GlassTone } from './glass-surface';
 import type { ReactNode } from 'react';
 import { horizonLayout } from '@/theme/layout';
@@ -28,6 +28,14 @@ export function GlassCapsuleButton({ label, onPress, radius, tone = 'neutral', c
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} onPressIn={feedback.pressIn} onPressOut={feedback.pressOut}>
       <GlassSurface variant="control" radius={radius} tone={tone} interactive style={style}>{children}</GlassSurface>
     </Pressable>
+  </Animated.View>;
+}
+
+export function PressScale({ children, style, wrapperStyle, ...rest }: Omit<PressableProps, 'style'> & { children: ReactNode; style?: StyleProp<ViewStyle>; wrapperStyle?: StyleProp<ViewStyle> }) {
+  const { reduceMotion } = useGlassAccessibility();
+  const feedback = usePressFeedback(reduceMotion);
+  return <Animated.View style={[wrapperStyle, { transform: [{ scale: feedback.scale }] }]}>
+    <Pressable {...rest} style={style} onPressIn={feedback.pressIn} onPressOut={feedback.pressOut}>{children}</Pressable>
   </Animated.View>;
 }
 

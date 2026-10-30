@@ -19,7 +19,7 @@ export function Skeleton({ label, style, children }: SkeletonProps) {
   const [sweep] = useState(() => new Animated.Value(0));
   useEffect(() => {
     if (reduceMotion) return;
-    const loop = Animated.loop(Animated.timing(sweep, { toValue: 1, duration: metrics.shimmerDuration, easing: Easing.inOut(Easing.quad), useNativeDriver: true }));
+    const loop = Animated.loop(Animated.timing(sweep, { toValue: 1, duration: metrics.shimmerDuration, easing: Easing.linear, useNativeDriver: true }));
     loop.start();
     return () => { loop.stop(); sweep.setValue(0); };
   }, [reduceMotion, sweep]);

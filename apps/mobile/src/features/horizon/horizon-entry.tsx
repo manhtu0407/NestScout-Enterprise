@@ -9,6 +9,7 @@ import { screenTitles } from './content';
 import { Sidebar } from './sidebar';
 import { Icon } from './icon';
 import { KaelHomeScreen } from './kael-home-screen';
+import { RequestsScreen } from './requests-screen';
 import type { ComposerImage } from './composer-media';
 import { KaelHomeLoading } from './skeleton-layouts';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
@@ -31,6 +32,7 @@ export function HorizonEntry() {
   const imagesRef = useRef(draftImages);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [placeholder, setPlaceholder] = useState('');
+  const [sectionId, setSectionId] = useState('');
   const [conversationKey, setConversationKey] = useState(0);
   const [composerError, setComposerError] = useState<string | null>(null);
 
@@ -63,6 +65,7 @@ export function HorizonEntry() {
       newConversation();
       return;
     }
+    setSectionId(id);
     setPlaceholder(screenTitles[id] ?? id);
     setScreen('placeholder');
   }, [access.phase, newConversation, router, setScreen]);
@@ -74,11 +77,12 @@ export function HorizonEntry() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {access.notice && <View accessibilityLiveRegion="polite" style={styles.notice}>
-          <Text style={styles.noticeText}>{access.notice === 'worker_unavailable' ? 'Không thể chuyển sang chế độ Thợ vì tài khoản chưa có quyền.' : 'Chưa thể xác minh quyền Thợ. Bạn có thể thử lại.'}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo chế độ" onPress={access.dismissNotice} style={styles.noticeAction}><Icon name="close" size={18}/></Pressable>
+          <Text style={styles.noticeText}>{access.notice === 'worker_unavailable' ? 'Không thể chuyển sang vai trò Thợ vì tài khoản chưa có quyền.' : 'Chưa thể xác minh quyền Thợ. Bạn có thể thử lại.'}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo vai trò" onPress={access.dismissNotice} style={styles.noticeAction}><Icon name="close" size={18}/></Pressable>
         </View>}
         {screen === 'home' && <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={() => setDrawerOpen(true)} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>}
-        {screen === 'placeholder' && <View style={styles.placeholder}>
+        {screen === 'placeholder' && sectionId === 'requests' && <RequestsScreen onBack={() => setScreen('home')}/>}
+        {screen === 'placeholder' && sectionId !== 'requests' && <View style={styles.placeholder}>
           <Pressable style={styles.back} onPress={() => setScreen('home')} accessibilityLabel="Quay về"><Icon name="back" /></Pressable>
           <Text style={styles.placeholderTitle}>{placeholder}</Text>
           <Text style={styles.placeholderBody}>Cấu trúc điều hướng đã hoạt động. Nội dung của màn này sẽ được xây dựng trong giai đoạn triển khai sản phẩm.</Text>
@@ -86,12 +90,12 @@ export function HorizonEntry() {
       </KeyboardAvoidingView>
     </SafeAreaView>
     <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
-      if (access.phase === 'guest' && mode === 'worker') {
+      if (access.phase === 'guest') {
         access.prepareHorizonDraftTransfer({ text: inputRef.current, images: imagesRef.current });
-        access.setIntent('worker');
+        access.setIntent(mode);
         setDrawerOpen(false);
         router.push('/phone');
-      } else if (access.phase !== 'guest') access.switchMode(mode);
+      } else access.switchMode(mode);
     }} onModeCancel={access.cancelModeRequest} onDismissModeNotice={access.dismissNotice}/>
   </>;
 }

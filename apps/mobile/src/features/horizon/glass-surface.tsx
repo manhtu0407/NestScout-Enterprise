@@ -12,7 +12,7 @@ const colors = horizonColors.liquid;
 
 export type GlassVariant = 'control' | 'sheet';
 
-export type GlassTone = 'neutral' | 'accent';
+export type GlassTone = 'neutral' | 'accent' | 'light';
 
 type Props = ViewProps & { variant: GlassVariant; radius: number; interactive?: boolean; tone?: GlassTone };
 
@@ -35,7 +35,7 @@ export function GlassSurface({ variant, radius, interactive = false, tone = 'neu
     setSize(previous => previous?.width === width && previous.height === height ? previous : { width, height });
     onLayout?.(event);
   };
-  const material = reduceTransparency ? accent ? styles.accentSolid : styles.solid : variant === 'sheet' ? styles.sheet : accent ? styles.accent : styles.control;
+  const material = reduceTransparency ? accent ? styles.accentSolid : styles.solid : variant === 'sheet' ? styles.sheet : accent ? styles.accent : tone === 'light' ? styles.light : styles.control;
   return <View {...rest} onLayout={handleLayout} style={[styles.surface, shape, material, !reduceTransparency && backdropStyle(variant), style]}>
     {!reduceTransparency && size && <GlassSheen width={size.width} height={size.height} radius={radius}/>}
     {children}
@@ -47,6 +47,7 @@ const styles = StyleSheet.create({
   control: { backgroundColor: colors.controlFill, boxShadow: colors.controlShadow },
   sheet: { backgroundColor: colors.sheetFill, boxShadow: colors.sheetShadow },
   accent: { backgroundColor: colors.accentFill, boxShadow: colors.accentShadow },
+  light: { backgroundColor: colors.lightFill, boxShadow: colors.lightShadow },
   accentSolid: { backgroundColor: colors.accentSolid },
   solid: { backgroundColor: colors.solidFill, borderWidth: metrics.rimWidth, borderColor: colors.solidBorder },
 });

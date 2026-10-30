@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 import { Icon } from './icon';
+import { useGlassAccessibility } from './glass-interaction';
 
 export type HorizonMode = 'guest' | 'client' | 'worker';
 export type ModeNotice = 'worker_unavailable' | 'worker_unverified' | null;
@@ -12,7 +12,7 @@ type Props = {
   mode: HorizonMode;
   pending: boolean;
   notice: ModeNotice;
-  onSelect: (mode: 'client' | 'worker') => void;
+  onSelect: (mode: HorizonMode) => void;
   onClose: () => void;
 };
 
@@ -21,8 +21,16 @@ const colors = horizonColors.modePicker;
 const webControlStyle = Platform.select({ web: { outlineStyle: 'solid', outlineWidth: 0 } as const, default: undefined });
 
 export function ModePicker({ mode, pending, notice, onSelect, onClose }: Props) {
-  const insets = useSafeAreaInsets();
-  const [focused, setFocused] = useState<'close' | 'client' | 'worker' | null>(null);
+  const [focused, setFocused] = useState<HorizonMode | null>(null);
+  const { reduceMotion } = useGlassAccessibility();
+  const [progress] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    if (reduceMotion) { progress.setValue(1); return; }
+    const entrance = Animated.timing(progress, { toValue: 1, duration: metrics.enterDuration, easing: Easing.bezier(0.23, 1, 0.32, 1), useNativeDriver: true });
+    entrance.start();
+    return () => entrance.stop();
+  }, [progress, reduceMotion]);
+  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [horizonLayout.glass.popFromScale, 1] });
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const sheet = document.getElementById('horizon-mode-picker');
@@ -50,56 +58,50 @@ export function ModePicker({ mode, pending, notice, onSelect, onClose }: Props) 
     document.addEventListener('keydown', trapFocus);
     return () => { document.removeEventListener('keydown', trapFocus); if (previous?.isConnected) previous.focus(); };
   }, []);
-  const clientSelected = mode !== 'worker';
   const error = notice === 'worker_unavailable'
-    ? 'Tài khoản này chưa có quyền sử dụng chế độ Thợ.'
-    : notice === 'worker_unverified' ? 'Chưa thể kiểm tra quyền sử dụng chế độ Thợ. Vui lòng thử lại.' : null;
+    ? 'Tài khoản này chưa có quyền sử dụng vai trò Thợ.'
+    : notice === 'worker_unverified' ? 'Chưa thể kiểm tra quyền sử dụng vai trò Thợ. Vui lòng thử lại.' : null;
+  const signedIn = mode !== 'guest';
+  const options = [
+    { id: 'guest' as const, label: 'Khách', detail: signedIn ? 'Đăng xuất để dùng như khách' : 'Dùng thử, chưa cần đăng nhập', icon: 'eye' as const, selected: mode === 'guest', locked: signedIn },
+    { id: 'client' as const, label: 'Khách hàng', detail: signedIn ? 'Giao diện khách hàng' : 'Đăng nhập để dùng dịch vụ', icon: 'user' as const, selected: mode === 'client', locked: false },
+    { id: 'worker' as const, label: 'Thợ', detail: signedIn ? 'Giao diện dành cho thợ' : 'Đăng nhập để nhận việc', icon: 'briefcase' as const, selected: mode === 'worker', locked: false },
+  ];
+  const status = pending ? 'Đang kiểm tra quyền sử dụng vai trò Thợ…' : error;
   return <View style={styles.overlay}>
-    <Pressable style={styles.scrim} onPress={onClose} accessible={false} aria-hidden tabIndex={-1} />
-    <View nativeID="horizon-mode-picker" style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, metrics.sheetBottomPadding) }]} accessibilityViewIsModal role="dialog" aria-modal accessibilityLabel="Chọn chế độ">
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.heading}>
-          <Text accessibilityRole="header" style={styles.title}>Chọn chế độ</Text>
-          <Pressable onPress={onClose} onFocus={() => setFocused('close')} onBlur={() => setFocused(null)} accessibilityRole="button" accessibilityLabel="Đóng bảng chọn chế độ" style={[styles.close, webControlStyle, focused === 'close' && styles.focused]}><Icon name="close" size={metrics.optionIconSize} /></Pressable>
+    <Animated.View style={[styles.scrim, { opacity: progress }]}><Pressable style={styles.scrimTarget} onPress={onClose} accessibilityRole="button" accessibilityLabel="Đóng bảng chọn vai trò" /></Animated.View>
+    <Animated.View nativeID="horizon-mode-picker" style={[styles.popover, { opacity: progress, transform: [{ scale }] }]} role="dialog" accessibilityLabel="Chọn vai trò">
+      <View style={styles.surface}>
+        <View accessibilityRole="radiogroup" accessibilityLabel="Vai trò hoạt động">
+          {options.map(option => <Pressable key={option.id} onPress={() => onSelect(option.id)} onFocus={() => setFocused(option.id)} onBlur={() => setFocused(null)} disabled={pending || option.locked} accessibilityRole="radio" accessibilityState={{ checked: option.selected, disabled: pending || option.locked }} aria-checked={option.selected} accessibilityLabel={option.label} accessibilityHint={option.detail} style={({ pressed }) => [styles.option, webControlStyle, (pressed || focused === option.id) && styles.optionActive]}>
+            <Icon name={option.icon} size={metrics.optionIconSize} color={colors.optionIcon} />
+            <View style={styles.optionCopy}><Text style={styles.optionLabel}>{option.label}</Text><Text style={styles.optionDetail}>{option.detail}</Text></View>
+            {option.selected && <Icon name="check" size={metrics.checkSize} color={colors.popoverCheck}/>}
+          </Pressable>)}
         </View>
-        <View accessibilityRole="radiogroup" accessibilityLabel="Chế độ hoạt động">
-        <Pressable onPress={() => onSelect('client')} onFocus={() => setFocused('client')} onBlur={() => setFocused(null)} disabled={pending} accessibilityRole="radio" accessibilityState={{ checked: clientSelected, disabled: pending }} aria-checked={clientSelected} accessibilityLabel="Khách hàng" accessibilityHint="Giao diện khách hàng" style={[styles.option, webControlStyle, focused === 'client' && styles.focused]}>
-          <View style={styles.icon}><Icon name="user" size={metrics.optionIconSize} /></View>
-          <View style={styles.optionCopy}><Text style={styles.optionLabel}>Khách hàng</Text><Text style={styles.optionDetail}>{mode === 'guest' ? 'Bạn đang xem với tư cách khách' : 'Giao diện khách hàng'}</Text></View>
-          {clientSelected && <Icon name="check" size={metrics.checkSize} color={colors.check}/>}
-        </Pressable>
-        <View style={styles.separator}/>
-        <Pressable onPress={() => onSelect('worker')} onFocus={() => setFocused('worker')} onBlur={() => setFocused(null)} disabled={pending} accessibilityRole="radio" accessibilityState={{ checked: mode === 'worker', disabled: pending }} aria-checked={mode === 'worker'} accessibilityLabel="Thợ" accessibilityHint="Giao diện dành cho thợ" style={[styles.option, webControlStyle, focused === 'worker' && styles.focused]}>
-          <View style={styles.icon}><Icon name="briefcase" size={metrics.optionIconSize} /></View>
-          <View style={styles.optionCopy}><Text style={styles.optionLabel}>Thợ</Text><Text style={styles.optionDetail}>Giao diện dành cho thợ</Text></View>
-          {mode === 'worker' && <Icon name="check" size={metrics.checkSize} color={colors.check}/>}
-        </Pressable>
+        <View accessibilityLiveRegion="polite">
+          {status && <View style={styles.notice}>
+            {pending && <ActivityIndicator size="small" color={colors.popoverCheck}/>}
+            <Text style={[styles.noticeText, error && !pending && styles.noticeError]}>{status}</Text>
+          </View>}
         </View>
-        <View style={styles.separator}/>
-        <View accessibilityLiveRegion="polite" style={styles.notice}>
-          {pending && <ActivityIndicator size="small" color={colors.check}/>}
-          <Text style={[styles.noticeText, error && styles.noticeError]}>{pending ? 'Đang kiểm tra quyền sử dụng chế độ Thợ…' : error ?? 'Có thể cần đăng nhập hoặc kiểm tra quyền khi chuyển sang Thợ.'}</Text>
-        </View>
-      </ScrollView>
-    </View>
+      </View>
+    </Animated.View>
   </View>;
 }
 
 const styles = StyleSheet.create({
-  overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, justifyContent: 'flex-end' },
-  scrim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: horizonColors.scrim },
-  sheet: { maxHeight: metrics.sheetMaxHeight, borderTopLeftRadius: metrics.sheetRadius, borderTopRightRadius: metrics.sheetRadius, paddingHorizontal: metrics.sheetPadding, paddingTop: metrics.sheetPadding, backgroundColor: colors.sheetSurface },
-  heading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: metrics.titleGap },
-  title: { flex: 1, color: horizonColors.text, fontSize: metrics.titleSize, fontWeight: metrics.titleWeight },
-  close: { width: metrics.closeSize, height: metrics.closeSize, alignItems: 'center', justifyContent: 'center' },
-  focused: { borderRadius: metrics.focusRadius, backgroundColor: colors.focusSurface },
-  option: { minHeight: metrics.optionMinHeight, flexDirection: 'row', alignItems: 'center', gap: metrics.optionGap },
-  icon: { width: metrics.iconBoxSize, height: metrics.iconBoxSize, borderRadius: metrics.iconBoxRadius, backgroundColor: colors.iconSurface, alignItems: 'center', justifyContent: 'center' },
+  overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  scrim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.popoverScrim },
+  scrimTarget: { flex: 1 },
+  popover: { position: 'absolute', left: metrics.popoverLeft, bottom: metrics.popoverBottom, width: metrics.popoverWidth, transformOrigin: 'bottom left' },
+  surface: { padding: metrics.popoverPadding, borderRadius: metrics.popoverRadius, backgroundColor: colors.popoverFill, boxShadow: colors.popoverShadow },
+  option: { minHeight: metrics.popoverRowHeight, flexDirection: 'row', alignItems: 'center', gap: metrics.optionGap, paddingHorizontal: metrics.popoverRowPadding, borderRadius: metrics.popoverRowRadius },
+  optionActive: { backgroundColor: colors.popoverPressed },
   optionCopy: { flex: 1 },
   optionLabel: { color: horizonColors.text, fontSize: metrics.optionLabelSize, fontWeight: metrics.optionLabelWeight },
   optionDetail: { color: horizonColors.muted, fontSize: metrics.optionDetailSize, marginTop: metrics.optionDetailGap },
-  separator: { height: metrics.separatorHeight, backgroundColor: colors.separator },
-  notice: { flexDirection: 'row', alignItems: 'center', gap: metrics.noticeGap, paddingTop: metrics.noticeGap },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: metrics.noticeGap, paddingHorizontal: metrics.popoverRowPadding, paddingVertical: metrics.noticeGap },
   noticeText: { flex: 1, color: horizonColors.muted, fontSize: metrics.noticeSize, lineHeight: metrics.noticeLineHeight },
   noticeError: { color: colors.notice },
 });
