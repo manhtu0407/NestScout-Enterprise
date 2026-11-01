@@ -9,6 +9,7 @@ import { repositoryIdentity, acceptedOriginUrls } from './verify-repository.mjs'
 const slug = '[a-z0-9]+(?:-[a-z0-9]+)*';
 const featureBranch = new RegExp(`^(?:(?:feat|fix|docs|chore)/[1-9][0-9]*-${slug}|(?:codex|claude)/${slug})$`);
 const dependencyBranch = /^dependabot\/(?:github_actions|npm_and_yarn)\/[a-z0-9][a-z0-9._/-]*$/;
+const dependabotAntiMention = /@​/gu;
 
 export function checkBranch(branch, { allowMain = false, automation = false } = {}) {
   if ((allowMain && branch === 'main') || featureBranch.test(branch) || (automation && dependencyBranch.test(branch))) return;
@@ -55,7 +56,8 @@ export function checkPullRequest(event) {
     && pr.head?.repo?.id === repositoryIdentity.id && dependencyBranch.test(pr.head.ref);
   checkBranch(pr.head?.ref ?? '', { automation });
   if (typeof pr.title !== 'string' || typeof pr.body !== 'string') throw new Error('PR title and body are required.');
-  checkMessage(`${pr.title}\n\n${pr.body}`, { automation });
+  const body = automation ? pr.body.replace(dependabotAntiMention, '@') : pr.body;
+  checkMessage(`${pr.title}\n\n${body}`, { automation });
   if (!/\b(?:Closes|Fixes|Resolves)\s+#([1-9][0-9]*)\b/i.test(pr.body) && !automation) throw new Error('PR body must link an Issue with Closes/Fixes/Resolves #N.');
   for (const key of ['base', 'head']) {
     if (!/^[a-f0-9]{40}$/.test(pr[key]?.sha ?? '')) throw new Error(`Missing PR ${key} SHA.`);
