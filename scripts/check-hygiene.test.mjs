@@ -534,6 +534,41 @@ test('PR metadata rejects signatures, wrong targets, missing Issues and spoofed 
   bot.pull_request.head.repo = { id: 1 };
   assert.throws(() => checkPullRequest(bot));
 });
+function dependabotPullRequest(body = 'Sourced from [react](https://example.invalid).\n\n[//]: # (dependabot-automerge-start)') {
+  const event = pullRequest();
+  event.pull_request.user = { login: 'dependabot[bot]', type: 'Bot' };
+  event.pull_request.head.ref = 'dependabot/npm_and_yarn/react-dom-19.3.1';
+  event.pull_request.title = 'chore(deps): bump react-dom from 19.3.0 to 19.3.1';
+  event.pull_request.body = body;
+  return event;
+}
+test('verified Dependabot PR bodies accept anti-mention U+200B only directly after @', () => {
+  const body = 'Release notes by <code>@​unstubbable</code> and <code>@​eps1lon</code>.\n\nCloses #12';
+  assert.doesNotThrow(() => checkPullRequest(dependabotPullRequest(body)));
+  assert.doesNotThrow(() => checkPullRequest(dependabotPullRequest(`${body}\n\nSee @​dependabot.`)));
+});
+test('U+200B anti-mention relaxation rejects forged identities, malformed metadata and prohibited characters', () => {
+  const body = 'Release notes by @​unstubbable.';
+  const human = pullRequest();
+  human.pull_request.body = `Closes #12\n\nThanks @​person.`;
+  assert.throws(() => checkPullRequest(human), /Invisible\/control characters/);
+  const forgedType = dependabotPullRequest(body);
+  forgedType.pull_request.user.type = 'User';
+  assert.throws(() => checkPullRequest(forgedType));
+  const forgedFork = dependabotPullRequest(body);
+  forgedFork.pull_request.head.repo = { id: 1 };
+  assert.throws(() => checkPullRequest(forgedFork));
+  const forgedBranch = dependabotPullRequest(body);
+  forgedBranch.pull_request.head.ref = 'codex/dependency-bump';
+  assert.throws(() => checkPullRequest(forgedBranch));
+  for (const malformed of ['Release notes​ by @​unstubbable.', 'Release notes by @​​unstubbable.',
+    'Release notes by @​unstubbable.‮', 'Release notes by @​unstubbable.\n\nGenerated with Claude Code']) {
+    assert.throws(() => checkPullRequest(dependabotPullRequest(malformed)));
+  }
+  const titled = dependabotPullRequest(body);
+  titled.pull_request.title = 'chore(deps): bump react-dom​ from 19.3.0 to 19.3.1';
+  assert.throws(() => checkPullRequest(titled));
+});
 test('all new commits are inspected, including a hidden intermediate signature', () => {
   const { repository, run } = fixture();
   run(['commit', '--quiet', '--allow-empty', '-m', 'chore: invalid intermediate', '-m', 'Co-Authored-By: Codex <noreply@openai.com>']);
