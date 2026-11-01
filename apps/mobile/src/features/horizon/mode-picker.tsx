@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { Icon } from './icon';
-import { useGlassAccessibility } from './glass-interaction';
+import { Icon, useGlassAccessibility } from '@/features/shared';
 
 export type HorizonMode = 'guest' | 'client' | 'worker';
 export type ModeNotice = 'worker_unavailable' | 'worker_unverified' | null;

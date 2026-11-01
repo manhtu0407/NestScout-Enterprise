@@ -3,8 +3,7 @@ import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, Text, Vi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { PressScale } from './glass-controls';
-import { Icon } from './icon';
+import { Icon, PressScale } from '@/features/shared';
 
 const metrics = horizonLayout.modePicker;
 const colors = horizonColors.modePicker;

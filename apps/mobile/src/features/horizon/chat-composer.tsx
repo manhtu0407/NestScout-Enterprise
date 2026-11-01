@@ -4,8 +4,7 @@ import { useRef, useState } from 'react';
 import type { ComponentRef } from 'react';
 import { Dimensions, Image, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { composerImageLimit, useComposerMedia, type ComposerImage } from './composer-media';
-import { Icon } from './icon';
-import { PressScale } from './glass-controls';
+import { Icon, PressScale } from '@/features/shared';
 import { ComposerMenu } from './composer-menu';
 import type { ComposerMenuAnchor, ComposerMenuItem } from './composer-menu';
 
@@ -19,6 +18,8 @@ type Props = {
   onImagesChange?: (images: readonly ComposerImage[]) => void;
   mediaExternallyManaged?: boolean;
   locked?: boolean;
+  onFocus?: () => void;
+  onBlur?: () => void;
 };
 
 const metrics = horizonLayout.chatComposer;
@@ -26,7 +27,7 @@ const menu = horizonLayout.composerMenu;
 const colors = horizonColors.chatComposer;
 const webScrollbarStyle = { outlineStyle: 'solid', outlineWidth: 0, scrollbarWidth: 'none' } as const;
 
-export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, initialImages, onImagesChange, mediaExternallyManaged, locked = false }: Props) {
+export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, initialImages, onImagesChange, mediaExternallyManaged, locked = false, onFocus, onBlur }: Props) {
   const media = useComposerMedia(initialImages, onImagesChange, mediaExternallyManaged);
   const canSend = !locked && (value.trim().length > 0 || media.images.length > 0);
   const [inputHeight, setInputHeight] = useState<number>(metrics.inputMinHeight);
@@ -66,6 +67,8 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
       value={value}
       editable={!locked}
       onChangeText={onChange}
+      onFocus={onFocus}
+      onBlur={onBlur}
       placeholder="Nhắn Kael..."
       placeholderTextColor={colors.placeholder}
       multiline

@@ -5,7 +5,7 @@ import type { DimensionValue, LayoutChangeEvent, StyleProp, ViewStyle } from 're
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { useGlassAccessibility } from './glass-interaction';
+import { useGlassAccessibility } from '@/features/shared';
 
 const metrics = horizonLayout.skeleton;
 const colors = horizonColors.skeleton;

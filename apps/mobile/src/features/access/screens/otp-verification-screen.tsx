@@ -1,69 +1,72 @@
-import { Redirect, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet, Text, TextInput } from 'react-native';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useRef, useState } from 'react';
 
-import { ActionButton, BodyText, ErrorText, Heading, Screen } from '@/features/shared';
-import { usePalette } from '@/theme/palette';
-import { layout, typography } from '@/theme/layout';
-
-import { authMessages } from '../auth/auth-messages';
+import { authMessages, signInCopy } from '../auth/auth-messages';
 import { otpLength, usePhoneSignIn } from '../auth/use-phone-sign-in';
 import { maskPhone } from '../phone/vietnam-phone';
+import { SignInGate } from '../sign-in/sign-in-gate';
+import { parseSignInRole } from '../sign-in/sign-in-types';
 import { useAccess } from '../state/access-provider';
 
 export function OtpVerificationScreen() {
   const router = useRouter();
-  const palette = usePalette();
   const access = useAccess();
   const signIn = usePhoneSignIn();
+  const { role: roleParam } = useLocalSearchParams<{ role?: string }>();
+  const role = parseSignInRole(roleParam);
   const [code, setCode] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
+  const submitting = useRef(false);
 
-  if (access.otpPhone === null) return <Redirect href="/phone" />;
+  if (access.otpPhone === null) return <Redirect href={{ pathname: '/phone', params: { role } }} />;
 
-  const submit = () => {
-    void signIn.submitCode(code);
+  const verify = (value: string) => {
+    if (submitting.current) return;
+    submitting.current = true;
+    void signIn.submitCode(value).then((ok) => {
+      submitting.current = false;
+      if (ok) {
+        setSuccess(true);
+        return;
+      }
+      setShakeKey((key) => key + 1);
+      setCode('');
+    });
   };
-  const cancel = () => {
+
+  const changeCode = (next: string) => {
+    setCode(next);
+    if (next.length === otpLength) verify(next);
+  };
+
+  const changeNumber = () => {
     signIn.cancel();
-    router.replace('/phone');
+    router.replace({ pathname: '/phone', params: { role } });
   };
 
   return (
-    <Screen>
-      <Heading>Enter the code</Heading>
-      <BodyText>We sent a {otpLength}-digit code to {maskPhone(access.otpPhone)}.</BodyText>
-      <Text nativeID="code-label" style={{ color: palette.text }}>
-        One-time code
-      </Text>
-      <TextInput
-        accessibilityLabel="One-time code"
-        accessibilityLabelledBy="code-label"
-        value={code}
-        onChangeText={(next) => setCode(next.replace(/\D/g, '').slice(0, otpLength))}
-        keyboardType="number-pad"
-        textContentType="oneTimeCode"
-        autoComplete="sms-otp"
-        autoCorrect={false}
-        maxLength={otpLength}
-        editable={!signIn.busy}
-        onSubmitEditing={submit}
-        returnKeyType="done"
-        style={[styles.input, { color: palette.text, borderColor: palette.border }]}
-      />
-      {signIn.codeInvalid ? <ErrorText>{`Enter all ${otpLength} digits.`}</ErrorText> : null}
-      {signIn.failure ? <ErrorText>{authMessages[signIn.failure]}</ErrorText> : null}
-      <ActionButton label="Verify code" onPress={submit} busy={signIn.busy} />
-      <ActionButton
-        secondary
-        label={signIn.resendSeconds > 0 ? `Resend code in ${signIn.resendSeconds}s` : 'Resend code'}
-        onPress={() => void signIn.resend()}
-        disabled={signIn.busy || signIn.resendSeconds > 0}
-      />
-      <ActionButton secondary label="Use a different number" onPress={cancel} disabled={signIn.busy} />
-    </Screen>
+    <SignInGate
+      role={role}
+      onRoleChange={() => undefined}
+      step="code"
+      digits=""
+      onDigitsChange={() => undefined}
+      code={code}
+      onCodeChange={changeCode}
+      maskedPhone={maskPhone(access.otpPhone)}
+      busy={signIn.busy}
+      success={success}
+      phoneError={null}
+      codeError={signIn.codeInvalid ? signInCopy.enterAllDigits : null}
+      failure={signIn.failure ? authMessages[signIn.failure] : null}
+      shakeKey={shakeKey}
+      resendSeconds={signIn.resendSeconds}
+      onSubmitPhone={() => undefined}
+      onSubmitCode={() => verify(code)}
+      onResend={() => void signIn.resend()}
+      onChangeNumber={changeNumber}
+      onBack={changeNumber}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  input: { minHeight: layout.control.minHeight, borderWidth: layout.input.borderWidth, borderRadius: layout.control.radius, paddingHorizontal: layout.input.horizontalPadding, ...typography.codeInput },
-});

@@ -2,10 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { useGlassAccessibility } from './glass-interaction';
-import { GlassSurface } from './glass-surface';
-import { Icon } from './icon';
-import type { IconName } from './icon';
+import { GlassSurface, Icon, type IconName, useGlassAccessibility } from '@/features/shared';
 
 const metrics = horizonLayout.conversationMenu;
 const glass = horizonLayout.glass;
