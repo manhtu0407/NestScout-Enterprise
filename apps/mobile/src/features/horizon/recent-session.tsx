@@ -5,7 +5,7 @@ import { horizonColors } from '@/theme/palette';
 import { PressScale } from './glass-controls';
 import { Icon } from './icon';
 import { useGlassAccessibility } from './glass-interaction';
-import { kaelPhaseLabels } from './kael-phase';
+import { findKaelPhaseEntry, kaelPhaseLabels } from './kael-phase';
 import type { KaelPhase } from './kael-phase';
 
 const metrics = horizonLayout.recentSession;
@@ -26,7 +26,7 @@ export function RecentSessionRow({ session, active = false, onPress, onMore, onT
     animation.start();
     return () => animation.stop();
   }, [reveal, revealed, reduceMotion]);
-  const busy = session.phase === 'researching' || session.phase === 'working';
+  const busy = session.phase !== null && ['busy', 'normal'].includes(findKaelPhaseEntry(session.phase).tone);
   const subtitle = busy && session.phase ? kaelPhaseLabels[session.phase] : session.preview;
   return <Pressable accessible={false} focusable={false} onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)} style={[styles.row, active && styles.active]}>
     <PressScale wrapperStyle={styles.mainWrap} accessibilityRole="button" accessibilityLabel={`${session.title}, ${subtitle}, ${session.timeLabel}`} accessibilityState={{ selected: active }} onPress={onPress} onLongPress={onMore} style={styles.main}>

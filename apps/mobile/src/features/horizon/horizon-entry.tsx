@@ -73,7 +73,7 @@ export function HorizonEntry() {
   if (access.phase === 'bootstrapping' || access.phase === 'resolving') return <EntryRedirect pending={renderPending}/>;
 
   return <>
-    <StatusBar style="light"/>
+    <StatusBar style="dark"/>
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {access.notice && <View accessibilityLiveRegion="polite" style={styles.notice}>
@@ -94,7 +94,7 @@ export function HorizonEntry() {
         access.prepareHorizonDraftTransfer({ text: inputRef.current, images: imagesRef.current });
         access.setIntent(mode);
         setDrawerOpen(false);
-        router.push('/phone');
+        router.push({ pathname: '/phone', params: { role: mode } });
       } else access.switchMode(mode);
     }} onModeCancel={access.cancelModeRequest} onDismissModeNotice={access.dismissNotice}/>
   </>;

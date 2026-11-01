@@ -4,8 +4,7 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 import { useGlassAccessibility } from './glass-interaction';
 import { GlassSurface } from './glass-surface';
-import { Icon } from './icon';
-import type { IconName } from './icon';
+import { Icon, type IconName } from './icon';
 
 const metrics = horizonLayout.conversationMenu;
 const glass = horizonLayout.glass;

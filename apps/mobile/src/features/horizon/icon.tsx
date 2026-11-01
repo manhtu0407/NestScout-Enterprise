@@ -2,7 +2,7 @@ import React from 'react';
 import Svg, { Circle, G, Line, Path, Polyline, Rect } from 'react-native-svg';
 import { horizonColors } from '@/theme/palette';
 
-export type IconName = 'login' | 'eye' | 'attach' | 'image' | 'globe' | 'camera' | 'menu' | 'plus' | 'arrowUp' | 'arrowRight' | 'chevron' | 'close' | 'mic' | 'search' | 'chat' | 'home' | 'briefcase' | 'clock' | 'heart' | 'wrench' | 'drop' | 'sofa' | 'grid' | 'gear' | 'bolt' | 'user' | 'help' | 'bell' | 'requests' | 'receipt' | 'compose' | 'history' | 'back' | 'check' | 'send' | 'more' | 'share' | 'pin' | 'archive' | 'trash';
+export type IconName = 'login' | 'eye' | 'attach' | 'image' | 'globe' | 'camera' | 'menu' | 'plus' | 'arrowUp' | 'arrowRight' | 'chevron' | 'close' | 'mic' | 'search' | 'chat' | 'home' | 'briefcase' | 'clock' | 'heart' | 'wrench' | 'drop' | 'sofa' | 'grid' | 'gear' | 'bolt' | 'user' | 'help' | 'bell' | 'requests' | 'receipt' | 'compose' | 'history' | 'back' | 'check' | 'send' | 'more' | 'share' | 'pin' | 'archive' | 'trash' | 'wallet' | 'star';
 
 type Props = {
   name: IconName;
@@ -54,7 +54,9 @@ export function Icon({ name, size = 22, color = horizonColors.label, strokeWidth
     share: <><Path d="M12 14.5V3.8M8 7.6l4-3.9 4 3.9" {...common}/><Path d="M8.5 10.5H8A3.5 3.5 0 0 0 4.5 14v3A3.5 3.5 0 0 0 8 20.5h8a3.5 3.5 0 0 0 3.5-3.5v-3a3.5 3.5 0 0 0-3.5-3.5h-.5" {...common}/></>,
     pin: <G transform="rotate(40 12 12)"><Path d="M9.7 3.5h4.6l.5 5.2 2.4 3.3H6.8l2.4-3.3z" {...common}/><Path d="M8.5 3.5h7M12 12v8.5" {...common} fill="none"/></G>,
     archive: <><Rect x="3.5" y="4" width="17" height="4.5" rx="1.8" {...common}/><Path d="M5 8.5V16a3.5 3.5 0 0 0 3.5 3.5h7A3.5 3.5 0 0 0 19 16V8.5M10 12.5h4" {...common}/></>,
-    trash: <><Path d="M4.5 7h15M9.5 7V5.2a1.7 1.7 0 0 1 1.7-1.7h1.6a1.7 1.7 0 0 1 1.7 1.7V7" {...common}/><Path d="M6.5 7l.8 11.3A2.2 2.2 0 0 0 9.5 20.4h5a2.2 2.2 0 0 0 2.2-2.1L17.5 7M10 11v5.5M14 11v5.5" {...common}/></>
+    trash: <><Path d="M4.5 7h15M9.5 7V5.2a1.7 1.7 0 0 1 1.7-1.7h1.6a1.7 1.7 0 0 1 1.7 1.7V7" {...common}/><Path d="M6.5 7l.8 11.3A2.2 2.2 0 0 0 9.5 20.4h5a2.2 2.2 0 0 0 2.2-2.1L17.5 7M10 11v5.5M14 11v5.5" {...common}/></>,
+    wallet: <><Path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H18a2 2 0 0 1 2 2v9.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z" {...common}/><Path d="M4 8.5v0A2.5 2.5 0 0 0 6.5 11H20M15.5 15.2h.01" {...common}/></>,
+    star: <Path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z" {...common}/>
   };
   return <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityRole="image">{shapes[name]}</Svg>;
 }

@@ -5,8 +5,7 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 import { GlassIconButton, PressScale } from './glass-controls';
 import { useGlassAccessibility } from './glass-interaction';
-import { Icon } from './icon';
-import type { IconName } from './icon';
+import { Icon, type IconName } from './icon';
 
 const metrics = horizonLayout.requestsScreen;
 const colors = horizonColors.requestsScreen;
