@@ -3,13 +3,12 @@ import React, { useCallback, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { EntryRedirect, useAccess } from '@/features/access';
-import { screenTitles } from './content';
 import { Sidebar } from './sidebar';
-import { Icon } from './icon';
+import { Icon } from '@/features/shared';
 import { KaelHomeScreen } from './kael-home-screen';
-import { RequestsScreen } from './requests-screen';
+import { kaelIntroSession } from './kael-intro-session';
 import type { ComposerImage } from './composer-media';
 import { KaelHomeLoading } from './skeleton-layouts';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
@@ -17,22 +16,16 @@ import { horizonColors, horizonColors as colors } from '@/theme/palette';
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-type Screen = 'home' | 'placeholder';
 
 export function HorizonEntry() {
   const router = useRouter();
   const access = useAccess();
-  const { horizonScreen } = useLocalSearchParams<{ horizonScreen?: string }>();
-  const screen: Screen = horizonScreen === 'placeholder' ? 'placeholder' : 'home';
-  const setScreen = useCallback((next: Screen) => router.setParams({ horizonScreen: next }), [router]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [input, setInput] = useState(access.horizonDraft?.text ?? '');
   const [draftImages, setDraftImages] = useState<readonly ComposerImage[]>(() => access.horizonDraft?.images ?? []);
   const inputRef = useRef(input);
   const imagesRef = useRef(draftImages);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [placeholder, setPlaceholder] = useState('');
-  const [sectionId, setSectionId] = useState('');
   const [conversationKey, setConversationKey] = useState(0);
   const [composerError, setComposerError] = useState<string | null>(null);
 
@@ -46,8 +39,7 @@ export function HorizonEntry() {
     setConversationKey(key => key + 1);
     setComposerError(null);
     setDrawerOpen(false);
-    setScreen('home');
-  }, [access, setScreen]);
+  }, [access]);
 
   const sendMessage = useCallback((images: readonly ComposerImage[]) => {
     setComposerError(images.length > 0
@@ -65,10 +57,9 @@ export function HorizonEntry() {
       newConversation();
       return;
     }
-    setSectionId(id);
-    setPlaceholder(screenTitles[id] ?? id);
-    setScreen('placeholder');
-  }, [access.phase, newConversation, router, setScreen]);
+    if (id === 'requests') router.push('/requests');
+    else router.push({ pathname: '/section', params: { id } });
+  }, [access.phase, newConversation, router]);
 
   if (access.phase === 'bootstrapping' || access.phase === 'resolving') return <EntryRedirect pending={renderPending}/>;
 
@@ -80,17 +71,12 @@ export function HorizonEntry() {
           <Text style={styles.noticeText}>{access.notice === 'worker_unavailable' ? 'Không thể chuyển sang vai trò Thợ vì tài khoản chưa có quyền.' : 'Chưa thể xác minh quyền Thợ. Bạn có thể thử lại.'}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo vai trò" onPress={access.dismissNotice} style={styles.noticeAction}><Icon name="close" size={18}/></Pressable>
         </View>}
-        {screen === 'home' && <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={() => setDrawerOpen(true)} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>}
-        {screen === 'placeholder' && sectionId === 'requests' && <RequestsScreen onBack={() => setScreen('home')}/>}
-        {screen === 'placeholder' && sectionId !== 'requests' && <View style={styles.placeholder}>
-          <Pressable style={styles.back} onPress={() => setScreen('home')} accessibilityLabel="Quay về"><Icon name="back" /></Pressable>
-          <Text style={styles.placeholderTitle}>{placeholder}</Text>
-          <Text style={styles.placeholderBody}>Cấu trúc điều hướng đã hoạt động. Nội dung của màn này sẽ được xây dựng trong giai đoạn triển khai sản phẩm.</Text>
-        </View>}
+        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={() => setDrawerOpen(true)} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
     <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
       if (access.phase === 'guest') {
+        kaelIntroSession.markPlayed();
         access.prepareHorizonDraftTransfer({ text: inputRef.current, images: imagesRef.current });
         access.setIntent(mode);
         setDrawerOpen(false);
@@ -115,10 +101,6 @@ export function HorizonRoute() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   fill: { flex: 1 },
-  placeholder: { flex: 1, padding: horizonLayout.horizonEntry.placeholderPadding },
-  back: { height: horizonLayout.horizonEntry.backHeight, width: horizonLayout.horizonEntry.backWidth, justifyContent: 'center' },
-  placeholderTitle: { fontSize: horizonLayout.horizonEntry.placeholderTitleFontSize, color: colors.label, fontWeight: horizonLayout.horizonEntry.placeholderTitleFontWeight, marginTop: horizonLayout.horizonEntry.placeholderTitleMarginTop },
-  placeholderBody: { color: colors.muted, marginTop: horizonLayout.horizonEntry.placeholderBodyMarginTop, fontSize: horizonLayout.horizonEntry.placeholderBodyFontSize, lineHeight: horizonLayout.horizonEntry.placeholderBodyLineHeight },
   locked: { flex: 1, backgroundColor: colors.bg, padding: horizonLayout.horizonEntry.placeholderPadding, justifyContent: 'center' },
   lockedTitle: { fontSize: horizonLayout.horizonEntry.placeholderTitleFontSize, color: colors.label, fontWeight: horizonLayout.horizonEntry.placeholderTitleFontWeight },
   lockedBody: { color: colors.muted, marginTop: horizonLayout.horizonEntry.placeholderBodyMarginTop, fontSize: horizonLayout.horizonEntry.placeholderBodyFontSize, lineHeight: horizonLayout.horizonEntry.placeholderBodyLineHeight },

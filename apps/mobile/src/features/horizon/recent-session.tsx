@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { PressScale } from './glass-controls';
-import { Icon } from './icon';
-import { useGlassAccessibility } from './glass-interaction';
+import { Icon, PressScale, useGlassAccessibility } from '@/features/shared';
 import { findKaelPhaseEntry, kaelPhaseLabels } from './kael-phase';
 import type { KaelPhase } from './kael-phase';
 

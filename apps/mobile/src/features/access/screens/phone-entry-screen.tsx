@@ -1,61 +1,56 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput } from 'react-native';
-
-import { ActionButton, BodyText, ErrorText, Heading, Screen } from '@/features/shared';
-import { usePalette } from '@/theme/palette';
-import { layout, typography } from '@/theme/layout';
 
 import { authMessages, phoneMessages } from '../auth/auth-messages';
 import { usePhoneSignIn } from '../auth/use-phone-sign-in';
+import { toDialable } from '../sign-in/phone-format';
+import { SignInGate } from '../sign-in/sign-in-gate';
+import { parseSignInRole, type SignInRole } from '../sign-in/sign-in-types';
 import { useAccess } from '../state/access-provider';
 
 export function PhoneEntryScreen() {
   const router = useRouter();
-  const palette = usePalette();
   const signIn = usePhoneSignIn();
-  const { cancelHorizonTransfer } = useAccess();
-  const [phone, setPhone] = useState('');
+  const { cancelHorizonTransfer, setIntent } = useAccess();
+  const { role: roleParam } = useLocalSearchParams<{ role?: string }>();
+  const role = parseSignInRole(roleParam);
+  const [digits, setDigits] = useState('');
 
   useEffect(() => () => cancelHorizonTransfer(), [cancelHorizonTransfer]);
 
+  const changeRole = (next: SignInRole) => {
+    setIntent(next);
+    router.setParams({ role: next });
+  };
+
   const submit = () => {
-    void signIn.submitPhone(phone).then((sent) => {
-      if (sent) router.push('/verify');
+    void signIn.submitPhone(toDialable(digits)).then((sent) => {
+      if (sent) router.push({ pathname: '/verify', params: { role } });
     });
   };
 
   return (
-    <Screen>
-      <Heading>Sign in with your phone</Heading>
-      <BodyText>Enter your Vietnamese mobile number. We will send a one-time code by text message.</BodyText>
-      <Text nativeID="phone-label" style={{ color: palette.text }}>
-        Mobile number
-      </Text>
-      <TextInput
-        accessibilityLabel="Mobile number"
-        accessibilityLabelledBy="phone-label"
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
-        textContentType="telephoneNumber"
-        autoComplete="tel"
-        autoCorrect={false}
-        editable={!signIn.busy}
-        placeholder="0912 345 678"
-        placeholderTextColor={palette.mutedText}
-        onSubmitEditing={submit}
-        returnKeyType="send"
-        style={[styles.input, { color: palette.text, borderColor: palette.border }]}
-      />
-      {signIn.phoneError ? <ErrorText>{phoneMessages[signIn.phoneError]}</ErrorText> : null}
-      {signIn.failure ? <ErrorText>{authMessages[signIn.failure]}</ErrorText> : null}
-      <ActionButton label="Send code" onPress={submit} busy={signIn.busy} />
-      <ActionButton secondary label="Back" onPress={() => router.back()} disabled={signIn.busy} />
-    </Screen>
+    <SignInGate
+      role={role}
+      onRoleChange={changeRole}
+      step="phone"
+      digits={digits}
+      onDigitsChange={setDigits}
+      code=""
+      onCodeChange={() => undefined}
+      maskedPhone=""
+      busy={signIn.busy}
+      success={false}
+      phoneError={signIn.phoneError ? phoneMessages[signIn.phoneError] : null}
+      codeError={null}
+      failure={signIn.failure ? authMessages[signIn.failure] : null}
+      shakeKey={0}
+      resendSeconds={0}
+      onSubmitPhone={submit}
+      onSubmitCode={() => undefined}
+      onResend={() => undefined}
+      onChangeNumber={() => undefined}
+      onBack={() => router.back()}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  input: { minHeight: layout.control.minHeight, borderWidth: layout.input.borderWidth, borderRadius: layout.control.radius, paddingHorizontal: layout.input.horizontalPadding, ...typography.phoneInput },
-});

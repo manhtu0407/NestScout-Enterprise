@@ -1,4 +1,4 @@
-import { type IconName } from './icon';
+import { type IconName } from '@/features/shared';
 
 export const quickServices = [
   { title: 'Sửa điện', icon: 'bolt' },
@@ -34,8 +34,9 @@ export const workerSidebarGroups: readonly { title: string; items: readonly Side
   {
     title: 'Công việc',
     items: [
-      { id: 'worker-nearby', title: 'Việc mới quanh bạn', icon: 'bolt' },
-      { id: 'worker-today', title: 'Lịch hẹn hôm nay', icon: 'clock' },
+      { id: 'worker-nearby', title: 'Việc mới', icon: 'bolt' },
+      { id: 'worker-quotes', title: 'Báo giá', icon: 'receipt' },
+      { id: 'worker-today', title: 'Lịch hẹn', icon: 'calendar' },
       { id: 'worker-active', title: 'Đang thực hiện', icon: 'briefcase' },
       { id: 'worker-history', title: 'Lịch sử công việc', icon: 'history' },
     ],
@@ -43,8 +44,8 @@ export const workerSidebarGroups: readonly { title: string; items: readonly Side
   {
     title: 'Thu nhập',
     items: [
-      { id: 'worker-earnings', title: 'Thu nhập', icon: 'receipt' },
-      { id: 'worker-payout', title: 'Rút tiền', icon: 'wallet' },
+      { id: 'worker-earnings', title: 'Thu nhập', icon: 'wallet' },
+      { id: 'worker-payout', title: 'Rút tiền', icon: 'send' },
     ],
   },
   {
@@ -65,9 +66,12 @@ export const workerSidebarGroups: readonly { title: string; items: readonly Side
   },
 ];
 
-export const workerPreviewSummary = { area: 'Quận 7 · bán kính 5 km', jobsToday: 2, earningsToday: '1.250.000đ' } as const;
+export const workerPreviewSummary = { area: 'Quận 7 · bán kính 5 km', earningsToday: '1.250.000đ', nextAppointment: '14:00 · Sửa vòi nước, Quận 3' } as const;
+
+const groupTitles = Object.fromEntries([...sidebarGroups, ...workerSidebarGroups].flatMap(group => group.items.map(item => [item.id, item.title])));
 
 export const screenTitles: Record<string, string> = {
+  ...groupTitles,
   search: 'Tìm kiếm',
   requests: 'Yêu cầu của tôi',
   quotes: 'Báo giá',

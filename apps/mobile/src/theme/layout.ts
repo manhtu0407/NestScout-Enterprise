@@ -1,5 +1,12 @@
 export const horizonLayout = {
   lockup: { height: 60, aspect: 3.277 },
+  workerSidebar: {
+    avatarSize: 44, avatarRadius: 22, avatarInitialSize: 18, presenceSize: 14, presenceRing: 2.5,
+    nameSize: 18, nameWeight: '600', nameTracking: -0.2, roleSize: 13, identityGap: 12, profileGap: 20,
+    summaryGap: 14, summaryItemGap: 2, summaryHeadlineSize: 18, summaryHeadlineWeight: '600', summaryHeadlineTracking: -0.2, summaryValueSize: 15,
+    sectionGap: 22, goHeight: 44, goRadius: 22, goFontSize: 15, goIconSize: 18, dotSize: 8, pulseScale: 2.6, pulseDuration: 1600, stateDuration: 180, enterScale: 0.96, enterOpacity: 0.5,
+    contentTop: 8, hairlineWidth: 1, identityCopyGap: 1, goGap: 8, dotRadius: 4, presenceRadius: 7,
+  },
   sidebarList: {
     titleFontSize: 20, titleFontWeight: '600',
     groupMarginTop: 26, groupTitleFontSize: 17, groupTitleFontWeight: '600', groupTitleMarginBottom: 4,
@@ -281,6 +288,29 @@ export const horizonLayout = {
       rowHeight: 50, rowRadius: 16, rowGap: 14, rowPaddingHorizontal: 14, iconSize: 22,
       labelFontSize: 17, labelFontWeight: '400',
       contentFadeInput: [0, 0.35, 0.9, 2], contentFadeOutput: [0, 0, 1, 1],
+    },
+    signIn: {
+      gutter: 20, sheetRadius: 36, sheetPadding: 22, sheetGap: 18, sheetBottomGap: 12,
+      heroHeight: 248, orbSize: 132, heroImageWidth: 224, heroImageHeight: 215, orbFloat: -7, orbFloatDuration: 3400, orbBreath: 1.045, orbTyping: 1.04, orbSuccess: 1.08, orbBusyDuration: 620,
+      orbSpring: { damping: 12, stiffness: 190, mass: 1 },
+      auroraSize: 340, auroraCenterOpacity: 0.9, auroraDrift: 38, auroraDuration: 9200, auroraCrossfade: 520,
+      auroraPlacements: [{ top: -110, left: -130 }, { top: -50, right: -150 }, { top: 130, left: -70 }],
+      haloSize: 262, haloRadius: 131,
+      backButtonSize: 44, backIconSize: 22, backTop: 8,
+      titleSize: 34, titleLineHeight: 40, titleWeight: '700', titleTracking: -0.7, subtitleSize: 16, subtitleLineHeight: 23, copyGap: 8,
+      switchHeight: 52, switchPadding: 4, switchRadius: 26, switchLabelSize: 15, switchLabelWeight: '600', switchIconSize: 18, switchGap: 8, switchSpring: { damping: 21, stiffness: 280, mass: 1 },
+      fieldHeight: 64, fieldRadius: 22, fieldPadding: 10, fieldBorder: 2, fieldGap: 12,
+      prefixHeight: 44, prefixRadius: 15, prefixPadding: 14, prefixSize: 17, prefixWeight: '600',
+      inputSize: 22, inputWeight: '600', inputTracking: 0.5,
+      ctaHeight: 60, ctaRadius: 30, ctaSize: 17, ctaWeight: '600', ctaGap: 10, ctaIconSize: 20,
+      otpWidth: 48, otpHeight: 64, otpRadius: 18, otpGap: 8, otpBorder: 2, otpDigitSize: 28, otpDigitWeight: '700',
+      otpCaretWidth: 2, otpCaretHeight: 28, otpCaretBlink: 520, otpPop: 1.14, otpSpring: { damping: 11, stiffness: 420, mass: 0.8 },
+      shakeDistance: 10, shakeStep: 56, stepDuration: 300, stepSlide: 30,
+      noteSize: 13, noteLineHeight: 18, noteGap: 8, linkSize: 15, linkWeight: '600', linkHeight: 44, linkGap: 4,
+      successSize: 56, successRadius: 28, successBottom: 38, successRight: 112, successIconSize: 28, successSpring: { damping: 10, stiffness: 240, mass: 0.9 },
+      footnoteSize: 12, footnoteLineHeight: 17,
+      previewDelay: 900, previewSuccessHold: 1100,
+      webTransition: 'box-shadow 160ms ease, border-color 160ms ease',
     },
 } as const;
 

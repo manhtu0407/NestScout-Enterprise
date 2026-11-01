@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KaelHomeScreen } from './kael-home-screen';
+import { kaelIntroSession } from './kael-intro-session';
 
+beforeEach(() => kaelIntroSession.reset());
 afterEach(() => jest.restoreAllMocks());
 
 const initialMetrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, bottom: 0, left: 0, right: 0 } };

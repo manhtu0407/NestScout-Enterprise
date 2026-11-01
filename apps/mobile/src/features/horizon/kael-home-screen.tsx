@@ -8,6 +8,7 @@ import { ConversationMenu } from './conversation-menu';
 import type { ConversationMenuItem } from './conversation-menu';
 import { kaelPlushImage } from './kael-assets';
 import { KaelIntro } from './kael-intro';
+import { kaelIntroSession } from './kael-intro-session';
 import { KaelChatNav } from './kael-nav';
 import { expressionForPhase } from './kael-phase';
 import type { KaelPhase } from './kael-phase';
@@ -41,7 +42,7 @@ type Footer = { top: number; height: number };
 export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messages, composerError, onClearComposerError, conversationKey, kaelPhase = null, draftImages, onDraftImagesChange, draftLocked }: Props) {
   const reduceMotion = useReduceMotion();
   const hasConversation = messages.length > 0;
-  const [chatActive, setChatActive] = useState(hasConversation);
+  const [chatActive, setChatActive] = useState(() => hasConversation || kaelIntroSession.hasPlayed());
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuNotice, setMenuNotice] = useState<string | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -59,9 +60,13 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messag
   const [seenKey, setSeenKey] = useState(conversationKey);
   if (seenKey !== conversationKey) {
     setSeenKey(conversationKey);
-    setChatActive(false);
+    setChatActive(true);
     setTimelineOpen(false);
   }
+
+  useEffect(() => {
+    if (chatActive) kaelIntroSession.markPlayed();
+  }, [chatActive]);
 
   useEffect(() => {
     if (previousExpression.current === expression) return;

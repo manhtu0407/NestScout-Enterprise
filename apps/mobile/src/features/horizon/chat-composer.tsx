@@ -4,8 +4,7 @@ import { useRef, useState } from 'react';
 import type { ComponentRef } from 'react';
 import { Dimensions, Image, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { composerImageLimit, useComposerMedia, type ComposerImage } from './composer-media';
-import { Icon } from './icon';
-import { PressScale } from './glass-controls';
+import { Icon, PressScale } from '@/features/shared';
 import { ComposerMenu } from './composer-menu';
 import type { ComposerMenuAnchor, ComposerMenuItem } from './composer-menu';
 

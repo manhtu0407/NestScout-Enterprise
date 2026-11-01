@@ -14,3 +14,7 @@ export { TextField } from './ui/text-field';
 export { Surface, Divider } from './ui/surface';
 export { StatusIndicator, StateView } from './ui/status-view';
 export { IconButton } from './ui/icon-button';
+export { GlassSurface, type GlassTone, type GlassVariant } from './ui/glass-surface';
+export { GlassCapsuleButton, GlassIconButton, GlassPill, GlassSegment, PressScale } from './ui/glass-controls';
+export { useGlassAccessibility, usePressFeedback } from './ui/glass-interaction';
+export { Icon, type IconName } from './ui/icon';

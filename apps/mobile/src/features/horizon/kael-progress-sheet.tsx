@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { Icon } from './icon';
+import { Icon } from '@/features/shared';
 import { kaelPhaseEntries, kaelPhases } from './kael-phase';
 import type { KaelPhase } from './kael-phase';
 

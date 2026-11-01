@@ -3,9 +3,7 @@ import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 
 import type { LayoutChangeEvent } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { GlassIconButton, PressScale } from './glass-controls';
-import { useGlassAccessibility } from './glass-interaction';
-import { Icon, type IconName } from './icon';
+import { GlassIconButton, Icon, type IconName, PressScale, useGlassAccessibility } from '@/features/shared';
 
 const metrics = horizonLayout.requestsScreen;
 const colors = horizonColors.requestsScreen;

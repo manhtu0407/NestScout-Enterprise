@@ -1,8 +1,7 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { GlassIconButton } from './glass-controls';
-import { Icon } from './icon';
+import { GlassIconButton, Icon } from '@/features/shared';
 import { kaelPlushImage } from './kael-assets';
 
 const metrics = horizonLayout.kaelCompanion;
