@@ -10,7 +10,7 @@ const allowed: Record<Feature, Feature[]> = {
   client: ['access', 'shared'],
   worker: ['access', 'shared'],
   shared: [],
-  horizon: ['access'],
+  horizon: ['access', 'shared'],
 };
 
 function sourceFiles(directory: string): string[] {

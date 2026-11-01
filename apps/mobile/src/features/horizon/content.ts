@@ -1,4 +1,4 @@
-import type { IconName } from './icon';
+import { type IconName } from '@/features/shared';
 
 export const quickServices = [
   { title: 'Sửa điện', icon: 'bolt' },
@@ -30,7 +30,48 @@ export const sidebarGroups: readonly { title: string; items: readonly SidebarIte
   },
 ];
 
+export const workerSidebarGroups: readonly { title: string; items: readonly SidebarItem[] }[] = [
+  {
+    title: 'Công việc',
+    items: [
+      { id: 'worker-nearby', title: 'Việc mới', icon: 'bolt' },
+      { id: 'worker-quotes', title: 'Báo giá', icon: 'receipt' },
+      { id: 'worker-today', title: 'Lịch hẹn', icon: 'calendar' },
+      { id: 'worker-active', title: 'Đang thực hiện', icon: 'briefcase' },
+      { id: 'worker-history', title: 'Lịch sử công việc', icon: 'history' },
+    ],
+  },
+  {
+    title: 'Thu nhập',
+    items: [
+      { id: 'worker-earnings', title: 'Thu nhập', icon: 'wallet' },
+      { id: 'worker-payout', title: 'Rút tiền', icon: 'send' },
+    ],
+  },
+  {
+    title: 'Hồ sơ nghề',
+    items: [
+      { id: 'worker-profile', title: 'Hồ sơ và chứng chỉ', icon: 'user' },
+      { id: 'worker-areas', title: 'Khu vực và dịch vụ nhận', icon: 'grid' },
+      { id: 'worker-reviews', title: 'Đánh giá của khách', icon: 'star' },
+    ],
+  },
+  {
+    title: 'Hỗ trợ',
+    items: [
+      { id: 'worker-kael', title: 'Trợ lý Kael', icon: 'chat' },
+      { id: 'help', title: 'Trợ giúp', icon: 'help' },
+      { id: 'settings', title: 'Cài đặt', icon: 'gear' },
+    ],
+  },
+];
+
+export const workerPreviewSummary = { area: 'Quận 7 · bán kính 5 km', earningsToday: '1.250.000đ', nextAppointment: '14:00 · Sửa vòi nước, Quận 3' } as const;
+
+const groupTitles = Object.fromEntries([...sidebarGroups, ...workerSidebarGroups].flatMap(group => group.items.map(item => [item.id, item.title])));
+
 export const screenTitles: Record<string, string> = {
+  ...groupTitles,
   search: 'Tìm kiếm',
   requests: 'Yêu cầu của tôi',
   quotes: 'Báo giá',

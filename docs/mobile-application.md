@@ -91,7 +91,8 @@ The root `overrides` entry for `react` keeps a single React copy for the test re
 | `src/features/access` | Guest entry, phone sign-in, session and capability state, mode preference, route policy, sign-out | Worker qualification, privileged grants |
 | `src/features/client` | Client-only screens | Authorization, session code |
 | `src/features/worker` | Worker-only screens | Entitlement granting |
-| `src/features/shared` | UI used by both modes | Other features, privileged credentials |
+| `src/features/shared` | UI used by both modes, including the glass surfaces, press controls and icon set | Other features, privileged credentials |
+| `src/features/horizon` | Kael chat shell, sidebar, preview | Authorization, session code |
 | `src/lib` | Validated public config, the one Supabase client, keychain storage | Feature behavior |
 
 `src/testing/module-boundaries.test.ts` enforces the import directions, public

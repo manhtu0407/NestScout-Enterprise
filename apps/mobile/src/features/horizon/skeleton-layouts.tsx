@@ -6,41 +6,22 @@ import { Skeleton, SkeletonBlock } from './skeleton';
 
 const metrics = horizonLayout.skeleton;
 const home = horizonLayout.kaelHomeScreen;
-const glass = horizonLayout.glass;
+const companion = horizonLayout.kaelCompanion;
 const composer = horizonLayout.chatComposer;
 const sidebarList = horizonLayout.sidebarList;
 
-function Lines({ widths }: { widths: readonly (`${number}%`)[] }) {
-  return <>{widths.map((width, index) => <SkeletonBlock key={index} width={width} height={metrics.lineHeight} radius={metrics.lineRadius}/>)}</>;
-}
-
-function ChatPlaceholder() {
-  return <View style={styles.chat}>
-    <View style={styles.assistantRow}>
-      <SkeletonBlock width={metrics.avatarSize} height={metrics.avatarSize} radius={metrics.avatarRadius}/>
-      <View style={styles.assistantLines}><Lines widths={metrics.assistantLines}/></View>
-    </View>
-    <View style={styles.userLines}><Lines widths={metrics.userLines}/></View>
-    <View style={styles.assistantRow}>
-      <SkeletonBlock width={metrics.avatarSize} height={metrics.avatarSize} radius={metrics.avatarRadius}/>
-      <View style={styles.assistantLines}><Lines widths={metrics.shortAssistantLines}/></View>
-    </View>
-  </View>;
-}
-
 export function KaelHomeLoading({ label }: { label: string }) {
+  const introHeight = companion.introKaelWidth * companion.plushAspectRatio;
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
     <Skeleton label={label} style={styles.root}>
-      <View style={styles.nav}>
-        <View style={styles.slotStart}>
-          <SkeletonBlock width={glass.controlSize} height={glass.controlSize} radius={glass.controlRadius} style={styles.lifted}/>
+      <View style={styles.body}>
+        <View style={styles.ambient}/>
+        <View style={styles.copy}>
+          {metrics.introLineWidths.map((width, index) => <SkeletonBlock key={index} width={width} height={metrics.introLineHeight} radius={metrics.introLineRadius}/>)}
+          <SkeletonBlock width={companion.introUnderlineWidth} height={companion.introUnderlineHeight} radius={metrics.introLineRadius}/>
         </View>
-        <SkeletonBlock width={horizonLayout.kaelAvatar.size} height={horizonLayout.kaelAvatar.size} radius={horizonLayout.kaelAvatar.size * horizonLayout.kaelAvatar.radiusRatio}/>
-        <View style={styles.slotEnd}>
-          <SkeletonBlock width={glass.pillSegmentWidth * 2} height={glass.controlSize} radius={glass.pillRadius} style={styles.lifted}/>
-        </View>
+        <SkeletonBlock width={companion.introKaelWidth} height={introHeight} radius={metrics.introKaelRadius} style={styles.figure}/>
       </View>
-      <View style={styles.body}><ChatPlaceholder/></View>
       <View style={styles.footer}>
         <SkeletonBlock width="100%" height={composer.frameMinHeight} radius={composer.frameRadius}/>
         <SkeletonBlock width={metrics.disclaimerWidth} height={metrics.disclaimerHeight} radius={metrics.lineRadius} style={styles.disclaimer}/>
@@ -59,17 +40,12 @@ export function RecentSkeleton({ label }: { label: string }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: horizonColors.bg },
-  root: { flex: 1, paddingHorizontal: home.rootPaddingHorizontal },
-  nav: { height: home.navHeight, flexDirection: 'row', alignItems: 'center' },
-  slotStart: { flex: 1, flexDirection: 'row', justifyContent: 'flex-start' },
-  slotEnd: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end' },
-  lifted: { position: 'relative', top: -home.controlLift },
-  body: { flex: 1 },
+  root: { flex: 1, paddingHorizontal: home.rootPaddingHorizontal, overflow: 'hidden' },
+  body: { flex: 1, marginTop: companion.navHeight },
+  ambient: { position: 'absolute', top: companion.ambientTop, right: companion.ambientRight - home.rootPaddingHorizontal, width: companion.ambientWidth, height: companion.ambientHeight, borderRadius: companion.ambientHeight, backgroundColor: horizonColors.kaelCompanion.ambient },
+  copy: { position: 'absolute', top: companion.introTaglineTop, left: companion.introCopyLeft - home.rootPaddingHorizontal, gap: metrics.introLineGap },
+  figure: { position: 'absolute', top: companion.introKaelTop, left: companion.introKaelLeft - home.rootPaddingHorizontal },
   footer: { paddingBottom: home.footerPaddingBottom },
   disclaimer: { alignSelf: 'center', marginTop: home.disclaimerMarginTop },
-  chat: { paddingTop: home.chatContentPaddingTop, gap: metrics.groupGap },
-  assistantRow: { width: metrics.assistantWidth, flexDirection: 'row', alignItems: 'flex-start', gap: metrics.avatarGap },
-  assistantLines: { flex: 1, gap: metrics.lineGap },
-  userLines: { alignSelf: 'flex-end', width: metrics.userWidth, gap: metrics.lineGap },
   recentRow: { minHeight: sidebarList.rowHeight, justifyContent: 'center', paddingHorizontal: sidebarList.rowPadding },
 });

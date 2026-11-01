@@ -1,15 +1,14 @@
 import { horizonLayout } from '@/theme/layout';
 import React, { useCallback, useEffect, useState } from 'react';
 import { AccessibilityInfo, Animated, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { Icon } from './icon';
+import { GlassCapsuleButton, GlassIconButton, Icon, useGlassAccessibility, usePressFeedback } from '@/features/shared';
 import { quickServices, sidebarGroups } from './content';
 import type { SidebarItem } from './content';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ModePicker, type HorizonMode, type ModeNotice } from './mode-picker';
 import { AccountSheet } from './account-sheet';
-import { GlassCapsuleButton, GlassIconButton } from './glass-controls';
-import { useGlassAccessibility, usePressFeedback } from './glass-interaction';
+import { WorkerSidebarBody } from './worker-sidebar-body';
 import { RecentSkeleton } from './skeleton-layouts';
 import { RecentSessionRow } from './recent-session';
 import type { RecentSession } from './recent-session';
@@ -96,6 +95,7 @@ export function Sidebar({ visible, onClose, onNavigate, mode, modePending, modeN
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={pickerVisible ? closePicker : accountOpen ? () => setAccountCloseRequest(value => value + 1) : closeSidebar} statusBarTranslucent>
     <View style={styles.full}>
       <View pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'} accessibilityElementsHidden={pickerVisible || accountOpen} importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} style={[styles.drawer, { width: Math.min(width * horizonLayout.sidebar.drawerWidthRatio, horizonLayout.sidebar.drawerMaxWidth), paddingTop: topInset, paddingBottom: Math.max(insets.bottom, horizonLayout.sidebar.drawerMinimumBottom) }]}>
+        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={{ 'worker-nearby': 5, 'worker-quotes': 3, 'worker-today': 2, ...badges }}/> : <>
         <View style={styles.heading}>
           <View style={styles.brand}>
             <View accessible accessibilityRole="header" accessibilityLabel="NestScout Horizon" style={styles.lockup}>
@@ -133,6 +133,7 @@ export function Sidebar({ visible, onClose, onNavigate, mode, modePending, modeN
             <Icon name="plus" size={22} color={listColors.onAccent} strokeWidth={2}/><Text style={styles.newChatLabel}>Trò chuyện mới</Text>
           </GlassCapsuleButton>
         </View>
+        </>}
       </View>
       <Pressable style={styles.scrim} onPress={closeSidebar} accessibilityLabel="Đóng sidebar" importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'}/>
       {visible && accountOpen && <AccountSheet closeRequest={accountCloseRequest} reduceMotion={reduceMotion} profileName={profileName} modeLabel={modeLabel} onClose={closeAccount}/>}

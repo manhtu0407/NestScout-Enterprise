@@ -1,16 +1,25 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Image, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
-import { ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { horizonColors, horizonColors as colors } from '@/theme/palette';
 import { ChatComposer } from './chat-composer';
 import type { ComposerImage } from './composer-media';
 import { ConversationMenu } from './conversation-menu';
 import type { ConversationMenuItem } from './conversation-menu';
-import { GlassIconButton, GlassPill, GlassSegment } from './glass-controls';
-import { Icon } from './icon';
-import { KaelOrb } from './kael-orb';
+import { kaelPlushImage } from './kael-assets';
+import { KaelIntro } from './kael-intro';
+import { kaelIntroSession } from './kael-intro-session';
+import { KaelChatNav } from './kael-nav';
+import { expressionForPhase } from './kael-phase';
 import type { KaelPhase } from './kael-phase';
-import { KaelStatusAvatar } from './kael-status-avatar';
-import { horizonColors, horizonColors as colors } from '@/theme/palette';
+import { useKaelMotion, useReduceMotion } from './kael-motion';
+import { KaelProgressSheet } from './kael-progress-sheet';
+import { KaelStage } from './kael-stage';
+
+const metrics = horizonLayout.kaelCompanion;
+const bubbles = horizonLayout.kaelHomeScreen;
+const bubbleColors = horizonColors.kaelHomeScreen;
+const companionColors = horizonColors.kaelCompanion;
 
 type Props = {
   input: string;
@@ -28,63 +37,101 @@ type Props = {
   messages: { id: string; role: 'user' | 'assistant'; text: string }[];
 };
 
+type Footer = { top: number; height: number };
+
 export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messages, composerError, onClearComposerError, conversationKey, kaelPhase = null, draftImages, onDraftImagesChange, draftLocked }: Props) {
+  const reduceMotion = useReduceMotion();
+  const hasConversation = messages.length > 0;
+  const [chatActive, setChatActive] = useState(() => hasConversation || kaelIntroSession.hasPlayed());
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuNotice, setMenuNotice] = useState<string | null>(null);
-  const hasConversation = messages.length > 0;
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [footer, setFooter] = useState<Footer | null>(null);
+  const { progress, landing, reaction, react } = useKaelMotion(chatActive, reduceMotion);
+  const expression = expressionForPhase(kaelPhase);
+  const previousExpression = useRef(expression);
+
+  const [seenConversation, setSeenConversation] = useState(hasConversation);
+  if (seenConversation !== hasConversation) {
+    setSeenConversation(hasConversation);
+    if (hasConversation) setChatActive(true);
+  }
+
+  const [seenKey, setSeenKey] = useState(conversationKey);
+  if (seenKey !== conversationKey) {
+    setSeenKey(conversationKey);
+    setChatActive(true);
+    setTimelineOpen(false);
+  }
+
+  useEffect(() => {
+    if (chatActive) kaelIntroSession.markPlayed();
+  }, [chatActive]);
+
+  useEffect(() => {
+    if (previousExpression.current === expression) return;
+    previousExpression.current = expression;
+    if (chatActive && expression !== null) react();
+  }, [chatActive, expression, react]);
+
+  const footerHeight = footer?.height ?? 0;
+  const seatTop = footer?.top ?? null;
+  const enterChat = () => setChatActive(true);
+
   const notify = (message: string) => setMenuNotice(message);
   const startNew = () => { setMenuOpen(false); setMenuNotice(null); onNew(); };
   const share = async () => {
     if (!hasConversation) { notify('Chưa có nội dung để chia sẻ.'); return; }
     const transcript = messages.map(m => `${m.role === 'user' ? 'Bạn' : 'Kael'}: ${m.text}`).join('\n\n');
-    try { await Share.share({ message: transcript }); } catch { setMenuNotice('Thiết bị này chưa mở được chia sẻ.'); }
+    try { await Share.share({ message: transcript }); } catch { notify('Thiết bị này chưa mở được chia sẻ.'); }
   };
   const menuItems: readonly ConversationMenuItem[] = [
+    { id: 'new', label: 'Trò chuyện mới', icon: 'compose', onPress: startNew },
     { id: 'share', label: 'Chia sẻ', icon: 'share', onPress: share },
     { id: 'pin', label: 'Ghim', icon: 'pin', onPress: () => notify('Ghim cuộc trò chuyện chưa được kết nối.') },
     { id: 'find', label: 'Tìm trong cuộc trò chuyện', icon: 'search', onPress: () => notify('Tìm trong cuộc trò chuyện chưa được kết nối.') },
     { id: 'archive', label: 'Lưu trữ', icon: 'archive', onPress: () => notify('Lưu trữ cuộc trò chuyện chưa được kết nối.') },
+    { id: 'timeline', label: 'Tiến độ', icon: 'clock', onPress: () => setTimelineOpen(true) },
     { id: 'delete', label: 'Xóa', icon: 'trash', destructive: true, onPress: () => { if (hasConversation) startNew(); else notify('Chưa có cuộc trò chuyện để xóa.'); } },
   ];
   const firstUserMessage = messages.find(m => m.role === 'user');
+  const chatOpacity = progress.interpolate({ inputRange: [0, metrics.chatFadeStart, 1], outputRange: [0, 0, 1] });
+  const chatShift = progress.interpolate({ inputRange: [0, 1], outputRange: [metrics.chatEnterOffset, 0] });
+
   return <View style={styles.root}>
-    <View style={styles.nav}>
-      <View style={styles.slotStart}>
-        <GlassIconButton label="Mở thanh bên" onPress={onMenu} style={styles.lifted}><Icon name="menu" size={horizonLayout.glass.iconSize}/></GlassIconButton>
-      </View>
-      <KaelStatusAvatar phase={kaelPhase}/>
-      <View style={styles.slotEnd}>
-        <GlassPill style={styles.lifted}>
-          <GlassSegment label="Trò chuyện mới" onPress={startNew}><Icon name="compose" size={horizonLayout.glass.iconSize}/></GlassSegment>
-          <GlassSegment label="Tùy chọn cuộc trò chuyện" expanded={menuOpen} onPress={() => setMenuOpen(open => !open)}><Icon name="more" size={horizonLayout.glass.iconSize}/></GlassSegment>
-        </GlassPill>
-      </View>
-    </View>
-    <ScrollView style={styles.chat} contentContainerStyle={styles.chatContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-      {messages.map(m => <View key={m.id} style={[styles.bubble, m.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
-        {m.role === 'assistant' && <KaelOrb compact size={36}/>}
-        <Text style={styles.bubbleText}>{m.text}</Text>
-      </View>)}
-    </ScrollView>
-    <View style={styles.footer}><ChatComposer key={conversationKey} value={input} onChange={value => { setMenuNotice(null); onInput(value); }} onSubmit={onSubmit} error={composerError ?? menuNotice} onMediaChange={() => { setMenuNotice(null); onClearComposerError(); }} initialImages={draftImages} onImagesChange={onDraftImagesChange} mediaExternallyManaged={Boolean(onDraftImagesChange)} locked={draftLocked}/>
+    <Animated.View pointerEvents={chatActive ? 'box-none' : 'none'} style={[styles.layer, { bottom: footerHeight, opacity: chatOpacity, transform: [{ translateY: chatShift }] }]}>
+      <ScrollView style={styles.conversation} contentContainerStyle={styles.conversationContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        {messages.map(m => <View key={m.id} style={[styles.bubble, m.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
+          {m.role === 'assistant' && <View style={styles.miniBadge}>
+            <Image source={kaelPlushImage} accessibilityIgnoresInvertColors style={styles.miniBadgeImage} resizeMode="cover"/>
+          </View>}
+          <Text style={styles.bubbleText}>{m.text}</Text>
+        </View>)}
+      </ScrollView>
+    </Animated.View>
+    <KaelIntro progress={progress} footerHeight={footerHeight} interactive={!chatActive}/>
+    <KaelStage progress={progress} landing={landing} reaction={reaction} expression={expression} nod={kaelPhase === 'completed'} seatTop={seatTop} navHeight={metrics.navHeight}/>
+    <View style={styles.footer} onLayout={event => setFooter({ top: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height })}>
+      <ChatComposer key={conversationKey} value={input} onChange={value => { setMenuNotice(null); onInput(value); }} onSubmit={images => { enterChat(); onSubmit(images); }} error={composerError ?? menuNotice} onMediaChange={() => { setMenuNotice(null); onClearComposerError(); }} initialImages={draftImages} onImagesChange={onDraftImagesChange} mediaExternallyManaged={Boolean(onDraftImagesChange)} locked={draftLocked} onFocus={enterChat}/>
       <Text style={styles.disclaimer}>Kael có thể mắc sai sót. Hãy kiểm tra thông tin quan trọng.</Text>
     </View>
+    {chatActive && <KaelChatNav onMenu={onMenu} onOptions={() => setMenuOpen(open => !open)}/>}
+    <KaelProgressSheet open={timelineOpen} phase={kaelPhase} bottomOffset={footerHeight + metrics.progressBottomInset} onClose={() => setTimelineOpen(false)}/>
     {menuOpen && <ConversationMenu title={firstUserMessage?.text ?? 'Cuộc trò chuyện mới'} items={menuItems} onClose={() => setMenuOpen(false)}/>}
   </View>;
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: horizonLayout.kaelHomeScreen.rootPaddingHorizontal },
-  nav: { height: horizonLayout.kaelHomeScreen.navHeight, flexDirection: 'row', alignItems: 'center' },
-  slotStart: { flex: 1, flexDirection: 'row', justifyContent: 'flex-start' },
-  slotEnd: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end' },
-  lifted: { position: 'relative', top: -horizonLayout.kaelHomeScreen.controlLift },
-  footer: { paddingBottom: horizonLayout.kaelHomeScreen.footerPaddingBottom },
-  disclaimer: { color: horizonColors.kaelHomeScreen.disclaimerColor, fontSize: horizonLayout.kaelHomeScreen.disclaimerFontSize, lineHeight: horizonLayout.kaelHomeScreen.disclaimerLineHeight, textAlign: 'center', marginTop: horizonLayout.kaelHomeScreen.disclaimerMarginTop },
-  chat: { flex: 1 },
-  chatContent: { paddingTop: horizonLayout.kaelHomeScreen.chatContentPaddingTop, gap: horizonLayout.kaelHomeScreen.chatContentGap, paddingBottom: horizonLayout.kaelHomeScreen.chatContentPaddingBottom },
-  bubble: { maxWidth: horizonLayout.kaelHomeScreen.bubbleMaxWidth, borderRadius: horizonLayout.kaelHomeScreen.bubbleBorderRadius, padding: horizonLayout.kaelHomeScreen.bubblePadding, flexDirection: 'row', gap: horizonLayout.kaelHomeScreen.bubbleGap, alignItems: 'flex-start' },
-  userBubble: { alignSelf: 'flex-end', backgroundColor: horizonColors.kaelHomeScreen.userBubbleBackgroundColor },
-  assistantBubble: { alignSelf: 'flex-start', backgroundColor: horizonColors.kaelHomeScreen.assistantBubbleBackgroundColor },
-  bubbleText: { color: colors.text, fontSize: horizonLayout.kaelHomeScreen.bubbleTextFontSize, lineHeight: horizonLayout.kaelHomeScreen.bubbleTextLineHeight, flexShrink: 1 }
+  root: { flex: 1, backgroundColor: colors.bg, justifyContent: 'flex-end', overflow: 'hidden' },
+  layer: { position: 'absolute', top: metrics.navHeight, left: 0, right: 0 },
+  conversation: { position: 'absolute', top: metrics.conversationTop, left: metrics.conversationSideInset, right: metrics.conversationSideInset, bottom: metrics.conversationBottomInset },
+  conversationContent: { gap: metrics.chatGap, paddingBottom: bubbles.chatContentPaddingBottom },
+  bubble: { maxWidth: bubbles.bubbleMaxWidth, borderRadius: bubbles.bubbleBorderRadius, padding: bubbles.bubblePadding, flexDirection: 'row', gap: bubbles.bubbleGap, alignItems: 'flex-start' },
+  userBubble: { alignSelf: 'flex-end', backgroundColor: bubbleColors.userBubbleBackgroundColor },
+  assistantBubble: { alignSelf: 'flex-start', backgroundColor: bubbleColors.assistantBubbleBackgroundColor },
+  bubbleText: { color: colors.text, fontSize: bubbles.bubbleTextFontSize, lineHeight: bubbles.bubbleTextLineHeight, flexShrink: 1 },
+  miniBadge: { width: metrics.miniBadgeSize, height: metrics.miniBadgeSize, borderRadius: metrics.miniBadgeRadius, backgroundColor: companionColors.welcomeSurface, overflow: 'hidden' },
+  miniBadgeImage: { position: 'absolute', width: metrics.miniBadgeImageWidth, height: metrics.miniBadgeImageWidth * metrics.plushAspectRatio, top: metrics.miniBadgeImageTop, left: metrics.miniBadgeImageLeft },
+  footer: { paddingHorizontal: metrics.composerSideInset, paddingBottom: metrics.footerBottomInset },
+  disclaimer: { color: bubbleColors.disclaimerColor, fontSize: bubbles.disclaimerFontSize, lineHeight: bubbles.disclaimerLineHeight, textAlign: 'center', marginTop: metrics.disclaimerTop },
 });
