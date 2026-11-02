@@ -94,6 +94,15 @@ export const horizonColors = {
       { offset: 1, color: '#FFFFFF', opacity: 0.95 },
     ],
   },
+  kaelMotionLab: {
+    title: '#5B6672', chip: '#F2F4F7', chipActive: '#141820', chipText: '#141820', chipTextActive: '#FFFFFF', card: '#F7F8FA',
+  },
+  kaelMotion: {
+    shimmerBase: '#7C7C7C', shimmerHighlight: '#0D0D0D',
+    matrixBase: '#D5D9E0', matrixActive: '#141820',
+    noteText: '#4A5260',
+    spinnerTrack: '#E4E7EC', spinnerArc: '#141820', spinnerDone: '#141820', spinnerCheck: '#FFFFFF',
+  },
   skeleton: {
     base: '#ECEFF3',
     shimmer: [

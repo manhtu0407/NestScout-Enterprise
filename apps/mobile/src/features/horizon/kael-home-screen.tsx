@@ -11,9 +11,11 @@ import { KaelIntro } from './kael-intro';
 import { kaelIntroSession } from './kael-intro-session';
 import { KaelChatNav } from './kael-nav';
 import { expressionForPhase } from './kael-phase';
-import type { KaelPhase } from './kael-phase';
+import type { KaelPhase, KaelPhaseIssue } from './kael-phase';
 import { useKaelMotion, useReduceMotion } from './kael-motion';
 import { KaelProgressSheet } from './kael-progress-sheet';
+import { KaelStreamingText } from './kael-streaming-text';
+import { isKaelThinking, KaelThinkingRow } from './kael-thinking-row';
 import { KaelStage } from './kael-stage';
 
 const metrics = horizonLayout.kaelCompanion;
@@ -32,6 +34,7 @@ type Props = {
   draftLocked?: boolean;
   conversationKey: number;
   kaelPhase?: KaelPhase | null;
+  kaelPhaseIssue?: KaelPhaseIssue | null;
   onMenu: () => void;
   onNew: () => void;
   messages: { id: string; role: 'user' | 'assistant'; text: string }[];
@@ -39,7 +42,7 @@ type Props = {
 
 type Footer = { top: number; height: number };
 
-export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messages, composerError, onClearComposerError, conversationKey, kaelPhase = null, draftImages, onDraftImagesChange, draftLocked }: Props) {
+export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messages, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, draftImages, onDraftImagesChange, draftLocked }: Props) {
   const reduceMotion = useReduceMotion();
   const hasConversation = messages.length > 0;
   const [chatActive, setChatActive] = useState(() => hasConversation || kaelIntroSession.hasPlayed());
@@ -50,6 +53,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messag
   const { progress, landing, reaction, react } = useKaelMotion(chatActive, reduceMotion);
   const expression = expressionForPhase(kaelPhase);
   const previousExpression = useRef(expression);
+  const [initialMessageIds] = useState(() => new Set(messages.map(m => m.id)));
 
   const [seenConversation, setSeenConversation] = useState(hasConversation);
   if (seenConversation !== hasConversation) {
@@ -105,8 +109,11 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messag
           {m.role === 'assistant' && <View style={styles.miniBadge}>
             <Image source={kaelPlushImage} accessibilityIgnoresInvertColors style={styles.miniBadgeImage} resizeMode="cover"/>
           </View>}
-          <Text style={styles.bubbleText}>{m.text}</Text>
+          {m.role === 'assistant' && !initialMessageIds.has(m.id)
+            ? <KaelStreamingText text={m.text} style={styles.bubbleText}/>
+            : <Text style={styles.bubbleText}>{m.text}</Text>}
         </View>)}
+        {isKaelThinking(kaelPhase) && <KaelThinkingRow phase={kaelPhase} issue={kaelPhaseIssue}/>}
       </ScrollView>
     </Animated.View>
     <KaelIntro progress={progress} footerHeight={footerHeight} interactive={!chatActive}/>

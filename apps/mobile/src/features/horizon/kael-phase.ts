@@ -2,6 +2,16 @@ export const kaelPhases = ['clarifying', 'matching', 'quotes', 'approval', 'book
 
 export type KaelPhase = typeof kaelPhases[number];
 
+export const kaelPhaseIssues = ['needs_information', 'unmatched', 'unavailable'] as const;
+
+export type KaelPhaseIssue = typeof kaelPhaseIssues[number];
+
+export const kaelPhaseIssueNotes: Readonly<Record<KaelPhaseIssue, { short: string; description: string }>> = {
+  needs_information: { short: 'Kael cần thêm thông tin', description: 'Yêu cầu còn thiếu thông tin để tiếp tục. Chưa có thợ nào được xác nhận.' },
+  unmatched: { short: 'Chưa tìm được thợ phù hợp', description: 'Chưa có phương án nào khớp với yêu cầu. Chưa có thợ nào được xác nhận.' },
+  unavailable: { short: 'Chưa thể ghép thợ lúc này', description: 'Việc ghép thợ tạm thời chưa khả dụng. Chưa có thợ nào được xác nhận.' },
+};
+
 export type KaelExpression = 'idle' | 'thinking' | 'focus' | 'alert' | 'calm' | 'happy' | 'heart';
 
 export type KaelPhaseTone = 'busy' | 'alert' | 'normal' | 'done';
