@@ -3,7 +3,8 @@ import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 
 import type { LayoutChangeEvent } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { GlassIconButton, Icon, type IconName, PressScale, useGlassAccessibility } from '@/features/shared';
+import { Icon, type IconName, PressScale, useGlassAccessibility } from '@/features/shared';
+import { ScreenHeader } from './support-shell';
 
 const metrics = horizonLayout.requestsScreen;
 const colors = horizonColors.requestsScreen;
@@ -19,7 +20,15 @@ export type ServiceRequest = {
   status: string;
   stage: RequestStage;
   quoteCount?: number;
+  step: number;
+  nextAction: string;
+  description: string;
+  location: string;
+  createdLabel: string;
+  photoCount: number;
 };
+
+export const workflowSteps: readonly string[] = ['Đã gửi', 'Có báo giá', 'Chấp nhận', 'Ghép thợ', 'Thực hiện', 'Nghiệm thu'];
 
 const tabs: readonly { stage: RequestStage; label: string; emptyTitle: string; emptyBody: string }[] = [
   { stage: 'waiting', label: 'Đang chờ', emptyTitle: 'Chưa có yêu cầu đang chờ', emptyBody: 'Hỏi Kael để tạo yêu cầu mới, báo giá sẽ về đây.' },
@@ -30,18 +39,23 @@ const tabs: readonly { stage: RequestStage; label: string; emptyTitle: string; e
 type Props = {
   requests?: readonly ServiceRequest[];
   onBack: () => void;
-  onOpenRequest?: (id: string) => void;
+  onViewQuotes?: () => void;
+  onAskKael?: (request: ServiceRequest) => void;
 };
 
-function RequestCard({ request, onPress }: { request: ServiceRequest; onPress: () => void }) {
+function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael }: CardProps) {
+  const finished = request.step >= workflowSteps.length;
+  const caption = finished ? `Đủ ${workflowSteps.length}/${workflowSteps.length} bước` : `Bước ${request.step + 1}/${workflowSteps.length} · ${workflowSteps[request.step]}`;
+  const needsYou = Boolean(request.quoteCount);
   return (
-    <PressScale
-      accessibilityRole="button"
-      accessibilityLabel={`${request.title}, ${request.meta}, ${request.status}`}
-      onPress={onPress}
-      style={styles.card}
-    >
-      <View style={styles.cardTop}>
+    <View style={styles.card}>
+      <PressScale
+        accessibilityRole="button"
+        accessibilityLabel={`${request.title}, ${request.meta}, ${request.status}`}
+        accessibilityState={{ expanded }}
+        onPress={onToggle}
+        style={styles.cardTop}
+      >
         <View style={styles.tile}>
           <Icon name={request.icon} size={metrics.tileIconSize} />
         </View>
@@ -49,7 +63,10 @@ function RequestCard({ request, onPress }: { request: ServiceRequest; onPress: (
           <Text numberOfLines={1} style={styles.cardTitle}>{request.title}</Text>
           <Text numberOfLines={1} style={styles.cardMeta}>{request.meta}</Text>
         </View>
-      </View>
+        <View style={[styles.toggle, { transform: [{ rotate: expanded ? metrics.toggleOpenRotation : metrics.toggleClosedRotation }] }]}>
+          <Icon name="chevron" size={metrics.toggleSize} color={colors.toggleIcon} strokeWidth={metrics.toggleStroke} />
+        </View>
+      </PressScale>
       <View style={styles.cardBottom}>
         <Text style={styles.status}>{request.status}</Text>
         {request.quoteCount ? (
@@ -58,11 +75,85 @@ function RequestCard({ request, onPress }: { request: ServiceRequest; onPress: (
           </View>
         ) : null}
       </View>
-    </PressScale>
+      <View style={styles.block}>
+        <View accessibilityRole="progressbar" accessibilityLabel={caption} style={styles.segments}>
+          {workflowSteps.map((label, index) => (
+            <View key={label} style={[styles.segment, index < request.step && styles.segmentDone]} />
+          ))}
+        </View>
+        <Text style={styles.caption}>{caption}</Text>
+      </View>
+      <View style={styles.next}>
+        <View style={[styles.nextIcon, needsYou && styles.nextIconActive]}>
+          <Icon name={needsYou ? 'receipt' : 'clock'} size={metrics.nextIconSize} color={needsYou ? colors.nextAccent : colors.stepCaption} />
+        </View>
+        <View style={styles.nextCopy}>
+          <Text style={styles.nextLabel}>{needsYou ? 'Việc của bạn' : 'Hiện tại'}</Text>
+          <Text style={styles.nextText}>{request.nextAction}</Text>
+        </View>
+      </View>
+      {expanded ? (
+        <View style={styles.detail}>
+          <Text style={styles.detailTitle}>Thông tin yêu cầu</Text>
+          <Info label="Mô tả" value={request.description} />
+          <Info label="Địa điểm" value={request.location} />
+          <Info label="Gửi lúc" value={request.createdLabel} />
+          <Info label="Ảnh đính kèm" value={request.photoCount > 0 ? `${request.photoCount} ảnh` : 'Không có'} />
+          <Text style={styles.detailTitle}>Tiến trình</Text>
+          <View>
+            {workflowSteps.map((label, index) => {
+              const done = index < request.step;
+              const current = index === request.step;
+              const last = index === workflowSteps.length - 1;
+              return (
+                <View key={label} style={styles.timelineRow}>
+                  <View style={styles.timelineRail}>
+                    <View style={[styles.timelineDot, done && styles.timelineDotDone, current && styles.timelineDotCurrent]}>
+                      {done ? <Icon name="check" size={metrics.timelineDotIcon} color={colors.timelineDoneIcon} strokeWidth={metrics.timelineDotStroke} /> : null}
+                    </View>
+                    {last ? null : <View style={[styles.timelineLine, done && styles.timelineLineDone]} />}
+                  </View>
+                  <Text style={[styles.timelineLabel, !done && !current && styles.timelineLabelPending, current && styles.timelineLabelCurrent]}>{label}</Text>
+                </View>
+              );
+            })}
+          </View>
+          <Text style={styles.note}>Chấp nhận báo giá chưa thu tiền. Thanh toán chưa được kết nối.</Text>
+        </View>
+      ) : null}
+      <View style={styles.actions}>
+        {request.quoteCount ? (
+          <PressScale accessibilityRole="button" accessibilityLabel={`Xem báo giá của ${request.title}`} onPress={() => onViewQuotes?.()} style={styles.action} wrapperStyle={styles.actionWrap}>
+            <Text style={styles.actionLabel}>Xem báo giá</Text>
+          </PressScale>
+        ) : null}
+        <PressScale accessibilityRole="button" accessibilityLabel={`Hỏi Kael về ${request.title}`} onPress={() => onAskKael?.(request)} style={[styles.action, styles.actionSecondary]} wrapperStyle={styles.actionWrap}>
+          <Text style={[styles.actionLabel, styles.actionSecondaryLabel]}>Hỏi Kael</Text>
+        </PressScale>
+      </View>
+    </View>
   );
 }
 
-export function RequestsScreen({ requests = [], onBack, onOpenRequest }: Props) {
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.info}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
+type CardProps = {
+  request: ServiceRequest;
+  expanded: boolean;
+  onToggle: () => void;
+  onViewQuotes?: () => void;
+  onAskKael?: (request: ServiceRequest) => void;
+};
+
+export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael }: Props) {
+  const [expandedIds, setExpandedIds] = useState<readonly string[]>([]);
   const { reduceMotion } = useGlassAccessibility();
   const [index, setIndex] = useState(0);
   const [trackWidth, setTrackWidth] = useState(0);
@@ -91,10 +182,8 @@ export function RequestsScreen({ requests = [], onBack, onOpenRequest }: Props) 
 
   return (
     <View style={styles.root}>
-      <GlassIconButton label="Quay về" onPress={onBack} style={styles.back}>
-        <Icon name="back" size={horizonLayout.glass.iconSize} />
-      </GlassIconButton>
-      <Text accessibilityRole="header" style={styles.title}>Yêu cầu của tôi</Text>
+      <ScreenHeader title="Yêu cầu của tôi" onBack={onBack} />
+      <View style={styles.headerGap} />
       <View accessibilityRole="tablist" onLayout={handleLayout} style={styles.tabs}>
         {trackWidth > 0 && (
           <Animated.View
@@ -134,7 +223,14 @@ export function RequestsScreen({ requests = [], onBack, onOpenRequest }: Props) 
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
         {visible.length > 0 ? (
           visible.map(request => (
-            <RequestCard key={request.id} request={request} onPress={() => onOpenRequest?.(request.id)} />
+            <RequestCard
+              key={request.id}
+              request={request}
+              expanded={expandedIds.includes(request.id)}
+              onToggle={() => setExpandedIds(current => (current.includes(request.id) ? current.filter(id => id !== request.id) : [...current, request.id]))}
+              onViewQuotes={onViewQuotes}
+              onAskKael={onAskKael}
+            />
           ))
         ) : (
           <View accessibilityLiveRegion="polite" style={styles.empty}>
@@ -150,14 +246,7 @@ export function RequestsScreen({ requests = [], onBack, onOpenRequest }: Props) 
 
 const styles = StyleSheet.create({
   root: { flex: 1, paddingHorizontal: metrics.paddingHorizontal },
-  back: { alignSelf: 'flex-start', marginTop: metrics.backMarginTop, marginLeft: metrics.backMarginLeft },
-  title: {
-    color: horizonColors.text,
-    fontSize: metrics.titleSize,
-    fontWeight: metrics.titleWeight,
-    marginTop: metrics.titleMarginTop,
-    marginBottom: metrics.titleMarginBottom,
-  },
+  headerGap: { height: metrics.titleMarginBottom },
   tabs: { flexDirection: 'row', padding: metrics.tabsPadding, borderRadius: metrics.tabsRadius, backgroundColor: colors.tabsFill },
   indicator: {
     position: 'absolute',
@@ -175,6 +264,40 @@ const styles = StyleSheet.create({
   listContent: { gap: metrics.listGap, paddingTop: metrics.listPaddingTop, paddingBottom: metrics.listPaddingBottom },
   card: { padding: metrics.cardPadding, gap: metrics.cardGap, borderRadius: metrics.cardRadius, backgroundColor: colors.cardFill },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: metrics.cardGap },
+  toggle: { width: metrics.toggleHitSize, height: metrics.toggleHitSize, alignItems: 'center', justifyContent: 'center', borderRadius: metrics.toggleHitSize, backgroundColor: colors.toggleFill },
+  block: { gap: metrics.blockGap },
+  segments: { flexDirection: 'row', gap: metrics.stepSegmentGap },
+  segment: { flex: 1, height: metrics.stepSegmentHeight, borderRadius: metrics.stepSegmentRadius, backgroundColor: colors.stepTrack },
+  segmentDone: { backgroundColor: colors.stepFill },
+  caption: { color: colors.stepCaption, fontSize: metrics.stepCaptionSize, fontWeight: metrics.stepCaptionWeight },
+  next: { flexDirection: 'row', alignItems: 'center', gap: metrics.nextGap, padding: metrics.nextPadding, borderRadius: metrics.nextRadius, backgroundColor: colors.nextFill },
+  nextIcon: { width: metrics.toggleHitSize, height: metrics.toggleHitSize, borderRadius: metrics.toggleHitSize, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.stepTrack },
+  nextIconActive: { backgroundColor: colors.nextAccentFill },
+  nextCopy: { flex: 1, minWidth: 0, gap: metrics.infoLabelGap },
+  nextLabel: { color: colors.infoLabel, fontSize: metrics.nextLabelSize, fontWeight: metrics.stepCaptionWeight },
+  nextText: { color: horizonColors.text, fontSize: metrics.nextTextSize, lineHeight: metrics.nextTextLineHeight },
+  detail: { gap: metrics.infoGap },
+  detailTitle: { color: colors.infoLabel, fontSize: metrics.detailTitleSize, fontWeight: metrics.detailTitleWeight },
+  info: { gap: metrics.infoLabelGap },
+  infoLabel: { color: colors.infoLabel, fontSize: metrics.infoLabelSize },
+  infoValue: { color: horizonColors.text, fontSize: metrics.infoValueSize, lineHeight: metrics.infoValueLineHeight },
+  timelineRow: { flexDirection: 'row', gap: metrics.timelineGap, minHeight: metrics.timelineRowMinHeight },
+  timelineRail: { alignItems: 'center', width: metrics.timelineDot },
+  timelineDot: { width: metrics.timelineDot, height: metrics.timelineDot, borderRadius: metrics.timelineDot, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.timelinePending },
+  timelineDotDone: { backgroundColor: colors.timelineDone },
+  timelineDotCurrent: { backgroundColor: colors.timelineCurrent },
+  timelineLine: { flex: 1, width: metrics.timelineLine, backgroundColor: colors.timelineLine },
+  timelineLineDone: { backgroundColor: colors.timelineDone },
+  timelineLabel: { color: horizonColors.text, fontSize: metrics.timelineLabelSize, fontWeight: metrics.timelineLabelWeight, lineHeight: metrics.timelineDot },
+  timelineLabelPending: { color: colors.timelinePendingText },
+  timelineLabelCurrent: { fontWeight: metrics.detailTitleWeight },
+  note: { color: horizonColors.muted, fontSize: metrics.noteSize, lineHeight: metrics.noteLineHeight },
+  actions: { flexDirection: 'row', gap: metrics.actionGap },
+  actionWrap: { flex: 1 },
+  action: { height: metrics.actionHeight, borderRadius: metrics.actionRadius, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.actionFill },
+  actionSecondary: { backgroundColor: colors.actionSecondaryFill },
+  actionLabel: { color: colors.actionLabel, fontSize: metrics.actionSize, fontWeight: metrics.actionWeight },
+  actionSecondaryLabel: { color: colors.actionSecondaryLabel },
   tile: {
     width: metrics.tileSize,
     height: metrics.tileSize,

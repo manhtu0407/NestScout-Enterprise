@@ -9,6 +9,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ModePicker, type HorizonMode, type ModeNotice } from './mode-picker';
 import { AccountSheet } from './account-sheet';
 import { WorkerSidebarBody } from './worker-sidebar-body';
+import { workerSidebarBadges } from './worker-jobs';
+import { CollapsibleGroup } from './sidebar-group';
 import { RecentSkeleton } from './skeleton-layouts';
 import { RecentSessionRow } from './recent-session';
 import type { RecentSession } from './recent-session';
@@ -17,6 +19,7 @@ type Props = {
   visible: boolean;
   onClose: () => void;
   onNavigate: (screen: string) => void;
+  onSelectService?: (prompt: string) => void;
   mode: HorizonMode;
   modePending: boolean;
   modeNotice: ModeNotice;
@@ -24,6 +27,7 @@ type Props = {
   onModeCancel: () => void;
   onDismissModeNotice: () => void;
   profileName?: string;
+  profileAvatarUri?: string;
   recentLoading?: boolean;
   badges?: Readonly<Record<string, number>>;
   recentSessions?: readonly RecentSession[];
@@ -55,10 +59,13 @@ function ItemRow({ item, onPress, badge = 0 }: { item: SidebarItem; onPress: () 
   </Animated.View>;
 }
 
-export function Sidebar({ visible, onClose, onNavigate, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, recentLoading = false, badges = {}, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore }: Props) {
+export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, profileAvatarUri, recentLoading = false, badges = {}, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const topInset = Platform.select({ web: 0, default: insets.top }) ?? 0;
+  const [servicesOpen, setServicesOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(true);
+  const [supportOpen, setSupportOpen] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountCloseRequest, setAccountCloseRequest] = useState(0);
@@ -95,7 +102,7 @@ export function Sidebar({ visible, onClose, onNavigate, mode, modePending, modeN
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={pickerVisible ? closePicker : accountOpen ? () => setAccountCloseRequest(value => value + 1) : closeSidebar} statusBarTranslucent>
     <View style={styles.full}>
       <View pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'} accessibilityElementsHidden={pickerVisible || accountOpen} importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} style={[styles.drawer, { width: Math.min(width * horizonLayout.sidebar.drawerWidthRatio, horizonLayout.sidebar.drawerMaxWidth), paddingTop: topInset, paddingBottom: Math.max(insets.bottom, horizonLayout.sidebar.drawerMinimumBottom) }]}>
-        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={{ 'worker-nearby': 5, 'worker-quotes': 3, 'worker-today': 2, ...badges }}/> : <>
+        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={{ ...workerSidebarBadges, ...badges }}/> : <>
         <View style={styles.heading}>
           <View style={styles.brand}>
             <View accessible accessibilityRole="header" accessibilityLabel="NestScout Horizon" style={styles.lockup}>
@@ -105,9 +112,9 @@ export function Sidebar({ visible, onClose, onNavigate, mode, modePending, modeN
           <GlassIconButton label="Tìm kiếm cuộc trò chuyện" onPress={() => onNavigate('search')}><Icon name="search" size={horizonLayout.glass.iconSize}/></GlassIconButton>
         </View>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <Group first title={sidebarGroups[0]?.title}>
+          <CollapsibleGroup first title={sidebarGroups[0]?.title ?? ''} expanded={activityOpen} onToggle={() => setActivityOpen(open => !open)} badge={(sidebarGroups[0]?.items ?? []).reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>
             {sidebarGroups[0]?.items.map(item => <ItemRow key={item.id} item={item} badge={badges[item.id]} onPress={() => onNavigate(item.id)}/>)}
-          </Group>
+          </CollapsibleGroup>
           {recentSessions.length > 0 && <Group title="Đã ghim">
             {pinnedSessions.length > 0 ? pinnedSessions.map(renderSession) : <Text style={styles.emptyText}>Bấm biểu tượng ghim để giữ cuộc trò chuyện quan trọng ở đây.</Text>}
           </Group>}
@@ -118,17 +125,17 @@ export function Sidebar({ visible, onClose, onNavigate, mode, modePending, modeN
                 ? <Text style={styles.emptyText}>Chưa có cuộc trò chuyện nào. Bấm “Trò chuyện mới” để hỏi Kael.</Text>
                 : unpinnedSessions.map(renderSession)}
           </Group>
-          <Group title="Dịch vụ">
-            {quickServices.map(service => <ItemRow key={service.title} item={{ id: service.title, title: service.title, icon: service.icon }} onPress={() => onNavigate(service.title)}/>)}
-          </Group>
-          <Group title={sidebarGroups[1]?.title ?? ''}>
+          <CollapsibleGroup title="Dịch vụ" expanded={servicesOpen} onToggle={() => setServicesOpen(open => !open)}>
+            {quickServices.map(service => <ItemRow key={service.title} item={{ id: service.title, title: service.title, icon: service.icon }} onPress={() => (onSelectService ?? onNavigate)(service.prompt)}/>)}
+          </CollapsibleGroup>
+          <CollapsibleGroup title={sidebarGroups[1]?.title ?? ''} expanded={supportOpen} onToggle={() => setSupportOpen(open => !open)}>
             {sidebarGroups[1]?.items.map(item => <ItemRow key={item.id} item={item} onPress={() => onNavigate(item.id)}/>)}
             <ItemRow item={{ id: 'mode', title: 'Đổi vai trò', icon: 'user' }} onPress={chooseMode}/>
             <ItemRow item={{ id: 'account', title: 'Tài khoản và đăng nhập', icon: 'login' }} onPress={() => onNavigate('profile')}/>
-          </Group>
+          </CollapsibleGroup>
         </ScrollView>
         <View pointerEvents="box-none" style={styles.floating}>
-          <GlassIconButton label={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} hint="Mở tài khoản và chuyển vai trò" onPress={() => { setAccountCloseRequest(0); setAccountOpen(true); }}><View style={styles.avatarDisc}>{initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={horizonLayout.sidebarList.avatarIconSize} color={horizonColors.accountSheet.avatarInitial}/>}</View></GlassIconButton>
+          <GlassIconButton label={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} hint="Mở tài khoản và chuyển vai trò" onPress={() => { setAccountCloseRequest(0); setAccountOpen(true); }}><View style={styles.avatarDisc}>{profileAvatarUri ? <Image source={{ uri: profileAvatarUri }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện"/> : initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={horizonLayout.sidebarList.avatarIconSize} color={horizonColors.accountSheet.avatarInitial}/>}</View></GlassIconButton>
           <GlassCapsuleButton label="Trò chuyện mới" tone="light" radius={horizonLayout.sidebarList.floatingRadius} onPress={() => onNavigate('new')} style={styles.newChat}>
             <Icon name="plus" size={22} color={listColors.onAccent} strokeWidth={2}/><Text style={styles.newChatLabel}>Trò chuyện mới</Text>
           </GlassCapsuleButton>
@@ -136,7 +143,7 @@ export function Sidebar({ visible, onClose, onNavigate, mode, modePending, modeN
         </>}
       </View>
       <Pressable style={styles.scrim} onPress={closeSidebar} accessibilityLabel="Đóng sidebar" importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'}/>
-      {visible && accountOpen && <AccountSheet closeRequest={accountCloseRequest} reduceMotion={reduceMotion} profileName={profileName} modeLabel={modeLabel} onClose={closeAccount}/>}
+      {visible && accountOpen && <AccountSheet closeRequest={accountCloseRequest} reduceMotion={reduceMotion} profileName={profileName} avatarUri={profileAvatarUri} modeLabel={modeLabel} onClose={closeAccount}/>}
       {pickerVisible && <ModePicker mode={mode} pending={requestedWorker && !modeNotice} notice={modeNotice} onSelect={selectMode} onClose={closePicker}/>}
     </View>
   </Modal>;
@@ -152,12 +159,12 @@ const styles = StyleSheet.create({
   lockup: { width: lockupWidth, height: horizonLayout.lockup.height },
   lockupImage: { width: lockupWidth, height: horizonLayout.lockup.height },
   brandName: { color: colors.label, fontSize: horizonLayout.sidebarList.titleFontSize, fontWeight: horizonLayout.sidebarList.titleFontWeight, flex: 1 },
-  listContent: { paddingBottom: horizonLayout.sidebarList.listBottomPadding },
+  listContent: { paddingBottom: horizonLayout.sidebarList.listBottomPadding, paddingHorizontal: horizonLayout.sidebar.drawerPaddingHorizontal },
   floating: { position: 'absolute', left: horizonLayout.sidebar.drawerPaddingHorizontal, right: horizonLayout.sidebar.drawerPaddingHorizontal, bottom: horizonLayout.sidebarList.floatingBottom, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   close: { height: horizonLayout.sidebar.closeHeight, width: horizonLayout.sidebar.closeWidth, borderRadius: horizonLayout.sidebar.closeBorderRadius, backgroundColor: horizonColors.sidebarComponent.closeBackgroundColor, alignItems: 'center', justifyContent: 'center' },
   search: { height: horizonLayout.sidebar.searchHeight, borderRadius: horizonLayout.sidebar.searchBorderRadius, backgroundColor: horizonColors.sidebarComponent.searchBackgroundColor, paddingHorizontal: horizonLayout.sidebar.searchPaddingHorizontal, flexDirection: 'row', alignItems: 'center', gap: horizonLayout.sidebar.searchGap, marginBottom: horizonLayout.sidebar.searchMarginBottom },
   searchText: { color: colors.mutedSecondary, fontSize: horizonLayout.sidebar.searchTextFontSize },
-  scroll: { flex: 1 },
+  scroll: { flex: 1, marginHorizontal: -horizonLayout.sidebar.drawerPaddingHorizontal },
   navRow: { minHeight: horizonLayout.sidebar.navRowMinHeight, flexDirection: 'row', alignItems: 'center', gap: horizonLayout.sidebar.navRowGap, paddingHorizontal: horizonLayout.sidebar.navRowPaddingHorizontal, borderRadius: horizonLayout.sidebar.navRowBorderRadius },
   selected: { backgroundColor: horizonColors.sidebarComponent.selectedBackgroundColor, borderWidth: horizonLayout.sidebar.selectedBorderWidth, borderColor: horizonColors.sidebarComponent.selectedBorderColor },
   selectedLabel: { color: horizonColors.sidebarComponent.selectedLabelColor },
@@ -176,7 +183,7 @@ const styles = StyleSheet.create({
   badgeText: { color: listColors.onBadge, fontSize: horizonLayout.sidebarList.badgeFontSize, fontWeight: horizonLayout.sidebarList.badgeFontWeight },
   itemPressed: { backgroundColor: listColors.pressed },
   itemTitle: { flex: 1, color: colors.text, fontSize: horizonLayout.sidebarList.rowFontSize, fontWeight: horizonLayout.sidebarList.rowFontWeight },
-  avatarDisc: { width: horizonLayout.sidebarList.avatarDiscSize, height: horizonLayout.sidebarList.avatarDiscSize, borderRadius: horizonLayout.sidebarList.avatarDiscRadius, backgroundColor: horizonColors.accountSheet.avatarFill, alignItems: 'center', justifyContent: 'center' },
+  avatarDisc: { width: horizonLayout.sidebarList.avatarDiscSize, height: horizonLayout.sidebarList.avatarDiscSize, borderRadius: horizonLayout.sidebarList.avatarDiscRadius, backgroundColor: horizonColors.accountSheet.avatarFill, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarInitial: { color: horizonColors.accountSheet.avatarInitial, fontSize: horizonLayout.sidebarList.avatarInitialSize, fontWeight: horizonLayout.sidebarList.avatarFontWeight },
   newChat: { height: horizonLayout.sidebarList.floatingHeight, paddingHorizontal: horizonLayout.sidebarList.floatingPaddingHorizontal, flexDirection: 'row', alignItems: 'center', gap: horizonLayout.sidebarList.floatingGap },
   newChatLabel: { color: listColors.onAccent, fontSize: horizonLayout.sidebarList.floatingFontSize, fontWeight: horizonLayout.sidebarList.floatingFontWeight },

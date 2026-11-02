@@ -38,18 +38,19 @@ export function usePalette(): Palette {
 
 export const horizonColors = {
   sidebarList: {
+    groupChevron: '#6B7683',
     pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', accent: '#91E5D6', onAccent: '#0B0F14', badge: '#11161C', onBadge: '#FFFFFF',
   },
   workerSidebar: {
-    surface: '#FFFFFF', ink: '#11161C', muted: '#6B7683', hairline: 'rgba(60,60,67,0.12)',
+    surface: '#FFFFFF', cardFill: '#F4F6F8', ink: '#11161C', muted: '#6B7683', hairline: 'rgba(60,60,67,0.12)',
     accentText: '#0A6F64', accentSoft: 'rgba(14,158,142,0.14)', online: '#0E9E8E', offline: '#9AA0AB',
-    goOffFill: '#0B0F14', goOnFill: '#DDF1EE', goOffLabel: '#FFFFFF', badge: '#11161C', onBadge: '#FFFFFF',
+    statFill: '#FFFFFF', statIcon: '#11161C', goOffFill: '#0E9E8E', goOnFill: '#FDE6EA', goOffLabel: '#FFFFFF', goOnLabel: '#C2294A', badge: '#11161C', onBadge: '#FFFFFF',
   },
   kaelAvatar: { background: '#FFFFFF', border: '#E3E9EE', shadow: '#4F7482', ring: 'rgba(255,255,255,0.74)' },
   chatComposer: {
     surface: 'rgba(118,118,128,0.12)',
     mediaRemoveSurface: '#DDE1E6',
-    errorText: '#C0262D',
+    noticeText: '#6B7078',
     surfaceBorder: 'rgba(60,60,67,0.16)',
     surfaceShadow: '0 2px 12px rgba(60,60,67,0.08)',
     inputText: '#0B0F14',
@@ -102,12 +103,36 @@ export const horizonColors = {
     ],
   },
   recentSession: {
-    activeFill: 'rgba(118,118,128,0.12)', busyText: '#4A525C', actionIcon: '#1C2127',
+    activeFill: 'rgba(14,158,142,0.10)', busyText: '#4A525C', actionIcon: '#1C2127',
   },
   requestsScreen: {
     tabsFill: 'rgba(118,118,128,0.12)', indicator: '#FFFFFF', indicatorShadow: '0 1px 4px rgba(0,0,0,0.12)',
     tabText: '#5B6672', tabTextActive: '#11161C', cardFill: '#F5F6F8', tileFill: '#FFFFFF',
     chipFill: '#11161C', chipText: '#FFFFFF', emptyIcon: '#8A8A90',
+    stepFill: '#0E9E8E', stepTrack: 'rgba(118,118,128,0.18)', stepCaption: '#5B6672', nextFill: '#FFFFFF', nextAccent: '#0A6F64', nextAccentFill: 'rgba(14,158,142,0.12)', infoLabel: '#6B7683',
+    timelineDone: '#0E9E8E', timelineDoneIcon: '#FFFFFF', timelineCurrent: '#11161C', timelinePending: 'rgba(118,118,128,0.22)', timelineLine: 'rgba(118,118,128,0.22)', timelinePendingText: '#8A8A90', actionFill: '#0B0F14', actionLabel: '#FFFFFF', actionSecondaryFill: 'rgba(118,118,128,0.12)', actionSecondaryLabel: '#11161C', chevron: '#9AA0AB', toggleFill: 'rgba(118,118,128,0.12)', toggleIcon: '#3C4650',
+  },
+  workerEarnings: {
+    heroFill: '#0B0F14', heroLabel: 'rgba(255,255,255,0.68)', heroAmount: '#FFFFFF', heroMeta: 'rgba(255,255,255,0.68)',
+    chartFill: '#F5F6F8', barFill: 'rgba(14,158,142,0.28)', barToday: '#0E9E8E', barLabel: '#6B7683', barLabelToday: '#11161C', chartTitle: '#6B7683',
+    amount: '#0B7C70', quickFill: 'rgba(118,118,128,0.12)', quickText: '#11161C',
+  },
+  workerJobs: {
+    chipFill: 'rgba(118,118,128,0.12)', chipClearFill: 'rgba(118,118,128,0)', chipText: '#3C4650', chipActiveFill: '#0B0F14', chipActiveText: '#FFFFFF',
+    chipCountFill: 'rgba(60,60,67,0.14)', chipCountText: '#3C4650', chipActiveCountFill: 'rgba(255,255,255,0.22)',
+    noticeFill: 'rgba(14,158,142,0.12)', noticeText: '#0A6F64',
+    waitingFill: 'rgba(118,118,128,0.12)', waitingText: '#11161C',
+    composerFill: '#FFFFFF', fieldFill: '#F5F6F8', fieldText: '#0B0F14', fieldBorder: 'transparent', fieldFocusBorder: '#0B0F14', placeholder: '#9A9AA1', factIcon: '#6B7683',
+  },
+  supportScreens: {
+    cardFill: '#F5F6F8', tileFill: '#FFFFFF', separator: 'rgba(60,60,67,0.10)',
+    sectionTitle: '#6B7683', chevron: '#9AA0AB', unreadDot: '#0E9E8E', unreadTile: 'rgba(14,158,142,0.14)', unreadIcon: '#0A6F64',
+    danger: '#D4322C', switchOn: '#0E9E8E', switchOff: '#D9DCE1', switchThumb: '#FFFFFF',
+    searchFill: 'rgba(118,118,128,0.12)', searchPlaceholder: '#8A8A90', searchIcon: '#5B6672',
+    heroFill: '#F5F6F8', avatarFill: '#ECEEF1', avatarInitial: '#11161C', chipFill: 'rgba(118,118,128,0.12)', chipText: '#3C4650',
+    primaryFill: '#0B0F14', primaryLabel: '#FFFFFF', secondaryFill: 'rgba(118,118,128,0.12)', secondaryLabel: '#11161C',
+    actionLabel: '#0B7C70', quoteAccepted: '#0B7C70', quoteAcceptedFill: 'rgba(14,158,142,0.12)', quoteDeclined: '#B3261E', quoteDeclinedFill: 'rgba(212,50,44,0.10)', heartFilled: '#D4322C', emptyIcon: '#8A8A90',
+    switchThumbShadow: '0 3px 8px rgba(0,0,0,0.15), 0 1px 1px rgba(0,0,0,0.16)', ratingStar: '#E8A317', strengthTrack: 'rgba(118,118,128,0.16)', strengthBar: '#0E9E8E', skillChipFill: 'rgba(14,158,142,0.10)', skillChipText: '#0A6F64',
   },
   accountSheet: {
     handle: 'rgba(60,60,67,0.22)', closeFill: 'rgba(118,118,128,0.12)', closeFocus: 'rgba(118,118,128,0.24)',

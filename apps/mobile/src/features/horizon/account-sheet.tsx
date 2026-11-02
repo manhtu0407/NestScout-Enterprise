@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
@@ -11,9 +11,9 @@ const account = horizonLayout.accountSheet;
 const tones = horizonColors.accountSheet;
 const webControlStyle = Platform.select({ web: { outlineStyle: 'solid', outlineWidth: 0 } as const, default: undefined });
 
-type Props = { profileName?: string; modeLabel: string; reduceMotion: boolean; closeRequest: number; onClose: () => void };
+type Props = { profileName?: string; avatarUri?: string; modeLabel: string; reduceMotion: boolean; closeRequest: number; onClose: () => void };
 
-export function AccountSheet({ profileName, modeLabel, reduceMotion, closeRequest, onClose }: Props) {
+export function AccountSheet({ profileName, avatarUri, modeLabel, reduceMotion, closeRequest, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const [focused, setFocused] = useState<'close' | null>(null);
   const [progress] = useState(() => new Animated.Value(reduceMotion ? 1 : 0));
@@ -79,13 +79,13 @@ export function AccountSheet({ profileName, modeLabel, reduceMotion, closeReques
           <PressScale accessibilityRole="button" accessibilityLabel="Đóng bảng tài khoản" onPress={closeSheet} onFocus={() => setFocused('close')} onBlur={() => setFocused(null)} style={[styles.close, webControlStyle, focused === 'close' && styles.closeFocused]}><Icon name="close" size={account.closeIconSize}/></PressScale>
         </View>
         <View style={styles.identity}>
-          <View style={styles.avatar}>{profileName ? <Text style={styles.initial}>{profileName.trim().charAt(0).toLocaleUpperCase()}</Text> : <Icon name="user" size={account.avatarIconSize} color={tones.avatarInitial}/>}</View>
+          <View style={styles.avatar}>{avatarUri ? <Image source={{ uri: avatarUri }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện"/> : profileName ? <Text style={styles.initial}>{profileName.trim().charAt(0).toLocaleUpperCase()}</Text> : <Icon name="user" size={account.avatarIconSize} color={tones.avatarInitial}/>}</View>
           <View style={styles.copy}>
             <Text numberOfLines={1} style={styles.name}>{profileName ?? 'Chưa có thông tin hồ sơ'}</Text>
             <View style={styles.chip}><Text style={styles.chipText}>{modeLabel}</Text></View>
           </View>
         </View>
-        <Text style={styles.notice}>Thông tin hồ sơ sẽ hiện ở đây sau khi bạn thiết lập trong Cài đặt.</Text>
+        {profileName ? null : <Text numberOfLines={1} style={styles.notice}>Thiết lập hồ sơ của bạn trong Cài đặt.</Text>}
       </ScrollView>
     </Animated.View>
   </View>;
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
   close: { width: account.closeSize, height: account.closeSize, borderRadius: account.closeRadius, backgroundColor: tones.closeFill, alignItems: 'center', justifyContent: 'center' },
   closeFocused: { backgroundColor: tones.closeFocus },
   identity: { flexDirection: 'row', alignItems: 'center', gap: account.identityGap, paddingVertical: account.identityPaddingVertical },
-  avatar: { width: account.avatarSize, height: account.avatarSize, borderRadius: account.avatarRadius, backgroundColor: tones.avatarFill, borderWidth: account.avatarRing, borderColor: tones.avatarRing, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: account.avatarSize, height: account.avatarSize, borderRadius: account.avatarRadius, backgroundColor: tones.avatarFill, borderWidth: account.avatarRing, borderColor: tones.avatarRing, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   initial: { color: tones.avatarInitial, fontSize: account.avatarInitialSize, fontWeight: account.avatarInitialWeight },
   copy: { flex: 1 },
   name: { color: horizonColors.text, fontSize: account.nameSize, fontWeight: account.nameWeight },
