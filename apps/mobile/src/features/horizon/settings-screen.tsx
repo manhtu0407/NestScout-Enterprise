@@ -6,7 +6,7 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 import type { UserProfile } from './content';
-import { IosSwitch } from './ios-switch';
+import { LiquidSwitch } from './liquid-switch';
 import { ProfileAvatar } from './profile-avatar';
 import { SupportCard, SupportRow, SupportSection, SupportShell } from './support-shell';
 
@@ -23,7 +23,7 @@ export function SettingsScreen({ onBack, profile, onEditProfile }: Props) {
   const [toggles, setToggles] = useState(initialToggles);
   const toggle = (id: ToggleId) => setToggles(current => ({ ...current, [id]: !current[id] }));
   const switchFor = (id: ToggleId, label: string) => (
-    <IosSwitch accessibilityLabel={label} value={toggles[id]} onValueChange={() => toggle(id)} />
+    <LiquidSwitch accessibilityLabel={label} value={toggles[id]} onValueChange={() => toggle(id)} />
   );
   return (
     <SupportShell title="Cài đặt" onBack={onBack}>
