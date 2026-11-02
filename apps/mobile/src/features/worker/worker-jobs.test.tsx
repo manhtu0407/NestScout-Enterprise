@@ -1,14 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import { WorkflowError } from '@/features/shared';
+import { WorkflowError, acceptOffer, advanceJob, declineOffer, pauseJob, readWorkerSnapshot, requestResume, submitWork } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
-import { acceptOffer, advanceJob, declineOffer, pauseJob, readWorkerSnapshot, requestResume, submitWork } from './worker-repository';
 import { WorkerJobs } from './worker-jobs';
 
 jest.mock('expo-crypto', () => ({ randomUUID: () => '00000000-0000-4000-8000-000000000123' }));
 jest.mock('@/lib/device-storage', () => ({ deviceStorage: { getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn() } }));
-jest.mock('./worker-repository', () => ({
+jest.mock('@/features/shared', () => ({
+  ...jest.requireActual('@/features/shared'),
   acceptOffer: jest.fn(),
   declineOffer: jest.fn(),
   advanceJob: jest.fn(),

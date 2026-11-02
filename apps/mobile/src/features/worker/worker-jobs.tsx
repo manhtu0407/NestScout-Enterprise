@@ -1,8 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
-import { ActionButton, BasisNotice, BodyText, ErrorText, KaelStatus, failureMessage, isFixtureBasis, type JobReport, type ScopeChange } from '@/features/shared';
+import { ActionButton, BasisNotice, BodyText, ErrorText, KaelStatus, failureMessage, isFixtureBasis, type JobReport, type ScopeChange, acceptOffer, advanceJob, declineOffer, pauseJob, readWorkerSnapshot, requestResume, type Correction, type Job, type Offer, type Pause } from '@/features/shared';
 
-import { acceptOffer, advanceJob, declineOffer, pauseJob, readWorkerSnapshot, requestResume, type Correction, type Job, type Offer, type Pause } from './worker-repository';
 import { WorkSubmission } from './work-submission';
 import { ScopeProposal } from './scope-proposal';
 import { WorkerReport } from './worker-report';

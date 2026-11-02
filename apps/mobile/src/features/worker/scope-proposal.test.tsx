@@ -1,14 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import { WorkflowError } from '@/features/shared';
+import { WorkflowError, proposeScope, type Job } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
-import { proposeScope, type Job } from './worker-repository';
 import { ScopeProposal } from './scope-proposal';
 
 jest.mock('expo-crypto', () => ({ randomUUID: () => '00000000-0000-4000-8000-000000000123' }));
 jest.mock('@/lib/device-storage', () => ({ deviceStorage: { getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn() } }));
-jest.mock('./worker-repository', () => ({ proposeScope: jest.fn() }));
+jest.mock('@/features/shared', () => ({ ...jest.requireActual('@/features/shared'), proposeScope: jest.fn() }));
 
 const job: Job = { job_id: 'job', stage: 'working', version: 4, scope: 'Old fixture', amount_minor: 100, currency: 'VND' };
 

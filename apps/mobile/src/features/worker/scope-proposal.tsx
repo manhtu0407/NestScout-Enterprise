@@ -2,10 +2,9 @@ import { randomUUID } from 'expo-crypto';
 import { useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 
-import { ActionButton, BodyText, DraftRecovery, ErrorText, failureMessage, isDefinitiveFailure, useDraftRecovery } from '@/features/shared';
+import { ActionButton, BodyText, DraftRecovery, ErrorText, failureMessage, isDefinitiveFailure, useDraftRecovery, proposeScope, type Job } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
-import { proposeScope, type Job } from './worker-repository';
 
 type Pending = { key: string; version: number; scope: string; amount: number; rationale: string };
 

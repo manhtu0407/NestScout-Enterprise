@@ -5,6 +5,7 @@ export { Screen } from './ui/screen';
 export { AppText, BodyText, ErrorText, Heading, type TextVariant } from './ui/text';
 export { readScopeChanges, type ScopeChange } from './scope-changes';
 export { readJobReports, type JobReport } from './job-reports';
+export { acceptOffer, advanceJob, declineOffer, pauseJob, proposeScope, readJobs, readOffers, readWorkerChanges, readWorkerCorrections, readWorkerPauses, readWorkerReports, readWorkerSnapshot, reportJob, requestResume, submitWork, type Correction, type Job, type Offer, type Pause } from './worker-repository';
 export { markNotificationsRead, readAccountPhone, readCustomerProfile, readCustomerSettings, readJobWorkerCards, readNotifications, readPinnedRequestIds, readSavedWorkers, reviewJobWorker, saveCustomerProfile, saveCustomerSettings, saveWorker, setRequestPinned, submitSupportRequest, unsaveWorker, type CustomerNotification, type CustomerProfile, type CustomerSettings, type StoredCustomerProfile, type JobReview, type JobWorkerCard, type NotificationKind, type SavedWorkerRecord } from './customer-data-repository';
 export { acceptedImageTypes, maxRequestPhotos, readAvatarSource, readRequestPhotos, removeAvatar, toPendingPhoto, uploadAvatar, uploadRequestPhoto, type MediaFile, type PendingPhoto } from './customer-media-repository';
 export { acceptQuote, readQuotes, readRequests, rejectQuote, submitRequest, type ServiceQuote, type ServiceRequest } from './service-request-repository';

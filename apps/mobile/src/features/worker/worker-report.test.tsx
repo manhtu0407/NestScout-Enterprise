@@ -1,14 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import { WorkflowError } from '@/features/shared';
+import { WorkflowError, reportJob, type Job } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
-import { reportJob, type Job } from './worker-repository';
 import { WorkerReport } from './worker-report';
 
 jest.mock('expo-crypto', () => ({ randomUUID: () => '00000000-0000-4000-8000-000000000123' }));
 jest.mock('@/lib/device-storage', () => ({ deviceStorage: { getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn() } }));
-jest.mock('./worker-repository', () => ({ reportJob: jest.fn() }));
+jest.mock('@/features/shared', () => ({ ...jest.requireActual('@/features/shared'), reportJob: jest.fn() }));
 
 const job: Job = { job_id: 'job', stage: 'en_route', version: 2, scope: 'Fixture', amount_minor: 100, currency: 'VND' };
 

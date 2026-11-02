@@ -1,14 +1,13 @@
 import { authenticatedRequest } from '@/lib/authenticated-rest';
-import { readJobReports, readScopeChanges, WorkflowError } from '@/features/shared';
+import { readJobReports } from './job-reports';
+import { readScopeChanges } from './scope-changes';
+import { WorkflowError } from './workflow-error';
 
 import { advanceJob, pauseJob, readJobs, readOffers, readWorkerCorrections, readWorkerPauses, readWorkerSnapshot, requestResume, type Job } from './worker-repository';
 
 jest.mock('@/lib/authenticated-rest', () => ({ authenticatedRequest: jest.fn() }));
-jest.mock('@/features/shared', () => ({
-  ...jest.requireActual('@/features/shared/workflow-error'),
-  readJobReports: jest.fn(),
-  readScopeChanges: jest.fn(),
-}));
+jest.mock('./job-reports', () => ({ readJobReports: jest.fn() }));
+jest.mock('./scope-changes', () => ({ readScopeChanges: jest.fn() }));
 
 const job = { job_id: '50000000-0000-4000-8000-000000000001', stage: 'working', version: 3, scope: 'Fixture', amount_minor: 100, currency: 'VND' };
 const otherJobId = '50000000-0000-4000-8000-000000000002';
