@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -5,6 +6,7 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 import { workerPreviewSummary, workerSidebarGroups } from './content';
+import { CollapsibleGroup } from './sidebar-group';
 import type { SidebarItem } from './content';
 import { GlassCapsuleButton, GlassIconButton, Icon, PressScale, useGlassAccessibility, usePressFeedback } from '@/features/shared';
 
@@ -22,6 +24,7 @@ const list = horizonLayout.sidebarList;
 const colors = horizonColors.workerSidebar;
 const listColors = horizonColors.sidebarList;
 const avatarColors = horizonColors.accountSheet;
+const supportGroupTitle = workerSidebarGroups[workerSidebarGroups.length - 1]?.title;
 const lockupWidth = horizonLayout.lockup.height * horizonLayout.lockup.aspect;
 
 function WorkerRow({ item, badge = 0, onPress }: { item: SidebarItem; badge?: number; onPress: () => void }) {
@@ -34,23 +37,6 @@ function WorkerRow({ item, badge = 0, onPress }: { item: SidebarItem; badge?: nu
       {badge > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View>}
     </Pressable>
   </Animated.View>;
-}
-
-function PulseDot({ online }: { online: boolean }) {
-  const { reduceMotion } = useGlassAccessibility();
-  const [pulse] = useState(() => new Animated.Value(0));
-  useEffect(() => {
-    if (!online || reduceMotion) { pulse.setValue(0); return; }
-    const loop = Animated.loop(Animated.timing(pulse, { toValue: 1, duration: metrics.pulseDuration, easing: Easing.out(Easing.quad), useNativeDriver: true }));
-    loop.start();
-    return () => loop.stop();
-  }, [online, pulse, reduceMotion]);
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, metrics.pulseScale] });
-  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] });
-  return <View style={styles.dotBox}>
-    {online && <Animated.View style={[styles.pulse, { opacity, transform: [{ scale }] }]}/>}
-    <View style={[styles.dot, { backgroundColor: online ? colors.online : colors.offline }]}/>
-  </View>;
 }
 
 function GoButton({ online, onPress }: { online: boolean; onPress: () => void }) {
@@ -69,16 +55,26 @@ function GoButton({ online, onPress }: { online: boolean; onPress: () => void })
     <PressScale
       accessibilityRole="switch"
       accessibilityLabel="Nhận việc mới"
-      accessibilityHint={online ? 'Chạm để chuyển sang tạm nghỉ' : 'Chạm để bắt đầu nhận việc'}
+      accessibilityHint={online ? 'Đang nhận việc. Chạm để tắt nhận việc' : 'Đang tắt. Chạm để bắt đầu nhận việc'}
       accessibilityState={{ checked: online }}
       onPress={onPress}
       style={[styles.goPill, online ? styles.goOn : styles.goOff]}
     >
       {online
-        ? <><PulseDot online/><Text style={styles.goOnLabel}>Đang nhận việc</Text></>
+        ? <><Icon name="close" size={metrics.goIconSize} color={colors.goOnLabel} strokeWidth={2}/><Text style={styles.goOnLabel}>Tắt nhận việc</Text></>
         : <><Icon name="bolt" size={metrics.goIconSize} color={colors.goOffLabel} strokeWidth={2}/><Text style={styles.goOffLabel}>Bật nhận việc</Text></>}
     </PressScale>
   </Animated.View>;
+}
+
+function Stat({ icon, caption, value }: { icon: SidebarItem['icon']; caption: string; value: string }) {
+  return <View style={styles.stat} accessible accessibilityLabel={`${caption}, ${value}`}>
+    <View style={styles.statDisc}><Icon name={icon} size={metrics.statIconSize} color={colors.statIcon} strokeWidth={1.8}/></View>
+    <View style={styles.statCopy}>
+      <Text style={styles.statCaption}>{caption}</Text>
+      <Text numberOfLines={1} style={styles.statValue}>{value}</Text>
+    </View>
+  </View>;
 }
 
 function Profile({ profileName, online, onToggle }: { profileName?: string; online: boolean; onToggle: () => void }) {
@@ -94,15 +90,10 @@ function Profile({ profileName, online, onToggle }: { profileName?: string; onli
         <Text numberOfLines={1} style={styles.role}>{workerPreviewSummary.area}</Text>
       </View>
     </View>
-    <View style={styles.summary}>
-      <View style={styles.summaryItem} accessible accessibilityLabel={`Thu nhập hôm nay, ${workerPreviewSummary.earningsToday}`}>
-        <Text style={styles.summaryHeadline}>Thu nhập hôm nay</Text>
-        <Text numberOfLines={1} style={styles.summaryValue}>{workerPreviewSummary.earningsToday}</Text>
-      </View>
-      <View style={styles.summaryItem} accessible accessibilityLabel={`Lịch hẹn tiếp theo, ${workerPreviewSummary.nextAppointment}`}>
-        <Text style={styles.summaryHeadline}>Lịch hẹn tiếp theo</Text>
-        <Text numberOfLines={1} style={styles.summaryValue}>{workerPreviewSummary.nextAppointment}</Text>
-      </View>
+    <View style={styles.card}>
+      <Stat icon="wallet" caption="Đã nghiệm thu hôm nay" value={workerPreviewSummary.acceptedToday}/>
+      <View style={styles.cardDivider}/>
+      <Stat icon="pin" caption="Việc kế tiếp" value={workerPreviewSummary.nextJob}/>
     </View>
     <GoButton online={online} onPress={onToggle}/>
   </View>;
@@ -110,6 +101,8 @@ function Profile({ profileName, online, onToggle }: { profileName?: string; onli
 
 export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, profileName, accountLabel, badges = {} }: Props) {
   const [online, setOnline] = useState(true);
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set(workerSidebarGroups.slice(0, 1).map(group => group.title)));
+  const toggleGroup = (title: string) => setOpenGroups(current => { const next = new Set(current); if (!next.delete(title)) next.add(title); return next; });
   const initial = profileName?.trim().charAt(0).toLocaleUpperCase();
   return <>
     <View style={styles.heading}>
@@ -121,15 +114,14 @@ export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, pro
       <GlassIconButton label="Thông báo" onPress={() => onNavigate('notifications')}><Icon name="bell" size={horizonLayout.glass.iconSize}/></GlassIconButton>
     </View>
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Profile profileName={profileName} online={online} onToggle={() => setOnline(value => !value)}/>
-      {workerSidebarGroups.map(group => <View key={group.title} style={styles.group}>
-        <Text accessibilityRole="header" style={styles.groupTitle}>{group.title}</Text>
+      <Profile profileName={profileName} online={online} onToggle={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setOnline(value => !value); }}/>
+      <View style={styles.groups}>{workerSidebarGroups.map((group, index) => <CollapsibleGroup first={index === 0} key={group.title} title={group.title} expanded={openGroups.has(group.title)} onToggle={() => toggleGroup(group.title)} badge={group.items.reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>
         {group.items.map(item => <WorkerRow key={item.id} item={item} badge={badges[item.id]} onPress={() => onNavigate(item.id)}/>)}
-        {group === workerSidebarGroups[workerSidebarGroups.length - 1] && <>
+        {group.title === supportGroupTitle && <>
           <WorkerRow item={{ id: 'mode', title: 'Đổi vai trò', icon: 'user' }} onPress={onChooseMode}/>
           <WorkerRow item={{ id: 'account', title: 'Tài khoản và đăng nhập', icon: 'login' }} onPress={() => onNavigate('profile')}/>
         </>}
-      </View>)}
+      </CollapsibleGroup>)}</View>
     </ScrollView>
     <View pointerEvents="box-none" style={styles.floating}>
       <GlassIconButton label={accountLabel} hint="Mở tài khoản và chuyển vai trò" onPress={onOpenAccount}>
@@ -157,12 +149,14 @@ const styles = StyleSheet.create({
   identityCopy: { flex: 1, gap: metrics.identityCopyGap },
   name: { color: colors.ink, fontSize: metrics.nameSize, fontWeight: metrics.nameWeight, letterSpacing: metrics.nameTracking },
   role: { color: colors.muted, fontSize: metrics.roleSize },
-  summary: { gap: metrics.summaryGap },
-  summaryItem: { gap: metrics.summaryItemGap },
-  summaryHeadline: { color: colors.ink, fontSize: metrics.summaryHeadlineSize, fontWeight: metrics.summaryHeadlineWeight, letterSpacing: metrics.summaryHeadlineTracking },
-  summaryValue: { color: colors.muted, fontSize: metrics.summaryValueSize, fontVariant: ['tabular-nums'] },
-  group: { marginTop: metrics.sectionGap },
-  groupTitle: { color: colors.ink, fontSize: list.groupTitleFontSize, fontWeight: list.groupTitleFontWeight, marginBottom: list.groupTitleMarginBottom },
+  groups: { paddingTop: metrics.groupsTop },
+  card: { borderRadius: metrics.cardRadius, backgroundColor: colors.cardFill, paddingHorizontal: metrics.cardPadding },
+  cardDivider: { height: metrics.hairlineWidth, backgroundColor: colors.hairline },
+  stat: { flexDirection: 'row', alignItems: 'center', gap: metrics.statGap, paddingVertical: metrics.statPaddingVertical },
+  statDisc: { width: metrics.statDisc, height: metrics.statDisc, borderRadius: metrics.statDiscRadius, backgroundColor: colors.statFill, alignItems: 'center', justifyContent: 'center' },
+  statCopy: { flex: 1, gap: metrics.statCopyGap },
+  statCaption: { color: colors.muted, fontSize: metrics.statCaptionSize },
+  statValue: { color: colors.ink, fontSize: metrics.statValueSize, fontWeight: metrics.statValueWeight, fontVariant: ['tabular-nums'] },
   row: { minHeight: list.rowHeight, flexDirection: 'row', alignItems: 'center', gap: list.rowGap, paddingVertical: list.rowPaddingVertical },
   rowPressed: { backgroundColor: listColors.pressed },
   rowTitle: { flex: 1, color: colors.ink, fontSize: list.rowFontSize, fontWeight: list.rowFontWeight },
@@ -178,8 +172,5 @@ const styles = StyleSheet.create({
   goOff: { backgroundColor: colors.goOffFill },
   goOn: { backgroundColor: colors.goOnFill },
   goOffLabel: { color: colors.goOffLabel, fontSize: metrics.goFontSize, fontWeight: list.floatingFontWeight },
-  goOnLabel: { color: colors.accentText, fontSize: metrics.goFontSize, fontWeight: list.floatingFontWeight },
-  dotBox: { width: metrics.dotSize, height: metrics.dotSize, alignItems: 'center', justifyContent: 'center' },
-  dot: { width: metrics.dotSize, height: metrics.dotSize, borderRadius: metrics.dotRadius },
-  pulse: { position: 'absolute', width: metrics.dotSize, height: metrics.dotSize, borderRadius: metrics.dotRadius, backgroundColor: colors.online },
+  goOnLabel: { color: colors.goOnLabel, fontSize: metrics.goFontSize, fontWeight: list.floatingFontWeight },
 });

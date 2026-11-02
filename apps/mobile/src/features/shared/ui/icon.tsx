@@ -2,7 +2,7 @@ import React from 'react';
 import Svg, { Circle, G, Line, Path, Polyline, Rect } from 'react-native-svg';
 import { horizonColors } from '@/theme/palette';
 
-export type IconName = 'login' | 'eye' | 'attach' | 'image' | 'globe' | 'camera' | 'menu' | 'plus' | 'arrowUp' | 'arrowRight' | 'chevron' | 'close' | 'mic' | 'search' | 'chat' | 'home' | 'briefcase' | 'clock' | 'heart' | 'wrench' | 'drop' | 'sofa' | 'grid' | 'gear' | 'bolt' | 'user' | 'help' | 'bell' | 'requests' | 'receipt' | 'compose' | 'history' | 'back' | 'check' | 'send' | 'more' | 'share' | 'pin' | 'archive' | 'trash' | 'wallet' | 'star' | 'calendar';
+export type IconName = 'login' | 'eye' | 'attach' | 'image' | 'globe' | 'camera' | 'menu' | 'plus' | 'arrowUp' | 'arrowRight' | 'chevron' | 'close' | 'mic' | 'search' | 'chat' | 'home' | 'briefcase' | 'clock' | 'heart' | 'wrench' | 'drop' | 'sofa' | 'grid' | 'gear' | 'bolt' | 'user' | 'help' | 'bell' | 'requests' | 'receipt' | 'compose' | 'history' | 'back' | 'check' | 'send' | 'more' | 'share' | 'pin' | 'archive' | 'trash' | 'wallet' | 'star' | 'calendar' | 'phone';
 
 type Props = {
   name: IconName;
@@ -57,7 +57,8 @@ export function Icon({ name, size = 22, color = horizonColors.label, strokeWidth
     trash: <><Path d="M4.5 7h15M9.5 7V5.2a1.7 1.7 0 0 1 1.7-1.7h1.6a1.7 1.7 0 0 1 1.7 1.7V7" {...common}/><Path d="M6.5 7l.8 11.3A2.2 2.2 0 0 0 9.5 20.4h5a2.2 2.2 0 0 0 2.2-2.1L17.5 7M10 11v5.5M14 11v5.5" {...common}/></>,
     wallet: <><Path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H18a2 2 0 0 1 2 2v9.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z" {...common}/><Path d="M4 8.5v0A2.5 2.5 0 0 0 6.5 11H20M15.5 15.2h.01" {...common}/></>,
     star: <Path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z" {...common}/>,
-    calendar: <><Rect x="3.5" y="5" width="17" height="15.5" rx="3.5" {...common}/><Path d="M3.5 10h17M8 3.2v3.6M16 3.2v3.6" {...common}/><Circle cx="12" cy="14.8" r="1.1" fill={color}/></>
+    calendar: <><Rect x="3.5" y="5" width="17" height="15.5" rx="3.5" {...common}/><Path d="M3.5 10h17M8 3.2v3.6M16 3.2v3.6" {...common}/><Circle cx="12" cy="14.8" r="1.1" fill={color}/></>,
+    phone: <Path d="M20.5 16.6v2.7a1.9 1.9 0 0 1-2.1 1.9 17.8 17.8 0 0 1-7.8-2.8 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 2.4 5.2 1.9 1.9 0 0 1 4.3 3.1H7a1.9 1.9 0 0 1 1.9 1.6c.1.9.3 1.700.6 2.500a1.9 1.9 0 0 1-.4 2L7.9 10.400a15.200 15.200 0 0 0 5.700 5.700l1.200-1.200a1.900 1.900 0 0 1 2-.4c.8.300 1.600.5 2.500.6a1.900 1.900 0 0 1 1.600 1.900z" {...common}/>
   };
   return <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityRole="image">{shapes[name]}</Svg>;
 }

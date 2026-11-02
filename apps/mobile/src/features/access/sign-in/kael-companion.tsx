@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Animated, Easing, Image, StyleSheet, View } from 'react-native';
 
-import { Icon, useGlassAccessibility } from '@/features/shared';
+import { useGlassAccessibility } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
@@ -9,6 +9,9 @@ import type { CompanionState, SignInRole } from './sign-in-types';
 
 const metrics = horizonLayout.signIn;
 const colors = horizonColors.signIn;
+const authImage = require('../../../../assets/horizon/kael-login-auth-state.png');
+const otpConfirmImage = require('../../../../assets/horizon/kael-login-otp-confirm-state.png');
+const heroImage = { width: metrics.heroImageWidth, height: metrics.heroImageHeight };
 
 const scaleFor: Record<CompanionState, number> = {
   idle: 1,
@@ -21,7 +24,6 @@ export function KaelCompanion({ state, role }: { state: CompanionState; role: Si
   const { reduceMotion } = useGlassAccessibility();
   const [float] = useState(() => new Animated.Value(0));
   const [scale] = useState(() => new Animated.Value(1));
-  const [badge] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     if (reduceMotion) return;
@@ -55,27 +57,14 @@ export function KaelCompanion({ state, role }: { state: CompanionState; role: Si
     return () => spring.stop();
   }, [reduceMotion, scale, state]);
 
-  useEffect(() => {
-    const target = state === 'success' ? 1 : 0;
-    if (reduceMotion) {
-      badge.setValue(target);
-      return;
-    }
-    const spring = Animated.spring(badge, { toValue: target, ...metrics.successSpring, useNativeDriver: true });
-    spring.start();
-    return () => spring.stop();
-  }, [badge, reduceMotion, state]);
-
   const translateY = float.interpolate({ inputRange: [0, 1], outputRange: [0, metrics.orbFloat] });
 
   return (
     <View style={styles.stage} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Animated.View style={[styles.halo, { backgroundColor: colors.halo[role], transform: [{ scale }] }]} />
       <Animated.View style={{ transform: [{ translateY }, { scale }] }}>
-        <Image source={require('../../../../assets/horizon/kael-login-auth-state.png')} style={{ width: metrics.heroImageWidth, height: metrics.heroImageHeight }} resizeMode="contain" accessibilityLabel="Kael đang hỗ trợ đăng nhập" />
-      </Animated.View>
-      <Animated.View style={[styles.badge, { backgroundColor: colors.success, opacity: badge, transform: [{ scale: badge }] }]}>
-        <Icon name="check" size={metrics.successIconSize} color={colors.ctaLabel} strokeWidth={2.6} />
+        <Image source={authImage} style={[heroImage, state === 'success' && styles.hidden]} resizeMode="contain" accessibilityLabel="Kael đang hỗ trợ đăng nhập" />
+        <Image source={otpConfirmImage} style={[heroImage, styles.confirmImage, state !== 'success' && styles.hidden]} resizeMode="contain" accessibilityLabel="Kael xác nhận OTP thành công" />
       </Animated.View>
     </View>
   );
@@ -84,5 +73,6 @@ export function KaelCompanion({ state, role }: { state: CompanionState; role: Si
 const styles = StyleSheet.create({
   stage: { height: metrics.heroHeight, alignItems: 'center', justifyContent: 'center' },
   halo: { position: 'absolute', width: metrics.haloSize, height: metrics.haloSize, borderRadius: metrics.haloRadius },
-  badge: { position: 'absolute', width: metrics.successSize, height: metrics.successSize, borderRadius: metrics.successRadius, alignItems: 'center', justifyContent: 'center', bottom: metrics.successBottom, right: metrics.successRight },
+  confirmImage: { position: 'absolute' },
+  hidden: { opacity: 0 },
 });

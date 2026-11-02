@@ -82,6 +82,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
       scrollEnabled={Platform.OS !== 'web' || inputHeight >= metrics.inputMaxHeight}
       onSubmitEditing={() => { Keyboard.dismiss(); submit(); }}
       autoCorrect
+      spellCheck={false}
     />
     <PressScale accessibilityRole="button" accessibilityLabel="Nói với Kael" accessibilityHint="Chưa khả dụng" accessibilityState={{ disabled: true }} disabled style={styles.media}>
       <Icon name="mic" size={metrics.mediaIconSize} strokeWidth={metrics.mediaIconStroke} color={colors.voiceIcon} />
@@ -104,9 +105,9 @@ const styles = StyleSheet.create({
   imageFrame: { width: metrics.imageSize, height: metrics.imageSize },
   image: { width: metrics.imageSize, height: metrics.imageSize, borderRadius: metrics.imageRadius },
   removeImage: { position: 'absolute', top: -metrics.removeOffset, right: -metrics.removeOffset, width: metrics.removeSize, height: metrics.removeSize, borderRadius: metrics.removeRadius, backgroundColor: colors.mediaRemoveSurface, alignItems: 'center', justifyContent: 'center' },
-  error: { color: colors.errorText, fontSize: metrics.errorSize, marginBottom: metrics.errorGap },
+  error: { position: 'absolute', left: metrics.errorInsetLeft, right: 0, bottom: metrics.errorBottom, marginBottom: metrics.errorGap, color: colors.noticeText, fontSize: metrics.errorSize, lineHeight: metrics.errorLineHeight, textAlign: 'right' },
   media: { height: metrics.mediaSize, width: metrics.mediaSize, borderRadius: metrics.mediaRadius, alignItems: 'center', justifyContent: 'center' },
-  input: { flex: 1, minWidth: 0, minHeight: metrics.inputMinHeight, maxHeight: metrics.inputMaxHeight, fontSize: metrics.inputFontSize, paddingHorizontal: metrics.inputPaddingHorizontal, paddingVertical: metrics.inputPaddingVertical, color: colors.inputText, textAlignVertical: 'top', outlineWidth: 0, outlineColor: 'transparent' },
+  input: { flex: 1, minWidth: 0, minHeight: metrics.inputMinHeight, maxHeight: metrics.inputMaxHeight, fontSize: metrics.inputFontSize, lineHeight: metrics.inputLineHeight, paddingHorizontal: metrics.inputPaddingHorizontal, paddingVertical: metrics.inputPaddingVertical, color: colors.inputText, textAlignVertical: 'top', outlineWidth: 0, outlineColor: 'transparent' },
   sendSlot: { height: metrics.sendSlotSize, width: metrics.sendSlotSize, alignItems: 'center', justifyContent: 'center' },
   send: { height: metrics.sendSize, width: metrics.sendSize, borderRadius: metrics.sendRadius, borderWidth: metrics.sendBorderWidth, borderColor: colors.idleSendBorder, backgroundColor: colors.idleSendSurface, alignItems: 'center', justifyContent: 'center' },
   sendActive: { borderColor: colors.activeSendBorder, backgroundColor: colors.activeSendSurface },

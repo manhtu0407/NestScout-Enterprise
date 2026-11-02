@@ -27,7 +27,7 @@ export function KaelIntro({ progress, footerHeight, interactive }: Props) {
 }
 
 const styles = StyleSheet.create({
-  layer: { position: 'absolute', top: metrics.navHeight, right: 0, left: 0 },
+  layer: { position: 'absolute', top: metrics.navHeight, right: 0, left: 0, overflow: 'hidden' },
   tagline: { position: 'absolute', top: metrics.introTaglineTop, left: metrics.introCopyLeft, width: metrics.introCopyWidth },
   underline: { marginTop: metrics.introTaglineGap },
   taglineText: { fontSize: metrics.introTaglineSize, lineHeight: metrics.introTaglineLineHeight, letterSpacing: metrics.introTaglineSpacing, fontWeight: metrics.introTaglineWeight, color: colors.introTitle },

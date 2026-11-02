@@ -28,7 +28,7 @@ test('a section opens as its own stack entry and the back button returns to home
 
 test('worker sections show their own title instead of the raw id', async () => {
   await mount();
-  await act(() => router.push({ pathname: '/section', params: { id: 'worker-nearby' } }));
+  await act(() => router.push({ pathname: '/section', params: { id: 'worker-offers' } }));
   expect(screen.getByText('Việc mới')).toBeTruthy();
 });
 

@@ -25,7 +25,7 @@ export function GlassSheen({ width, height, radius }: Props) {
         </LinearGradient>
       </Defs>
       <Rect width={width} height={height} rx={radius} fill={`url(#${frostId})`}/>
-      <Rect x={inset} y={inset} width={width - metrics.rimWidth} height={height - metrics.rimWidth} rx={Math.max(0, radius - inset)} fill="none" stroke={`url(#${rimId})`} strokeWidth={metrics.rimWidth}/>
+      <Rect x={inset} y={inset} width={Math.max(0, width - metrics.rimWidth)} height={Math.max(0, height - metrics.rimWidth)} rx={Math.max(0, radius - inset)} fill="none" stroke={`url(#${rimId})`} strokeWidth={metrics.rimWidth}/>
     </Svg>
   </View>;
 }
