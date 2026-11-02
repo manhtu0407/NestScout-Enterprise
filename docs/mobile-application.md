@@ -493,3 +493,26 @@ Reduce Motion every animation is replaced by static text. The lab at
 `EXPO_PUBLIC_KAEL_MOTION_LAB=1` (with `EXPO_PUBLIC_DESIGN_SHOWCASE=1`) renders each
 piece with controls. On a device the motion and Reduce Motion are NOT VERIFIED:
 only the web preview and Jest were exercised.
+
+### App-wide motion
+
+Small shared motion pieces in `features/horizon` replace abrupt changes of state:
+
+- `Presence` fades and slides content in and out and keeps it mounted until the
+  exit ends. The role banner, the composer error and the worker jobs notice use it,
+  with `useRetained` holding the last message so the text does not vanish before the
+  exit finishes. The saved workers screen uses it to open the profile details and to
+  fade a card out before it is removed.
+- `PopBadge` and `RollingNumber` animate the sidebar and group badges: the badge pops
+  in when a count appears, the number rolls when it changes and the badge leaves when
+  the count returns to zero.
+- `HeartToggle` swaps the outline and filled heart with a short pop. In the saved
+  workers list pressing it unsaves the worker; the card fades out and is then removed.
+
+Nothing here adds a delay to a frequent action: exits are 160 ms and enters 220 ms.
+No two notices ever share a slot in the app today, so there is no notice stack. The
+sample figures on the earnings and quotes screens are not animated, because a
+counting animation would make sample data look like live data. Durations and sizes are
+in `horizonLayout.appMotion`, colours in `horizonColors.appMotion`, and Reduce Motion
+replaces movement with a short fade. The motion lab shows each piece. Behaviour on a
+device is NOT VERIFIED.

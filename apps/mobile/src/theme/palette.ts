@@ -103,6 +103,9 @@ export const horizonColors = {
     noteText: '#4A5260',
     spinnerTrack: '#E4E7EC', spinnerArc: '#141820', spinnerDone: '#141820', spinnerCheck: '#FFFFFF',
   },
+  appMotion: {
+    heartIdle: '#9AA3AF', labBadge: '#0E9E8E', labBadgeText: '#FFFFFF', labNotice: '#141820', labNoticeText: '#FFFFFF',
+  },
   skeleton: {
     base: '#ECEFF3',
     shimmer: [

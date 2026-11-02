@@ -331,6 +331,14 @@ export const horizonLayout = {
       spinnerSize: 28, spinnerRadius: 14, spinnerStroke: 2.5, spinnerSpinDuration: 900, spinnerArc: 0.28, spinnerCheckDuration: 320, spinnerCheckStroke: 1.8, spinnerCheckDelay: 80,
       markerPopFrom: 0.5, markerPopDuration: 260, markerPopStagger: 40, markerCheckSize: 14,
     },
+    appMotion: {
+      presenceEnterDuration: 220, presenceExitDuration: 160, presenceReducedDuration: 120, presenceOffset: 8,
+      rollDuration: 200, rollDistance: 8, rollGap: 40,
+      badgePopFrom: 0.4, badgePopDuration: 240, badgeBumpScale: 1.2, badgeBumpDuration: 160,
+      heartPopScale: 1.3, heartPopDuration: 140, heartSettleDuration: 160, heartSwapDuration: 120,
+      revealDuration: 220, revealExitDuration: 140, revealOffset: 6,
+      labPreviewHeight: 120, labBadgeSize: 20, labBadgePadding: 6, labBadgeRadius: 10, labBadgeFontSize: 12, labBadgeWeight: '700', labHeartSize: 44, labHeartIcon: 26, labNoticePadding: 12, labNoticeRadius: 12, labNoticeSize: 13,
+    },
     skeleton: {
       shimmerDuration: 1400, shimmerWidthRatio: 0.7, previewDuration: 1600,
       lineHeight: 12, lineRadius: 6,

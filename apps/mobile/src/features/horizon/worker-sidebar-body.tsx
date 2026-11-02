@@ -7,6 +7,7 @@ import { horizonColors } from '@/theme/palette';
 
 import { workerPreviewSummary, workerSidebarGroups } from './content';
 import { CollapsibleGroup } from './sidebar-group';
+import { PopBadge } from './motion-count';
 import type { SidebarItem } from './content';
 import { GlassCapsuleButton, GlassIconButton, Icon, PressScale, useGlassAccessibility, usePressFeedback } from '@/features/shared';
 
@@ -34,7 +35,7 @@ function WorkerRow({ item, badge = 0, onPress }: { item: SidebarItem; badge?: nu
     <Pressable accessibilityRole="button" accessibilityLabel={badge > 0 ? `${item.title}, ${badge} mới` : item.title} onPress={onPress} onPressIn={feedback.pressIn} onPressOut={feedback.pressOut} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
       <Icon name={item.icon} size={list.rowIconSize} color={listColors.icon} strokeWidth={1.7}/>
       <Text style={styles.rowTitle}>{item.title}</Text>
-      {badge > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View>}
+      <PopBadge count={badge} style={styles.badge} textStyle={styles.badgeText}/>
     </Pressable>
   </Animated.View>;
 }

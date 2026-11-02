@@ -10,3 +10,6 @@ export { KaelSpinnerCheck } from './kael-progress-motion';
 export { KaelShimmerText } from './kael-shimmer-text';
 export { KaelStreamingText } from './kael-streaming-text';
 export { KaelThinkingRow, isKaelThinking } from './kael-thinking-row';
+export { HeartToggle } from './motion-heart';
+export { PopBadge, RollingNumber } from './motion-count';
+export { Presence, useRetained } from './motion-presence';
