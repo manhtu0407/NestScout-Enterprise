@@ -85,7 +85,7 @@ test('overlapping submissions by one customer produce one durable request', asyn
       assert.ok(secondResult.output.includes(requestId));
       assert.equal(query(`select count(*) from public.service_requests where owner_id='${user}' and submission_key='${key}';`).trim(), '1');
     } finally {
-      if (created) query(`delete from public.service_requests where owner_id='${user}' and submission_key='${key}'; delete from auth.users where id='${user}';`);
+      if (created) query(`delete from public.notifications where request_id in (select id from public.service_requests where owner_id='${user}' and submission_key='${key}'); delete from public.service_requests where owner_id='${user}' and submission_key='${key}'; delete from auth.users where id='${user}';`);
     }
   });
 });
@@ -131,7 +131,7 @@ test('a quote expiring while acceptance waits for its request lock is rejected',
       assert.match(result.errors, /quote expired/);
       assert.equal(query(`select count(*) from public.service_quotes where id='${quote}' and accepted_at is not null;`).trim(), '0');
     } finally {
-      if (created) query(`delete from public.service_quotes where id='${quote}'; delete from public.service_requests where id='${request}'; delete from auth.users where id='${user}';`);
+      if (created) query(`delete from public.service_quotes where id='${quote}'; delete from public.notifications where request_id in (select id from public.service_requests where id='${request}'); delete from public.service_requests where id='${request}'; delete from auth.users where id='${user}';`);
     }
   });
 });
@@ -290,7 +290,7 @@ test('real local Auth and REST enforce participant ownership', { timeout: 240000
       assert.notEqual(forgedConsent.status, 200);
       assert.equal(query(`select stage from public.service_jobs where id='${job}';`).trim(), 'completed');
     } finally {
-      if (requestId) query(`delete from public.service_cases where job_id in (select id from public.service_jobs where request_id='${requestId}'); delete from public.service_submissions where job_id in (select id from public.service_jobs where request_id='${requestId}'); delete from public.service_scope_changes where job_id in (select id from public.service_jobs where request_id='${requestId}'); delete from public.service_job_reports where job_id in (select id from public.service_jobs where request_id='${requestId}'); delete from public.service_job_events where job_id in (select id from public.service_jobs where request_id='${requestId}'); delete from public.service_jobs where request_id='${requestId}'; delete from public.service_invitations where id='${invitation}'; delete from public.service_quotes where id='${quote}'; delete from public.service_requests where id='${requestId}';`);
+      if (requestId) query(`delete from public.service_cases where job_id in (select id from public.service_jobs where request_id='${requestId}'); delete from public.service_submissions where job_id in (select id from public.service_jobs where request_id='${requestId}'); delete from public.service_scope_changes where job_id in (select id from public.service_jobs where request_id='${requestId}'); delete from public.service_job_reports where job_id in (select id from public.service_jobs where request_id='${requestId}'); delete from public.service_job_events where job_id in (select id from public.service_jobs where request_id='${requestId}'); delete from public.service_jobs where request_id='${requestId}'; delete from public.service_invitations where id='${invitation}'; delete from public.service_quotes where id='${quote}'; delete from public.notifications where request_id in (select id from public.service_requests where id='${requestId}'); delete from public.service_requests where id='${requestId}';`);
       for (const account of users) {
         const id = typeof account === 'string' ? account : account.id;
         query(`delete from nestscout_private.kael_tool_audit where actor_id='${id}'; delete from nestscout_private.worker_dispatch_eligibility where user_id='${id}'; delete from public.worker_access_grants where user_id='${id}';`);
@@ -365,7 +365,7 @@ test('two workers accepting the same request produce exactly one assignment', as
       assert.ok(refused.elapsed >= 1500, 'The Worker action must wait for the revocation transaction');
       assert.equal(query(`select stage from public.service_jobs where id='${job}';`).trim(), 'assigned');
     } finally {
-      if (created) query(`delete from public.service_job_events where job_id in (select id from public.service_jobs where request_id='${request}'); delete from public.service_jobs where request_id='${request}'; delete from public.service_invitations where id in ('${inviteA}','${inviteB}','${inviteExpired}'); delete from public.service_quotes where id='${quote}'; delete from public.service_requests where id='${request}'; delete from nestscout_private.worker_dispatch_eligibility where user_id in ('${workerA}','${workerB}'); delete from public.worker_access_grants where user_id in ('${workerA}','${workerB}'); delete from auth.users where id in ('${customer}','${workerA}','${workerB}');`);
+      if (created) query(`delete from public.service_job_events where job_id in (select id from public.service_jobs where request_id='${request}'); delete from public.service_jobs where request_id='${request}'; delete from public.service_invitations where id in ('${inviteA}','${inviteB}','${inviteExpired}'); delete from public.service_quotes where id='${quote}'; delete from public.notifications where request_id in (select id from public.service_requests where id='${request}'); delete from public.service_requests where id='${request}'; delete from nestscout_private.worker_dispatch_eligibility where user_id in ('${workerA}','${workerB}'); delete from public.worker_access_grants where user_id in ('${workerA}','${workerB}'); delete from auth.users where id in ('${customer}','${workerA}','${workerB}');`);
     }
   });
 });
@@ -423,7 +423,7 @@ test('acceptance, scope consent and safety races serialize at the job', async ()
       assert.equal(query(`select count(*) from public.service_submissions where job_id='${jobB}';`).trim(), '0');
       assert.equal(query(`select category from public.service_job_pauses where job_id='${jobB}' and resumed_at is null;`).trim(), 'safety_concern');
     } finally {
-      if (created) query(`delete from public.service_cases where job_id in ('${jobA}','${jobB}'); delete from public.service_job_pauses where job_id in ('${jobA}','${jobB}'); delete from public.service_submissions where job_id in ('${jobA}','${jobB}'); delete from public.service_scope_changes where job_id in ('${jobA}','${jobB}'); delete from public.service_job_events where job_id in ('${jobA}','${jobB}'); delete from public.service_jobs where id in ('${jobA}','${jobB}'); delete from public.service_invitations where id in ('${inviteA}','${inviteB}'); delete from public.service_quotes where id in ('${quoteA}','${quoteB}'); delete from public.service_requests where id in ('${requestA}','${requestB}'); delete from nestscout_private.worker_dispatch_eligibility where user_id='${worker}'; delete from public.worker_access_grants where user_id='${worker}'; delete from auth.users where id in ('${customer}','${worker}');`);
+      if (created) query(`delete from public.service_cases where job_id in ('${jobA}','${jobB}'); delete from public.service_job_pauses where job_id in ('${jobA}','${jobB}'); delete from public.service_submissions where job_id in ('${jobA}','${jobB}'); delete from public.service_scope_changes where job_id in ('${jobA}','${jobB}'); delete from public.service_job_events where job_id in ('${jobA}','${jobB}'); delete from public.service_jobs where id in ('${jobA}','${jobB}'); delete from public.service_invitations where id in ('${inviteA}','${inviteB}'); delete from public.service_quotes where id in ('${quoteA}','${quoteB}'); delete from public.notifications where request_id in (select id from public.service_requests where id in ('${requestA}','${requestB}')); delete from public.service_requests where id in ('${requestA}','${requestB}'); delete from nestscout_private.worker_dispatch_eligibility where user_id='${worker}'; delete from public.worker_access_grants where user_id='${worker}'; delete from auth.users where id in ('${customer}','${worker}');`);
     }
   });
 });
@@ -519,7 +519,7 @@ test('a correction request reaches only the assigned Worker through real Auth an
       assert.equal(revokedProjection.status, 200);
       assert.deepEqual(await revokedProjection.json(), []);
     } finally {
-      if (fixtures) query(`delete from public.service_cases where job_id='${job}'; delete from public.service_submissions where job_id='${job}'; delete from public.service_job_events where job_id='${job}'; delete from public.service_jobs where id='${job}'; delete from public.service_invitations where id='${invitation}'; delete from public.service_quotes where id='${quote}'; delete from public.service_requests where id='${request}';`);
+      if (fixtures) query(`delete from public.service_cases where job_id='${job}'; delete from public.service_submissions where job_id='${job}'; delete from public.service_job_events where job_id='${job}'; delete from public.service_jobs where id='${job}'; delete from public.service_invitations where id='${invitation}'; delete from public.service_quotes where id='${quote}'; delete from public.notifications where request_id in (select id from public.service_requests where id='${request}'); delete from public.service_requests where id='${request}';`);
       for (const account of accounts) {
         const id = typeof account === 'string' ? account : account.id;
         query(`delete from nestscout_private.worker_dispatch_eligibility where user_id='${id}'; delete from public.worker_access_grants where user_id='${id}';`);
@@ -618,7 +618,7 @@ test('the correction projection stays complete beyond the API row limit', { time
         delete from public.service_jobs where request_id in (select id from scale_cleanup);
         delete from public.service_invitations where request_id in (select id from scale_cleanup);
         delete from public.service_quotes where request_id in (select id from scale_cleanup);
-        delete from public.service_requests where id in (select id from scale_cleanup);
+        delete from public.notifications where request_id in (select id from public.service_requests where id in (select id from scale_cleanup)); delete from public.service_requests where id in (select id from scale_cleanup);
         commit;`);
       for (const account of accounts) {
         const id = typeof account === 'string' ? account : account.id;
@@ -767,7 +767,7 @@ test('a classified pause is resumed only with both parties through real Auth and
       assert.equal(stage(), 'paused:5');
       assert.equal(query(`select count(*) from public.service_job_pauses where job_id='${job}' and resumed_at is null and category='safety_concern';`).trim(), '1');
     } finally {
-      if (fixtures) query(`delete from public.service_job_pauses where job_id in ('${job}','${job2}'); delete from public.service_job_events where job_id in ('${job}','${job2}'); delete from public.service_jobs where id in ('${job}','${job2}'); delete from public.service_invitations where id in ('${invitation}','${invitation2}'); delete from public.service_quotes where id in ('${quote}','${quote2}'); delete from public.service_requests where id in ('${request}','${request2}');`);
+      if (fixtures) query(`delete from public.service_job_pauses where job_id in ('${job}','${job2}'); delete from public.service_job_events where job_id in ('${job}','${job2}'); delete from public.service_jobs where id in ('${job}','${job2}'); delete from public.service_invitations where id in ('${invitation}','${invitation2}'); delete from public.service_quotes where id in ('${quote}','${quote2}'); delete from public.notifications where request_id in (select id from public.service_requests where id in ('${request}','${request2}')); delete from public.service_requests where id in ('${request}','${request2}');`);
       for (const account of accounts) {
         const id = typeof account === 'string' ? account : account.id;
         query(`delete from nestscout_private.worker_dispatch_eligibility where user_id='${id}'; delete from public.worker_access_grants where user_id='${id}';`);
@@ -843,7 +843,7 @@ test('resume consent, safety escalation and duplicate consent serialize at the j
     } finally {
       if (created) {
         const jobIds = jobs.map(item => `'${item.job}'`).join(',');
-        query(`delete from public.service_job_pauses where job_id in (${jobIds}); delete from public.service_job_events where job_id in (${jobIds}); delete from public.service_jobs where id in (${jobIds}); delete from public.service_invitations where id in (${jobs.map(item => `'${item.invitation}'`).join(',')}); delete from public.service_quotes where id in (${jobs.map(item => `'${item.quote}'`).join(',')}); delete from public.service_requests where id in (${jobs.map(item => `'${item.request}'`).join(',')}); delete from nestscout_private.worker_dispatch_eligibility where user_id='${worker}'; delete from public.worker_access_grants where user_id='${worker}'; delete from auth.users where id in ('${customer}','${worker}');`);
+        query(`delete from public.service_job_pauses where job_id in (${jobIds}); delete from public.service_job_events where job_id in (${jobIds}); delete from public.service_jobs where id in (${jobIds}); delete from public.service_invitations where id in (${jobs.map(item => `'${item.invitation}'`).join(',')}); delete from public.service_quotes where id in (${jobs.map(item => `'${item.quote}'`).join(',')}); delete from public.notifications where request_id in (select id from public.service_requests where id in (${jobs.map(item => `'${item.request}'`).join(',')})); delete from public.service_requests where id in (${jobs.map(item => `'${item.request}'`).join(',')}); delete from nestscout_private.worker_dispatch_eligibility where user_id='${worker}'; delete from public.worker_access_grants where user_id='${worker}'; delete from auth.users where id in ('${customer}','${worker}');`);
       }
     }
   });
