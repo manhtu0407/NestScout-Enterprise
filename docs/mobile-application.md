@@ -459,3 +459,37 @@ time the sidebar opens, so the states can be reviewed. When a history query is
 added, its pending flag should drive `recentLoading`. The preview timer is not a
 real loading signal. On a device, the sweep and Reduce Motion are NOT VERIFIED:
 only the web preview and Jest were exercised.
+
+### Kael progress motion
+
+Kael's chat and its progress sheet carry a few small animations. They show state
+the app already knows about and never stand in for state it does not have.
+
+- `KaelThinkingRow` appears in the chat only while `kaelPhase` is `clarifying` or
+  `matching`. It joins a dot loader, a status line that shimmers and swaps text
+  when the phase changes, and `KaelStepNotes`, the fixed description of the step.
+  The notes are shown at once and are not presented as live reasoning, because no
+  Kael runtime exists.
+- When the phase carries an issue (`needs_information`, `unmatched` or
+  `unavailable`, the B01, B02 and B04 branches of the
+  [service workflow](service-workflow.md)), the loader and shimmer stop and the
+  wording says what is wrong. The row never keeps implying progress while matching
+  is unavailable, and it never claims a worker was found.
+- `KaelStreamingText` reveals an assistant message word by word. It only animates
+  messages added after the screen opened, and when a message grows it animates
+  only the new words, so a future chunked response needs no change.
+- The progress sheet shows a spinner that becomes a check at `completed`. The
+  check means the work is finished, not that it was paid: the sheet says payment
+  is not confirmed, because completion does not imply settlement and payment
+  verification is disabled.
+- A recent session in the sidebar shimmers its subtitle only while its phase is
+  `clarifying` or `matching`.
+
+Nothing passes `kaelPhase` or an issue yet, so the real chat does not show these
+states. The eight phases are the current UI model; the owner's BPMN will decide the
+real states, and Kael Work is not wired. All durations and sizes live in
+`horizonLayout.kaelMotion` and the colours in `horizonColors.kaelMotion`. With
+Reduce Motion every animation is replaced by static text. The lab at
+`EXPO_PUBLIC_KAEL_MOTION_LAB=1` (with `EXPO_PUBLIC_DESIGN_SHOWCASE=1`) renders each
+piece with controls. On a device the motion and Reduce Motion are NOT VERIFIED:
+only the web preview and Jest were exercised.
