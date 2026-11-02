@@ -1,7 +1,7 @@
-import type { Job, Offer, Pause, WorkerJobCard } from '@/features/shared';
+import type { Job, Offer, Pause, WorkerJobCard, WorkerProfileRecord } from '@/features/shared';
 
 import { workerBadgesFor } from './worker-jobs';
-import { expiryLabel, toWorkerJobs, type WorkerSnapshot } from './worker-views';
+import { expiryLabel, toWorkerJobs, toWorkerProfileView, type WorkerSnapshot } from './worker-views';
 
 const now = new Date('2026-11-02T10:00:00Z');
 
@@ -86,4 +86,25 @@ test('sidebar badges count offers, assigned jobs and corrections from live data'
   const corrections = [{ job_id: 'c', note: 'Sửa lại' }];
   const views = toWorkerJobs({ ...empty, offers: [offer], jobs: [job('a', 'assigned'), job('b', 'arrived'), job('c', 'working'), job('d', 'completed')], corrections }, [], now);
   expect(workerBadgesFor(views)).toEqual({ 'worker-offers': 1, 'worker-assigned': 2, 'worker-review': 1 });
+});
+
+const record: WorkerProfileRecord = {
+  profile_id: 'p1', display_name: 'Minh Anh', trade: 'Thợ điện nước', area: 'Quận 7', experience_years: 6, skills: ['Thay vòi'], about: 'Giới thiệu', radius_km: 10,
+  accepting_jobs: false, service_ids: ['water', 'electric'], listed: true,
+  certificates: [{ id: 'c1', title: 'An toàn điện', status: 'verified' }, { id: 'c2', title: 'Khác', status: 'pending' }, { id: 'c3', title: 'Cũ', status: 'rejected' }],
+  review_count: 3, rating_average: 4.7, completed_jobs: 5, strengths: [{ label: 'Đúng giờ', count: 3 }],
+  reviews: [{ id: 'v1', author: 'Tú', service: 'Sửa vòi', text: 'Tốt', created_at: '2026-11-02T08:00:00Z' }],
+};
+
+test('a worker without a profile has no profile view', () => {
+  expect(toWorkerProfileView(null, now)).toBeNull();
+});
+
+test('a stored profile maps to the view with certificate labels and relative review times', () => {
+  const view = toWorkerProfileView(record, now);
+  expect(view).toMatchObject({ name: 'Minh Anh', trade: 'Thợ điện nước', area: 'Quận 7', experienceYears: 6, radiusKm: 10, accepting: false, listed: true, reviewCount: 3, ratingAverage: 4.7 });
+  expect(view?.serviceIds).toEqual(['water', 'electric']);
+  expect(view?.certificates.map(item => item.statusLabel)).toEqual(['Đã xác minh', 'Đang chờ xác minh', 'Chưa được chấp nhận']);
+  expect(view?.reviews).toEqual([{ id: 'v1', author: 'Tú', time: '2 giờ trước', service: 'Sửa vòi', text: 'Tốt' }]);
+  expect(view?.strengths).toEqual([{ label: 'Đúng giờ', count: 3 }]);
 });

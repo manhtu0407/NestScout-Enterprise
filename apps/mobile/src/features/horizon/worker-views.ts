@@ -1,7 +1,8 @@
-import type { Correction, Job, JobReport, Offer, Pause, ScopeChange, WorkerJobCard } from '@/features/shared';
+import type { Correction, Job, JobReport, Offer, Pause, ScopeChange, WorkerJobCard, WorkerProfileRecord } from '@/features/shared';
 
 import { relativeTimeLabel, requestIcon } from './request-views';
 import type { WorkerJob, WorkerJobStage } from './worker-jobs';
+import { certificateStatusLabels, type WorkerProfileView } from './worker-profile';
 
 export type WorkerSnapshot = {
   offers: readonly Offer[];
@@ -104,4 +105,25 @@ export function toWorkerJobs(snapshot: WorkerSnapshot, cards: readonly WorkerJob
     ...snapshot.offers.map(offer => offerView(offer, offerCards.get(offer.invitation_id), now)),
     ...snapshot.jobs.map(job => jobView(job, jobCards.get(job.job_id), snapshot, now)),
   ];
+}
+
+export function toWorkerProfileView(record: WorkerProfileRecord | null, now: Date): WorkerProfileView | null {
+  if (record === null) return null;
+  return {
+    name: record.display_name,
+    trade: record.trade,
+    area: record.area,
+    experienceYears: record.experience_years,
+    about: record.about,
+    skills: record.skills,
+    radiusKm: record.radius_km,
+    accepting: record.accepting_jobs,
+    serviceIds: record.service_ids,
+    listed: record.listed,
+    certificates: record.certificates.map(item => ({ id: item.id, title: item.title, status: item.status, statusLabel: certificateStatusLabels[item.status] })),
+    reviewCount: record.review_count,
+    ratingAverage: record.rating_average,
+    strengths: record.strengths,
+    reviews: record.reviews.map(review => ({ id: review.id, author: review.author, time: relativeTimeLabel(review.created_at, now), service: review.service, text: review.text })),
+  };
 }

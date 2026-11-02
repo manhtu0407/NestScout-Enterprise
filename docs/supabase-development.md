@@ -123,7 +123,7 @@ hosted catalog parity. PostgreSQL major versions agree (17); local image release
 
 `supabase/seed.sql` holds synthetic local fixtures only: two public worker profiles, and one
 worker with a grant and dispatch eligibility plus an open invitation and assigned, working
-and submitted jobs for the customer `Nguyễn Văn Lan`. Add further fixtures alongside real
+and submitted jobs for the customer `Nguyễn Văn Lan`; that worker has no profile yet so the creation flow can be exercised. Add further fixtures alongside real
 product migrations. `supabase/database.types.ts` is the single generated artifact, from
 local `public`, normalized to LF without trailing whitespace. The mobile app does not
 import it yet. It includes `worker_access_grants`, regenerated with `npm run db:types`

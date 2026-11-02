@@ -8,6 +8,12 @@ jest.mock('@/features/shared', () => ({
   ...jest.requireActual('@/features/shared'),
   readWorkerSnapshot: jest.fn(),
   readWorkerJobCards: jest.fn(),
+  readWorkerProfile: jest.fn(),
+  saveWorkerProfile: jest.fn(),
+  saveWorkerCoverage: jest.fn(),
+  setWorkerAccepting: jest.fn(),
+  addWorkerCertificate: jest.fn(),
+  removeWorkerCertificate: jest.fn(),
   acceptOffer: jest.fn(),
   declineOffer: jest.fn(),
   advanceJob: jest.fn(),
@@ -28,6 +34,7 @@ function snapshot(stage: shared.Job['stage'] = 'working') {
 async function mount(stage: shared.Job['stage'] = 'working', userId: string | null = 'worker-1') {
   jest.mocked(shared.readWorkerSnapshot).mockResolvedValue(snapshot(stage));
   jest.mocked(shared.readWorkerJobCards).mockResolvedValue([]);
+  jest.mocked(shared.readWorkerProfile).mockResolvedValue(null);
   const view = await renderHook(() => useWorkerData(userId));
   if (userId !== null) await waitFor(() => expect(view.result.current.loaded).toBe(true));
   return view;
@@ -45,6 +52,7 @@ test('without a signed-in worker nothing is loaded', async () => {
 test('a load failure is reported until a refresh succeeds', async () => {
   jest.mocked(shared.readWorkerSnapshot).mockRejectedValueOnce(new Error('offline'));
   jest.mocked(shared.readWorkerJobCards).mockResolvedValue([]);
+  jest.mocked(shared.readWorkerProfile).mockResolvedValue(null);
   const view = await renderHook(() => useWorkerData('worker-1'));
   await waitFor(() => expect(view.result.current.status).toBe('error'));
   jest.mocked(shared.readWorkerSnapshot).mockResolvedValue(snapshot());
@@ -111,4 +119,42 @@ test('a refused command still reloads so the screen shows the current state', as
     await expect(view.result.current.perform('job-1', { type: 'submit', evidence: 'Xong', key: 'k1' })).rejects.toMatchObject({ failure: 'stale' });
   });
   await waitFor(() => expect(shared.readWorkerSnapshot).toHaveBeenCalledTimes(2));
+});
+
+test('the profile is loaded with the jobs and a worker without one reads null', async () => {
+  const view = await mount();
+  expect(view.result.current.data.profile).toBeNull();
+  expect(shared.readWorkerProfile).toHaveBeenCalledWith('worker-1', expect.any(AbortSignal));
+});
+
+test('profile commands call the matching repository function and reload', async () => {
+  jest.mocked(shared.saveWorkerProfile).mockResolvedValue('p1');
+  jest.mocked(shared.saveWorkerCoverage).mockResolvedValue();
+  jest.mocked(shared.setWorkerAccepting).mockResolvedValue();
+  jest.mocked(shared.addWorkerCertificate).mockResolvedValue('c1');
+  jest.mocked(shared.removeWorkerCertificate).mockResolvedValue();
+  const view = await mount();
+  const draft = { name: 'Minh Anh', trade: 'Thợ điện', area: 'Quận 7', experienceYears: 6, about: 'Giới thiệu', skills: ['Thay vòi'] };
+  expect(await act(async () => view.result.current.performProfile({ type: 'save', draft }))).toBe('Đã lưu hồ sơ nghề.');
+  expect(shared.saveWorkerProfile).toHaveBeenCalledWith('worker-1', { display_name: 'Minh Anh', trade: 'Thợ điện', area: 'Quận 7', experience_years: 6, about: 'Giới thiệu', skills: ['Thay vòi'] }, expect.any(AbortSignal));
+  await act(async () => view.result.current.performProfile({ type: 'coverage', radiusKm: 10, serviceIds: ['water'] }));
+  expect(shared.saveWorkerCoverage).toHaveBeenCalledWith('worker-1', 10, ['water'], expect.any(AbortSignal));
+  expect(await act(async () => view.result.current.performProfile({ type: 'accepting', accepting: false }))).toBe('Đã tắt nhận việc.');
+  expect(shared.setWorkerAccepting).toHaveBeenCalledWith('worker-1', false, expect.any(AbortSignal));
+  await act(async () => view.result.current.performProfile({ type: 'addCertificate', title: 'An toàn điện' }));
+  expect(shared.addWorkerCertificate).toHaveBeenCalledWith('worker-1', 'An toàn điện', expect.any(AbortSignal));
+  await act(async () => view.result.current.performProfile({ type: 'removeCertificate', id: 'c1' }));
+  expect(shared.removeWorkerCertificate).toHaveBeenCalledWith('worker-1', 'c1', expect.any(AbortSignal));
+  await waitFor(() => expect(shared.readWorkerProfile).toHaveBeenCalledTimes(6));
+});
+
+test('a refused profile command still reloads and without a worker nothing is sent', async () => {
+  jest.mocked(shared.saveWorkerCoverage).mockRejectedValue(new shared.WorkflowError('invalid'));
+  const view = await mount();
+  await act(async () => {
+    await expect(view.result.current.performProfile({ type: 'coverage', radiusKm: 5, serviceIds: [] })).rejects.toMatchObject({ failure: 'invalid' });
+  });
+  await waitFor(() => expect(shared.readWorkerProfile).toHaveBeenCalledTimes(2));
+  const idle = await mount('working', null);
+  await expect(idle.result.current.performProfile({ type: 'accepting', accepting: true })).rejects.toMatchObject({ failure: 'forbidden' });
 });

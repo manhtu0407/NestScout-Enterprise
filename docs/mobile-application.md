@@ -540,3 +540,20 @@ pause cannot be resumed. The Kael entry stays a mock. Sample data and local simu
 remain only in `HorizonPreview` (`useSampleWorkerJobs`), where the screen shows its
 sample footnote. Drafts are not persisted across app restarts. Native device behavior
 is NOT VERIFIED.
+
+## Worker profile
+
+The Worker sidebar entries Profile and certificates, Areas and services, and Customer
+reviews read and write Supabase through `features/shared/worker-profile-repository.ts`.
+`useWorkerData` loads `my_worker_profile()` with the job data, and `performProfile` sends
+every profile command (save profile, save coverage, availability, add and remove
+certificate) and reloads afterwards. A worker without a profile sees a creation form and
+is asked to create one before choosing areas, services or reading reviews. A saved profile
+is `worker_submitted` and never listed: only the operator changes `listed` and a
+certificate `status`, and customers see neither until then. Certificates are titles with
+a verification status; no document upload exists. Coverage and the availability switch in
+the sidebar are stored on the profile, but no automatic matching reads them yet, so they do
+not route jobs. Customers can review a worker whose profile is not listed, so ratings
+accumulate before approval; the rating shows only from three reviews. Sample data and
+local simulation remain only in `HorizonPreview` (`SampleWorkerProfileScreen`). Native
+device behavior is NOT VERIFIED.

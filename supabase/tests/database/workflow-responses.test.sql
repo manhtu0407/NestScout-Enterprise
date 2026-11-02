@@ -35,6 +35,6 @@ select lives_ok($$select public.decline_service_invitation('40000000-0000-4000-8
 select throws_ok($$select public.accept_service_invitation('40000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000002',1)$$,'22023','invitation unavailable','Declined invitation cannot be accepted');
 select is_empty($$select 1 from public.worker_offers()$$,'Declined offer disappears without automatic rematching');
 reset role;
-select is((select count(*)::integer from public.service_jobs),0,'Decline creates no assignment');
+select is((select count(*)::integer from public.service_jobs where request_id = '10000000-0000-4000-8000-000000000002'),0,'Decline creates no assignment');
 select * from finish();
 rollback;

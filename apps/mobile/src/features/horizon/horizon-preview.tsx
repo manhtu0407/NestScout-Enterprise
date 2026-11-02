@@ -22,7 +22,7 @@ import { SavedWorkersScreen } from './saved-workers-screen';
 import { sampleNotifications, sampleProfile, sampleQuotes, sampleSavedWorkers } from './content';
 import { SampleWorkerJobsScreen } from './sample-worker-jobs-screen';
 import { WorkerKaelScreen } from './worker-kael-screen';
-import { WorkerProfileScreen } from './worker-profile-screen';
+import { SampleWorkerProfileScreen } from './sample-worker-profile-screen';
 import { workerProfileTabForSidebarId, type WorkerProfileTab } from './worker-profile';
 import { WorkerEarningsScreen, type EarningsMode } from './worker-earnings-screen';
 import { sampleWorkerBadges, workerJobStageForSidebarId, type WorkerJobStage } from './worker-jobs';
@@ -141,7 +141,7 @@ export function HorizonPreview() {
       {requestsOpen && <RequestsScreen requests={sampleRequests} onBack={goBack} onViewQuotes={() => { setRequestsOpen(false); setQuotesFromRequests(true); setSupportScreen('quotes'); }} onAskKael={() => setRequestsOpen(false)} />}
       {jobsStage !== null && <SampleWorkerJobsScreen key={jobsStage} initialStage={jobsStage} onBack={goBack} onAskKael={() => setJobsStage(null)} />}
       {workerKael && <WorkerKaelScreen onBack={goBack} onAsk={prompt => { setInput(prompt); setComposerError(null); setWorkerKael(false); }} />}
-      {profileTab !== null && <WorkerProfileScreen key={profileTab} initialTab={profileTab} name={profile.name} onBack={goBack} />}
+      {profileTab !== null && <SampleWorkerProfileScreen key={profileTab} initialTab={profileTab} onBack={goBack} />}
       {earningsMode !== null && <WorkerEarningsScreen key={earningsMode} initialMode={earningsMode} onBack={goBack} />}
       {supportScreen === 'notifications' &&<NotificationsScreen items={sampleNotifications} onBack={goBack} />}
       {supportScreen === 'quotes' && <QuotesScreen items={sampleQuotes} onBack={goBack} onAskKael={() => setSupportScreen(null)} />}

@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import {
-  WorkflowError, acceptOffer, advanceJob, declineOffer, pauseJob, proposeScope, readWorkerJobCards, readWorkerSnapshot, reportJob, requestResume, submitWork,
-  type WorkerJobCard,
+  WorkflowError, acceptOffer, addWorkerCertificate, advanceJob, declineOffer, pauseJob, proposeScope, readWorkerJobCards, readWorkerProfile, readWorkerSnapshot,
+  removeWorkerCertificate, reportJob, requestResume, saveWorkerCoverage, saveWorkerProfile, setWorkerAccepting, submitWork,
+  type WorkerJobCard, type WorkerProfileRecord,
 } from '@/features/shared';
 
 import type { WorkerCommand } from './worker-jobs';
+import type { WorkerProfileCommand } from './worker-profile';
 import type { WorkerSnapshot } from './worker-views';
 
 export type WorkerDataStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-export type WorkerData = { snapshot: WorkerSnapshot; cards: readonly WorkerJobCard[] };
+export type WorkerData = { snapshot: WorkerSnapshot; cards: readonly WorkerJobCard[]; profile: WorkerProfileRecord | null };
 
-const emptyData: WorkerData = { snapshot: { offers: [], jobs: [], changes: [], reports: [], corrections: [], pauses: [] }, cards: [] };
+const emptyData: WorkerData = { snapshot: { offers: [], jobs: [], changes: [], reports: [], corrections: [], pauses: [] }, cards: [], profile: null };
 
 export type WorkerDataController = {
   data: WorkerData;
@@ -20,11 +22,12 @@ export type WorkerDataController = {
   loaded: boolean;
   refresh: () => void;
   perform: (id: string, command: WorkerCommand) => Promise<string>;
+  performProfile: (command: WorkerProfileCommand) => Promise<string>;
 };
 
 async function loadAll(userId: string, signal: AbortSignal): Promise<WorkerData> {
-  const [snapshot, cards] = await Promise.all([readWorkerSnapshot(userId, signal), readWorkerJobCards(userId, signal)]);
-  return { snapshot, cards };
+  const [snapshot, cards, profile] = await Promise.all([readWorkerSnapshot(userId, signal), readWorkerJobCards(userId, signal), readWorkerProfile(userId, signal)]);
+  return { snapshot, cards, profile };
 }
 
 type Loaded = { owner: string | null; data: WorkerData; loaded: boolean };
@@ -109,5 +112,35 @@ export function useWorkerData(userId: string | null): WorkerDataController {
     }
   }, [current.data, refresh, userId]);
 
-  return { data: current.data, status, loaded: current.loaded, refresh, perform };
+  const performProfile = useCallback(async (command: WorkerProfileCommand): Promise<string> => {
+    if (userId === null) throw new WorkflowError('forbidden');
+    const signal = new AbortController().signal;
+    try {
+      switch (command.type) {
+        case 'save': {
+          const { draft } = command;
+          await saveWorkerProfile(userId, {
+            display_name: draft.name, trade: draft.trade, area: draft.area, experience_years: draft.experienceYears, about: draft.about, skills: draft.skills,
+          }, signal);
+          return 'Đã lưu hồ sơ nghề.';
+        }
+        case 'coverage':
+          await saveWorkerCoverage(userId, command.radiusKm, command.serviceIds, signal);
+          return 'Đã lưu khu vực và dịch vụ nhận.';
+        case 'accepting':
+          await setWorkerAccepting(userId, command.accepting, signal);
+          return command.accepting ? 'Đã bật nhận việc.' : 'Đã tắt nhận việc.';
+        case 'addCertificate':
+          await addWorkerCertificate(userId, command.title, signal);
+          return 'Đã thêm chứng chỉ. Khách chỉ thấy chứng chỉ sau khi được xác minh.';
+        default:
+          await removeWorkerCertificate(userId, command.id, signal);
+          return 'Đã xóa chứng chỉ.';
+      }
+    } finally {
+      refresh();
+    }
+  }, [refresh, userId]);
+
+  return { data: current.data, status, loaded: current.loaded, refresh, perform, performProfile };
 }

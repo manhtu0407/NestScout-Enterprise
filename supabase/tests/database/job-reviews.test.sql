@@ -39,7 +39,7 @@ select ok(not has_table_privilege('authenticated', 'public.worker_reviews', 'ins
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
 
-select is((select count(*)::integer from public.job_worker_cards()), 3, 'Only jobs whose worker has a listed profile are offered');
+select is((select count(*)::integer from public.job_worker_cards()), 3, 'Only jobs whose worker has a profile are offered');
 select is_empty($$select 1 from public.job_worker_cards() where job_id = '50000000-0000-4000-8000-000000000004'$$, 'A job whose worker has no profile is not offered');
 select is((select profile_id from public.job_worker_cards() where job_id = '50000000-0000-4000-8000-000000000001'), '70000000-0000-4000-8000-0000000000b2'::uuid, 'The card carries the opaque profile id');
 select is((select to_jsonb(c) ? 'worker_id' from public.job_worker_cards() c limit 1), false, 'The card never exposes the worker account id');
@@ -50,7 +50,7 @@ select is(public.save_worker('70000000-0000-4000-8000-0000000000b2'), '70000000-
 select is((select saved from public.job_worker_cards() where job_id = '50000000-0000-4000-8000-000000000001'), true, 'The card reports the worker as saved');
 
 select throws_ok($$select public.review_job_worker('50000000-0000-4000-8000-000000000002', 5, '', array[]::text[])$$, '22023', 'job not completed', 'A job in progress cannot be reviewed');
-select throws_ok($$select public.review_job_worker('50000000-0000-4000-8000-000000000004', 5, '', array[]::text[])$$, '42501', 'worker unavailable', 'A worker without a listed profile cannot be reviewed');
+select throws_ok($$select public.review_job_worker('50000000-0000-4000-8000-000000000004', 5, '', array[]::text[])$$, '42501', 'worker unavailable', 'A worker without a profile cannot be reviewed');
 select throws_ok($$select public.review_job_worker('50000000-0000-4000-8000-000000000999', 5, '', array[]::text[])$$, '42501', 'job unavailable', 'An unknown job cannot be reviewed');
 select throws_ok($$select public.review_job_worker(null, 5, '', array[]::text[])$$, '22023', 'invalid request', 'A missing job is rejected');
 select throws_ok($$select public.review_job_worker('50000000-0000-4000-8000-000000000001', 0, '', array[]::text[])$$, '22023', 'invalid request', 'A rating below one is rejected');

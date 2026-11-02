@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Icon, type IconName, PressScale } from '@/features/shared';
+import { Icon, type IconName } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
@@ -12,6 +12,7 @@ import { Presence, useRetained } from './motion-presence';
 import { SlideToConfirm } from './slide-to-confirm';
 import { SlidingChips } from './sliding-chips';
 import { ScreenHeader } from './support-shell';
+import { ActionButton } from './worker-action-button';
 import { workerJobStages, workerJobStepActions, workerJobSteps, type WorkerCommand, type WorkerJob, type WorkerJobStage, type WorkerPerform } from './worker-jobs';
 import { workflowMessage } from './workflow-messages';
 
@@ -275,24 +276,6 @@ function noteOf(job: WorkerJob): string | null {
   }
 }
 
-type ActionButtonProps = { label: string; accessibilityLabel: string; onPress: () => void; secondary?: boolean; disabled?: boolean };
-
-function ActionButton({ label, accessibilityLabel, onPress, secondary = false, disabled = false }: ActionButtonProps) {
-  return (
-    <PressScale
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={[styles.action, secondary && styles.actionSecondary, disabled && styles.disabled]}
-      wrapperStyle={styles.actionWrap}
-    >
-      <Text style={[styles.actionLabel, secondary && styles.actionSecondaryLabel]}>{label}</Text>
-    </PressScale>
-  );
-}
-
 function JobActions({ job, actions }: { job: WorkerJob; actions: Actions }) {
   const { title } = job;
   const { busy } = actions;
@@ -453,12 +436,6 @@ const styles = StyleSheet.create({
   footnoteInline: { color: horizonColors.muted, fontSize: metrics.footnoteSize, lineHeight: metrics.footnoteLineHeight },
   actions: { flexDirection: 'row', gap: card.actionGap },
   offerActions: { gap: card.actionGap },
-  actionWrap: { flex: 1 },
-  action: { height: card.actionHeight, borderRadius: card.actionRadius, alignItems: 'center', justifyContent: 'center', backgroundColor: cardColors.actionFill },
-  actionSecondary: { backgroundColor: cardColors.actionSecondaryFill },
-  actionLabel: { color: cardColors.actionLabel, fontSize: card.actionSize, fontWeight: card.actionWeight },
-  actionSecondaryLabel: { color: cardColors.actionSecondaryLabel },
-  disabled: { opacity: metrics.disabledOpacity },
   empty: { alignItems: 'center', paddingTop: card.emptyPaddingTop, paddingHorizontal: card.emptyPaddingHorizontal, gap: card.emptyGap },
   emptyTitle: { color: horizonColors.text, fontSize: card.emptyTitleSize, fontWeight: card.emptyTitleWeight, textAlign: 'center' },
   emptyBody: { color: horizonColors.muted, fontSize: card.emptyBodySize, lineHeight: card.emptyBodyLineHeight, textAlign: 'center' },

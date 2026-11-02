@@ -39,6 +39,8 @@ test.each([
   ['invalid evidence', '22023', 'invalid evidence', 'invalid', /details were not accepted/],
   ['an invalid proposal', '22023', 'invalid proposal', 'invalid', /details were not accepted/],
   ['an invalid report', '22023', 'invalid report', 'invalid', /details were not accepted/],
+  ['a certificate over the limit', '22023', 'certificate limit', 'invalid', /details were not accepted/],
+  ['a coverage change without a profile', '22023', 'profile required', 'invalid', /details were not accepted/],
   ['an invalid reason', '22023', 'invalid reason', 'invalid', /details were not accepted/],
   ['an invalid decision', '22023', 'invalid decision', 'invalid', /details were not accepted/],
   ['an invalid pause', '22023', 'invalid pause', 'invalid', /details were not accepted/],
