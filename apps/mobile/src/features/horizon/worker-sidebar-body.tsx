@@ -128,8 +128,8 @@ export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, pro
       <GlassIconButton label={accountLabel} hint="Mở tài khoản và chuyển vai trò" onPress={onOpenAccount}>
         <View style={styles.floatingAvatar}>{initial ? <Text style={styles.floatingInitial}>{initial}</Text> : <Icon name="user" size={list.avatarIconSize} color={avatarColors.avatarInitial}/>}</View>
       </GlassIconButton>
-      <GlassCapsuleButton label="Trò chuyện mới" tone="light" radius={list.floatingRadius} onPress={() => onNavigate('new')} style={styles.newChat}>
-        <Icon name="plus" size={22} color={listColors.onAccent} strokeWidth={2}/><Text style={styles.newChatLabel}>Trò chuyện mới</Text>
+      <GlassCapsuleButton label="Chat" tone="light" radius={list.floatingRadius} onPress={() => onNavigate('new')} style={styles.newChat}>
+        <Icon name="plus" size={22} color={listColors.onAccent} strokeWidth={2}/><Text style={styles.newChatLabel}>Chat</Text>
       </GlassCapsuleButton>
     </View>
   </>;

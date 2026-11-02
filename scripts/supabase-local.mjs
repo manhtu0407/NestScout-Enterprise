@@ -106,7 +106,7 @@ export function localEnvironment(source) {
 }
 
 export function safeEndpoints(endpoints) {
-  const allowed = ['database.sql', 'rest.http', 'auth.http', 'studio.http', 'pgmeta.http'];
+  const allowed = ['database.sql', 'rest.http', 'auth.http', 'storage.http', 'studio.http', 'pgmeta.http'];
   return Object.fromEntries(Object.entries(endpoints).filter(([name]) => allowed.includes(name)).map(([name, value]) => [name, {
     protocol: value.protocol, address: value.address, port: value.port, url: value.url,
   }]));
@@ -186,7 +186,7 @@ async function main(action) {
       const before = runtime.status(true);
       if (before) validateLocalStatus(before, realpathSync(root), runtime.branch, false);
       runtime.cli(['stack', 'start', '--runtime', 'docker', '--preparation', 'on-demand', '--frozen',
-        '--exclude', 'realtime,storage,functions,mail,analytics,pooler', '--output-format', 'json']);
+        '--exclude', 'realtime,functions,mail,analytics,pooler', '--output-format', 'json']);
       const current = runtime.verify();
       requireLocal(!before || current.id === before.identity.id, 'Stack identity changed during startup.');
       console.log('PASS: current worktree/branch stack started; all Docker ports bind to loopback.');

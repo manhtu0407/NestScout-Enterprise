@@ -1,5 +1,7 @@
 import { authenticatedRequest } from '@/lib/authenticated-rest';
-import { readJobReports, readScopeChanges, workflowErrorFrom, type JobReport, type ScopeChange } from '@/features/shared';
+import { readJobReports, type JobReport } from './job-reports';
+import { readScopeChanges, type ScopeChange } from './scope-changes';
+import { workflowErrorFrom } from './workflow-error';
 
 export type CustomerJob = { id: string; request_id: string; stage: string; version: number };
 export type Submission = { id: string; job_id: string; evidence: string; decision: string };

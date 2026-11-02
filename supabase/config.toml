@@ -38,7 +38,8 @@ enable_refresh_token_rotation = true
 minimum_password_length = 8
 
 [storage]
-enabled = false
+enabled = true
+file_size_limit = "5MiB"
 
 [realtime]
 enabled = false

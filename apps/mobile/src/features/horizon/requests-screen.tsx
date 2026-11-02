@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { Icon, type IconName, PressScale, useGlassAccessibility } from '@/features/shared';
+import { Icon, type IconName, type JobReview, PressScale, useGlassAccessibility } from '@/features/shared';
 import { ScreenHeader } from './support-shell';
+import { WorkerReviewPanel, type RequestWorker } from './worker-review-panel';
 
 const metrics = horizonLayout.requestsScreen;
 const colors = horizonColors.requestsScreen;
 const easeOut = Easing.bezier(0.23, 1, 0.32, 1);
 
 export type RequestStage = 'waiting' | 'active' | 'done';
+
+export type PhotoSource = { uri: string; headers: Readonly<Record<string, string>> };
 
 export type ServiceRequest = {
   id: string;
@@ -23,9 +26,11 @@ export type ServiceRequest = {
   step: number;
   nextAction: string;
   description: string;
-  location: string;
+  location?: string;
   createdLabel: string;
-  photoCount: number;
+  photoCount?: number;
+  photos?: readonly PhotoSource[];
+  worker?: RequestWorker;
 };
 
 export const workflowSteps: readonly string[] = ['Đã gửi', 'Có báo giá', 'Chấp nhận', 'Ghép thợ', 'Thực hiện', 'Nghiệm thu'];
@@ -41,9 +46,12 @@ type Props = {
   onBack: () => void;
   onViewQuotes?: () => void;
   onAskKael?: (request: ServiceRequest) => void;
+  onToggleSaveWorker?: (worker: RequestWorker) => Promise<void>;
+  onReviewWorker?: (worker: RequestWorker, review: JobReview) => Promise<void>;
+  focusId?: string;
 };
 
-function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael }: CardProps) {
+function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onToggleSaveWorker, onReviewWorker }: CardProps) {
   const finished = request.step >= workflowSteps.length;
   const caption = finished ? `Đủ ${workflowSteps.length}/${workflowSteps.length} bước` : `Bước ${request.step + 1}/${workflowSteps.length} · ${workflowSteps[request.step]}`;
   const needsYou = Boolean(request.quoteCount);
@@ -96,9 +104,19 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael }: C
         <View style={styles.detail}>
           <Text style={styles.detailTitle}>Thông tin yêu cầu</Text>
           <Info label="Mô tả" value={request.description} />
-          <Info label="Địa điểm" value={request.location} />
+          {request.location ? <Info label="Địa điểm" value={request.location} /> : null}
           <Info label="Gửi lúc" value={request.createdLabel} />
-          <Info label="Ảnh đính kèm" value={request.photoCount > 0 ? `${request.photoCount} ảnh` : 'Không có'} />
+          {request.photoCount !== undefined ? <Info label="Ảnh đính kèm" value={request.photoCount > 0 ? `${request.photoCount} ảnh` : 'Không có'} /> : null}
+          {request.photos && request.photos.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photos}>
+              {request.photos.map((photo, index) => (
+                <Image key={photo.uri} source={{ uri: photo.uri, headers: { ...photo.headers } }} style={styles.photo} resizeMode="cover" accessibilityLabel={`Ảnh đính kèm ${index + 1}`} />
+              ))}
+            </ScrollView>
+          ) : null}
+          {request.worker && onToggleSaveWorker && onReviewWorker ? (
+            <WorkerReviewPanel worker={request.worker} finished={request.stage === 'done'} onToggleSave={onToggleSaveWorker} onReview={onReviewWorker} />
+          ) : null}
           <Text style={styles.detailTitle}>Tiến trình</Text>
           <View>
             {workflowSteps.map((label, index) => {
@@ -150,14 +168,17 @@ type CardProps = {
   onToggle: () => void;
   onViewQuotes?: () => void;
   onAskKael?: (request: ServiceRequest) => void;
+  onToggleSaveWorker?: (worker: RequestWorker) => Promise<void>;
+  onReviewWorker?: (worker: RequestWorker, review: JobReview) => Promise<void>;
 };
 
-export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael }: Props) {
-  const [expandedIds, setExpandedIds] = useState<readonly string[]>([]);
+export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onToggleSaveWorker, onReviewWorker, focusId }: Props) {
+  const focused = requests.find(request => request.id === focusId);
+  const [expandedIds, setExpandedIds] = useState<readonly string[]>(focused ? [focused.id] : []);
   const { reduceMotion } = useGlassAccessibility();
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(() => Math.max(0, tabs.findIndex(tab => tab.stage === focused?.stage)));
   const [trackWidth, setTrackWidth] = useState(0);
-  const [position] = useState(() => new Animated.Value(0));
+  const [position] = useState(() => new Animated.Value(Math.max(0, tabs.findIndex(tab => tab.stage === focused?.stage))));
 
   useEffect(() => {
     if (reduceMotion) {
@@ -230,6 +251,8 @@ export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael 
               onToggle={() => setExpandedIds(current => (current.includes(request.id) ? current.filter(id => id !== request.id) : [...current, request.id]))}
               onViewQuotes={onViewQuotes}
               onAskKael={onAskKael}
+              onToggleSaveWorker={onToggleSaveWorker}
+              onReviewWorker={onReviewWorker}
             />
           ))
         ) : (
@@ -279,6 +302,8 @@ const styles = StyleSheet.create({
   detail: { gap: metrics.infoGap },
   detailTitle: { color: colors.infoLabel, fontSize: metrics.detailTitleSize, fontWeight: metrics.detailTitleWeight },
   info: { gap: metrics.infoLabelGap },
+  photos: { gap: metrics.photoGap },
+  photo: { width: metrics.photoSize, height: metrics.photoSize, borderRadius: metrics.photoRadius, backgroundColor: colors.photoFill },
   infoLabel: { color: colors.infoLabel, fontSize: metrics.infoLabelSize },
   infoValue: { color: horizonColors.text, fontSize: metrics.infoValueSize, lineHeight: metrics.infoValueLineHeight },
   timelineRow: { flexDirection: 'row', gap: metrics.timelineGap, minHeight: metrics.timelineRowMinHeight },

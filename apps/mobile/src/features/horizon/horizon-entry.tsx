@@ -1,5 +1,5 @@
 import { horizonLayout } from '@/theme/layout';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -13,6 +13,8 @@ import type { ComposerImage } from './composer-media';
 import { KaelHomeLoading } from './skeleton-layouts';
 import { Presence, useRetained } from './motion-presence';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
+import { countActionableQuotes, countUnreadNotifications, toRecentSessions } from './request-views';
+import { useCustomerData } from './use-customer-data';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
@@ -29,6 +31,31 @@ export function HorizonEntry() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationKey, setConversationKey] = useState(0);
   const [composerError, setComposerError] = useState<string | null>(null);
+  const [dataNotice, setDataNotice] = useState<string | null>(null);
+  const [now, setNow] = useState(() => new Date());
+  const customerUserId = access.phase === 'client' && access.identity === 'verified' ? access.userId : null;
+  const customer = useCustomerData(customerUserId);
+  const { data } = customer;
+  const recentSessions = useMemo(() => toRecentSessions({ requests: data.requests, quotes: data.quotes, activity: data.activity }, data.pinnedIds, now), [data, now]);
+  const badges = useMemo(() => ({
+    quotes: countActionableQuotes(data.requests, data.quotes, now),
+    notifications: countUnreadNotifications(data.notifications),
+  }), [data, now]);
+
+  const openMenu = useCallback(() => {
+    setNow(new Date());
+    customer.refresh();
+    setDrawerOpen(true);
+  }, [customer]);
+
+  const openRequest = useCallback((id: string) => {
+    setDrawerOpen(false);
+    router.push({ pathname: '/requests', params: { focus: id } });
+  }, [router]);
+
+  const togglePin = useCallback((id: string) => {
+    customer.togglePin(id).catch(() => setDataNotice('Chưa ghim được yêu cầu. Vui lòng thử lại.'));
+  }, [customer]);
 
   const newConversation = useCallback(() => {
     setMessages([]);
@@ -62,9 +89,11 @@ export function HorizonEntry() {
     else router.push({ pathname: '/section', params: { id } });
   }, [access.phase, newConversation, router]);
 
-  const noticeMessage = useRetained(access.notice === null ? null : access.notice === 'worker_unavailable'
+  const accessMessage = access.notice === null ? null : access.notice === 'worker_unavailable'
     ? 'Không thể chuyển sang vai trò Thợ vì tài khoản chưa có quyền.'
-    : 'Chưa thể xác minh quyền Thợ. Bạn có thể thử lại.');
+    : 'Chưa thể xác minh quyền Thợ. Bạn có thể thử lại.';
+  const noticeMessage = useRetained(accessMessage ?? dataNotice);
+  const dismissNotice = () => { access.dismissNotice(); setDataNotice(null); };
 
   if (access.phase === 'bootstrapping' || access.phase === 'resolving') return <EntryRedirect pending={renderPending}/>;
 
@@ -72,16 +101,16 @@ export function HorizonEntry() {
     <StatusBar style="dark"/>
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Presence visible={access.notice !== null} style={styles.noticeSlot}>
+        <Presence visible={access.notice !== null || dataNotice !== null} style={styles.noticeSlot}>
           <View accessibilityLiveRegion="polite" style={styles.notice}>
             <Text style={styles.noticeText}>{noticeMessage}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo vai trò" onPress={access.dismissNotice} style={styles.noticeAction}><Icon name="close" size={18}/></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo" onPress={dismissNotice} style={styles.noticeAction}><Icon name="close" size={18}/></Pressable>
           </View>
         </Presence>
-        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={() => setDrawerOpen(true)} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
+        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={openMenu} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
-    <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
+    <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
       if (access.phase === 'guest') {
         kaelIntroSession.markPlayed();
         access.prepareHorizonDraftTransfer({ text: inputRef.current, images: imagesRef.current });

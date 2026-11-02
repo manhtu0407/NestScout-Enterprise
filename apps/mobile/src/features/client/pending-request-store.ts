@@ -1,6 +1,8 @@
 import { deviceStorage } from '@/lib/device-storage';
 
-export type PendingRequest = { key: string; description: string };
+export const maxLocationLength = 200;
+
+export type PendingRequest = { key: string; description: string; location: string };
 
 function storageKey(userId: string): string {
   return `nestscout.pending-request.${userId}`;
@@ -16,7 +18,9 @@ export async function loadPendingRequest(userId: string): Promise<PendingRequest
     || typeof item.description !== 'string' || !item.description.trim() || item.description.length > 4000) {
     throw new Error('Invalid pending request');
   }
-  return { key: item.key, description: item.description };
+  const location = item.location === undefined ? '' : item.location;
+  if (typeof location !== 'string' || location.length > maxLocationLength) throw new Error('Invalid pending request');
+  return { key: item.key, description: item.description, location };
 }
 
 export function savePendingRequest(userId: string, item: PendingRequest): Promise<void> {

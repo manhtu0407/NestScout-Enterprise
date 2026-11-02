@@ -30,6 +30,7 @@ type Props = {
   onDismissModeNotice: () => void;
   profileName?: string;
   profileAvatarUri?: string;
+  profileAvatarHeaders?: Readonly<Record<string, string>>;
   recentLoading?: boolean;
   badges?: Readonly<Record<string, number>>;
   recentSessions?: readonly RecentSession[];
@@ -61,7 +62,7 @@ function ItemRow({ item, onPress, badge = 0 }: { item: SidebarItem; onPress: () 
   </Animated.View>;
 }
 
-export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, profileAvatarUri, recentLoading = false, badges = {}, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore }: Props) {
+export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, profileAvatarUri, profileAvatarHeaders, recentLoading = false, badges = {}, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const topInset = Platform.select({ web: 0, default: insets.top }) ?? 0;
@@ -123,29 +124,29 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
           <Group title="Gần đây">
             <SkeletonReveal loading={recentLoading === true} skeleton={<RecentSkeleton label="Đang tải cuộc trò chuyện gần đây"/>}>
               {recentSessions.length === 0
-                ? <Text style={styles.emptyText}>Chưa có cuộc trò chuyện nào. Bấm “Trò chuyện mới” để hỏi Kael.</Text>
+                ? <Text style={styles.emptyText}>Chưa có yêu cầu nào. Khi bạn gửi yêu cầu, nó sẽ hiện ở đây.</Text>
                 : unpinnedSessions.map(renderSession)}
             </SkeletonReveal>
           </Group>
           <CollapsibleGroup title="Dịch vụ" expanded={servicesOpen} onToggle={() => setServicesOpen(open => !open)}>
             {quickServices.map(service => <ItemRow key={service.title} item={{ id: service.title, title: service.title, icon: service.icon }} onPress={() => (onSelectService ?? onNavigate)(service.prompt)}/>)}
           </CollapsibleGroup>
-          <CollapsibleGroup title={sidebarGroups[1]?.title ?? ''} expanded={supportOpen} onToggle={() => setSupportOpen(open => !open)}>
-            {sidebarGroups[1]?.items.map(item => <ItemRow key={item.id} item={item} onPress={() => onNavigate(item.id)}/>)}
+          <CollapsibleGroup title={sidebarGroups[1]?.title ?? ''} expanded={supportOpen} onToggle={() => setSupportOpen(open => !open)} badge={(sidebarGroups[1]?.items ?? []).reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>
+            {sidebarGroups[1]?.items.map(item => <ItemRow key={item.id} item={item} badge={badges[item.id]} onPress={() => onNavigate(item.id)}/>)}
             <ItemRow item={{ id: 'mode', title: 'Đổi vai trò', icon: 'user' }} onPress={chooseMode}/>
             <ItemRow item={{ id: 'account', title: 'Tài khoản và đăng nhập', icon: 'login' }} onPress={() => onNavigate('profile')}/>
           </CollapsibleGroup>
         </ScrollView>
         <View pointerEvents="box-none" style={styles.floating}>
-          <GlassIconButton label={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} hint="Mở tài khoản và chuyển vai trò" onPress={() => { setAccountCloseRequest(0); setAccountOpen(true); }}><View style={styles.avatarDisc}>{profileAvatarUri ? <Image source={{ uri: profileAvatarUri }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện"/> : initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={horizonLayout.sidebarList.avatarIconSize} color={horizonColors.accountSheet.avatarInitial}/>}</View></GlassIconButton>
-          <GlassCapsuleButton label="Trò chuyện mới" tone="light" radius={horizonLayout.sidebarList.floatingRadius} onPress={() => onNavigate('new')} style={styles.newChat}>
-            <Icon name="plus" size={22} color={listColors.onAccent} strokeWidth={2}/><Text style={styles.newChatLabel}>Trò chuyện mới</Text>
+          <GlassIconButton label={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} hint="Mở tài khoản và chuyển vai trò" onPress={() => { setAccountCloseRequest(0); setAccountOpen(true); }}><View style={styles.avatarDisc}>{profileAvatarUri ? <Image source={{ uri: profileAvatarUri, headers: profileAvatarHeaders ? { ...profileAvatarHeaders } : undefined }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện"/> : initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={horizonLayout.sidebarList.avatarIconSize} color={horizonColors.accountSheet.avatarInitial}/>}</View></GlassIconButton>
+          <GlassCapsuleButton label="Chat" tone="light" radius={horizonLayout.sidebarList.floatingRadius} onPress={() => onNavigate('new')} style={styles.newChat}>
+            <Icon name="plus" size={22} color={listColors.onAccent} strokeWidth={2}/><Text style={styles.newChatLabel}>Chat</Text>
           </GlassCapsuleButton>
         </View>
         </>}
       </View>
       <Pressable style={styles.scrim} onPress={closeSidebar} accessibilityLabel="Đóng sidebar" importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'}/>
-      {visible && accountOpen && <AccountSheet closeRequest={accountCloseRequest} reduceMotion={reduceMotion} profileName={profileName} avatarUri={profileAvatarUri} modeLabel={modeLabel} onClose={closeAccount}/>}
+      {visible && accountOpen && <AccountSheet closeRequest={accountCloseRequest} reduceMotion={reduceMotion} profileName={profileName} avatarUri={profileAvatarUri} avatarHeaders={profileAvatarHeaders} modeLabel={modeLabel} onClose={closeAccount}/>}
       {pickerVisible && <ModePicker mode={mode} pending={requestedWorker && !modeNotice} notice={modeNotice} onSelect={selectMode} onClose={closePicker}/>}
     </View>
   </Modal>;

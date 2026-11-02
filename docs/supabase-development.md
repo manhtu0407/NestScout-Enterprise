@@ -54,7 +54,17 @@ branch, isolates local data, and allocates dynamic loopback endpoints. Each agen
 or task needs its own worktree/branch. The wrapper verifies current root, branch,
 stack ID, local Docker socket, running DB, and every published Docker binding.
 It never selects a hosted project, changes Docker settings, or stops another stack.
-Unused Storage, Realtime, Functions, mail, Analytics and pooler are excluded.
+Unused Realtime, Functions, mail, Analytics and pooler are excluded. Storage runs locally for two
+private buckets, `avatars` and `request-photos`: 5 MiB, JPEG/PNG/WebP, owner-folder policies, deletion
+only through the Storage API. The hosted project has both buckets with the same limits, and database
+backups do not cover object bytes, so treat uploaded files as outside the database recovery path.
+A request folder accepts at most twelve raw objects, counted by a definer helper because a policy cannot
+read its own table; at most six of them can be attached. The app names each photo once, keeps the
+pending list on the device, and retries an interrupted upload under the same name, so a retry never
+creates an orphan object. The eighteen migrations were applied to the hosted project on 2026-11-02
+with the owner's authorization, one by one through the Supabase MCP. Hosted records its own version
+numbers (20261102144630 to 20261102145255) under the same snake_case names, so hosted history differs
+from the repository file names; later applications must account for that.
 Enabled HTTP services wake on demand.
 
 ```sh
@@ -98,7 +108,8 @@ print their payloads. HTTP errors and SQL errors must remain failures.
 
 `supabase/migrations/` is the sole application schema source; Application
 Foundation V2 adds the technical `worker_access_grants` migration, not a
-business-services schema. Hosted history and public relations are empty. Hosted metadata
+business-services schema. Hosted carries the full chain since 2026-11-02: 20 public tables
+with RLS enabled, 35 public and 35 private functions, two private buckets. Hosted metadata
 also contains `public.rls_auto_enable()` and `ensure_rls`, absent locally. Their
 definitions match Studio's optional Auto enable RLS template, are owned by
 `postgres`, and are not extension members. The installing actor/mechanism is still

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { PressScale } from '@/features/shared';
+import { PressScale, type CustomerSettings } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
@@ -13,15 +13,39 @@ import { SupportCard, SupportRow, SupportSection, SupportShell } from './support
 const metrics = horizonLayout.supportScreens;
 const colors = horizonColors.supportScreens;
 
-type ToggleId = 'push' | 'quotes' | 'messages' | 'promotions' | 'reduceMotion';
+type ToggleId = keyof CustomerSettings;
 
-const initialToggles: Readonly<Record<ToggleId, boolean>> = { push: true, quotes: true, messages: true, promotions: false, reduceMotion: false };
+export const defaultSettings: CustomerSettings = { push: true, quotes: true, messages: true, promotions: false, reduce_motion: false };
 
-type Props = { onBack: () => void; profile?: UserProfile; onEditProfile?: () => void };
+type Props = {
+  onBack: () => void;
+  profile?: UserProfile;
+  onEditProfile?: () => void;
+  settings?: CustomerSettings;
+  onChangeSettings?: (next: CustomerSettings) => Promise<void>;
+};
 
-export function SettingsScreen({ onBack, profile, onEditProfile }: Props) {
-  const [toggles, setToggles] = useState(initialToggles);
-  const toggle = (id: ToggleId) => setToggles(current => ({ ...current, [id]: !current[id] }));
+export function SettingsScreen({ onBack, profile, onEditProfile, settings, onChangeSettings }: Props) {
+  const [toggles, setToggles] = useState<CustomerSettings>(settings ?? defaultSettings);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const toggle = (id: ToggleId) => {
+    if (saving) return;
+    const previous = toggles;
+    const next = { ...toggles, [id]: !toggles[id] };
+    setToggles(next);
+    if (!onChangeSettings) return;
+    setSaving(true);
+    setSaveError(null);
+    onChangeSettings(next).then(
+      () => setSaving(false),
+      () => {
+        setToggles(previous);
+        setSaving(false);
+        setSaveError('Chưa lưu được cài đặt. Kiểm tra kết nối rồi thử lại.');
+      },
+    );
+  };
   const switchFor = (id: ToggleId, label: string) => (
     <LiquidSwitch accessibilityLabel={label} value={toggles[id]} onValueChange={() => toggle(id)} />
   );
@@ -31,7 +55,7 @@ export function SettingsScreen({ onBack, profile, onEditProfile }: Props) {
         <SupportSection>
           <SupportCard>
             <PressScale accessibilityRole="button" accessibilityLabel={`Thông tin cá nhân, ${profile.name}`} onPress={onEditProfile} style={styles.profile}>
-              <ProfileAvatar name={profile.name} uri={profile.avatarUri} size={metrics.profileAvatarSize} initialSize={metrics.profileAvatarInitialSize} />
+              <ProfileAvatar name={profile.name} uri={profile.avatarUri} headers={profile.avatarHeaders} size={metrics.profileAvatarSize} initialSize={metrics.profileAvatarInitialSize} />
               <View style={styles.profileCopy}>
                 <Text numberOfLines={1} style={styles.profileName}>{profile.name}</Text>
                 <Text numberOfLines={1} style={styles.profileDetail}>{profile.email || profile.phone}</Text>
@@ -42,6 +66,7 @@ export function SettingsScreen({ onBack, profile, onEditProfile }: Props) {
         </SupportSection>
       ) : null}
       <SupportSection title="Thông báo">
+        {saveError ? <Text accessibilityLiveRegion="polite" style={styles.error}>{saveError}</Text> : null}
         <SupportCard>
           <SupportRow icon="bell" title="Thông báo đẩy" detail="Nhận cập nhật ngay trên thiết bị" trailing={switchFor('push', 'Thông báo đẩy')} />
           <SupportRow icon="receipt" title="Báo giá mới" trailing={switchFor('quotes', 'Báo giá mới')} />
@@ -53,7 +78,7 @@ export function SettingsScreen({ onBack, profile, onEditProfile }: Props) {
         <SupportCard>
           <SupportRow icon="globe" title="Ngôn ngữ" detail="Tiếng Việt" onPress={() => undefined} />
           <SupportRow icon="eye" title="Giao diện" detail="Sáng" onPress={() => undefined} />
-          <SupportRow icon="bolt" title="Giảm chuyển động" trailing={switchFor('reduceMotion', 'Giảm chuyển động')} />
+          <SupportRow icon="bolt" title="Giảm chuyển động" trailing={switchFor('reduce_motion', 'Giảm chuyển động')} />
         </SupportCard>
       </SupportSection>
       <SupportSection title="Quyền riêng tư">
@@ -78,5 +103,6 @@ const styles = StyleSheet.create({
   profileCopy: { flex: 1, minWidth: 0 },
   profileName: { color: horizonColors.text, fontSize: metrics.profileNameSize, fontWeight: metrics.rowTitleWeight },
   profileDetail: { color: horizonColors.muted, fontSize: metrics.rowDetailSize, lineHeight: metrics.rowDetailLineHeight, marginTop: metrics.rowDetailGap },
+  error: { color: colors.danger, fontSize: metrics.rowDetailSize, lineHeight: metrics.rowDetailLineHeight, marginBottom: metrics.sectionTitleGap, marginLeft: metrics.sectionTitleInset },
   profileAction: { color: colors.actionLabel, fontSize: metrics.rowDetailSize, fontWeight: metrics.heroChipWeight },
 });

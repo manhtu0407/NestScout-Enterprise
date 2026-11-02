@@ -11,9 +11,9 @@ const account = horizonLayout.accountSheet;
 const tones = horizonColors.accountSheet;
 const webControlStyle = Platform.select({ web: { outlineStyle: 'solid', outlineWidth: 0 } as const, default: undefined });
 
-type Props = { profileName?: string; avatarUri?: string; modeLabel: string; reduceMotion: boolean; closeRequest: number; onClose: () => void };
+type Props = { profileName?: string; avatarUri?: string; avatarHeaders?: Readonly<Record<string, string>>; modeLabel: string; reduceMotion: boolean; closeRequest: number; onClose: () => void };
 
-export function AccountSheet({ profileName, avatarUri, modeLabel, reduceMotion, closeRequest, onClose }: Props) {
+export function AccountSheet({ profileName, avatarUri, avatarHeaders, modeLabel, reduceMotion, closeRequest, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const [focused, setFocused] = useState<'close' | null>(null);
   const [progress] = useState(() => new Animated.Value(reduceMotion ? 1 : 0));
@@ -79,7 +79,7 @@ export function AccountSheet({ profileName, avatarUri, modeLabel, reduceMotion, 
           <PressScale accessibilityRole="button" accessibilityLabel="Đóng bảng tài khoản" onPress={closeSheet} onFocus={() => setFocused('close')} onBlur={() => setFocused(null)} style={[styles.close, webControlStyle, focused === 'close' && styles.closeFocused]}><Icon name="close" size={account.closeIconSize}/></PressScale>
         </View>
         <View style={styles.identity}>
-          <View style={styles.avatar}>{avatarUri ? <Image source={{ uri: avatarUri }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện"/> : profileName ? <Text style={styles.initial}>{profileName.trim().charAt(0).toLocaleUpperCase()}</Text> : <Icon name="user" size={account.avatarIconSize} color={tones.avatarInitial}/>}</View>
+          <View style={styles.avatar}>{avatarUri ? <Image source={{ uri: avatarUri, headers: avatarHeaders ? { ...avatarHeaders } : undefined }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện"/> : profileName ? <Text style={styles.initial}>{profileName.trim().charAt(0).toLocaleUpperCase()}</Text> : <Icon name="user" size={account.avatarIconSize} color={tones.avatarInitial}/>}</View>
           <View style={styles.copy}>
             <Text numberOfLines={1} style={styles.name}>{profileName ?? 'Chưa có thông tin hồ sơ'}</Text>
             <View style={styles.chip}><Text style={styles.chipText}>{modeLabel}</Text></View>

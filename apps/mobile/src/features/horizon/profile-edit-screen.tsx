@@ -14,12 +14,14 @@ const metrics = horizonLayout.supportScreens;
 const colors = horizonColors.supportScreens;
 const webInputStyle = { outlineStyle: 'solid', outlineWidth: 0 } as const;
 
-type Props = { profile: UserProfile; onBack: () => void; onSave: (next: UserProfile) => void };
+type Props = { profile: UserProfile; onBack: () => void; onSave: (next: UserProfile) => void | Promise<void>; avatarEnabled?: boolean };
 
 type EditableField = 'name' | 'email' | 'address';
 
-export function ProfileEditScreen({ profile, onBack, onSave }: Props) {
+export function ProfileEditScreen({ profile, onBack, onSave, avatarEnabled = true }: Props) {
   const [draft, setDraft] = useState(profile);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
   const changed = draft.name !== profile.name || draft.email !== profile.email || draft.address !== profile.address || draft.avatarUri !== profile.avatarUri;
   const pickAvatar = async () => {
@@ -27,25 +29,33 @@ export function ProfileEditScreen({ profile, onBack, onSave }: Props) {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8 });
       const uri = result.canceled ? undefined : result.assets[0]?.uri;
-      if (uri) setDraft(current => ({ ...current, avatarUri: uri }));
+      const asset = result.canceled ? undefined : result.assets[0];
+      if (uri) setDraft(current => ({ ...current, avatarUri: uri, avatarHeaders: undefined, avatarMimeType: asset?.mimeType }));
     } catch {
       setPickError('Không thể mở thư viện ảnh. Vui lòng thử lại.');
     }
   };
-  const removeAvatar = () => setDraft(current => ({ ...current, avatarUri: undefined }));
-  const canSave = changed && draft.name.trim().length > 0;
+  const removeAvatar = () => setDraft(current => ({ ...current, avatarUri: undefined, avatarHeaders: undefined, avatarMimeType: undefined }));
+  const canSave = changed && draft.name.trim().length > 0 && !saving;
   const update = (field: EditableField) => (value: string) => setDraft(current => ({ ...current, [field]: value }));
-  const save = () => {
+  const save = async () => {
     if (!canSave) return;
     const next = { ...draft, name: draft.name.trim(), email: draft.email.trim(), address: draft.address.trim() };
-    onSave(next);
-    onBack();
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSave(next);
+      onBack();
+    } catch {
+      setSaving(false);
+      setSaveError('Chưa lưu được. Hãy kiểm tra họ tên, email và địa chỉ rồi thử lại.');
+    }
   };
   return (
     <SupportShell title="Thông tin cá nhân" onBack={onBack}>
       <View style={styles.avatarBlock}>
-        <ProfileAvatar name={draft.name} uri={draft.avatarUri} size={metrics.editAvatarSize} initialSize={metrics.editAvatarInitialSize} />
-        <View style={styles.avatarActions}>
+        <ProfileAvatar name={draft.name} uri={draft.avatarUri} headers={draft.avatarHeaders} size={metrics.editAvatarSize} initialSize={metrics.editAvatarInitialSize} />
+        {avatarEnabled ? <View style={styles.avatarActions}>
           <PressScale accessibilityRole="button" accessibilityLabel={draft.avatarUri ? 'Đổi ảnh đại diện' : 'Thêm ảnh đại diện'} onPress={pickAvatar} style={styles.avatarAction}>
             <Text style={styles.avatarActionLabel}>{draft.avatarUri ? 'Đổi ảnh' : 'Thêm ảnh'}</Text>
           </PressScale>
@@ -54,19 +64,20 @@ export function ProfileEditScreen({ profile, onBack, onSave }: Props) {
               <Text style={[styles.avatarActionLabel, styles.avatarActionDanger]}>Xoá ảnh</Text>
             </PressScale>
           ) : null}
-        </View>
+        </View> : null}
         {pickError ? <Text style={styles.hint}>{pickError}</Text> : null}
       </View>
       <Field label="Họ và tên" value={draft.name} onChangeText={update('name')} placeholder="Nhập họ và tên" autoComplete="name" />
-      <View style={styles.field}>
+      {profile.phone ? <View style={styles.field}>
         <Text style={styles.label}>Số điện thoại</Text>
         <View style={[styles.box, styles.boxLocked]}>
           <Text style={styles.lockedValue}>{profile.phone}</Text>
         </View>
         <Text style={styles.hint}>Số điện thoại đã xác thực bằng mã OTP nên không đổi tại đây.</Text>
-      </View>
+      </View> : null}
       <Field label="Email" value={draft.email} onChangeText={update('email')} placeholder="Không bắt buộc" autoComplete="email" keyboardType="email-address" />
       <Field label="Địa chỉ" value={draft.address} onChangeText={update('address')} placeholder="Số nhà, đường, phường, quận" autoComplete="street-address" />
+      {saveError ? <Text accessibilityLiveRegion="polite" style={styles.hint}>{saveError}</Text> : null}
       <PressScale
         accessibilityRole="button"
         accessibilityLabel="Lưu thay đổi"

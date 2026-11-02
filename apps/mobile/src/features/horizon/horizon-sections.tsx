@@ -8,24 +8,43 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 import { screenTitles } from './content';
-import { RequestsScreen } from './requests-screen';
+import { CustomerSection, isCustomerSection, type CustomerSectionId } from './customer-sections';
 
 const metrics = horizonLayout.horizonEntry;
 
+function useCustomerNavigation() {
+  const router = useRouter();
+  return (id: CustomerSectionId, focusId?: string) => {
+    if (id === 'requests') router.push({ pathname: '/requests', params: focusId ? { focus: focusId } : {} });
+    else router.push({ pathname: '/section', params: { id } });
+  };
+}
+
 export function RequestsRoute() {
   const router = useRouter();
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const navigate = useCustomerNavigation();
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <RequestsScreen onBack={() => router.back()} />
+      <CustomerSection id="requests" focusId={focus} onBack={() => router.back()} onNavigate={navigate} />
     </SafeAreaView>
   );
 }
 
 export function SectionRoute() {
   const router = useRouter();
+  const navigate = useCustomerNavigation();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const title = (id && screenTitles[id]) ?? '';
+  if (isCustomerSection(id)) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <StatusBar style="dark" />
+        <CustomerSection id={id} onBack={() => router.back()} onNavigate={navigate} />
+      </SafeAreaView>
+    );
+  }
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <StatusBar style="dark" />

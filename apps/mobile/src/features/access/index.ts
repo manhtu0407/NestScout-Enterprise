@@ -10,4 +10,4 @@ export { parseSignInRole, type SignInRole } from './sign-in/sign-in-types';
 export { GuestLandingScreen } from './screens/guest-landing-screen';
 export { AccessProvider, useAccess, type AccessServices } from './state/access-provider';
 export { authMessages, signInCopy } from './auth/auth-messages';
-export { formatNational } from './sign-in/phone-format';
+export { formatNational, toNationalDigits } from './sign-in/phone-format';
