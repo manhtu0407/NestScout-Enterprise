@@ -64,9 +64,11 @@ export const horizonColors = {
     activeSendBorder: '#0B0F14',
     activeSendIcon: '#FFFFFF',
     voiceSurface: '#DEDEE1',
-    voiceLabel: '#0B0F14',
-    voiceTimer: '#5B6672',
-    voiceDot: '#FF5A52',
+    voiceBar: '#3C4650',
+    voiceCancelFill: '#0B0F14',
+    voiceCancelIcon: '#FFFFFF',
+    voiceSendFill: 'rgba(60,60,67,0.16)',
+    voiceSendIcon: '#0B0F14',
   },
   slideConfirm: {
     track: '#0B0F14',
@@ -112,6 +114,7 @@ export const horizonColors = {
   kaelMotion: {
     shimmerBase: '#7C7C7C', shimmerHighlight: '#0D0D0D',
     matrixBase: '#D5D9E0', matrixActive: '#141820',
+    orbDot: '#141820', orbCore: '#141820', orbRest: '#9AA3AF',
     noteText: '#4A5260',
     spinnerTrack: '#E4E7EC', spinnerArc: '#141820', spinnerDone: '#141820', spinnerCheck: '#FFFFFF',
   },
@@ -121,9 +124,9 @@ export const horizonColors = {
   skeleton: {
     base: '#ECEFF3',
     shimmer: [
-      { offset: 0, color: '#91E5D6', opacity: 0 },
-      { offset: 0.5, color: '#91E5D6', opacity: 0.42 },
-      { offset: 1, color: '#91E5D6', opacity: 0 },
+      { offset: 0, color: '#FFFFFF', opacity: 0 },
+      { offset: 0.5, color: '#FFFFFF', opacity: 0.75 },
+      { offset: 1, color: '#FFFFFF', opacity: 0 },
     ],
   },
   recentSession: {
@@ -165,7 +168,7 @@ export const horizonColors = {
     cardFill: '#F5F6F8', tileFill: '#FFFFFF', separator: 'rgba(60,60,67,0.10)', rowActive: 'rgba(60,60,67,0.07)',
   },
   composerMenu: {
-    scrim: 'rgba(0,0,0,0.06)', pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', detail: '#8A8A90',
+    scrim: 'rgba(0,0,0,0.06)', fill: '#DEDEE1', icon: '#11161C', labelSurface: '#FFFFFF', labelBorder: 'rgba(60,60,67,0.12)', detail: '#8A8A90',
   },
   conversationMenu: {
     scrim: 'rgba(0,0,0,0.12)', pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', title: '#6B7683', danger: '#D4322C',

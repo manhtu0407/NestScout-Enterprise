@@ -51,7 +51,45 @@ export function SkeletonBlock({ width, height, radius, style }: BlockProps) {
   </View>;
 }
 
+type Stage = 'loading' | 'revealing' | 'done';
+
+type RevealProps = { loading: boolean; skeleton: ReactNode; children: ReactNode; style?: StyleProp<ViewStyle> };
+
+export function SkeletonReveal({ loading, skeleton, children, style }: RevealProps) {
+  const { reduceMotion } = useGlassAccessibility();
+  const [stage, setStage] = useState<Stage>(loading ? 'loading' : 'done');
+  const [seen, setSeen] = useState(loading);
+  const [progress] = useState(() => new Animated.Value(loading ? 0 : 1));
+  if (seen !== loading) {
+    setSeen(loading);
+    setStage(loading ? 'loading' : 'revealing');
+  }
+
+  useEffect(() => {
+    if (stage === 'loading') {
+      progress.setValue(0);
+      return undefined;
+    }
+    if (stage === 'done') return undefined;
+    const reveal = Animated.timing(progress, { toValue: 1, duration: reduceMotion ? 0 : metrics.revealDuration, easing: Easing.out(Easing.ease), useNativeDriver: true });
+    reveal.start(({ finished }) => { if (finished) setStage('done'); });
+    return () => reveal.stop();
+  }, [stage, progress, reduceMotion]);
+
+  const fadeIn = { opacity: progress, transform: [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [metrics.revealScaleFrom, 1] }) }] };
+  const fadeOut = { opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) };
+  const waiting = stage === 'loading';
+  return <View style={style}>
+    {stage !== 'done' && <Animated.View pointerEvents="none" style={[waiting ? null : styles.overlay, fadeOut]}>{skeleton}</Animated.View>}
+    <Animated.View pointerEvents={waiting ? 'none' : 'auto'} accessibilityElementsHidden={waiting} importantForAccessibility={waiting ? 'no-hide-descendants' : 'auto'} style={[waiting && styles.hidden, fadeIn]}>
+      {children}
+    </Animated.View>
+  </View>;
+}
+
 const styles = StyleSheet.create({
   block: { overflow: 'hidden', backgroundColor: colors.base },
   sweep: { position: 'absolute', top: 0, bottom: 0, left: 0 },
+  overlay: { position: 'absolute', top: 0, right: 0, left: 0 },
+  hidden: { position: 'absolute', top: 0, right: 0, left: 0 },
 });

@@ -429,6 +429,15 @@ path, Reduce Transparency on a device and the iOS 26 or later refraction are NOT
 VERIFIED: only the web fallback and Jest were exercised. There is no `expo-blur`
 fallback, so Android and older iOS show the translucent surface without blur.
 
+### Icon design reference
+
+The icon set in `features/shared/ui/icon.tsx` follows the Lucide visual language.
+Lucide is the reference for every new or changed icon:
+<https://lucide.dev/icons/>. Coding agents look icons up there first, reuse the
+Lucide name where one exists, and keep the Lucide construction: a 24 by 24 grid,
+a 2 px stroke, round line caps and joins, and no fills except for dots. Do not
+invent a new glyph while a Lucide equivalent exists.
+
 ### Skeleton loading states
 
 A skeleton is a placeholder shaped like the content that is still loading: grey

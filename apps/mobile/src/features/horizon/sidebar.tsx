@@ -12,6 +12,7 @@ import { WorkerSidebarBody } from './worker-sidebar-body';
 import { workerSidebarBadges } from './worker-jobs';
 import { CollapsibleGroup } from './sidebar-group';
 import { PopBadge } from './motion-count';
+import { SkeletonReveal } from './skeleton';
 import { RecentSkeleton } from './skeleton-layouts';
 import { RecentSessionRow } from './recent-session';
 import type { RecentSession } from './recent-session';
@@ -120,11 +121,11 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
             {pinnedSessions.length > 0 ? pinnedSessions.map(renderSession) : <Text style={styles.emptyText}>Bấm biểu tượng ghim để giữ cuộc trò chuyện quan trọng ở đây.</Text>}
           </Group>}
           <Group title="Gần đây">
-            {recentLoading
-              ? <RecentSkeleton label="Đang tải cuộc trò chuyện gần đây"/>
-              : recentSessions.length === 0
+            <SkeletonReveal loading={recentLoading === true} skeleton={<RecentSkeleton label="Đang tải cuộc trò chuyện gần đây"/>}>
+              {recentSessions.length === 0
                 ? <Text style={styles.emptyText}>Chưa có cuộc trò chuyện nào. Bấm “Trò chuyện mới” để hỏi Kael.</Text>
                 : unpinnedSessions.map(renderSession)}
+            </SkeletonReveal>
           </Group>
           <CollapsibleGroup title="Dịch vụ" expanded={servicesOpen} onToggle={() => setServicesOpen(open => !open)}>
             {quickServices.map(service => <ItemRow key={service.title} item={{ id: service.title, title: service.title, icon: service.icon }} onPress={() => (onSelectService ?? onNavigate)(service.prompt)}/>)}

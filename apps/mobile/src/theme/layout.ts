@@ -58,9 +58,10 @@ export const horizonLayout = {
       sendBorderWidth: 1,
       sendIconSize: 16,
       sendIconStroke: 2.35,
-      voiceRadius: 20, voicePaddingHorizontal: 14, voiceGap: 10, voiceIconSize: 18, voiceLabelSize: 15, voiceLabelWeight: '600',
-      voiceTimerWeight: '500', voiceDotSize: 8, voiceDotRadius: 4, voicePulseDuration: 700, voicePulseMin: 0.35, voiceTickInterval: 250,
-      voiceHintDuration: 1800,
+      voiceRadius: 20, voicePadding: 4, voiceGap: 10, voiceHintDuration: 1800,
+      voiceActionSize: 32, voiceActionRadius: 16, voiceActionIconSize: 16, voiceActionStroke: 2.2, voiceActionHitSlop: 6,
+      voiceBarCount: 17, voiceBarWidth: 2, voiceBarGap: 3, voiceBarRadius: 1, voiceBarHeight: 22, voiceBarRest: 0.2, voiceBarDuration: 520, voiceBarStagger: 60, voiceBarFalloff: 0.075,
+      voiceEnterFrom: 0.4, voiceSpring: { damping: 20, stiffness: 240, mass: 1 },
     },
     slideConfirm: {
       height: 56, radius: 28, inset: 4, thumb: 48, thumbRadius: 24, iconSize: 22, iconStroke: 2,
@@ -338,6 +339,7 @@ export const horizonLayout = {
       noteTextSize: 13, noteLineHeight: 18, noteGap: 6, noteEnterDuration: 240, noteEnterOffset: 6,
       matrixSize: 4, matrixDot: 3, matrixGap: 2, matrixSide: 18, matrixCycle: 1200,
       thinkingGap: 10, thinkingCopyGap: 6, thinkingPaddingVertical: 4,
+      orbSize: 18, orbDot: 3, orbDots: 10, orbRadius: 6, orbCycle: 1800, orbSearchCycle: 1500, orbBreathe: 1.14, orbTailFloor: 0.18, orbCoreSize: 4, orbDotRadius: 1.5, orbCoreRadius: 2, orbRestOpacity: 0.55,
       spinnerSize: 28, spinnerRadius: 14, spinnerStroke: 2.5, spinnerSpinDuration: 900, spinnerArc: 0.28, spinnerCheckDuration: 320, spinnerCheckStroke: 1.8, spinnerCheckDelay: 80,
       markerPopFrom: 0.5, markerPopDuration: 260, markerPopStagger: 40, markerCheckSize: 14,
     },
@@ -350,7 +352,7 @@ export const horizonLayout = {
       labPreviewHeight: 120, labBadgeSize: 20, labBadgePadding: 6, labBadgeRadius: 10, labBadgeFontSize: 12, labBadgeWeight: '700', labHeartSize: 44, labHeartIcon: 26, labNoticePadding: 12, labNoticeRadius: 12, labNoticeSize: 13,
     },
     skeleton: {
-      shimmerDuration: 1400, shimmerWidthRatio: 0.7, previewDuration: 1600,
+      shimmerDuration: 1400, shimmerWidthRatio: 0.7, revealDuration: 400, revealScaleFrom: 0.985, previewDuration: 1600,
       lineHeight: 12, lineRadius: 6,
       disclaimerWidth: '72%', disclaimerHeight: 10,
       introLineWidths: [132, 112], introLineHeight: 18, introLineRadius: 9, introLineGap: 8, introKaelRadius: 110,
@@ -361,9 +363,9 @@ export const horizonLayout = {
       titleSize: 15, titleWeight: '500', previewSize: 13, previewGap: 2, busyWeight: '500',
     },
     composerMenu: {
-      width: 272, padding: 8, radius: 22, rowHeight: 48, rowRadius: 14, rowGap: 14, rowPaddingHorizontal: 12, iconSize: 22,
-      labelFontSize: 16, labelFontWeight: '400', detailFontSize: 12,
-      fromScale: 0.94, enterDuration: 180, exitDuration: 120, anchorGap: 10, fallbackX: 16, fallbackBottom: 96,
+      bubbleSize: 44, bubbleRadius: 22, bubbleGap: 12, slotOffset: 1, neckWidth: 26, neckLeft: 9, neckBottom: 22, neckRadius: 13, bubbleInset: 2, fadeInput: [0, 0.3, 1], fadeOutput: [0, 1, 1], neckThin: [1, 0.55, 0], neckThinInput: [0, 0.6, 1], iconSize: 22, iconStroke: 2.2, closeRotation: '45deg',
+      labelHeight: 32, labelRadius: 16, labelPaddingHorizontal: 12, labelGap: 10, labelFontSize: 14, labelFontWeight: '500', detailFontSize: 11,
+      spring: { damping: 13, stiffness: 190, mass: 0.9 }, stagger: 45, exitDuration: 140, disabledOpacity: 0.5, anchorGap: 10, fallbackX: 16, fallbackBottom: 96,
     },
     conversationMenu: {
       top: 62, width: 304, padding: 8,

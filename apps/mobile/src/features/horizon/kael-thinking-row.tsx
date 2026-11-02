@@ -1,9 +1,9 @@
 import { StyleSheet, View } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
-import { KaelMatrixLoader } from './kael-matrix-loader';
 import { findKaelPhaseEntry, kaelPhaseIssueNotes } from './kael-phase';
 import type { KaelPhase, KaelPhaseIssue } from './kael-phase';
 import { KaelStepNotes } from './kael-step-notes';
+import { KaelThinkingOrb, orbModeForPhase } from './kael-thinking-orb';
 import { KaelThinkingStatus } from './kael-thinking-status';
 
 const metrics = horizonLayout.kaelMotion;
@@ -21,7 +21,7 @@ export function KaelThinkingRow({ phase, issue = null }: Props) {
   const lines = note ? [note.description] : [entry.description, `Việc tiếp theo: ${entry.next}`];
   return <View style={styles.row}>
     <View style={styles.loader}>
-      <KaelMatrixLoader variant={phase === 'matching' ? 'orbit' : 'scan'} paused={note !== null}/>
+      <KaelThinkingOrb mode={orbModeForPhase(phase)} paused={note !== null}/>
     </View>
     <View style={styles.copy}>
       <KaelThinkingStatus label={label} active={note === null}/>
