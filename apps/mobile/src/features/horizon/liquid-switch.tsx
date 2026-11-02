@@ -9,29 +9,41 @@ import { horizonColors } from '@/theme/palette';
 const metrics = horizonLayout.supportScreens;
 const colors = horizonColors.supportScreens;
 const travel = metrics.switchWidth - metrics.switchThumb - metrics.switchInset * 2;
+const reach = 1 + travel / metrics.switchThumb;
 
 type Props = { value: boolean; onValueChange: (value: boolean) => void; accessibilityLabel: string };
 
-export function IosSwitch({ value, onValueChange, accessibilityLabel }: Props) {
+export function LiquidSwitch({ value, onValueChange, accessibilityLabel }: Props) {
   const { reduceMotion } = useGlassAccessibility();
-  const [progress] = useState(() => new Animated.Value(value ? 1 : 0));
+  const [lead] = useState(() => new Animated.Value(value ? 1 : 0));
+  const [trail] = useState(() => new Animated.Value(value ? 1 : 0));
   const [press] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
+    const toValue = value ? 1 : 0;
     const animation = reduceMotion
-      ? Animated.timing(progress, { toValue: value ? 1 : 0, duration: metrics.switchReducedDuration, useNativeDriver: true })
-      : Animated.spring(progress, { toValue: value ? 1 : 0, ...metrics.switchSpring, useNativeDriver: true });
+      ? Animated.parallel([
+        Animated.timing(lead, { toValue, duration: metrics.switchReducedDuration, useNativeDriver: true }),
+        Animated.timing(trail, { toValue, duration: metrics.switchReducedDuration, useNativeDriver: true }),
+      ])
+      : Animated.parallel([
+        Animated.spring(lead, { toValue, ...metrics.switchLeadSpring, useNativeDriver: true }),
+        Animated.spring(trail, { toValue, ...metrics.switchTrailSpring, useNativeDriver: true }),
+      ]);
     animation.start();
     return () => animation.stop();
-  }, [progress, reduceMotion, value]);
+  }, [lead, trail, reduceMotion, value]);
 
   const setPressed = (pressed: boolean) => {
     if (reduceMotion) return;
     Animated.spring(press, { toValue: pressed ? 1 : 0, ...metrics.switchSpring, useNativeDriver: true }).start();
   };
 
-  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [0, travel] });
-  const stretch = press.interpolate({ inputRange: [0, 1], outputRange: [1, metrics.switchStretch] });
+  const translateX = Animated.multiply(Animated.add(lead, trail), travel / 2);
+  const flow = Animated.subtract(lead, trail).interpolate({ inputRange: [-1, 0, 1], outputRange: [reach, 1, reach] });
+  const squash = press.interpolate({ inputRange: [0, 1], outputRange: [1, metrics.switchStretch] });
+  const scaleX = Animated.multiply(flow, squash);
+  const scaleY = press.interpolate({ inputRange: [0, 1], outputRange: [1, metrics.switchSquash] });
 
   return (
     <Pressable
@@ -44,8 +56,8 @@ export function IosSwitch({ value, onValueChange, accessibilityLabel }: Props) {
       onPressOut={() => setPressed(false)}
     >
       <View style={styles.track}>
-        <Animated.View pointerEvents="none" style={[styles.trackOn, { opacity: progress }]} />
-        <Animated.View pointerEvents="none" style={[styles.thumb, { transform: [{ translateX }, { scaleX: stretch }] }]} />
+        <Animated.View pointerEvents="none" style={[styles.trackOn, { opacity: trail }]} />
+        <Animated.View pointerEvents="none" style={[styles.thumb, { transform: [{ translateX }, { scaleX }, { scaleY }] }]} />
       </View>
     </Pressable>
   );
