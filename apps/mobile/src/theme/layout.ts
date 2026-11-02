@@ -317,6 +317,28 @@ export const horizonLayout = {
       },
       sheen: { frostX: 0.27, frostY: 0.12, frostRadius: 0.88 },
     },
+    kaelMotionLab: {
+      padding: 16, gap: 24, titleSize: 13, titleWeight: '700', chipGap: 8, chipPaddingX: 12, chipPaddingY: 8, chipRadius: 16, chipSize: 13,
+      cardPadding: 16, cardRadius: 18, cardGap: 14, sheetHeight: 540, rowGap: 20,
+    },
+    kaelMotion: {
+      shimmerDuration: 2000, shimmerSpan: 0.4,
+      swapDuration: 150, swapGap: 50, swapDistance: 8, statusSize: 13, statusLineHeight: 18, statusWeight: '500',
+      streamWordDuration: 350, streamWordGap: 60, streamMaxDuration: 4000, streamWordSpace: 4,
+      noteTextSize: 13, noteLineHeight: 18, noteGap: 6, noteEnterDuration: 240, noteEnterOffset: 6,
+      matrixSize: 4, matrixDot: 3, matrixGap: 2, matrixSide: 18, matrixCycle: 1200,
+      thinkingGap: 10, thinkingCopyGap: 6, thinkingPaddingVertical: 4,
+      spinnerSize: 28, spinnerRadius: 14, spinnerStroke: 2.5, spinnerSpinDuration: 900, spinnerArc: 0.28, spinnerCheckDuration: 320, spinnerCheckStroke: 1.8, spinnerCheckDelay: 80,
+      markerPopFrom: 0.5, markerPopDuration: 260, markerPopStagger: 40, markerCheckSize: 14,
+    },
+    appMotion: {
+      presenceEnterDuration: 220, presenceExitDuration: 160, presenceReducedDuration: 120, presenceOffset: 8,
+      rollDuration: 200, rollDistance: 8, rollGap: 40,
+      badgePopFrom: 0.4, badgePopDuration: 240, badgeBumpScale: 1.2, badgeBumpDuration: 160,
+      heartPopScale: 1.3, heartPopDuration: 140, heartSettleDuration: 160, heartSwapDuration: 120,
+      revealDuration: 220, revealExitDuration: 140, revealOffset: 6,
+      labPreviewHeight: 120, labBadgeSize: 20, labBadgePadding: 6, labBadgeRadius: 10, labBadgeFontSize: 12, labBadgeWeight: '700', labHeartSize: 44, labHeartIcon: 26, labNoticePadding: 12, labNoticeRadius: 12, labNoticeSize: 13,
+    },
     skeleton: {
       shimmerDuration: 1400, shimmerWidthRatio: 0.7, previewDuration: 1600,
       lineHeight: 12, lineRadius: 6,

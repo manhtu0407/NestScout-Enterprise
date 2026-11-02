@@ -7,6 +7,7 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 import { formatMoney } from './content';
+import { Presence, useRetained } from './motion-presence';
 import { SlidingChips } from './sliding-chips';
 import { ScreenHeader } from './support-shell';
 import { workerJobStages, workerJobStepActions, workerJobSteps, type WorkerJob, type WorkerJobStage } from './worker-jobs';
@@ -37,6 +38,7 @@ export function WorkerJobsScreen({ initialStage, jobs = [], onBack, onAskKael }:
   const [changes, setChanges] = useState<Readonly<Record<string, Change>>>({});
   const [dismissed, setDismissed] = useState<readonly string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
+  const retainedNotice = useRetained(notice);
   const live = jobs.filter(job => !dismissed.includes(job.id)).map(job => ({ ...job, ...changes[job.id] }));
   const current = workerJobStages.find(info => info.stage === stage) ?? workerJobStages[0];
   const visible = live.filter(job => job.stage === stage);
@@ -94,12 +96,12 @@ export function WorkerJobsScreen({ initialStage, jobs = [], onBack, onAskKael }:
         />
       </View>
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        {notice ? (
+        <Presence visible={notice !== null}>
           <View accessibilityLiveRegion="polite" style={styles.notice}>
             <Icon name="check" size={metrics.noticeIconSize} color={colors.noticeText} strokeWidth={card.toggleStroke} />
-            <Text style={styles.noticeText}>{notice}</Text>
+            <Text style={styles.noticeText}>{retainedNotice}</Text>
           </View>
-        ) : null}
+        </Presence>
         {visible.length > 0 ? (
           visible.map(job => <JobCard key={job.id} job={job} actions={actionsFor(job)} />)
         ) : (

@@ -5,6 +5,8 @@ import { horizonColors } from '@/theme/palette';
 import { Icon, PressScale, useGlassAccessibility } from '@/features/shared';
 import { findKaelPhaseEntry, kaelPhaseLabels } from './kael-phase';
 import type { KaelPhase } from './kael-phase';
+import { KaelShimmerText } from './kael-shimmer-text';
+import { isKaelThinking } from './kael-thinking-row';
 
 const metrics = horizonLayout.recentSession;
 const colors = horizonColors.recentSession;
@@ -25,11 +27,14 @@ export function RecentSessionRow({ session, active = false, onPress, onMore, onT
     return () => animation.stop();
   }, [reveal, revealed, reduceMotion]);
   const busy = session.phase !== null && ['busy', 'normal'].includes(findKaelPhaseEntry(session.phase).tone);
+  const thinking = session.phase !== null && isKaelThinking(session.phase);
   const subtitle = busy && session.phase ? kaelPhaseLabels[session.phase] : session.preview;
   return <Pressable accessible={false} focusable={false} onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)} style={[styles.row, active && styles.active]}>
     <PressScale wrapperStyle={styles.mainWrap} accessibilityRole="button" accessibilityLabel={`${session.title}, ${subtitle}, ${session.timeLabel}`} accessibilityState={{ selected: active }} onPress={onPress} onLongPress={onMore} style={styles.main}>
       <Text numberOfLines={1} style={styles.title}>{session.title}</Text>
-      <Text numberOfLines={1} style={[styles.preview, busy && styles.previewBusy]}>{subtitle}</Text>
+      {thinking
+        ? <Text numberOfLines={1} style={[styles.preview, styles.previewBusy]}><KaelShimmerText baseColor={colors.busyText}>{subtitle}</KaelShimmerText></Text>
+        : <Text numberOfLines={1} style={[styles.preview, busy && styles.previewBusy]}>{subtitle}</Text>}
     </PressScale>
     <Animated.View pointerEvents={revealed ? 'auto' : 'none'} style={[styles.actions, { opacity: reveal }]}>
       <PressScale accessibilityRole="button" accessibilityLabel={session.pinned ? `Bỏ ghim ${session.title}` : `Ghim ${session.title}`} accessibilityState={{ selected: session.pinned }} hitSlop={metrics.actionHitSlop} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onPress={onTogglePin} style={styles.action}>

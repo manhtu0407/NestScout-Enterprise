@@ -4,6 +4,7 @@ import { horizonColors } from '@/theme/palette';
 import { Icon } from '@/features/shared';
 import { kaelPhaseEntries, kaelPhases } from './kael-phase';
 import type { KaelPhase } from './kael-phase';
+import { KaelPopIn, KaelSpinnerCheck } from './kael-progress-motion';
 
 const metrics = horizonLayout.kaelCompanion;
 const colors = horizonColors.kaelCompanion;
@@ -18,11 +19,13 @@ type Props = {
 export function KaelProgressSheet({ open, phase, bottomOffset, onClose }: Props) {
   if (!open) return null;
   const current = phase === null ? -1 : kaelPhases.indexOf(phase);
-  const hint = phase === null ? 'Chưa có yêu cầu đặt dịch vụ nào đang diễn ra' : `Bước ${current + 1} / ${kaelPhases.length}`;
+  const step = `Bước ${current + 1} / ${kaelPhases.length}`;
+  const hint = phase === null ? 'Chưa có yêu cầu đặt dịch vụ nào đang diễn ra' : phase === 'completed' ? `${step} · Chưa xác nhận thanh toán` : step;
   return <>
     <Pressable accessible={false} onPress={onClose} style={styles.scrim}/>
     <View accessibilityViewIsModal accessibilityLabel="Tiến độ đặt dịch vụ" style={[styles.sheet, { bottom: bottomOffset }]}>
       <View style={styles.head}>
+        {phase !== null && <KaelSpinnerCheck done={phase === 'completed'} label={phase === 'completed' ? 'Công việc đã hoàn tất, chưa xác nhận thanh toán' : 'Đang tiến hành'}/>}
         <View style={styles.headCopy}>
           <Text style={styles.title}>Tiến độ</Text>
           <Text style={styles.hint}>{hint}</Text>
@@ -37,10 +40,10 @@ export function KaelProgressSheet({ open, phase, bottomOffset, onClose }: Props)
           const active = index === current;
           const status = past ? 'Đã hoàn thành' : active ? 'Bạn đang ở bước này' : 'Chưa đến bước';
           return <View key={entry.id} accessible accessibilityLabel={`${entry.control}. ${status}`} accessibilityState={{ selected: active }} style={styles.item}>
-            <View style={[styles.marker, past && styles.markerDone, active && styles.markerCurrent]}>
+            <KaelPopIn enabled={past || active} index={index} style={[styles.marker, past && styles.markerDone, active && styles.markerCurrent]}>
               {past && <Icon name="check" size={metrics.progressMarkerGlyph} color={colors.progressMarkerGlyph}/>}
               {active && <View style={styles.dot}/>}
-            </View>
+            </KaelPopIn>
             <View style={styles.itemCopy}>
               <Text style={[styles.itemTitle, (past || active) && styles.itemTitleActive, active && styles.itemTitleCurrent]}>{entry.control}</Text>
               {active && <Text style={styles.note}>{status}</Text>}

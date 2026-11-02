@@ -1,3 +1,15 @@
 export { HorizonRoute } from './horizon-entry';
 export { HorizonPreview } from './horizon-preview';
 export { RequestsRoute, SectionRoute } from './horizon-sections';
+export { KaelMatrixLoader } from './kael-matrix-loader';
+export type { KaelMatrixVariant } from './kael-matrix-loader';
+export { kaelPhaseEntries, kaelPhaseIssueNotes } from './kael-phase';
+export type { KaelPhase, KaelPhaseIssue } from './kael-phase';
+export { KaelProgressSheet } from './kael-progress-sheet';
+export { KaelSpinnerCheck } from './kael-progress-motion';
+export { KaelShimmerText } from './kael-shimmer-text';
+export { KaelStreamingText } from './kael-streaming-text';
+export { KaelThinkingRow, isKaelThinking } from './kael-thinking-row';
+export { HeartToggle } from './motion-heart';
+export { PopBadge, RollingNumber } from './motion-count';
+export { Presence, useRetained } from './motion-presence';

@@ -459,3 +459,60 @@ time the sidebar opens, so the states can be reviewed. When a history query is
 added, its pending flag should drive `recentLoading`. The preview timer is not a
 real loading signal. On a device, the sweep and Reduce Motion are NOT VERIFIED:
 only the web preview and Jest were exercised.
+
+### Kael progress motion
+
+Kael's chat and its progress sheet carry a few small animations. They show state
+the app already knows about and never stand in for state it does not have.
+
+- `KaelThinkingRow` appears in the chat only while `kaelPhase` is `clarifying` or
+  `matching`. It joins a dot loader, a status line that shimmers and swaps text
+  when the phase changes, and `KaelStepNotes`, the fixed description of the step.
+  The notes are shown at once and are not presented as live reasoning, because no
+  Kael runtime exists.
+- When the phase carries an issue (`needs_information`, `unmatched` or
+  `unavailable`, the B01, B02 and B04 branches of the
+  [service workflow](service-workflow.md)), the loader and shimmer stop and the
+  wording says what is wrong. The row never keeps implying progress while matching
+  is unavailable, and it never claims a worker was found.
+- `KaelStreamingText` reveals an assistant message word by word. It only animates
+  messages added after the screen opened, and when a message grows it animates
+  only the new words, so a future chunked response needs no change.
+- The progress sheet shows a spinner that becomes a check at `completed`. The
+  check means the work is finished, not that it was paid: the sheet says payment
+  is not confirmed, because completion does not imply settlement and payment
+  verification is disabled.
+- A recent session in the sidebar shimmers its subtitle only while its phase is
+  `clarifying` or `matching`.
+
+Nothing passes `kaelPhase` or an issue yet, so the real chat does not show these
+states. The eight phases are the current UI model; the owner's BPMN will decide the
+real states, and Kael Work is not wired. All durations and sizes live in
+`horizonLayout.kaelMotion` and the colours in `horizonColors.kaelMotion`. With
+Reduce Motion every animation is replaced by static text. The lab at
+`EXPO_PUBLIC_KAEL_MOTION_LAB=1` (with `EXPO_PUBLIC_DESIGN_SHOWCASE=1`) renders each
+piece with controls. On a device the motion and Reduce Motion are NOT VERIFIED:
+only the web preview and Jest were exercised.
+
+### App-wide motion
+
+Small shared motion pieces in `features/horizon` replace abrupt changes of state:
+
+- `Presence` fades and slides content in and out and keeps it mounted until the
+  exit ends. The role banner, the composer error and the worker jobs notice use it,
+  with `useRetained` holding the last message so the text does not vanish before the
+  exit finishes. The saved workers screen uses it to open the profile details and to
+  fade a card out before it is removed.
+- `PopBadge` and `RollingNumber` animate the sidebar and group badges: the badge pops
+  in when a count appears, the number rolls when it changes and the badge leaves when
+  the count returns to zero.
+- `HeartToggle` swaps the outline and filled heart with a short pop. In the saved
+  workers list pressing it unsaves the worker; the card fades out and is then removed.
+
+Nothing here adds a delay to a frequent action: exits are 160 ms and enters 220 ms.
+No two notices ever share a slot in the app today, so there is no notice stack. The
+sample figures on the earnings and quotes screens are not animated, because a
+counting animation would make sample data look like live data. Durations and sizes are
+in `horizonLayout.appMotion`, colours in `horizonColors.appMotion`, and Reduce Motion
+replaces movement with a short fade. The motion lab shows each piece. Behaviour on a
+device is NOT VERIFIED.

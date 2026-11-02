@@ -19,6 +19,10 @@ jest.mock('@/showcase/foundation-showcase', () => {
   const { Text: NativeText } = jest.requireActual<typeof import('react-native')>('react-native');
   return { FoundationShowcase: () => <NativeText>Showcase root</NativeText> };
 });
+jest.mock('@/showcase/kael-motion-lab', () => {
+  const { Text: NativeText } = jest.requireActual<typeof import('react-native')>('react-native');
+  return { KaelMotionLab: () => <NativeText>Kael motion lab</NativeText> };
+});
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
 
 const originalDev = Object.getOwnPropertyDescriptor(globalThis, '__DEV__');
@@ -61,4 +65,21 @@ test.each([
   await render(<RootLayout />);
   expect(screen.getByText(expected)).toBeTruthy();
   expect(jest.mocked(getDefaultAccessServices)).toHaveBeenCalledTimes(expected === 'Application stack' ? 1 : 0);
+});
+
+test.each([
+  [true, '1', '1', 'Kael motion lab'],
+  [true, '1', '0', 'Showcase root'],
+  [true, '0', '1', 'Application stack'],
+  [false, '1', '1', 'Application stack'],
+] as const)('Kael motion lab flag respects development and showcase gates', async (dev, showcase, lab, expected) => {
+  Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: dev });
+  process.env.EXPO_PUBLIC_DESIGN_SHOWCASE = showcase;
+  process.env.EXPO_PUBLIC_KAEL_MOTION_LAB = lab;
+  try {
+    await render(<RootLayout />);
+    expect(screen.getByText(expected)).toBeTruthy();
+  } finally {
+    delete process.env.EXPO_PUBLIC_KAEL_MOTION_LAB;
+  }
 });

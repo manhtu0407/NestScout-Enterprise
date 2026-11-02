@@ -6,6 +6,7 @@ import { Dimensions, Image, Keyboard, Platform, Pressable, ScrollView, StyleShee
 import { composerImageLimit, useComposerMedia, type ComposerImage } from './composer-media';
 import { Icon, PressScale } from '@/features/shared';
 import { ComposerMenu } from './composer-menu';
+import { Presence, useRetained } from './motion-presence';
 import type { ComposerMenuAnchor, ComposerMenuItem } from './composer-menu';
 
 type Props = {
@@ -29,6 +30,8 @@ const webScrollbarStyle = { outlineStyle: 'solid', outlineWidth: 0, scrollbarWid
 
 export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, initialImages, onImagesChange, mediaExternallyManaged, locked = false, onFocus, onBlur }: Props) {
   const media = useComposerMedia(initialImages, onImagesChange, mediaExternallyManaged);
+  const errorText = error || media.error || null;
+  const retainedError = useRetained(errorText);
   const canSend = !locked && (value.trim().length > 0 || media.images.length > 0);
   const [inputHeight, setInputHeight] = useState<number>(metrics.inputMinHeight);
   const submit = () => { if (canSend) onSubmit(media.images); };
@@ -46,7 +49,9 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
     { id: 'think', label: 'Suy nghĩ sâu', icon: 'bolt', detail: 'Sắp có', disabled: true, onPress: () => undefined },
   ];
   return <View>
-    {(error || media.error) && <Text accessibilityLiveRegion="polite" style={styles.error}>{error ?? media.error}</Text>}
+    <Presence visible={Boolean(errorText)} style={styles.errorSlot}>
+      <Text accessibilityLiveRegion="polite" style={styles.error}>{retainedError}</Text>
+    </Presence>
     <View style={styles.frame}>
     {media.images.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageRail} contentContainerStyle={styles.imageContent} keyboardShouldPersistTaps="handled">
       {media.images.map((item, index) => <View key={`${item.uri}-${index}`} style={styles.imageFrame}>
@@ -105,7 +110,8 @@ const styles = StyleSheet.create({
   imageFrame: { width: metrics.imageSize, height: metrics.imageSize },
   image: { width: metrics.imageSize, height: metrics.imageSize, borderRadius: metrics.imageRadius },
   removeImage: { position: 'absolute', top: -metrics.removeOffset, right: -metrics.removeOffset, width: metrics.removeSize, height: metrics.removeSize, borderRadius: metrics.removeRadius, backgroundColor: colors.mediaRemoveSurface, alignItems: 'center', justifyContent: 'center' },
-  error: { position: 'absolute', left: metrics.errorInsetLeft, right: 0, bottom: metrics.errorBottom, marginBottom: metrics.errorGap, color: colors.noticeText, fontSize: metrics.errorSize, lineHeight: metrics.errorLineHeight, textAlign: 'right' },
+  errorSlot: { position: 'absolute', left: metrics.errorInsetLeft, right: 0, bottom: metrics.errorBottom, marginBottom: metrics.errorGap },
+  error: { color: colors.noticeText, fontSize: metrics.errorSize, lineHeight: metrics.errorLineHeight, textAlign: 'right' },
   media: { height: metrics.mediaSize, width: metrics.mediaSize, borderRadius: metrics.mediaRadius, alignItems: 'center', justifyContent: 'center' },
   input: { flex: 1, minWidth: 0, minHeight: metrics.inputMinHeight, maxHeight: metrics.inputMaxHeight, fontSize: metrics.inputFontSize, lineHeight: metrics.inputLineHeight, paddingHorizontal: metrics.inputPaddingHorizontal, paddingVertical: metrics.inputPaddingVertical, color: colors.inputText, textAlignVertical: 'top', outlineWidth: 0, outlineColor: 'transparent' },
   sendSlot: { height: metrics.sendSlotSize, width: metrics.sendSlotSize, alignItems: 'center', justifyContent: 'center' },

@@ -11,6 +11,7 @@ import { AccountSheet } from './account-sheet';
 import { WorkerSidebarBody } from './worker-sidebar-body';
 import { workerSidebarBadges } from './worker-jobs';
 import { CollapsibleGroup } from './sidebar-group';
+import { PopBadge } from './motion-count';
 import { RecentSkeleton } from './skeleton-layouts';
 import { RecentSessionRow } from './recent-session';
 import type { RecentSession } from './recent-session';
@@ -54,7 +55,7 @@ function ItemRow({ item, onPress, badge = 0 }: { item: SidebarItem; onPress: () 
     <Pressable accessibilityRole="button" accessibilityLabel={badge > 0 ? `${item.title}, ${badge} mới` : item.title} onPress={onPress} onPressIn={feedback.pressIn} onPressOut={feedback.pressOut} style={({ pressed }) => [styles.itemRow, pressed && styles.itemPressed]}>
       <Icon name={item.icon} size={horizonLayout.sidebarList.rowIconSize} color={listColors.icon} strokeWidth={1.7}/>
       <Text style={styles.itemTitle}>{item.title}</Text>
-      {badge > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View>}
+      <PopBadge count={badge} style={styles.badge} textStyle={styles.badgeText}/>
     </Pressable>
   </Animated.View>;
 }
