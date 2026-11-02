@@ -51,7 +51,7 @@ export function useVoiceHold(onRelease: (durationMs: number) => void) {
     release.current(Date.now() - startedAt.current);
   };
 
-  return { recording, elapsed, begin, end };
+  return { recording, elapsed, toggle: () => (timer.current ? end() : begin()) };
 }
 
 export function VoiceHoldPill({ elapsed }: { elapsed: number }) {
@@ -69,7 +69,7 @@ export function VoiceHoldPill({ elapsed }: { elapsed: number }) {
   }, [pulse, reduceMotion]);
 
   return (
-    <View accessibilityLiveRegion="polite" accessibilityLabel={`Đang nghe, ${formatElapsed(elapsed)}. Thả để dừng`} accessible style={styles.pill}>
+    <View accessibilityLiveRegion="polite" accessibilityLabel={`Đang nghe, ${formatElapsed(elapsed)}. Nhấn mic để dừng`} accessible style={styles.pill}>
       <Animated.View style={[styles.dot, { opacity: pulse }]} />
       <Icon name="mic" size={metrics.voiceIconSize} strokeWidth={metrics.mediaIconStroke} color={colors.voiceLabel} />
       <Text style={styles.label}>Đang nghe</Text>

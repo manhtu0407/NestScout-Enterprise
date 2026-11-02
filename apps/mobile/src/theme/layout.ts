@@ -58,7 +58,7 @@ export const horizonLayout = {
       sendBorderWidth: 1,
       sendIconSize: 16,
       sendIconStroke: 2.35,
-      voiceHoldDelay: 220, voiceRadius: 20, voicePaddingHorizontal: 14, voiceGap: 10, voiceIconSize: 18, voiceLabelSize: 15, voiceLabelWeight: '600',
+      voiceRadius: 20, voicePaddingHorizontal: 14, voiceGap: 10, voiceIconSize: 18, voiceLabelSize: 15, voiceLabelWeight: '600',
       voiceTimerWeight: '500', voiceDotSize: 8, voiceDotRadius: 4, voicePulseDuration: 700, voicePulseMin: 0.35, voiceTickInterval: 250,
       voiceHintDuration: 1800,
     },

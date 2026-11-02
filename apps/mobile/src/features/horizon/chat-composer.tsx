@@ -28,7 +28,6 @@ const metrics = horizonLayout.chatComposer;
 const menu = horizonLayout.composerMenu;
 const colors = horizonColors.chatComposer;
 const voiceUnavailable = 'Ghi âm chưa khả dụng nên Kael chưa nhận được lời nói.';
-const voiceHint = 'Giữ nút mic để nói với Kael.';
 const webScrollbarStyle = { outlineStyle: 'solid', outlineWidth: 0, scrollbarWidth: 'none' } as const;
 
 export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, initialImages, onImagesChange, mediaExternallyManaged, locked = false, onFocus, onBlur }: Props) {
@@ -42,7 +41,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
   const { reduceMotion } = useGlassAccessibility();
   const micFeedback = usePressFeedback(reduceMotion);
   const voice = useVoiceHold(() => setVoiceNotice(voiceUnavailable));
-  const startVoice = () => { setVoiceNotice(null); voice.begin(); };
+  const toggleVoice = () => { setVoiceNotice(null); voice.toggle(); };
   useEffect(() => {
     if (!voiceNotice) return undefined;
     const timer = setTimeout(() => setVoiceNotice(null), metrics.voiceHintDuration);
@@ -109,17 +108,15 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Nói với Kael"
-        accessibilityHint="Giữ để nói, thả để dừng"
+        accessibilityHint="Nhấn để bắt đầu nói, nhấn lần nữa để dừng"
         accessibilityState={{ busy: voice.recording }}
-        delayLongPress={metrics.voiceHoldDelay}
         disabled={locked}
-        onPress={() => setVoiceNotice(voiceHint)}
-        onLongPress={startVoice}
+        onPress={toggleVoice}
         onPressIn={micFeedback.pressIn}
-        onPressOut={() => { micFeedback.pressOut(); voice.end(); }}
+        onPressOut={micFeedback.pressOut}
         style={[styles.media, voice.recording && styles.mediaRecording]}
       >
-        <Icon name="mic" size={metrics.mediaIconSize} strokeWidth={metrics.mediaIconStroke} color={voice.recording ? colors.activeSendIcon : colors.voiceIcon} />
+        <Icon name="mic" size={metrics.mediaIconSize} strokeWidth={metrics.mediaIconStroke} color={voice.recording ? colors.voiceLabel : colors.voiceIcon} />
       </Pressable>
     </Animated.View>
     <View style={styles.sendSlot}>
