@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Icon, PressScale } from '@/features/shared';
+import { Icon, PressScale, isFixtureBasis } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
@@ -14,12 +14,27 @@ import { SupportEmpty, SupportShell, supportStyles } from './support-shell';
 const metrics = horizonLayout.supportScreens;
 const colors = horizonColors.supportScreens;
 
-type Props = { items?: readonly SavedWorker[]; onBack: () => void; onAskKael?: (worker: SavedWorker) => void };
+type Props = { items?: readonly SavedWorker[]; onBack: () => void; onAskKael?: (worker: SavedWorker) => void; onRemove?: (worker: SavedWorker) => Promise<void> };
 
-export function SavedWorkersScreen({ items = [], onBack, onAskKael }: Props) {
+const removeFailure = 'Chưa bỏ lưu được. Kiểm tra kết nối rồi thử lại.';
+
+export function SavedWorkersScreen({ items = [], onBack, onAskKael, onRemove }: Props) {
   const [removedIds, setRemovedIds] = useState<readonly string[]>([]);
+  const [leavingIds, setLeavingIds] = useState<readonly string[]>([]);
+  const [failedId, setFailedId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<readonly string[]>([]);
   const visible = items.filter(item => !removedIds.includes(item.id));
+  const showNote = visible.some(item => item.basis === undefined || isFixtureBasis(item.basis));
+  const remove = (worker: SavedWorker) => {
+    setFailedId(null);
+    setRemovedIds(current => [...current, worker.id]);
+    const settle = () => setLeavingIds(current => current.filter(entry => entry !== worker.id));
+    (onRemove?.(worker) ?? Promise.resolve()).then(settle, () => {
+      setRemovedIds(current => current.filter(entry => entry !== worker.id));
+      setFailedId(worker.id);
+      settle();
+    });
+  };
   const toggle = (id: string) => setExpandedIds(current => (current.includes(id) ? current.filter(entry => entry !== id) : [...current, id]));
   return (
     <SupportShell title="Thợ đã lưu" onBack={onBack}>
@@ -33,13 +48,18 @@ export function SavedWorkersScreen({ items = [], onBack, onAskKael }: Props) {
               worker={item}
               expanded={expandedIds.includes(item.id)}
               onToggle={() => toggle(item.id)}
-              onRemove={() => setRemovedIds(current => [...current, item.id])}
+              leaving={leavingIds.includes(item.id)}
+              failed={failedId === item.id}
+              onLeave={() => setLeavingIds(current => [...current, item.id])}
+              onRemove={() => remove(item)}
               onAskKael={onAskKael}
             />
           ))}
-          <Text style={styles.footnote}>
-            Dữ liệu trên là mẫu để xem giao diện. Khi có thật, điểm mạnh chỉ lấy từ đánh giá của khách đã dùng dịch vụ và mọi người đều xem được.
-          </Text>
+          {showNote ? (
+            <Text style={styles.footnote}>
+              Dữ liệu trên là mẫu để xem giao diện. Khi có thật, điểm mạnh chỉ lấy từ đánh giá của khách đã dùng dịch vụ và mọi người đều xem được.
+            </Text>
+          ) : null}
         </View>
       )}
     </SupportShell>
@@ -49,14 +69,16 @@ export function SavedWorkersScreen({ items = [], onBack, onAskKael }: Props) {
 type CardProps = {
   worker: SavedWorker;
   expanded: boolean;
+  leaving: boolean;
+  failed: boolean;
+  onLeave: () => void;
   onToggle: () => void;
   onRemove: () => void;
   onAskKael?: (worker: SavedWorker) => void;
 };
 
-function WorkerCard({ worker, expanded, onToggle, onRemove, onAskKael }: CardProps) {
+function WorkerCard({ worker, expanded, leaving, failed, onLeave, onToggle, onRemove, onAskKael }: CardProps) {
   const rated = worker.reviewCount >= minReviewsToShowRating;
-  const [leaving, setLeaving] = useState(false);
   return (
     <Presence visible={!leaving} offset={0} onExited={onRemove}>
     <View style={styles.card}>
@@ -67,8 +89,10 @@ function WorkerCard({ worker, expanded, onToggle, onRemove, onAskKael }: CardPro
           <Text numberOfLines={1} style={styles.meta}>{worker.trade} · {worker.area}</Text>
           <Text numberOfLines={1} style={styles.saved}>{worker.savedLabel}</Text>
         </View>
-        <HeartToggle saved={!leaving} accessibilityLabel={`Bỏ lưu ${worker.name}`} onPress={() => setLeaving(true)} iconSize={metrics.heartIconSize} style={styles.heart} />
+        <HeartToggle saved={!leaving} accessibilityLabel={`Bỏ lưu ${worker.name}`} onPress={onLeave} iconSize={metrics.heartIconSize} style={styles.heart} />
       </View>
+
+      {failed ? <Text accessibilityLiveRegion="polite" style={styles.failure}>{removeFailure}</Text> : null}
 
       <View style={styles.stats}>
         <Stat label="Tuổi nghề" value={`${worker.experienceYears} năm`} />
@@ -204,6 +228,7 @@ const styles = StyleSheet.create({
   strengthCount: { color: colors.sectionTitle, fontSize: metrics.strengthCountSize, fontVariant: ['tabular-nums'] },
   strengthTrack: { flexDirection: 'row', height: metrics.strengthBarHeight, borderRadius: metrics.strengthBarRadius, backgroundColor: colors.strengthTrack, overflow: 'hidden' },
   strengthBar: { borderRadius: metrics.strengthBarRadius, backgroundColor: colors.strengthBar },
+  failure: { color: colors.danger, fontSize: metrics.noteSize, lineHeight: metrics.rowDetailLineHeight },
   pending: { color: horizonColors.muted, fontSize: metrics.noteSize, lineHeight: metrics.rowDetailLineHeight },
   detail: { gap: metrics.workerCardGap },
   reviewList: { gap: metrics.reviewListGap },

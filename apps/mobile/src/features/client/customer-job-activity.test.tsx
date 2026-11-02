@@ -1,16 +1,15 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import { WorkflowError } from '@/features/shared';
+import { WorkflowError, consentResume, decideScope, decideSubmission, openAftercare, type CustomerJob, type JobPause, type Submission } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
 
-import { consentResume, decideScope, decideSubmission, openAftercare, type CustomerJob, type JobPause, type Submission } from './customer-activity-repository';
 import { CustomerJobActivity } from './customer-job-activity';
 
 jest.mock('expo-crypto', () => ({ randomUUID: () => '00000000-0000-4000-8000-000000000123' }));
 jest.mock('@/lib/device-storage', () => ({ deviceStorage: {
   getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn(),
 } }));
-jest.mock('./customer-activity-repository', () => ({ consentResume: jest.fn(), decideScope: jest.fn(), decideSubmission: jest.fn(), openAftercare: jest.fn() }));
+jest.mock('@/features/shared/customer-activity-repository', () => ({ consentResume: jest.fn(), decideScope: jest.fn(), decideSubmission: jest.fn(), openAftercare: jest.fn() }));
 
 const submitted: CustomerJob = { id: 'job', request_id: 'request', stage: 'submitted', version: 2 };
 const evidence: Submission = { id: 'submission', job_id: 'job', evidence: 'Fixed tap', decision: 'pending' };

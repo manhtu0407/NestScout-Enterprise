@@ -14,7 +14,7 @@ const colors = horizonColors.supportScreens;
 
 type Decision = Exclude<QuoteStatus, 'pending'>;
 
-type Props = { items?: readonly QuoteItem[]; onBack: () => void; onAskKael?: () => void };
+type Props = { items?: readonly QuoteItem[]; onBack: () => void; onAskKael?: () => void; onDecide?: (quote: QuoteItem, status: Decision) => Promise<void> };
 
 type Entry = { quote: QuoteItem; status: QuoteStatus; earlier?: QuoteItem };
 
@@ -27,9 +27,11 @@ function latestPerRequest(items: readonly QuoteItem[]): QuoteItem[] {
   return [...latest.values()];
 }
 
-export function QuotesScreen({ items = [], onBack, onAskKael }: Props) {
+export function QuotesScreen({ items = [], onBack, onAskKael, onDecide }: Props) {
   const [decisions, setDecisions] = useState<Readonly<Record<string, Decision>>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ id: string; message: string } | null>(null);
   const entries: Entry[] = latestPerRequest(items).map(quote => ({
     quote,
     status: decisions[quote.id] ?? quote.status,
@@ -39,15 +41,31 @@ export function QuotesScreen({ items = [], onBack, onAskKael }: Props) {
   const waiting = entries.filter(actionable);
   const expired = entries.filter(entry => entry.status === 'pending' && entry.quote.expired);
   const answered = entries.filter(entry => entry.status !== 'pending');
-  const decide = (id: string, status: Decision) => {
-    setDecisions(current => ({ ...current, [id]: status }));
-    setConfirming(null);
+  const decide = async (id: string, status: Decision) => {
+    const quote = items.find(item => item.id === id);
+    if (!onDecide || !quote) {
+      setDecisions(current => ({ ...current, [id]: status }));
+      setConfirming(null);
+      return;
+    }
+    setBusyId(id);
+    setFailure(null);
+    try {
+      await onDecide(quote, status);
+      setConfirming(null);
+    } catch (error) {
+      setFailure({ id, message: error instanceof Error ? error.message : 'Chưa gửi được quyết định. Vui lòng thử lại.' });
+    } finally {
+      setBusyId(null);
+    }
   };
   const render = (entry: Entry) => (
     <QuoteCard
       key={entry.quote.id}
       entry={entry}
       confirming={confirming === entry.quote.id}
+      busy={busyId === entry.quote.id}
+      failure={failure?.id === entry.quote.id ? failure.message : null}
       onReview={() => setConfirming(entry.quote.id)}
       onCancelReview={() => setConfirming(null)}
       onDecide={decide}
@@ -72,13 +90,15 @@ export function QuotesScreen({ items = [], onBack, onAskKael }: Props) {
 type CardProps = {
   entry: Entry;
   confirming: boolean;
+  busy: boolean;
+  failure: string | null;
   onReview: () => void;
   onCancelReview: () => void;
   onDecide: (id: string, status: Decision) => void;
   onAskKael?: () => void;
 };
 
-function QuoteCard({ entry, confirming, onReview, onCancelReview, onDecide, onAskKael }: CardProps) {
+function QuoteCard({ entry, confirming, busy, failure, onReview, onCancelReview, onDecide, onAskKael }: CardProps) {
   const { quote, status, earlier } = entry;
   const recognised = isFixtureBasis(quote.basis);
   const amount = formatMoney(quote.amountMinor, quote.currency);
@@ -107,6 +127,7 @@ function QuoteCard({ entry, confirming, onReview, onCancelReview, onDecide, onAs
         <Text style={[styles.expiry, quote.expired && styles.expiryExpired]}>{quote.expiresLabel}</Text>
       </View>
       <Text style={styles.changeNote}>Nếu phát sinh thêm việc hoặc đổi giá, bạn sẽ được hỏi và phải đồng ý trước.</Text>
+      {failure ? <Text accessibilityLiveRegion="polite" style={[styles.changeNote, styles.expiryExpired]}>{failure}</Text> : null}
       {status === 'accepted' ? (
         <View style={styles.resultBlock}>
           <View style={[styles.statusChip, styles.statusAccepted]}><Text style={[styles.statusText, styles.statusTextAccepted]}>Đã chấp nhận</Text></View>
@@ -123,10 +144,10 @@ function QuoteCard({ entry, confirming, onReview, onCancelReview, onDecide, onAs
       ) : null}
       {status === 'pending' && !quote.expired && !confirming ? (
         <View style={styles.actions}>
-          <PressScale accessibilityRole="button" accessibilityLabel={`Từ chối báo giá phiên bản ${quote.version}`} onPress={() => onDecide(quote.id, 'rejected')} style={supportStyles.secondary} wrapperStyle={styles.action}>
+          <PressScale accessibilityRole="button" accessibilityLabel={`Từ chối báo giá phiên bản ${quote.version}`} accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => onDecide(quote.id, 'rejected')} style={supportStyles.secondary} wrapperStyle={styles.action}>
             <Text style={supportStyles.secondaryLabel}>Từ chối</Text>
           </PressScale>
-          <PressScale accessibilityRole="button" accessibilityLabel={`Xem và chấp nhận báo giá phiên bản ${quote.version}`} accessibilityState={{ disabled: !recognised }} disabled={!recognised} onPress={onReview} style={[supportStyles.primary, !recognised && styles.disabled]} wrapperStyle={styles.action}>
+          <PressScale accessibilityRole="button" accessibilityLabel={`Xem và chấp nhận báo giá phiên bản ${quote.version}`} accessibilityState={{ disabled: !recognised || busy }} disabled={!recognised || busy} onPress={onReview} style={[supportStyles.primary, !recognised && styles.disabled]} wrapperStyle={styles.action}>
             <Text style={supportStyles.primaryLabel}>Xem và chấp nhận</Text>
           </PressScale>
         </View>
@@ -137,8 +158,8 @@ function QuoteCard({ entry, confirming, onReview, onCancelReview, onDecide, onAs
           <Text style={styles.consentLine}>• Bạn đồng ý với phạm vi và số tiền {amount} ở trên.</Text>
           <Text style={styles.consentLine}>• Chấp nhận chưa thu tiền. Thanh toán chưa được kết nối.</Text>
           <Text style={styles.consentLine}>• Chưa có thợ được giao. Bước ghép thợ sẽ làm sau.</Text>
-          <SlideToConfirm label="Trượt để chấp nhận" accessibilityLabel={`Xác nhận chấp nhận báo giá ${amount}`} onConfirm={() => onDecide(quote.id, 'accepted')} />
-          <PressScale accessibilityRole="button" accessibilityLabel="Quay lại, chưa chấp nhận" onPress={onCancelReview} style={supportStyles.secondary}>
+          <SlideToConfirm label="Trượt để chấp nhận" accessibilityLabel={`Xác nhận chấp nhận báo giá ${amount}`} disabled={busy} onConfirm={() => onDecide(quote.id, 'accepted')} />
+          <PressScale accessibilityRole="button" accessibilityLabel="Quay lại, chưa chấp nhận" accessibilityState={{ disabled: busy }} disabled={busy} onPress={onCancelReview} style={supportStyles.secondary}>
             <Text style={supportStyles.secondaryLabel}>Quay lại</Text>
           </PressScale>
         </View>

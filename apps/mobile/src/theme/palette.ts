@@ -136,7 +136,7 @@ export const horizonColors = {
     tabsFill: 'rgba(118,118,128,0.12)', indicator: '#FFFFFF', indicatorShadow: '0 1px 4px rgba(0,0,0,0.12)',
     tabText: '#5B6672', tabTextActive: '#11161C', cardFill: '#F5F6F8', tileFill: '#FFFFFF',
     chipFill: '#11161C', chipText: '#FFFFFF', emptyIcon: '#8A8A90',
-    stepFill: '#0E9E8E', stepTrack: 'rgba(118,118,128,0.18)', stepCaption: '#5B6672', nextFill: '#FFFFFF', nextAccent: '#0A6F64', nextAccentFill: 'rgba(14,158,142,0.12)', infoLabel: '#6B7683',
+    stepFill: '#0E9E8E', stepTrack: 'rgba(118,118,128,0.18)', photoFill: 'rgba(118,118,128,0.18)', stepCaption: '#5B6672', nextFill: '#FFFFFF', nextAccent: '#0A6F64', nextAccentFill: 'rgba(14,158,142,0.12)', infoLabel: '#6B7683',
     timelineDone: '#0E9E8E', timelineDoneIcon: '#FFFFFF', timelineCurrent: '#11161C', timelinePending: 'rgba(118,118,128,0.22)', timelineLine: 'rgba(118,118,128,0.22)', timelinePendingText: '#8A8A90', actionFill: '#0B0F14', actionLabel: '#FFFFFF', actionSecondaryFill: 'rgba(118,118,128,0.12)', actionSecondaryLabel: '#11161C', chevron: '#9AA0AB', toggleFill: 'rgba(118,118,128,0.12)', toggleIcon: '#3C4650',
   },
   workerEarnings: {

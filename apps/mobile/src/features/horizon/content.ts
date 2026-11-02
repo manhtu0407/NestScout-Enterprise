@@ -66,7 +66,7 @@ export const workerSidebarGroups: readonly { title: string; items: readonly Side
   },
 ];
 
-export type NotificationItem = { id: string; icon: IconName; title: string; body: string; time: string; unread: boolean; today: boolean };
+export type NotificationItem = { id: string; icon: IconName; title: string; body: string; time: string; unread: boolean; today: boolean; requestId?: string };
 
 export const sampleNotifications: readonly NotificationItem[] = [
   { id: 'n-1', icon: 'receipt', title: 'Báo giá mới', body: 'Yêu cầu “Sửa vòi nước bồn rửa” có báo giá mới đang chờ bạn quyết định.', time: '10 phút trước', unread: true, today: true },
@@ -105,7 +105,7 @@ export const screenTitles: Record<string, string> = {
   help: 'Trợ giúp',
 };
 
-export type UserProfile = { name: string; phone: string; email: string; address: string; avatarUri?: string };
+export type UserProfile = { name: string; phone: string; email: string; address: string; avatarUri?: string; avatarHeaders?: Readonly<Record<string, string>>; avatarMimeType?: string };
 
 export const sampleProfile: UserProfile = { name: 'Minh Anh', phone: '+84 912 345 678', email: '', address: '' };
 
@@ -156,6 +156,7 @@ export type SavedWorker = {
   completedJobs: number;
   strengths: readonly WorkerStrength[];
   reviews: readonly WorkerReview[];
+  basis?: string;
 };
 
 export const minReviewsToShowRating = 3;

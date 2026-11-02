@@ -11,7 +11,7 @@ select ok((select relrowsecurity from pg_class where oid = 'public.service_reque
 select ok(not has_table_privilege('authenticated', 'public.service_requests', 'update')
   and not has_table_privilege('authenticated', 'public.service_requests', 'delete'),
   'Authenticated users cannot change or delete requests directly');
-select ok(not has_function_privilege('anon', 'public.submit_service_request(uuid,text)', 'execute'),
+select ok(not has_function_privilege('anon', 'public.submit_service_request(uuid,text,text)', 'execute'),
   'Anonymous role cannot submit');
 
 set local role authenticated;

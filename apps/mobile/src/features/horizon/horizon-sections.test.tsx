@@ -4,6 +4,8 @@ import { TextInput } from 'react-native';
 
 import { RequestsRoute, SectionRoute } from './horizon-sections';
 
+jest.mock('@/features/access', () => ({ useAccess: () => ({ identity: 'unverified', userId: null, phase: 'guest' }) }));
+
 jest.mock('react-native-safe-area-context', () => {
   const { View } = jest.requireActual('react-native');
   return { SafeAreaView: View, SafeAreaProvider: View, useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) };
@@ -19,9 +21,9 @@ function mount() {
 
 test('a section opens as its own stack entry and the back button returns to home', async () => {
   await mount();
-  await act(() => router.push({ pathname: '/section', params: { id: 'settings' } }));
+  await act(() => router.push({ pathname: '/section', params: { id: 'worker-offers' } }));
   expect(screen).toHavePathname('/section');
-  expect(screen.getByText('Cài đặt')).toBeTruthy();
+  expect(screen.getByText('Việc mới')).toBeTruthy();
   await fireEvent.press(screen.getByRole('button', { name: 'Quay về' }));
   expect(screen).toHavePathname('/');
 });
@@ -38,4 +40,11 @@ test('the requests route goes back to the home route', async () => {
   expect(screen).toHavePathname('/requests');
   await act(() => router.back());
   expect(screen).toHavePathname('/');
+});
+
+test('a customer section asks a guest to sign in instead of showing data', async () => {
+  await mount();
+  await act(() => router.push({ pathname: '/section', params: { id: 'quotes' } }));
+  expect(screen.getByText('Báo giá')).toBeTruthy();
+  expect(screen.getByText('Cần đăng nhập')).toBeTruthy();
 });

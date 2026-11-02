@@ -1,16 +1,26 @@
 import { randomUUID } from 'expo-crypto';
+import * as ImagePicker from 'expo-image-picker';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 
-import { ActionButton, BasisNotice, BodyText, DraftRecovery, ErrorText, KaelStatus, failureMessage, isFixtureBasis, useDraftRecovery } from '@/features/shared';
+import { ActionButton, BasisNotice, BodyText, DraftRecovery, ErrorText, KaelStatus, acceptQuote, acceptedImageTypes, failureMessage, isFixtureBasis, readCustomerActivity, readQuotes, readRequests, maxRequestPhotos, rejectQuote, submitRequest, toPendingPhoto, useDraftRecovery, type CustomerActivity, type MediaFile, type ServiceQuote, type ServiceRequest } from '@/features/shared';
 
-import { clearPendingRequest, loadPendingRequest, savePendingRequest, type PendingRequest } from './pending-request-store';
+import { flushQueuedPhotos, loadQueuedPhotos, saveQueuedPhotos, type FlushResult, type QueuedPhoto } from './pending-photo-queue';
+import { clearPendingRequest, loadPendingRequest, maxLocationLength, savePendingRequest, type PendingRequest } from './pending-request-store';
 import { CustomerJobActivity } from './customer-job-activity';
-import { readCustomerActivity, type CustomerActivity } from './customer-activity-repository';
-import { acceptQuote, readQuotes, readRequests, rejectQuote, submitRequest, type ServiceQuote, type ServiceRequest } from './service-request-repository';
+
+function queueMessage(result: FlushResult): string | null {
+  if (result.remaining.length > 0 && result.dropped > 0) return `${result.dropped} photo(s) could not be read and were discarded; ${result.remaining.length} still waiting to upload.`;
+  if (result.remaining.length > 0) return `${result.remaining.length} photo(s) are waiting to upload. Retry from this screen.`;
+  if (result.dropped > 0) return `${result.dropped} photo(s) could not be uploaded and were discarded.`;
+  return null;
+}
 
 export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = () => undefined }: { userId: string; guestDraft?: string | null; clearGuestDraft?: () => void }) {
   const [description, setDescription] = useState(guestDraft ?? '');
+  const [location, setLocation] = useState('');
+  const [photos, setPhotos] = useState<readonly MediaFile[]>([]);
+  const [queued, setQueued] = useState<readonly QueuedPhoto[]>([]);
   const [pending, setPending] = useState<PendingRequest | null>(null);
   const [storageReady, setStorageReady] = useState(false);
   const { attempt, unreadable, setUnreadable, retry } = useDraftRecovery();
@@ -47,6 +57,7 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
     mounted.current = true;
     let storageActive = true;
     const controller = new AbortController();
+    const queueController = new AbortController();
     reloadController.current = controller;
     setUnreadable(false);
     loadPendingRequest(userId).then(
@@ -60,6 +71,24 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
         if (storageActive) {
           setUnreadable(true);
           setMessage('Could not read the pending request on this device.');
+        }
+      },
+    );
+    loadQueuedPhotos(userId).then(
+      async (items) => {
+        if (!storageActive) return;
+        setQueued(items);
+        if (items.length === 0) return;
+        const result = await flushQueuedPhotos(userId, items, queueController.signal);
+        if (!storageActive) return;
+        setQueued(result.remaining);
+        const note = queueMessage(result);
+        setMessage(note ?? 'Waiting photos were uploaded.');
+      },
+      () => {
+        if (storageActive) {
+          setUnreadable(true);
+          setMessage('Could not read the pending photos on this device.');
         }
       },
     );
@@ -83,15 +112,17 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
       storageActive = false;
       mounted.current = false;
       reloadController.current?.abort();
+      queueController.abort();
       submitController.current?.abort();
     };
   }, [userId, attempt, setUnreadable]);
 
   const discardSaved = () => {
-    void clearPendingRequest(userId).then(() => {
+    void Promise.all([clearPendingRequest(userId), saveQueuedPhotos(userId, [])]).then(() => {
       if (!mounted.current) return;
       setUnreadable(false);
       setPending(null);
+      setQueued([]);
       setMessage(null);
       setStorageReady(true);
     }, () => {
@@ -99,11 +130,69 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
     });
   };
 
+  const attachPhotos = async (requestId: string, signal: AbortSignal): Promise<string | null> => {
+    const chosen: QueuedPhoto[] = photos.map(photo => ({ ...toPendingPhoto(photo), requestId, attempts: 0 }));
+    setPhotos([]);
+    if (chosen.length === 0) return null;
+    const all = [...queued, ...chosen];
+    setQueued(all);
+    try {
+      await saveQueuedPhotos(userId, all);
+    } catch {
+      setMessage('Photos could not be saved for retry on this device.');
+    }
+    try {
+      const result = await flushQueuedPhotos(userId, all, signal);
+      if (mounted.current) setQueued(result.remaining);
+      return queueMessage(result);
+    } catch {
+      return 'Photo uploads were interrupted. Retry from this screen.';
+    }
+  };
+
+  const retryPhotos = async () => {
+    if (inFlight.current || queued.length === 0) return;
+    inFlight.current = true;
+    const controller = new AbortController();
+    submitController.current = controller;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await flushQueuedPhotos(userId, queued, controller.signal);
+      if (!mounted.current) return;
+      setQueued(result.remaining);
+      setMessage(queueMessage(result) ?? 'Waiting photos were uploaded.');
+    } catch {
+      if (mounted.current) setMessage('Photo uploads were interrupted. Retry from this screen.');
+    } finally {
+      inFlight.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  };
+
+  const pickPhotos = async () => {
+    const remaining = maxRequestPhotos - photos.length;
+    if (remaining <= 0) return;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: remaining, quality: 0.8 });
+      if (result.canceled) return;
+      const usable = result.assets.flatMap(asset => (asset.mimeType && acceptedImageTypes.includes(asset.mimeType) ? [{ uri: asset.uri, mimeType: asset.mimeType }] : []));
+      setPhotos(current => [...current, ...usable].slice(0, maxRequestPhotos));
+      if (usable.length < result.assets.length) setMessage('Only JPEG, PNG and WebP photos can be attached.');
+    } catch {
+      setMessage('Could not open the photo library.');
+    }
+  };
+
   const submit = async () => {
     if (inFlight.current || !storageReady) return;
-    const item = pending ?? { key: randomUUID(), description: description.trim() };
+    const item = pending ?? { key: randomUUID(), description: description.trim(), location: location.trim() };
     if (!item.description || item.description.length > 4000) {
       setMessage('Describe your request in 1 to 4000 characters.');
+      return;
+    }
+    if (item.location.length > maxLocationLength) {
+      setMessage('Keep the location within 200 characters.');
       return;
     }
     inFlight.current = true;
@@ -116,12 +205,15 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
       if (!mounted.current || controller.signal.aborted) return;
       setPending(item);
       clearGuestDraft();
-      await submitRequest(userId, item.key, item.description, controller.signal);
+      const requestId = await submitRequest(userId, item.key, item.description, controller.signal, item.location);
       await clearPendingRequest(userId);
       if (!mounted.current) return;
       setPending(null);
       setDescription('');
-      setMessage('Request received. Refresh for its current status.');
+      setLocation('');
+      const photoNote = await attachPhotos(requestId, controller.signal);
+      if (!mounted.current) return;
+      setMessage(photoNote === null ? 'Request received. Refresh for its current status.' : `Request received. ${photoNote}`);
       await reload();
     } catch (error) {
       if (mounted.current) setMessage(failureMessage(error, 'The outcome is unknown. Retry the same request to check safely.'));
@@ -167,6 +259,17 @@ export function ServiceRequests({ userId, guestDraft = null, clearGuestDraft = (
         maxLength={4000}
         placeholder="Describe the problem"
       />
+      <TextInput
+        accessibilityLabel="Service location"
+        value={pending ? pending.location : location}
+        onChangeText={setLocation}
+        editable={!pending && !busy}
+        maxLength={maxLocationLength}
+        placeholder="Location (optional)"
+      />
+      <ActionButton secondary label={photos.length === 0 ? 'Add photos' : `Add photos (${photos.length}/${maxRequestPhotos})`} onPress={() => void pickPhotos()} disabled={busy || photos.length >= maxRequestPhotos} />
+      {photos.length > 0 ? <ActionButton secondary label="Clear photos" onPress={() => setPhotos([])} disabled={busy} /> : null}
+      {queued.length > 0 ? <ActionButton secondary label={`Retry photo uploads (${queued.length})`} onPress={() => void retryPhotos()} disabled={busy} /> : null}
       <ActionButton label={pending ? 'Retry request' : 'Submit request'} onPress={() => void submit()} busy={busy} disabled={!storageReady} />
       {unreadable ? <DraftRecovery onRetry={() => { setMessage(null); retry(); }} onDiscard={discardSaved} /> : null}
       {message ? <ErrorText>{message}</ErrorText> : null}

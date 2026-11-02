@@ -2,10 +2,8 @@ import { randomUUID } from 'expo-crypto';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 
-import { ActionButton, BodyText, DraftRecovery, ErrorText, failureMessage, isDefinitiveFailure, useDraftRecovery, type JobReport, type ScopeChange } from '@/features/shared';
+import { ActionButton, BodyText, DraftRecovery, ErrorText, consentResume, decideScope, decideSubmission, failureMessage, isDefinitiveFailure, openAftercare, useDraftRecovery, type CustomerJob, type JobPause, type JobReport, type ScopeChange, type Submission, type SupportCase } from '@/features/shared';
 import { deviceStorage } from '@/lib/device-storage';
-
-import { consentResume, decideScope, decideSubmission, openAftercare, type CustomerJob, type JobPause, type Submission, type SupportCase } from './customer-activity-repository';
 
 type PendingCase = { key: string; reason: string };
 

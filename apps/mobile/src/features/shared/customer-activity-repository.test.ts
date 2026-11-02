@@ -1,14 +1,12 @@
 import { authenticatedRequest } from '@/lib/authenticated-rest';
-import { readJobReports, readScopeChanges, WorkflowError } from '@/features/shared';
-
 import { consentResume, readCustomerActivity } from './customer-activity-repository';
+import { readJobReports } from './job-reports';
+import { readScopeChanges } from './scope-changes';
+import { WorkflowError } from './workflow-error';
 
 jest.mock('@/lib/authenticated-rest', () => ({ authenticatedRequest: jest.fn() }));
-jest.mock('@/features/shared', () => ({
-  ...jest.requireActual('@/features/shared/workflow-error'),
-  readJobReports: jest.fn(),
-  readScopeChanges: jest.fn(),
-}));
+jest.mock('./job-reports', () => ({ readJobReports: jest.fn() }));
+jest.mock('./scope-changes', () => ({ readScopeChanges: jest.fn() }));
 
 const requestId = '10000000-0000-4000-8000-000000000001';
 const jobId = '50000000-0000-4000-8000-000000000001';

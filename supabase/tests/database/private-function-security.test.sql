@@ -20,7 +20,7 @@ select is_empty($$
       'worker_offers','worker_jobs','accept_service_invitation','decline_service_invitation',
       'advance_service_job','submit_service_work','decide_service_submission','open_service_aftercare',
       'kael_read_context','propose_service_scope','decide_service_scope','report_service_job',
-      'pause_service_job','request_service_resume','consent_service_resume')
+      'pause_service_job','request_service_resume','consent_service_resume','save_worker','saved_workers','account_phone','job_worker_cards','review_job_worker','request_photo_upload_count')
 $$, 'Only reviewed private operations are callable by authenticated users');
 
 select ok(not has_schema_privilege('anon','nestscout_private','usage'), 'Anonymous users cannot use the private schema');

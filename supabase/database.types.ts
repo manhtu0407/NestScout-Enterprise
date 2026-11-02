@@ -5,7 +5,115 @@ export type Database = {
 
   "public": {
           Tables: {
-            "service_cases": {
+            "customer_profiles": {
+                  Row: {
+                    "address": string,"avatar_path": string,"display_name": string,"email": string,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "address"?: string,"avatar_path"?: string,"display_name"?: string,"email"?: string,"updated_at"?: string,"user_id"?: string
+                  }
+                  Update: {
+                    "address"?: string,"avatar_path"?: string,"display_name"?: string,"email"?: string,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"customer_saved_workers": {
+                  Row: {
+                    "created_at": string,"customer_id": string,"profile_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"customer_id"?: string,"profile_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"customer_id"?: string,"profile_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "customer_saved_workers_profile_id_fkey"
+      columns: ["profile_id"]
+isOneToOne: false
+      referencedRelation: "worker_public_profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"customer_settings": {
+                  Row: {
+                    "messages": boolean,"promotions": boolean,"push": boolean,"quotes": boolean,"reduce_motion": boolean,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "messages"?: boolean,"promotions"?: boolean,"push"?: boolean,"quotes"?: boolean,"reduce_motion"?: boolean,"updated_at"?: string,"user_id"?: string
+                  }
+                  Update: {
+                    "messages"?: boolean,"promotions"?: boolean,"push"?: boolean,"quotes"?: boolean,"reduce_motion"?: boolean,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"notifications": {
+                  Row: {
+                    "body": string,"created_at": string,"id": string,"kind": string,"read_at": string | null,"recipient_id": string,"request_id": string,"title": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "body": string,"created_at"?: string,"id"?: string,"kind": string,"read_at"?: string | null,"recipient_id": string,"request_id": string,"title": string
+                  }
+                  Update: {
+                    "body"?: string,"created_at"?: string,"id"?: string,"kind"?: string,"read_at"?: string | null,"recipient_id"?: string,"request_id"?: string,"title"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "notifications_request_id_fkey"
+      columns: ["request_id"]
+isOneToOne: false
+      referencedRelation: "service_requests"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"request_photos": {
+                  Row: {
+                    "created_at": string,"id": string,"owner_id": string,"path": string,"request_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"owner_id"?: string,"path": string,"request_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"owner_id"?: string,"path"?: string,"request_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "request_photos_request_id_fkey"
+      columns: ["request_id"]
+isOneToOne: false
+      referencedRelation: "service_requests"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"request_pins": {
+                  Row: {
+                    "created_at": string,"owner_id": string,"request_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"owner_id"?: string,"request_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"owner_id"?: string,"request_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "request_pins_request_id_fkey"
+      columns: ["request_id"]
+isOneToOne: false
+      referencedRelation: "service_requests"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"service_cases": {
                   Row: {
                     "created_at": string,"id": string,"job_id": string,"kind": string,"opened_by": string,"operation_key": string,"reason": string,"submission_id": string | null
                   }
@@ -171,14 +279,14 @@ isOneToOne: false
                   ]
                 },"service_requests": {
                   Row: {
-                    "created_at": string,"description": string,"id": string,"owner_id": string,"submission_key": string
+                    "created_at": string,"description": string,"id": string,"location": string,"owner_id": string,"submission_key": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"description": string,"id"?: string,"owner_id"?: string,"submission_key": string
+                    "created_at"?: string,"description": string,"id"?: string,"location"?: string,"owner_id"?: string,"submission_key": string
                   }
                   Update: {
-                    "created_at"?: string,"description"?: string,"id"?: string,"owner_id"?: string,"submission_key"?: string
+                    "created_at"?: string,"description"?: string,"id"?: string,"location"?: string,"owner_id"?: string,"submission_key"?: string
                   }
                   Relationships: [
 
@@ -223,6 +331,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"support_requests": {
+                  Row: {
+                    "body": string,"created_at": string,"id": string,"owner_id": string,"subject": string,"submission_key": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "body": string,"created_at"?: string,"id"?: string,"owner_id"?: string,"subject": string,"submission_key": string
+                  }
+                  Update: {
+                    "body"?: string,"created_at"?: string,"id"?: string,"owner_id"?: string,"subject"?: string,"submission_key"?: string
+                  }
+                  Relationships: [
+
+                  ]
                 },"worker_access_grants": {
                   Row: {
                     "granted_at": string,"revoked_at": string | null,"status": string,"user_id": string
@@ -237,6 +359,46 @@ isOneToOne: false
                   Relationships: [
 
                   ]
+                },"worker_public_profiles": {
+                  Row: {
+                    "area": string,"basis": string,"display_name": string,"experience_years": number,"id": string,"listed": boolean,"service_areas": (string)[],"skills": (string)[],"trade": string,"worker_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "area": string,"basis"?: string,"display_name": string,"experience_years": number,"id"?: string,"listed"?: boolean,"service_areas"?: (string)[],"skills"?: (string)[],"trade": string,"worker_id": string
+                  }
+                  Update: {
+                    "area"?: string,"basis"?: string,"display_name"?: string,"experience_years"?: number,"id"?: string,"listed"?: boolean,"service_areas"?: (string)[],"skills"?: (string)[],"trade"?: string,"worker_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"worker_reviews": {
+                  Row: {
+                    "author_label": string,"basis": string,"body": string,"created_at": string,"id": string,"job_id": string | null,"profile_id": string,"rating": number,"service_label": string,"tags": (string)[]
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "author_label": string,"basis"?: string,"body"?: string,"created_at"?: string,"id"?: string,"job_id"?: string | null,"profile_id": string,"rating": number,"service_label": string,"tags"?: (string)[]
+                  }
+                  Update: {
+                    "author_label"?: string,"basis"?: string,"body"?: string,"created_at"?: string,"id"?: string,"job_id"?: string | null,"profile_id"?: string,"rating"?: number,"service_label"?: string,"tags"?: (string)[]
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "worker_reviews_job_id_fkey"
+      columns: ["job_id"]
+isOneToOne: true
+      referencedRelation: "service_jobs"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "worker_reviews_profile_id_fkey"
+      columns: ["profile_id"]
+isOneToOne: false
+      referencedRelation: "worker_public_profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 }
           }
           Views: {
@@ -248,6 +410,12 @@ isOneToOne: false
                            },
 "accept_service_quote":
 { Args: { "p_quote_id": string,"p_version": number }; Returns: string
+                           },
+"account_phone":
+{ Args: Record<PropertyKey, never>; Returns: string
+                           },
+"add_request_photo":
+{ Args: { "p_path": string,"p_request_id": string }; Returns: string
                            },
 "advance_service_job":
 { Args: { "p_job_id": string,"p_next": string,"p_version": number }; Returns: number
@@ -269,8 +437,16 @@ isOneToOne: false
 "decline_service_invitation":
 { Args: { "p_invitation_id": string,"p_quote_id": string,"p_quote_version": number }; Returns: string
                            },
+"job_worker_cards":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "display_name": string,"job_id": string,"profile_id": string,"request_id": string,"review_rating": number,"saved": boolean
+            }[]
+                           },
 "kael_read_context":
 { Args: { "p_kind": string,"p_resource_id": string }; Returns: Json
+                           },
+"mark_notifications_read":
+{ Args: { "p_ids": (string)[] }; Returns: number
                            },
 "open_service_aftercare":
 { Args: { "p_job_id": string,"p_key": string,"p_reason": string }; Returns: string
@@ -290,11 +466,40 @@ isOneToOne: false
 "request_service_resume":
 { Args: { "p_job_id": string,"p_version": number }; Returns: number
                            },
+"review_job_worker":
+{ Args: { "p_body": string,"p_job_id": string,"p_rating": number,"p_tags": (string)[] }; Returns: string
+                           },
+"save_customer_profile":
+{ Args: { "p_address": string,"p_display_name": string,"p_email": string }; Returns: string
+                           },
+"save_customer_settings":
+{ Args: { "p_messages": boolean,"p_promotions": boolean,"p_push": boolean,"p_quotes": boolean,"p_reduce_motion": boolean }; Returns: string
+                           },
+"save_worker":
+{ Args: { "p_profile_id": string }; Returns: string
+                           },
+"saved_workers":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "area": string,"basis": string,"completed_jobs": number,"display_name": string,"experience_years": number,"profile_id": string,"rating_average": number,"review_count": number,"reviews": Json,"saved_at": string,"service_areas": (string)[],"skills": (string)[],"strengths": Json,"trade": string
+            }[]
+                           },
+"set_customer_avatar":
+{ Args: { "p_has_avatar": boolean }; Returns: string
+                           },
+"set_request_pinned":
+{ Args: { "p_pinned": boolean,"p_request_id": string }; Returns: boolean
+                           },
 "submit_service_request":
-{ Args: { "p_description": string,"p_submission_key": string }; Returns: string
+{ Args: { "p_description": string,"p_location"?: string,"p_submission_key": string }; Returns: string
                            },
 "submit_service_work":
 { Args: { "p_evidence": string,"p_job_id": string,"p_key": string,"p_version": number }; Returns: string
+                           },
+"submit_support_request":
+{ Args: { "p_body": string,"p_subject": string,"p_submission_key": string }; Returns: string
+                           },
+"unsave_worker":
+{ Args: { "p_profile_id": string }; Returns: string
                            },
 "worker_corrections":
 { Args: Record<PropertyKey, never>; Returns: {
