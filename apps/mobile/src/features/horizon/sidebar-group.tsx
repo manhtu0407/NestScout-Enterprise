@@ -4,6 +4,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import { Icon, useGlassAccessibility } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
+import { PopBadge } from './motion-count';
 
 type Props = {
   title: string;
@@ -40,7 +41,7 @@ export function CollapsibleGroup({ title, expanded, onToggle, first, badge = 0, 
       <Animated.View style={[styles.chevron, { transform: [{ rotate }] }]}>
         <Icon name="chevron" size={metrics.groupChevronSize} color={listColors.groupChevron} strokeWidth={2.2}/>
       </Animated.View>
-      {!expanded && badge > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View>}
+      <PopBadge count={badge} visible={!expanded} style={styles.badge} textStyle={styles.badgeText}/>
     </Pressable>
     {(expanded || !hidden) && <Animated.View style={{ opacity: progress, transform: [{ translateY: offset }] }}>{children}</Animated.View>}
   </View>;

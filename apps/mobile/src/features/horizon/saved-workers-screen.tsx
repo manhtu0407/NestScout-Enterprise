@@ -6,6 +6,8 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 import { formatRating, minReviewsToShowRating, type SavedWorker } from './content';
+import { HeartToggle } from './motion-heart';
+import { Presence } from './motion-presence';
 import { ProfileAvatar } from './profile-avatar';
 import { SupportEmpty, SupportShell, supportStyles } from './support-shell';
 
@@ -54,7 +56,9 @@ type CardProps = {
 
 function WorkerCard({ worker, expanded, onToggle, onRemove, onAskKael }: CardProps) {
   const rated = worker.reviewCount >= minReviewsToShowRating;
+  const [leaving, setLeaving] = useState(false);
   return (
+    <Presence visible={!leaving} offset={0} onExited={onRemove}>
     <View style={styles.card}>
       <View style={styles.header}>
         <ProfileAvatar name={worker.name.replace(/^Thợ\s+/u, '')} size={metrics.workerAvatarSize} initialSize={metrics.workerAvatarInitialSize} />
@@ -63,9 +67,7 @@ function WorkerCard({ worker, expanded, onToggle, onRemove, onAskKael }: CardPro
           <Text numberOfLines={1} style={styles.meta}>{worker.trade} · {worker.area}</Text>
           <Text numberOfLines={1} style={styles.saved}>{worker.savedLabel}</Text>
         </View>
-        <PressScale accessibilityRole="button" accessibilityLabel={`Bỏ lưu ${worker.name}`} onPress={onRemove} style={styles.heart}>
-          <Icon name="heart" size={metrics.heartIconSize} color={colors.heartFilled} fill={colors.heartFilled} />
-        </PressScale>
+        <HeartToggle saved={!leaving} accessibilityLabel={`Bỏ lưu ${worker.name}`} onPress={() => setLeaving(true)} iconSize={metrics.heartIconSize} style={styles.heart} />
       </View>
 
       <View style={styles.stats}>
@@ -119,7 +121,7 @@ function WorkerCard({ worker, expanded, onToggle, onRemove, onAskKael }: CardPro
         </View>
       </View>
 
-      {expanded ? (
+      <Presence visible={expanded}>
         <View style={styles.detail}>
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Khu vực nhận việc</Text>
@@ -141,7 +143,7 @@ function WorkerCard({ worker, expanded, onToggle, onRemove, onAskKael }: CardPro
             )}
           </View>
         </View>
-      ) : null}
+      </Presence>
 
       <PressScale
         accessibilityRole="button"
@@ -157,6 +159,7 @@ function WorkerCard({ worker, expanded, onToggle, onRemove, onAskKael }: CardPro
         <Text style={supportStyles.secondaryLabel}>Hỏi Kael về thợ này</Text>
       </PressScale>
     </View>
+    </Presence>
   );
 }
 
