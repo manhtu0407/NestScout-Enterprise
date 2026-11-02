@@ -7,7 +7,7 @@ import { composerImageLimit, useComposerMedia, type ComposerImage } from './comp
 import { Icon, PressScale, useGlassAccessibility, usePressFeedback } from '@/features/shared';
 import { ComposerMenu } from './composer-menu';
 import { Presence, useRetained } from './motion-presence';
-import { useVoiceHold, VoiceHoldPill } from './voice-hold';
+import { LiquidVoiceCapsule, useLiquidVoice } from './liquid-voice';
 import type { ComposerMenuAnchor, ComposerMenuItem } from './composer-menu';
 
 type Props = {
@@ -40,8 +40,8 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
   const submit = () => { if (canSend) onSubmit(media.images); };
   const { reduceMotion } = useGlassAccessibility();
   const micFeedback = usePressFeedback(reduceMotion);
-  const voice = useVoiceHold(() => setVoiceNotice(voiceUnavailable));
-  const toggleVoice = () => { setVoiceNotice(null); voice.toggle(); };
+  const voice = useLiquidVoice(() => setVoiceNotice(voiceUnavailable));
+  const startVoice = () => { setVoiceNotice(null); voice.start(); };
   useEffect(() => {
     if (!voiceNotice) return undefined;
     const timer = setTimeout(() => setVoiceNotice(null), metrics.voiceHintDuration);
@@ -102,21 +102,19 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
         autoCorrect
         spellCheck={false}
       />
-      {voice.recording && <View pointerEvents="none" style={styles.voiceSlot}><VoiceHoldPill elapsed={voice.elapsed}/></View>}
     </View>
     <Animated.View style={{ transform: [{ scale: micFeedback.scale }] }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Nói với Kael"
-        accessibilityHint="Nhấn để bắt đầu nói, nhấn lần nữa để dừng"
-        accessibilityState={{ busy: voice.recording }}
+        accessibilityHint="Nhấn để bắt đầu nói với Kael"
         disabled={locked}
-        onPress={toggleVoice}
+        onPress={startVoice}
         onPressIn={micFeedback.pressIn}
         onPressOut={micFeedback.pressOut}
-        style={[styles.media, voice.recording && styles.mediaRecording]}
+        style={styles.media}
       >
-        <Icon name="mic" size={metrics.mediaIconSize} strokeWidth={metrics.mediaIconStroke} color={voice.recording ? colors.voiceLabel : colors.voiceIcon} />
+        <Icon name="mic" size={metrics.mediaIconSize} strokeWidth={metrics.mediaIconStroke} color={colors.voiceIcon} />
       </Pressable>
     </Animated.View>
     <View style={styles.sendSlot}>
@@ -124,6 +122,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
         <Icon name="arrowUp" color={canSend ? colors.activeSendIcon : colors.idleSendIcon} size={metrics.sendIconSize} strokeWidth={metrics.sendIconStroke} />
       </PressScale>
     </View>
+    {voice.recording && <View style={styles.voiceLayer}><LiquidVoiceCapsule onCancel={voice.cancel} onSend={voice.finish}/></View>}
     </View>
     </View>
   </View>;
@@ -142,8 +141,7 @@ const styles = StyleSheet.create({
   media: { height: metrics.mediaSize, width: metrics.mediaSize, borderRadius: metrics.mediaRadius, alignItems: 'center', justifyContent: 'center' },
   input: { flex: 1, minWidth: 0, minHeight: metrics.inputMinHeight, maxHeight: metrics.inputMaxHeight, fontSize: metrics.inputFontSize, lineHeight: metrics.inputLineHeight, paddingHorizontal: metrics.inputPaddingHorizontal, paddingVertical: metrics.inputPaddingVertical, color: colors.inputText, textAlignVertical: 'top', outlineWidth: 0, outlineColor: 'transparent' },
   inputSlot: { flex: 1, minWidth: 0, justifyContent: 'center' },
-  voiceSlot: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, flexDirection: 'row' },
-  mediaRecording: { backgroundColor: colors.voiceSurface },
+  voiceLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, flexDirection: 'row' },
   sendSlot: { height: metrics.sendSlotSize, width: metrics.sendSlotSize, alignItems: 'center', justifyContent: 'center' },
   send: { height: metrics.sendSize, width: metrics.sendSize, borderRadius: metrics.sendRadius, borderWidth: metrics.sendBorderWidth, borderColor: colors.idleSendBorder, backgroundColor: colors.idleSendSurface, alignItems: 'center', justifyContent: 'center' },
   sendActive: { borderColor: colors.activeSendBorder, backgroundColor: colors.activeSendSurface },

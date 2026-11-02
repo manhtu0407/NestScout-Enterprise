@@ -26,6 +26,7 @@
     "expo-status-bar": "58.0.4",
     "expo-video": "58.0.13",
     "libphonenumber-js": "1.13.15",
+    "lucide-react-native": "1.66.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
@@ -49,7 +50,8 @@
   "jest": {
     "preset": "jest-expo",
     "moduleNameMapper": {
-      "^@/(.*)$": "<rootDir>/src/$1"
+      "^@/(.*)$": "<rootDir>/src/$1",
+      "^lucide-react-native$": "<rootDir>/../../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js"
     },
     "testMatch": [
       "<rootDir>/src/**/*.test.ts",
