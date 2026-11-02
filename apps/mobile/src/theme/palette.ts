@@ -63,9 +63,9 @@ export const horizonColors = {
     activeSendSurface: '#0B0F14',
     activeSendBorder: '#0B0F14',
     activeSendIcon: '#FFFFFF',
-    voiceSurface: '#0B0F14',
-    voiceLabel: '#FFFFFF',
-    voiceTimer: 'rgba(255,255,255,0.68)',
+    voiceSurface: '#DEDEE1',
+    voiceLabel: '#0B0F14',
+    voiceTimer: '#5B6672',
     voiceDot: '#FF5A52',
   },
   slideConfirm: {
