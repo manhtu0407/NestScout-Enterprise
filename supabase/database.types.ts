@@ -540,6 +540,11 @@ isOneToOne: false
               "job_id": string,"note": string,"submitted_from_version": number
             }[]
                            },
+"worker_earnings":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "accepted_at": string,"amount_minor": number,"completed_on": string,"currency": string,"job_id": string,"title": string
+            }[]
+                           },
 "worker_job_cards":
 { Args: Record<PropertyKey, never>; Returns: {
               "customer_label": string,"description": string,"kind": string,"location": string,"photo_count": number,"ref_id": string,"title": string,"updated_at": string

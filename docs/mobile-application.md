@@ -557,3 +557,19 @@ not route jobs. Customers can review a worker whose profile is not listed, so ra
 accumulate before approval; the rating shows only from three reviews. Sample data and
 local simulation remain only in `HorizonPreview` (`SampleWorkerProfileScreen`). Native
 device behavior is NOT VERIFIED.
+
+## Worker earnings
+
+The Worker sidebar entries Earnings and Payout read `worker_earnings()` through
+`features/shared/worker-earnings-repository.ts`; `useWorkerData` loads it with the jobs.
+The function lists the worker's completed jobs that have an acceptance event, newest
+first (at most 500), with the amount of the latest approved scope change or the quote
+amount, and the acceptance day in `Asia/Ho_Chi_Minh`. `toEarningsView` buckets those days
+on the client (today, the last seven days, the current month, a seven-day chart) using
+the Vietnam day, so a late-evening acceptance counts for the next calendar day. The
+figures are the value of work the customer accepted: no platform fee is deducted and no
+payment is confirmed, and the screen says so. Payout is an honest closed state, with no
+balance, no amount field and no withdraw button, until payment confirmation and a payout
+process exist. The sidebar shows today's accepted value and the next job (first assigned,
+else first active) from the same data, and placeholders while it loads. Sample figures
+remain only in `HorizonPreview`. Native device behavior is NOT VERIFIED.

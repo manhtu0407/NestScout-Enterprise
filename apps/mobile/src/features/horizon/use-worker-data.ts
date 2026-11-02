@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import {
-  WorkflowError, acceptOffer, addWorkerCertificate, advanceJob, declineOffer, pauseJob, proposeScope, readWorkerJobCards, readWorkerProfile, readWorkerSnapshot,
+  WorkflowError, acceptOffer, addWorkerCertificate, advanceJob, declineOffer, pauseJob, proposeScope, readWorkerEarnings, readWorkerJobCards, readWorkerProfile, readWorkerSnapshot,
   removeWorkerCertificate, reportJob, requestResume, saveWorkerCoverage, saveWorkerProfile, setWorkerAccepting, submitWork,
-  type WorkerJobCard, type WorkerProfileRecord,
+  type WorkerEarningRecord, type WorkerJobCard, type WorkerProfileRecord,
 } from '@/features/shared';
 
 import type { WorkerCommand } from './worker-jobs';
@@ -12,9 +12,9 @@ import type { WorkerSnapshot } from './worker-views';
 
 export type WorkerDataStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-export type WorkerData = { snapshot: WorkerSnapshot; cards: readonly WorkerJobCard[]; profile: WorkerProfileRecord | null };
+export type WorkerData = { snapshot: WorkerSnapshot; cards: readonly WorkerJobCard[]; profile: WorkerProfileRecord | null; earnings: readonly WorkerEarningRecord[] };
 
-const emptyData: WorkerData = { snapshot: { offers: [], jobs: [], changes: [], reports: [], corrections: [], pauses: [] }, cards: [], profile: null };
+const emptyData: WorkerData = { snapshot: { offers: [], jobs: [], changes: [], reports: [], corrections: [], pauses: [] }, cards: [], profile: null, earnings: [] };
 
 export type WorkerDataController = {
   data: WorkerData;
@@ -26,8 +26,10 @@ export type WorkerDataController = {
 };
 
 async function loadAll(userId: string, signal: AbortSignal): Promise<WorkerData> {
-  const [snapshot, cards, profile] = await Promise.all([readWorkerSnapshot(userId, signal), readWorkerJobCards(userId, signal), readWorkerProfile(userId, signal)]);
-  return { snapshot, cards, profile };
+  const [snapshot, cards, profile, earnings] = await Promise.all([
+    readWorkerSnapshot(userId, signal), readWorkerJobCards(userId, signal), readWorkerProfile(userId, signal), readWorkerEarnings(userId, signal),
+  ]);
+  return { snapshot, cards, profile, earnings };
 }
 
 type Loaded = { owner: string | null; data: WorkerData; loaded: boolean };

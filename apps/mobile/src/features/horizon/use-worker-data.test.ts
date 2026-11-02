@@ -9,6 +9,7 @@ jest.mock('@/features/shared', () => ({
   readWorkerSnapshot: jest.fn(),
   readWorkerJobCards: jest.fn(),
   readWorkerProfile: jest.fn(),
+  readWorkerEarnings: jest.fn(),
   saveWorkerProfile: jest.fn(),
   saveWorkerCoverage: jest.fn(),
   setWorkerAccepting: jest.fn(),
@@ -31,10 +32,11 @@ function snapshot(stage: shared.Job['stage'] = 'working') {
   return { offers: [offer], jobs: [job(stage)], changes: [], reports: [], corrections: [], pauses: [] };
 }
 
-async function mount(stage: shared.Job['stage'] = 'working', userId: string | null = 'worker-1') {
+async function mount(stage: shared.Job['stage'] = 'working', userId: string | null = 'worker-1', earnings: shared.WorkerEarningRecord[] = []) {
   jest.mocked(shared.readWorkerSnapshot).mockResolvedValue(snapshot(stage));
   jest.mocked(shared.readWorkerJobCards).mockResolvedValue([]);
   jest.mocked(shared.readWorkerProfile).mockResolvedValue(null);
+  jest.mocked(shared.readWorkerEarnings).mockResolvedValue(earnings);
   const view = await renderHook(() => useWorkerData(userId));
   if (userId !== null) await waitFor(() => expect(view.result.current.loaded).toBe(true));
   return view;
@@ -53,6 +55,7 @@ test('a load failure is reported until a refresh succeeds', async () => {
   jest.mocked(shared.readWorkerSnapshot).mockRejectedValueOnce(new Error('offline'));
   jest.mocked(shared.readWorkerJobCards).mockResolvedValue([]);
   jest.mocked(shared.readWorkerProfile).mockResolvedValue(null);
+  jest.mocked(shared.readWorkerEarnings).mockResolvedValue([]);
   const view = await renderHook(() => useWorkerData('worker-1'));
   await waitFor(() => expect(view.result.current.status).toBe('error'));
   jest.mocked(shared.readWorkerSnapshot).mockResolvedValue(snapshot());
@@ -157,4 +160,11 @@ test('a refused profile command still reloads and without a worker nothing is se
   await waitFor(() => expect(shared.readWorkerProfile).toHaveBeenCalledTimes(2));
   const idle = await mount('working', null);
   await expect(idle.result.current.performProfile({ type: 'accepting', accepting: true })).rejects.toMatchObject({ failure: 'forbidden' });
+});
+
+test('earnings are loaded with the jobs', async () => {
+  const row = { job_id: 'j1', title: 'Sửa vòi', amount_minor: 450000, currency: 'VND', accepted_at: '2026-11-03T01:00:00Z', completed_on: '2026-11-03' };
+  const view = await mount('working', 'worker-1', [row]);
+  expect(view.result.current.data.earnings).toEqual([row]);
+  expect(shared.readWorkerEarnings).toHaveBeenCalledWith('worker-1', expect.any(AbortSignal));
 });

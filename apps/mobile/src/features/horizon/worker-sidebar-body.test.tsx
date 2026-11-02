@@ -5,11 +5,11 @@ import { WorkerSidebarBody, type WorkerSidebarState } from './worker-sidebar-bod
 
 const initialMetrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, bottom: 0, left: 0, right: 0 } };
 
-async function renderBody(workerProfile: WorkerSidebarState | undefined, onSetAccepting?: (accepting: boolean) => Promise<void>) {
+async function renderBody(workerProfile: WorkerSidebarState | undefined, onSetAccepting?: (accepting: boolean) => Promise<void>, workerStats?: { acceptedToday: string; nextJob: string }) {
   const onNavigate = jest.fn();
   await render(
     <SafeAreaProvider initialMetrics={initialMetrics}>
-      <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={jest.fn()} onChooseMode={jest.fn()} profileName="Minh Anh" accountLabel="Tài khoản" workerProfile={workerProfile} onSetAccepting={onSetAccepting} />
+      <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={jest.fn()} onChooseMode={jest.fn()} profileName="Minh Anh" accountLabel="Tài khoản" workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={onSetAccepting} />
     </SafeAreaProvider>,
   );
   return onNavigate;
@@ -57,4 +57,17 @@ test('the preview keeps its own local toggle and sample summary', async () => {
   expect(screen.getByText('Quận 7 · bán kính 5 km')).toBeTruthy();
   await fireEvent.press(screen.getByLabelText('Nhận việc mới'));
   expect(screen.getByText('Bật nhận việc')).toBeTruthy();
+});
+
+test('real stats replace the sample summary and a loading worker sees placeholders, never sample figures', async () => {
+  await renderBody({ area: 'Quận 7', radiusKm: 5, accepting: true }, jest.fn(), { acceptedToday: '450.000 ₫', nextJob: 'Sửa ống · Quận 3' });
+  expect(screen.getByText('450.000 ₫')).toBeTruthy();
+  expect(screen.getByText('Sửa ống · Quận 3')).toBeTruthy();
+  expect(screen.queryByText('1.250.000đ')).toBeNull();
+});
+
+test('while real data loads the stats are placeholders', async () => {
+  await renderBody('loading');
+  expect(screen.queryByText('1.250.000đ')).toBeNull();
+  expect(screen.getAllByText('…')).toHaveLength(2);
 });

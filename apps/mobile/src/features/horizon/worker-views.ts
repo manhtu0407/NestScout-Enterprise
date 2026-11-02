@@ -127,3 +127,9 @@ export function toWorkerProfileView(record: WorkerProfileRecord | null, now: Dat
     reviews: record.reviews.map(review => ({ id: review.id, author: review.author, time: relativeTimeLabel(review.created_at, now), service: review.service, text: review.text })),
   };
 }
+
+export function nextJobLabel(jobs: readonly WorkerJob[]): string {
+  const next = jobs.find(job => job.stage === 'assigned') ?? jobs.find(job => job.stage === 'active');
+  if (!next) return 'Chưa có việc';
+  return next.area ? `${next.title} · ${next.area}` : next.title;
+}

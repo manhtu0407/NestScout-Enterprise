@@ -19,10 +19,13 @@ type Props = {
   accountLabel: string;
   badges?: Readonly<Record<string, number>>;
   workerProfile?: WorkerSidebarState;
+  workerStats?: WorkerSidebarStats;
   onSetAccepting?: (accepting: boolean) => Promise<void>;
 };
 
 export type WorkerSidebarProfile = { area: string; radiusKm: number; accepting: boolean };
+
+export type WorkerSidebarStats = { acceptedToday: string; nextJob: string };
 
 export type WorkerSidebarState = WorkerSidebarProfile | null | 'loading';
 
@@ -84,7 +87,7 @@ function Stat({ icon, caption, value }: { icon: SidebarItem['icon']; caption: st
   </View>;
 }
 
-function Profile({ profileName, roleLine, online, goHint, onToggle }: { profileName?: string; roleLine: string; online: boolean; goHint?: string; onToggle: () => void }) {
+function Profile({ profileName, roleLine, online, stats, goHint, onToggle }: { profileName?: string; roleLine: string; online: boolean; stats: WorkerSidebarStats; goHint?: string; onToggle: () => void }) {
   const initial = profileName?.trim().charAt(0).toLocaleUpperCase();
   return <View style={styles.profile}>
     <View style={styles.identity}>
@@ -98,9 +101,9 @@ function Profile({ profileName, roleLine, online, goHint, onToggle }: { profileN
       </View>
     </View>
     <View style={styles.card}>
-      <Stat icon="wallet" caption="Đã nghiệm thu hôm nay" value={workerPreviewSummary.acceptedToday}/>
+      <Stat icon="wallet" caption="Đã nghiệm thu hôm nay" value={stats.acceptedToday}/>
       <View style={styles.cardDivider}/>
-      <Stat icon="pin" caption="Việc kế tiếp" value={workerPreviewSummary.nextJob}/>
+      <Stat icon="pin" caption="Việc kế tiếp" value={stats.nextJob}/>
     </View>
     <GoButton online={online} hint={goHint} onPress={onToggle}/>
   </View>;
@@ -112,13 +115,19 @@ function roleLineFor(profile: WorkerSidebarState | undefined): string {
   return profile === null ? 'Chưa có hồ sơ nghề' : `${profile.area} · bán kính ${profile.radiusKm} km`;
 }
 
+function statsFor(profile: WorkerSidebarState | undefined, stats: WorkerSidebarStats | undefined): WorkerSidebarStats {
+  if (stats !== undefined) return stats;
+  return profile === undefined ? workerPreviewSummary : { acceptedToday: '…', nextJob: '…' };
+}
+
 function onlineOf(profile: WorkerSidebarState | undefined, sampleOnline: boolean, requested: boolean | null): boolean {
   if (profile === undefined) return sampleOnline;
   if (requested !== null) return requested;
   return profile !== null && profile !== 'loading' && profile.accepting;
 }
 
-export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, profileName, accountLabel, badges = {}, workerProfile, onSetAccepting }: Props) {
+export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, profileName, accountLabel, badges = {}, workerProfile, workerStats, onSetAccepting }: Props) {
+  const stats = statsFor(workerProfile, workerStats);
   const [sampleOnline, setSampleOnline] = useState(true);
   const [requested, setRequested] = useState<boolean | null>(null);
   const online = onlineOf(workerProfile, sampleOnline, requested);
@@ -144,7 +153,7 @@ export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, pro
       <GlassIconButton label="Thông báo" onPress={() => onNavigate('notifications')}><Icon name="bell" size={horizonLayout.glass.iconSize}/></GlassIconButton>
     </View>
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Profile profileName={profileName} roleLine={roleLineFor(workerProfile)} online={online} goHint={workerProfile === null ? 'Chưa có hồ sơ nghề. Chạm để tạo hồ sơ' : undefined} onToggle={toggle}/>
+      <Profile profileName={profileName} roleLine={roleLineFor(workerProfile)} online={online} stats={stats} goHint={workerProfile === null ? 'Chưa có hồ sơ nghề. Chạm để tạo hồ sơ' : undefined} onToggle={toggle}/>
       <View style={styles.groups}>{workerSidebarGroups.map((group, index) => <CollapsibleGroup first={index === 0} key={group.title} title={group.title} expanded={openGroups.has(group.title)} onToggle={() => toggleGroup(group.title)} badge={group.items.reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>
         {group.items.map(item => <WorkerRow key={item.id} item={item} badge={badges[item.id]} onPress={() => onNavigate(item.id)}/>)}
         {group.title === supportGroupTitle && <>

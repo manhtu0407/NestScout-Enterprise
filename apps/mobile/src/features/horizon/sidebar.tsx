@@ -8,7 +8,7 @@ import { horizonColors, horizonColors as colors } from '@/theme/palette';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ModePicker, type HorizonMode, type ModeNotice } from './mode-picker';
 import { AccountSheet } from './account-sheet';
-import { WorkerSidebarBody, type WorkerSidebarState } from './worker-sidebar-body';
+import { WorkerSidebarBody, type WorkerSidebarState, type WorkerSidebarStats } from './worker-sidebar-body';
 import { CollapsibleGroup } from './sidebar-group';
 import { PopBadge } from './motion-count';
 import { SkeletonReveal } from './skeleton';
@@ -33,6 +33,7 @@ type Props = {
   recentLoading?: boolean;
   badges?: Readonly<Record<string, number>>;
   workerProfile?: WorkerSidebarState;
+  workerStats?: WorkerSidebarStats;
   onSetAccepting?: (accepting: boolean) => Promise<void>;
   recentSessions?: readonly RecentSession[];
   activeSessionId?: string;
@@ -63,7 +64,7 @@ function ItemRow({ item, onPress, badge = 0 }: { item: SidebarItem; onPress: () 
   </Animated.View>;
 }
 
-export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, profileAvatarUri, profileAvatarHeaders, recentLoading = false, badges = {}, workerProfile, onSetAccepting, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore }: Props) {
+export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, profileAvatarUri, profileAvatarHeaders, recentLoading = false, badges = {}, workerProfile, workerStats, onSetAccepting, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const topInset = Platform.select({ web: 0, default: insets.top }) ?? 0;
@@ -106,7 +107,7 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={pickerVisible ? closePicker : accountOpen ? () => setAccountCloseRequest(value => value + 1) : closeSidebar} statusBarTranslucent>
     <View style={styles.full}>
       <View pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'} accessibilityElementsHidden={pickerVisible || accountOpen} importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} style={[styles.drawer, { width: Math.min(width * horizonLayout.sidebar.drawerWidthRatio, horizonLayout.sidebar.drawerMaxWidth), paddingTop: topInset, paddingBottom: Math.max(insets.bottom, horizonLayout.sidebar.drawerMinimumBottom) }]}>
-        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={badges} workerProfile={workerProfile} onSetAccepting={onSetAccepting}/> : <>
+        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={badges} workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={onSetAccepting}/> : <>
         <View style={styles.heading}>
           <View style={styles.brand}>
             <View accessible accessibilityRole="header" accessibilityLabel="NestScout Horizon" style={styles.lockup}>

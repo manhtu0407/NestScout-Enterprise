@@ -6,6 +6,8 @@ import { PressScale } from '@/features/shared';
 
 import { SupportEmpty, SupportShell, supportStyles } from './support-shell';
 import { useWorkerData } from './use-worker-data';
+import { toEarningsView } from './worker-earnings';
+import { WorkerEarningsScreen } from './worker-earnings-screen';
 import { workerJobStageForSidebarId } from './worker-jobs';
 import { WorkerJobsScreen } from './worker-jobs-screen';
 import { workerProfileTabForSidebarId } from './worker-profile';
@@ -13,7 +15,7 @@ import { WorkerProfileScreen } from './worker-profile-screen';
 import { toWorkerJobs, toWorkerProfileView } from './worker-views';
 
 export function isWorkerSection(id: string | undefined): id is string {
-  return id !== undefined && (workerJobStageForSidebarId(id) !== null || workerProfileTabForSidebarId(id) !== null);
+  return id !== undefined && (workerJobStageForSidebarId(id) !== null || workerProfileTabForSidebarId(id) !== null || id === 'worker-earnings' || id === 'worker-payout');
 }
 
 type Props = { id: string; onBack: () => void };
@@ -32,9 +34,11 @@ export function WorkerSection({ id, onBack }: Props) {
   const stage = workerJobStageForSidebarId(id);
   const profileTab = workerProfileTabForSidebarId(id);
   const profile = useMemo(() => toWorkerProfileView(data.profile, now), [data.profile, now]);
-  const title = profileTab === null ? 'Công việc' : 'Hồ sơ nghề';
+  const earningsMode = id === 'worker-earnings' ? 'overview' : id === 'worker-payout' ? 'payout' : null;
+  const earnings = useMemo(() => toEarningsView(data.earnings, now), [data.earnings, now]);
+  const title = earningsMode !== null ? 'Thu nhập' : profileTab === null ? 'Công việc' : 'Hồ sơ nghề';
 
-  if (userId === null || (stage === null && profileTab === null)) {
+  if (userId === null || (stage === null && profileTab === null && earningsMode === null)) {
     return <StateShell title={title} onBack={onBack}>
       <SupportEmpty icon="user" title="Chỉ dành cho Thợ" body="Đăng nhập bằng tài khoản Thợ đã được cấp quyền để xem mục này." />
     </StateShell>;
@@ -55,6 +59,7 @@ export function WorkerSection({ id, onBack }: Props) {
     </StateShell>;
   }
 
+  if (earningsMode !== null) return <WorkerEarningsScreen key={earningsMode} initialMode={earningsMode} earnings={earnings} onBack={onBack} />;
   if (profileTab !== null) return <WorkerProfileScreen key={profileTab} initialTab={profileTab} profile={profile} fallbackName="" perform={worker.performProfile} onBack={onBack} />;
   if (stage === null) return null;
   return <WorkerJobsScreen key={stage} initialStage={stage} jobs={jobs} perform={worker.perform} onBack={onBack} />;

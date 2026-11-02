@@ -1,7 +1,7 @@
 import type { Job, Offer, Pause, WorkerJobCard, WorkerProfileRecord } from '@/features/shared';
 
 import { workerBadgesFor } from './worker-jobs';
-import { expiryLabel, toWorkerJobs, toWorkerProfileView, type WorkerSnapshot } from './worker-views';
+import { expiryLabel, nextJobLabel, toWorkerJobs, toWorkerProfileView, type WorkerSnapshot } from './worker-views';
 
 const now = new Date('2026-11-02T10:00:00Z');
 
@@ -107,4 +107,13 @@ test('a stored profile maps to the view with certificate labels and relative rev
   expect(view?.certificates.map(item => item.statusLabel)).toEqual(['Đã xác minh', 'Đang chờ xác minh', 'Chưa được chấp nhận']);
   expect(view?.reviews).toEqual([{ id: 'v1', author: 'Tú', time: '2 giờ trước', service: 'Sửa vòi', text: 'Tốt' }]);
   expect(view?.strengths).toEqual([{ label: 'Đúng giờ', count: 3 }]);
+});
+
+test('the next job is the first assigned job, else the first active one, else a placeholder', () => {
+  const base = { icon: 'wrench' as const, description: '', clientName: '', photoCount: 0, address: '', amountMinor: 0 };
+  const assigned = { ...base, id: 'a', stage: 'assigned' as const, title: 'Sửa ống', area: 'Quận 3', step: 0 };
+  const active = { ...base, id: 'b', stage: 'active' as const, title: 'Thay khoá', area: '' };
+  expect(nextJobLabel([active, assigned])).toBe('Sửa ống · Quận 3');
+  expect(nextJobLabel([active])).toBe('Thay khoá');
+  expect(nextJobLabel([])).toBe('Chưa có việc');
 });

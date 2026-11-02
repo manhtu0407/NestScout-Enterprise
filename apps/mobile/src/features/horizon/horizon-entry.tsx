@@ -17,7 +17,9 @@ import { countActionableQuotes, countUnreadNotifications, toRecentSessions } fro
 import { useCustomerData } from './use-customer-data';
 import { useWorkerData } from './use-worker-data';
 import { workerBadgesFor } from './worker-jobs';
-import { toWorkerJobs, toWorkerProfileView } from './worker-views';
+import { formatMoney } from './content';
+import { earningsTodayMinor } from './worker-earnings';
+import { nextJobLabel, toWorkerJobs, toWorkerProfileView } from './worker-views';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
@@ -54,6 +56,14 @@ export function HorizonEntry() {
     const view = toWorkerProfileView(worker.data.profile, now);
     return view === null ? null : { area: view.area, radiusKm: view.radiusKm, accepting: view.accepting };
   }, [access.phase, now, worker.data.profile, worker.loaded, workerUserId]);
+
+  const workerStats = useMemo(() => {
+    if (workerUserId === null || !worker.loaded) return undefined;
+    return {
+      acceptedToday: formatMoney(earningsTodayMinor(worker.data.earnings, now), 'VND'),
+      nextJob: nextJobLabel(toWorkerJobs(worker.data.snapshot, worker.data.cards, now)),
+    };
+  }, [now, worker.data, worker.loaded, workerUserId]);
 
   const setAccepting = useCallback(async (accepting: boolean) => {
     try {
@@ -132,7 +142,7 @@ export function HorizonEntry() {
         <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={openMenu} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
-    <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
+    <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
       if (access.phase === 'guest') {
         kaelIntroSession.markPlayed();
         access.prepareHorizonDraftTransfer({ text: inputRef.current, images: imagesRef.current });

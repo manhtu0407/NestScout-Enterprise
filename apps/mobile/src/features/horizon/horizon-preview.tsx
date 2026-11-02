@@ -24,6 +24,7 @@ import { SampleWorkerJobsScreen } from './sample-worker-jobs-screen';
 import { WorkerKaelScreen } from './worker-kael-screen';
 import { SampleWorkerProfileScreen } from './sample-worker-profile-screen';
 import { workerProfileTabForSidebarId, type WorkerProfileTab } from './worker-profile';
+import { sampleEarningRecords, toEarningsView } from './worker-earnings';
 import { WorkerEarningsScreen, type EarningsMode } from './worker-earnings-screen';
 import { sampleWorkerBadges, workerJobStageForSidebarId, type WorkerJobStage } from './worker-jobs';
 
@@ -103,6 +104,7 @@ export function HorizonPreview() {
   const [quotesFromRequests, setQuotesFromRequests] = useState(false);
   const [jobsStage, setJobsStage] = useState<WorkerJobStage | null>(null);
   const [earningsMode, setEarningsMode] = useState<EarningsMode | null>(null);
+  const [sampleEarnings] = useState(() => toEarningsView(sampleEarningRecords(new Date()), new Date()));
   const [profileTab, setProfileTab] = useState<WorkerProfileTab | null>(null);
   const [workerKael, setWorkerKael] = useState(false);
   const backToSidebar = () => { setRequestsOpen(false); setSupportScreen(null); setJobsStage(null); setEarningsMode(null); setProfileTab(null); setWorkerKael(false); setDrawer(true); };
@@ -142,7 +144,7 @@ export function HorizonPreview() {
       {jobsStage !== null && <SampleWorkerJobsScreen key={jobsStage} initialStage={jobsStage} onBack={goBack} onAskKael={() => setJobsStage(null)} />}
       {workerKael && <WorkerKaelScreen onBack={goBack} onAsk={prompt => { setInput(prompt); setComposerError(null); setWorkerKael(false); }} />}
       {profileTab !== null && <SampleWorkerProfileScreen key={profileTab} initialTab={profileTab} onBack={goBack} />}
-      {earningsMode !== null && <WorkerEarningsScreen key={earningsMode} initialMode={earningsMode} onBack={goBack} />}
+      {earningsMode !== null && <WorkerEarningsScreen key={earningsMode} sample initialMode={earningsMode} earnings={sampleEarnings} onBack={goBack} />}
       {supportScreen === 'notifications' &&<NotificationsScreen items={sampleNotifications} onBack={goBack} />}
       {supportScreen === 'quotes' && <QuotesScreen items={sampleQuotes} onBack={goBack} onAskKael={() => setSupportScreen(null)} />}
       {supportScreen === 'saved' && <SavedWorkersScreen items={sampleSavedWorkers} onBack={goBack} onAskKael={() => setSupportScreen(null)} />}
