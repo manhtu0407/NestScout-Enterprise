@@ -62,9 +62,9 @@ A request folder accepts at most twelve raw objects, counted by a definer helper
 read its own table; at most six of them can be attached. The app names each photo once, keeps the
 pending list on the device, and retries an interrupted upload under the same name, so a retry never
 creates an orphan object. The eighteen migrations were applied to the hosted project on 2026-11-02
-with the owner's authorization, one by one through the Supabase MCP. Hosted records its own version
-numbers (20261102144630 to 20261102145255) under the same snake_case names, so hosted history differs
-from the repository file names; later applications must account for that.
+with the owner's authorization, one by one through the Supabase MCP. The MCP recorded its own version
+numbers, so the hosted history rows were then renamed to the repository file timestamps; hosted and
+repository history now match one to one by version and name.
 Enabled HTTP services wake on demand.
 
 ```sh
@@ -113,11 +113,13 @@ with RLS enabled, 35 public and 35 private functions, two private buckets. Hoste
 also contains `public.rls_auto_enable()` and `ensure_rls`, absent locally. Their
 definitions match Studio's optional Auto enable RLS template, are owned by
 `postgres`, and are not extension members. The installing actor/mechanism is still
-unverified; do not label them automatically maintained platform objects. Empty
+unverified; do not label them automatically maintained platform objects. Their
+`execute` grant to `public`, `anon` and `authenticated` was revoked on 2026-11-02 because the
+trigger runs without an execute check and the function must not be callable through the API; a probe
+table confirmed that row level security is still enabled automatically. Empty
 drift establishes only local application migration consistency, **not** complete
 hosted catalog parity. PostgreSQL major versions agree (17); local image release
-17.11.0.006 and hosted 17.11.0.003 differ. No remote repair, DDL or data
-export was performed. Generate future migration names with the pinned CLI.
+17.11.0.006 and hosted 17.11.0.003 differ. Generate future migration names with the pinned CLI.
 
 `supabase/seed.sql` contains no data. Add synthetic fixtures alongside real product
 migrations. `supabase/database.types.ts` is the single generated artifact, from
