@@ -58,6 +58,15 @@ export const horizonLayout = {
       sendBorderWidth: 1,
       sendIconSize: 16,
       sendIconStroke: 2.35,
+      voiceRadius: 20, voicePaddingHorizontal: 14, voiceGap: 10, voiceIconSize: 18, voiceLabelSize: 15, voiceLabelWeight: '600',
+      voiceTimerWeight: '500', voiceDotSize: 8, voiceDotRadius: 4, voicePulseDuration: 700, voicePulseMin: 0.35, voiceTickInterval: 250,
+      voiceHintDuration: 1800,
+    },
+    slideConfirm: {
+      height: 56, radius: 28, inset: 4, thumb: 48, thumbRadius: 24, iconSize: 22, iconStroke: 2,
+      labelSize: 15, labelWeight: '600', labelGap: 12, threshold: 0.82, travelMinimum: 1,
+      settleSpring: { damping: 26, stiffness: 320, mass: 1 }, confirmDuration: 160, reducedDuration: 120,
+      fadeDistance: 0.6, pressScale: 1.04,
     },
     horizonEntry: {
       placeholderPadding: 22,
@@ -274,6 +283,7 @@ export const horizonLayout = {
       workerAvatarSize: 44, workerAvatarInitialSize: 18, workerCardPadding: 16, workerCardGap: 12, workerCardRadius: 20, workerCardListGap: 12, workerNameSize: 16, workerNameWeight: '600', workerMetaSize: 13, workerMetaGap: 6, priceSize: 20, priceWeight: '700', priceTracking: -0.3, noteSize: 13, noteIconSize: 16, noteGap: 8, buttonHeight: 44, buttonRadius: 22, buttonSize: 15, buttonGap: 10, statusGap: 6, heartSize: 44, heartIconSize: 22, statusChipHeight: 24, statusChipPaddingHorizontal: 10, statusChipRadius: 12, statusChipSize: 12,
       profileNameSize: 16, avatarActionPadding: 8, lockedOpacity: 0.7, notificationDotRadius: 4, contactIdleOpacity: 0.6, quoteNoteLineHeight: 16, quoteScopeSize: 14, quoteScopeLineHeight: 20, workerSectionTitleSize: 13,
       switchWidth: 51, switchHeight: 31, switchInset: 2, switchThumb: 27, switchStretch: 1.18, switchHitSlop: 7, switchReducedDuration: 120, switchSpring: { damping: 42, stiffness: 438, mass: 1 },
+      switchLeadSpring: { damping: 24, stiffness: 520, mass: 1 }, switchTrailSpring: { damping: 30, stiffness: 190, mass: 1 }, switchSquash: 0.88,
       workerStatsRadius: 14, workerStatsPaddingVertical: 12, workerStatValueSize: 17, workerStatValueWeight: '700', workerStatValueLineHeight: 22, workerStatLabelSize: 12, workerStatGap: 2, workerStatIconSize: 14, workerStatInlineGap: 4,
       workerSectionGap: 10, workerSectionLabelSize: 12, workerSectionLabelWeight: '600', workerSectionHintSize: 12, skillChipHeight: 28, skillChipPaddingHorizontal: 12, skillChipRadius: 14, skillChipSize: 13, skillChipGap: 8,
       strengthListGap: 12, strengthRowGap: 6, strengthLabelSize: 14, strengthLabelWeight: '500', strengthCountSize: 13, strengthBarHeight: 4, strengthBarRadius: 2, strengthPanelPadding: 14,

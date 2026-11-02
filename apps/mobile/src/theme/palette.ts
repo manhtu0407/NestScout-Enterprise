@@ -63,6 +63,18 @@ export const horizonColors = {
     activeSendSurface: '#0B0F14',
     activeSendBorder: '#0B0F14',
     activeSendIcon: '#FFFFFF',
+    voiceSurface: '#DEDEE1',
+    voiceLabel: '#0B0F14',
+    voiceTimer: '#5B6672',
+    voiceDot: '#FF5A52',
+  },
+  slideConfirm: {
+    track: '#0B0F14',
+    fill: '#0E9E8E',
+    thumb: '#FFFFFF',
+    thumbIcon: '#0B0F14',
+    label: 'rgba(255,255,255,0.68)',
+    thumbShadow: '0 2px 8px rgba(0,0,0,0.28)',
   },
   kaelHomeScreen: {
     userBubbleBackgroundColor: '#D9F2EE',

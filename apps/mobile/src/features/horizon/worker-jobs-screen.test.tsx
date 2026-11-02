@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { sampleWorkerJobs, workerJobStageForSidebarId, workerJobStages, workerSidebarBadges } from './worker-jobs';
 import { WorkerJobsScreen } from './worker-jobs-screen';
@@ -49,8 +49,8 @@ test('an invitation shows the price the customer already accepted and offers no 
 
 test('accepting an invitation moves it to the assigned stage at its first step', async () => {
   await render(<WorkerJobsScreen initialStage="offer" jobs={sampleWorkerJobs} onBack={jest.fn()} />);
-  await fireEvent.press(screen.getByLabelText(`Nhận việc ${offerJob}`));
-  expect(screen.getByText('Đã nhận việc. Xem trong mục Đã nhận.')).toBeTruthy();
+  await fireEvent(screen.getByLabelText(`Nhận việc ${offerJob}`), 'accessibilityAction', { nativeEvent: { actionName: 'activate' } });
+  await waitFor(() => expect(screen.getByText('Đã nhận việc. Xem trong mục Đã nhận.')).toBeTruthy());
   expect(screen.getByLabelText('Việc mới, 4')).toBeTruthy();
   expect(screen.getByLabelText('Đã nhận, 3')).toBeTruthy();
   await fireEvent.press(screen.getByLabelText('Đã nhận, 3'));

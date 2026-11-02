@@ -6,6 +6,7 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 import { formatMoney, type QuoteItem, type QuoteStatus } from './content';
+import { SlideToConfirm } from './slide-to-confirm';
 import { SupportEmpty, SupportSection, SupportShell, supportStyles } from './support-shell';
 
 const metrics = horizonLayout.supportScreens;
@@ -136,14 +137,10 @@ function QuoteCard({ entry, confirming, onReview, onCancelReview, onDecide, onAs
           <Text style={styles.consentLine}>• Bạn đồng ý với phạm vi và số tiền {amount} ở trên.</Text>
           <Text style={styles.consentLine}>• Chấp nhận chưa thu tiền. Thanh toán chưa được kết nối.</Text>
           <Text style={styles.consentLine}>• Chưa có thợ được giao. Bước ghép thợ sẽ làm sau.</Text>
-          <View style={styles.actions}>
-            <PressScale accessibilityRole="button" accessibilityLabel="Quay lại, chưa chấp nhận" onPress={onCancelReview} style={supportStyles.secondary} wrapperStyle={styles.action}>
-              <Text style={supportStyles.secondaryLabel}>Quay lại</Text>
-            </PressScale>
-            <PressScale accessibilityRole="button" accessibilityLabel={`Xác nhận chấp nhận báo giá ${amount}`} onPress={() => onDecide(quote.id, 'accepted')} style={supportStyles.primary} wrapperStyle={styles.action}>
-              <Text style={supportStyles.primaryLabel}>Xác nhận</Text>
-            </PressScale>
-          </View>
+          <SlideToConfirm label="Trượt để chấp nhận" accessibilityLabel={`Xác nhận chấp nhận báo giá ${amount}`} onConfirm={() => onDecide(quote.id, 'accepted')} />
+          <PressScale accessibilityRole="button" accessibilityLabel="Quay lại, chưa chấp nhận" onPress={onCancelReview} style={supportStyles.secondary}>
+            <Text style={supportStyles.secondaryLabel}>Quay lại</Text>
+          </PressScale>
         </View>
       ) : null}
     </View>

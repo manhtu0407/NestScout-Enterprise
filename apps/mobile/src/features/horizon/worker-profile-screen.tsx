@@ -6,7 +6,7 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 import { formatRating, minReviewsToShowRating } from './content';
-import { IosSwitch } from './ios-switch';
+import { LiquidSwitch } from './liquid-switch';
 import { SlidingChips } from './sliding-chips';
 import { ScreenHeader, SupportCard, SupportRow, SupportSection } from './support-shell';
 import {
@@ -108,7 +108,7 @@ function AreasTab() {
               key={option.id}
               icon={option.icon}
               title={option.label}
-              trailing={<IosSwitch accessibilityLabel={`Nhận việc ${option.label}`} value={enabled.includes(option.id)} onValueChange={on => toggle(option.id, on)} />}
+              trailing={<LiquidSwitch accessibilityLabel={`Nhận việc ${option.label}`} value={enabled.includes(option.id)} onValueChange={on => toggle(option.id, on)} />}
             />
           ))}
         </SupportCard>

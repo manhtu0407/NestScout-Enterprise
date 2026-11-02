@@ -8,6 +8,7 @@ import { horizonColors } from '@/theme/palette';
 
 import { formatMoney } from './content';
 import { Presence, useRetained } from './motion-presence';
+import { SlideToConfirm } from './slide-to-confirm';
 import { SlidingChips } from './sliding-chips';
 import { ScreenHeader } from './support-shell';
 import { workerJobStages, workerJobStepActions, workerJobSteps, type WorkerJob, type WorkerJobStage } from './worker-jobs';
@@ -180,9 +181,9 @@ function JobActions({ job, actions }: { job: WorkerJob; actions: Actions }) {
   switch (job.stage) {
     case 'offer':
       return (
-        <View style={styles.actions}>
+        <View style={styles.offerActions}>
+          <SlideToConfirm label="Trượt để nhận việc" accessibilityLabel={`Nhận việc ${title}`} onConfirm={actions.onAccept} />
           <ActionButton secondary label="Từ chối" accessibilityLabel={`Từ chối ${title}`} onPress={actions.onDecline} />
-          <ActionButton label="Nhận việc" accessibilityLabel={`Nhận việc ${title}`} onPress={actions.onAccept} />
         </View>
       );
     case 'assigned':
@@ -319,6 +320,7 @@ const styles = StyleSheet.create({
   correctionText: { color: colors.waitingText, fontSize: metrics.noticeSize, lineHeight: metrics.noticeLineHeight },
   footnoteInline: { color: horizonColors.muted, fontSize: metrics.footnoteSize, lineHeight: metrics.footnoteLineHeight },
   actions: { flexDirection: 'row', gap: card.actionGap },
+  offerActions: { gap: card.actionGap },
   actionWrap: { flex: 1 },
   action: { height: card.actionHeight, borderRadius: card.actionRadius, alignItems: 'center', justifyContent: 'center', backgroundColor: cardColors.actionFill },
   actionSecondary: { backgroundColor: cardColors.actionSecondaryFill },
