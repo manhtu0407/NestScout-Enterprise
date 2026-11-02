@@ -47,7 +47,7 @@ export function HorizonEntry() {
   const badges = useMemo(() => ({
     quotes: countActionableQuotes(data.requests, data.quotes, now),
     notifications: countUnreadNotifications(data.notifications),
-    ...(workerUserId === null ? {} : workerBadgesFor(toWorkerJobs(worker.data.snapshot, worker.data.cards, now))),
+    ...(workerUserId === null ? {} : { ...workerBadgesFor(toWorkerJobs(worker.data.snapshot, worker.data.cards, now)), 'worker-notifications': countUnreadNotifications(worker.data.notifications) }),
   }), [data, now, workerUserId, worker.data]);
 
   const workerProfile = useMemo(() => {

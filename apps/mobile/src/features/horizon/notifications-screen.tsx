@@ -11,9 +11,9 @@ import { SupportCard, SupportEmpty, SupportRow, SupportSection, SupportShell } f
 const metrics = horizonLayout.supportScreens;
 const colors = horizonColors.supportScreens;
 
-type Props = { items?: readonly NotificationItem[]; onBack: () => void; onMarkRead?: (ids: readonly string[]) => Promise<void>; onOpenRequest?: (requestId: string) => void };
+type Props = { items?: readonly NotificationItem[]; onBack: () => void; onMarkRead?: (ids: readonly string[]) => Promise<void>; onOpenRequest?: (requestId: string) => void; onOpenTarget?: (target: string) => void };
 
-export function NotificationsScreen({ items = [], onBack, onMarkRead, onOpenRequest }: Props) {
+export function NotificationsScreen({ items = [], onBack, onMarkRead, onOpenRequest, onOpenTarget }: Props) {
   const [readIds, setReadIds] = useState<readonly string[]>([]);
   const [failed, setFailed] = useState(false);
   const markRead = (ids: readonly string[]) => {
@@ -39,7 +39,8 @@ export function NotificationsScreen({ items = [], onBack, onMarkRead, onOpenRequ
       highlighted={isUnread(item)}
       onPress={() => {
         if (isUnread(item)) markRead([item.id]);
-        if (item.requestId && onOpenRequest) onOpenRequest(item.requestId);
+        if (item.target && onOpenTarget) onOpenTarget(item.target);
+        else if (item.requestId && onOpenRequest) onOpenRequest(item.requestId);
       }}
       trailing={isUnread(item) ? <View accessibilityLabel="Chưa đọc" style={styles.dot} /> : <View style={styles.dotSpace} />}
     />

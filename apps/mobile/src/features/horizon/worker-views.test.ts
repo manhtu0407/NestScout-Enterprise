@@ -1,7 +1,7 @@
 import type { Job, Offer, Pause, WorkerJobCard, WorkerProfileRecord } from '@/features/shared';
 
 import { workerBadgesFor } from './worker-jobs';
-import { expiryLabel, nextJobLabel, toWorkerJobs, toWorkerProfileView, type WorkerSnapshot } from './worker-views';
+import { expiryLabel, nextJobLabel, toWorkerJobs, toWorkerNotificationItems, toWorkerProfileView, type WorkerSnapshot } from './worker-views';
 
 const now = new Date('2026-11-02T10:00:00Z');
 
@@ -116,4 +116,15 @@ test('the next job is the first assigned job, else the first active one, else a 
   expect(nextJobLabel([active, assigned])).toBe('Sửa ống · Quận 3');
   expect(nextJobLabel([active])).toBe('Thay khoá');
   expect(nextJobLabel([])).toBe('Chưa có việc');
+});
+
+test('worker notifications point at the tab where the news can be acted on', () => {
+  const base = { request_id: 'r1', title: 't', body: 'b', created_at: '2026-11-02T09:00:00Z', read_at: null };
+  const items = toWorkerNotificationItems([
+    { ...base, id: 'a', kind: 'job_offered' }, { ...base, id: 'b', kind: 'work_approved' }, { ...base, id: 'c', kind: 'revision_requested' },
+    { ...base, id: 'd', kind: 'work_disputed' }, { ...base, id: 'e', kind: 'scope_approved' }, { ...base, id: 'f', kind: 'scope_rejected' },
+    { ...base, id: 'g', kind: 'resume_agreed' }, { ...base, id: 'h', kind: 'review_received' },
+  ], now);
+  expect(items.map(item => item.target)).toEqual(['worker-offers', 'worker-history', 'worker-review', 'worker-review', 'worker-active', 'worker-active', 'worker-active', 'worker-reviews']);
+  expect(items.every(item => item.requestId === undefined && item.unread)).toBe(true);
 });

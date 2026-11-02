@@ -9,10 +9,10 @@ jest.mock('@/features/access', () => ({ ...jest.requireActual('@/features/access
 jest.mock('./use-worker-data', () => ({ useWorkerData: jest.fn() }));
 jest.mock('expo-crypto', () => ({ randomUUID: () => '00000000-0000-4000-8000-000000000123' }));
 
-const empty: WorkerData = { snapshot: { offers: [], jobs: [], changes: [], reports: [], corrections: [], pauses: [] }, cards: [], profile: null, earnings: [] };
+const empty: WorkerData = { snapshot: { offers: [], jobs: [], changes: [], reports: [], corrections: [], pauses: [] }, cards: [], profile: null, earnings: [], notifications: [] };
 
 function controller(overrides: Partial<WorkerDataController> = {}): WorkerDataController {
-  return { data: empty, status: 'ready', loaded: true, refresh: jest.fn(), perform: jest.fn(), performProfile: jest.fn(), ...overrides };
+  return { data: empty, status: 'ready', loaded: true, refresh: jest.fn(), perform: jest.fn(), performProfile: jest.fn(), markRead: jest.fn().mockResolvedValue(undefined), ...overrides };
 }
 
 beforeEach(() => {
@@ -21,7 +21,7 @@ beforeEach(() => {
 });
 
 test('the job and profile entries are worker data sections', () => {
-  for (const id of ['worker-offers', 'worker-assigned', 'worker-active', 'worker-review', 'worker-history', 'worker-profile', 'worker-areas', 'worker-reviews', 'worker-earnings', 'worker-payout']) expect(isWorkerSection(id)).toBe(true);
+  for (const id of ['worker-offers', 'worker-assigned', 'worker-active', 'worker-review', 'worker-history', 'worker-profile', 'worker-areas', 'worker-reviews', 'worker-earnings', 'worker-payout', 'worker-notifications']) expect(isWorkerSection(id)).toBe(true);
   for (const id of ['worker-kael', 'requests', undefined]) expect(isWorkerSection(id)).toBe(false);
 });
 
@@ -51,7 +51,7 @@ test('a failed first load offers a reload', async () => {
 test('an invitation from the server opens in its own tab and carries no sample footnote', async () => {
   const offer = { invitation_id: 'invite-1', quote_id: 'q', quote_version: 1, scope: 'Sửa vòi', amount_minor: 450000, currency: 'VND' as const, expires_at: new Date(Date.now() + 3_600_000).toISOString(), basis: 'local_fixture' };
   const card = { kind: 'offer' as const, ref_id: 'invite-1', title: 'Sửa vòi nước', description: 'Sửa vòi nước\nBị rò', photo_count: 1, location: '', customer_label: '', updated_at: null };
-  jest.mocked(useWorkerData).mockReturnValue(controller({ data: { snapshot: { ...empty.snapshot, offers: [offer] }, cards: [card], profile: null, earnings: [] } }));
+  jest.mocked(useWorkerData).mockReturnValue(controller({ data: { snapshot: { ...empty.snapshot, offers: [offer] }, cards: [card], profile: null, earnings: [], notifications: [] } }));
   await render(<WorkerSection id="worker-offers" onBack={() => undefined} />);
   expect(screen.getByText('Sửa vòi nước')).toBeTruthy();
   expect(screen.getByText('Địa chỉ hiện sau khi nhận việc')).toBeTruthy();
@@ -61,7 +61,7 @@ test('an invitation from the server opens in its own tab and carries no sample f
 test('declining forwards the invitation id to the data controller', async () => {
   const perform = jest.fn().mockResolvedValue('Đã từ chối lời mời này.');
   const offer = { invitation_id: 'invite-1', quote_id: 'q', quote_version: 1, scope: 'Sửa vòi', amount_minor: 450000, currency: 'VND' as const, expires_at: new Date(Date.now() + 3_600_000).toISOString(), basis: 'local_fixture' };
-  jest.mocked(useWorkerData).mockReturnValue(controller({ data: { snapshot: { ...empty.snapshot, offers: [offer] }, cards: [], profile: null, earnings: [] }, perform }));
+  jest.mocked(useWorkerData).mockReturnValue(controller({ data: { snapshot: { ...empty.snapshot, offers: [offer] }, cards: [], profile: null, earnings: [], notifications: [] }, perform }));
   await render(<WorkerSection id="worker-offers" onBack={() => undefined} />);
   await fireEvent.press(screen.getByLabelText('Từ chối Sửa vòi'));
   expect(perform).toHaveBeenCalledWith('invite-1', { type: 'decline' });
@@ -114,4 +114,15 @@ test('the earnings entries open from the worker projection and never show sample
   expect(screen.queryByText(/Dữ liệu mẫu/)).toBeNull();
   await fireEvent.press(screen.getByLabelText('Rút tiền'));
   expect(screen.getByText('Chưa mở')).toBeTruthy();
+});
+
+test('worker notifications open from the worker data and jump to the matching tab', async () => {
+  const notifications = [{ id: 'n1', kind: 'job_offered' as const, request_id: 'r1', title: 'Có việc mới', body: 'Việc “Sửa vòi” đang chờ bạn phản hồi.', created_at: new Date().toISOString(), read_at: null }];
+  const markRead = jest.fn().mockResolvedValue(undefined);
+  const onNavigate = jest.fn();
+  jest.mocked(useWorkerData).mockReturnValue(controller({ data: { ...empty, notifications }, markRead }));
+  await render(<WorkerSection id="worker-notifications" onBack={() => undefined} onNavigate={onNavigate} />);
+  await fireEvent.press(screen.getByText('Có việc mới'));
+  expect(markRead).toHaveBeenCalledWith(['n1']);
+  expect(onNavigate).toHaveBeenCalledWith('worker-offers');
 });

@@ -50,7 +50,7 @@ export function SectionRoute() {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <StatusBar style="dark" />
-        <WorkerSection id={id} onBack={() => router.back()} />
+        <WorkerSection id={id} onBack={() => router.back()} onNavigate={target => router.push({ pathname: '/section', params: { id: target } })} />
       </SafeAreaView>
     );
   }

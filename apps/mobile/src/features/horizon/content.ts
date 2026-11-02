@@ -24,6 +24,7 @@ export const sidebarGroups: readonly { title: string; items: readonly SidebarIte
     title: 'Hỗ trợ',
     items: [
       { id: 'notifications', title: 'Thông báo', icon: 'bell' },
+      { id: 'worker-notifications', title: 'Thông báo', icon: 'bell' },
       { id: 'help', title: 'Trợ giúp', icon: 'help' },
       { id: 'settings', title: 'Cài đặt', icon: 'gear' },
     ],
@@ -66,7 +67,7 @@ export const workerSidebarGroups: readonly { title: string; items: readonly Side
   },
 ];
 
-export type NotificationItem = { id: string; icon: IconName; title: string; body: string; time: string; unread: boolean; today: boolean; requestId?: string };
+export type NotificationItem = { id: string; icon: IconName; title: string; body: string; time: string; unread: boolean; today: boolean; requestId?: string; target?: string };
 
 export const sampleNotifications: readonly NotificationItem[] = [
   { id: 'n-1', icon: 'receipt', title: 'Báo giá mới', body: 'Yêu cầu “Sửa vòi nước bồn rửa” có báo giá mới đang chờ bạn quyết định.', time: '10 phút trước', unread: true, today: true },
@@ -101,6 +102,7 @@ export const screenTitles: Record<string, string> = {
   quotes: 'Báo giá',
   saved: 'Thợ đã lưu',
   notifications: 'Thông báo',
+  'worker-notifications': 'Thông báo',
   settings: 'Cài đặt',
   help: 'Trợ giúp',
 };

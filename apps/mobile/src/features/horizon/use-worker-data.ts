@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import {
-  WorkflowError, acceptOffer, addWorkerCertificate, advanceJob, declineOffer, pauseJob, proposeScope, readWorkerEarnings, readWorkerJobCards, readWorkerProfile, readWorkerSnapshot,
+  WorkflowError, acceptOffer, addWorkerCertificate, advanceJob, declineOffer, pauseJob, proposeScope, markNotificationsRead, readNotifications, readWorkerEarnings, readWorkerJobCards, readWorkerProfile, readWorkerSnapshot,
   removeWorkerCertificate, reportJob, requestResume, saveWorkerCoverage, saveWorkerProfile, setWorkerAccepting, submitWork,
-  type WorkerEarningRecord, type WorkerJobCard, type WorkerProfileRecord,
+  type CustomerNotification, type WorkerEarningRecord, type WorkerJobCard, type WorkerProfileRecord,
 } from '@/features/shared';
 
 import type { WorkerCommand } from './worker-jobs';
@@ -12,9 +12,9 @@ import type { WorkerSnapshot } from './worker-views';
 
 export type WorkerDataStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-export type WorkerData = { snapshot: WorkerSnapshot; cards: readonly WorkerJobCard[]; profile: WorkerProfileRecord | null; earnings: readonly WorkerEarningRecord[] };
+export type WorkerData = { snapshot: WorkerSnapshot; cards: readonly WorkerJobCard[]; profile: WorkerProfileRecord | null; earnings: readonly WorkerEarningRecord[]; notifications: readonly CustomerNotification[] };
 
-const emptyData: WorkerData = { snapshot: { offers: [], jobs: [], changes: [], reports: [], corrections: [], pauses: [] }, cards: [], profile: null, earnings: [] };
+const emptyData: WorkerData = { snapshot: { offers: [], jobs: [], changes: [], reports: [], corrections: [], pauses: [] }, cards: [], profile: null, earnings: [], notifications: [] };
 
 export type WorkerDataController = {
   data: WorkerData;
@@ -23,13 +23,15 @@ export type WorkerDataController = {
   refresh: () => void;
   perform: (id: string, command: WorkerCommand) => Promise<string>;
   performProfile: (command: WorkerProfileCommand) => Promise<string>;
+  markRead: (ids: readonly string[]) => Promise<void>;
 };
 
 async function loadAll(userId: string, signal: AbortSignal): Promise<WorkerData> {
-  const [snapshot, cards, profile, earnings] = await Promise.all([
+  const [snapshot, cards, profile, earnings, notifications] = await Promise.all([
     readWorkerSnapshot(userId, signal), readWorkerJobCards(userId, signal), readWorkerProfile(userId, signal), readWorkerEarnings(userId, signal),
+    readNotifications(userId, signal, 'worker'),
   ]);
-  return { snapshot, cards, profile, earnings };
+  return { snapshot, cards, profile, earnings, notifications };
 }
 
 type Loaded = { owner: string | null; data: WorkerData; loaded: boolean };
@@ -144,5 +146,20 @@ export function useWorkerData(userId: string | null): WorkerDataController {
     }
   }, [refresh, userId]);
 
-  return { data: current.data, status, loaded: current.loaded, refresh, perform, performProfile };
+  const markRead = useCallback(async (ids: readonly string[]): Promise<void> => {
+    if (userId === null) throw new WorkflowError('forbidden');
+    const targets = new Set(ids);
+    const readAt = new Date().toISOString();
+    setLoaded(previous => previous.owner === userId
+      ? { ...previous, data: { ...previous.data, notifications: previous.data.notifications.map(item => (targets.has(item.id) && item.read_at === null ? { ...item, read_at: readAt } : item)) } }
+      : previous);
+    try {
+      await markNotificationsRead(userId, ids, new AbortController().signal);
+    } catch (error) {
+      refresh();
+      throw error;
+    }
+  }, [refresh, userId]);
+
+  return { data: current.data, status, loaded: current.loaded, refresh, perform, performProfile, markRead };
 }

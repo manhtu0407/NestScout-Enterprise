@@ -10,6 +10,8 @@ jest.mock('@/features/shared', () => ({
   readWorkerJobCards: jest.fn(),
   readWorkerProfile: jest.fn(),
   readWorkerEarnings: jest.fn(),
+  readNotifications: jest.fn(),
+  markNotificationsRead: jest.fn(),
   saveWorkerProfile: jest.fn(),
   saveWorkerCoverage: jest.fn(),
   setWorkerAccepting: jest.fn(),
@@ -37,6 +39,7 @@ async function mount(stage: shared.Job['stage'] = 'working', userId: string | nu
   jest.mocked(shared.readWorkerJobCards).mockResolvedValue([]);
   jest.mocked(shared.readWorkerProfile).mockResolvedValue(null);
   jest.mocked(shared.readWorkerEarnings).mockResolvedValue(earnings);
+  jest.mocked(shared.readNotifications).mockResolvedValue([]);
   const view = await renderHook(() => useWorkerData(userId));
   if (userId !== null) await waitFor(() => expect(view.result.current.loaded).toBe(true));
   return view;
@@ -56,6 +59,7 @@ test('a load failure is reported until a refresh succeeds', async () => {
   jest.mocked(shared.readWorkerJobCards).mockResolvedValue([]);
   jest.mocked(shared.readWorkerProfile).mockResolvedValue(null);
   jest.mocked(shared.readWorkerEarnings).mockResolvedValue([]);
+  jest.mocked(shared.readNotifications).mockResolvedValue([]);
   const view = await renderHook(() => useWorkerData('worker-1'));
   await waitFor(() => expect(view.result.current.status).toBe('error'));
   jest.mocked(shared.readWorkerSnapshot).mockResolvedValue(snapshot());
@@ -167,4 +171,27 @@ test('earnings are loaded with the jobs', async () => {
   const view = await mount('working', 'worker-1', [row]);
   expect(view.result.current.data.earnings).toEqual([row]);
   expect(shared.readWorkerEarnings).toHaveBeenCalledWith('worker-1', expect.any(AbortSignal));
+});
+
+test('worker notifications load for the worker audience and reading one is optimistic', async () => {
+  const notice = { id: 'n1', kind: 'job_offered' as const, request_id: 'r1', title: 'Có việc mới', body: 'b', created_at: '2026-11-03T01:00:00Z', read_at: null };
+  const view = await mount();
+  jest.mocked(shared.readNotifications).mockResolvedValue([notice]);
+  jest.mocked(shared.markNotificationsRead).mockResolvedValue(undefined);
+  await act(async () => view.result.current.refresh());
+  await waitFor(() => expect(view.result.current.data.notifications).toHaveLength(1));
+  expect(shared.readNotifications).toHaveBeenCalledWith('worker-1', expect.any(AbortSignal), 'worker');
+  await act(async () => view.result.current.markRead(['n1']));
+  expect(view.result.current.data.notifications[0]?.read_at).not.toBeNull();
+  expect(shared.markNotificationsRead).toHaveBeenCalledWith('worker-1', ['n1'], expect.any(AbortSignal));
+});
+
+test('a refused read marker reloads and reports the failure, and nothing is sent without a worker', async () => {
+  jest.mocked(shared.markNotificationsRead).mockRejectedValue(new Error('offline'));
+  const view = await mount();
+  await act(async () => {
+    await expect(view.result.current.markRead(['n1'])).rejects.toThrow('offline');
+  });
+  const idle = await mount('working', null);
+  await expect(idle.result.current.markRead(['n1'])).rejects.toMatchObject({ failure: 'forbidden' });
 });

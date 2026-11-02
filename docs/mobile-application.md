@@ -573,3 +573,20 @@ balance, no amount field and no withdraw button, until payment confirmation and 
 process exist. The sidebar shows today's accepted value and the next job (first assigned,
 else first active) from the same data, and placeholders while it loads. Sample figures
 remain only in `HorizonPreview`. Native device behavior is NOT VERIFIED.
+
+## Worker support and notifications
+
+Help and Settings in the Worker sidebar are the same account-level screens as for
+customers; Help sends `submit_support_request` for any verified account. Worker
+notifications reuse the `notifications` table with eight extra kinds (`job_offered`,
+`work_approved`, `revision_requested`, `work_disputed`, `scope_approved`, `scope_rejected`,
+`resume_agreed`, `review_received`). They are created by database triggers on new open
+invitations, customer decisions recorded as job events and new reviews, never by the
+client, and their text carries only the request title. `readNotifications` takes an
+audience and asks the server for only that audience's kinds, so a user holding both roles
+sees customer notices as a customer and worker notices as a worker. The Notifications
+entry of the Worker sidebar shows an unread badge; opening a notice marks it read and moves
+to the matching tab (new offers, history, awaiting customer, in progress or reviews).
+Notices for a job being offered, resumed or reviewed depend on those events existing, and
+offers still arrive only through fixtures until the matching executor exists. The preview
+does not simulate worker notifications. Native device behavior is NOT VERIFIED.

@@ -1,6 +1,7 @@
-import type { Correction, Job, JobReport, Offer, Pause, ScopeChange, WorkerJobCard, WorkerProfileRecord } from '@/features/shared';
+import type { CustomerNotification, Correction, Job, JobReport, NotificationKind, Offer, Pause, ScopeChange, WorkerJobCard, WorkerProfileRecord } from '@/features/shared';
+import type { NotificationItem } from './content';
 
-import { relativeTimeLabel, requestIcon } from './request-views';
+import { relativeTimeLabel, requestIcon, toNotificationItems } from './request-views';
 import type { WorkerJob, WorkerJobStage } from './worker-jobs';
 import { certificateStatusLabels, type WorkerProfileView } from './worker-profile';
 
@@ -132,4 +133,22 @@ export function nextJobLabel(jobs: readonly WorkerJob[]): string {
   const next = jobs.find(job => job.stage === 'assigned') ?? jobs.find(job => job.stage === 'active');
   if (!next) return 'Chưa có việc';
   return next.area ? `${next.title} · ${next.area}` : next.title;
+}
+
+const notificationTargets: Readonly<Partial<Record<NotificationKind, string>>> = {
+  job_offered: 'worker-offers',
+  work_approved: 'worker-history',
+  revision_requested: 'worker-review',
+  work_disputed: 'worker-review',
+  scope_approved: 'worker-active',
+  scope_rejected: 'worker-active',
+  resume_agreed: 'worker-active',
+  review_received: 'worker-reviews',
+};
+
+export function toWorkerNotificationItems(notifications: readonly CustomerNotification[], now: Date): NotificationItem[] {
+  return toNotificationItems(notifications, now).map(({ id, icon, title, body, time, unread, today }, index) => {
+    const target = notificationTargets[notifications[index]?.kind ?? 'job_offered'];
+    return target === undefined ? { id, icon, title, body, time, unread, today } : { id, icon, title, body, time, unread, today, target };
+  });
 }
