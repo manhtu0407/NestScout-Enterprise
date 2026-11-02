@@ -11,6 +11,7 @@ import { KaelHomeScreen } from './kael-home-screen';
 import { kaelIntroSession } from './kael-intro-session';
 import type { ComposerImage } from './composer-media';
 import { KaelHomeLoading } from './skeleton-layouts';
+import { Presence, useRetained } from './motion-presence';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
@@ -61,16 +62,22 @@ export function HorizonEntry() {
     else router.push({ pathname: '/section', params: { id } });
   }, [access.phase, newConversation, router]);
 
+  const noticeMessage = useRetained(access.notice === null ? null : access.notice === 'worker_unavailable'
+    ? 'Không thể chuyển sang vai trò Thợ vì tài khoản chưa có quyền.'
+    : 'Chưa thể xác minh quyền Thợ. Bạn có thể thử lại.');
+
   if (access.phase === 'bootstrapping' || access.phase === 'resolving') return <EntryRedirect pending={renderPending}/>;
 
   return <>
     <StatusBar style="dark"/>
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {access.notice && <View accessibilityLiveRegion="polite" style={styles.notice}>
-          <Text style={styles.noticeText}>{access.notice === 'worker_unavailable' ? 'Không thể chuyển sang vai trò Thợ vì tài khoản chưa có quyền.' : 'Chưa thể xác minh quyền Thợ. Bạn có thể thử lại.'}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo vai trò" onPress={access.dismissNotice} style={styles.noticeAction}><Icon name="close" size={18}/></Pressable>
-        </View>}
+        <Presence visible={access.notice !== null} style={styles.noticeSlot}>
+          <View accessibilityLiveRegion="polite" style={styles.notice}>
+            <Text style={styles.noticeText}>{noticeMessage}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo vai trò" onPress={access.dismissNotice} style={styles.noticeAction}><Icon name="close" size={18}/></Pressable>
+          </View>
+        </Presence>
         <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={() => setDrawerOpen(true)} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -106,7 +113,8 @@ const styles = StyleSheet.create({
   lockedBody: { color: colors.muted, marginTop: horizonLayout.horizonEntry.placeholderBodyMarginTop, fontSize: horizonLayout.horizonEntry.placeholderBodyFontSize, lineHeight: horizonLayout.horizonEntry.placeholderBodyLineHeight },
   lockedAction: { marginTop: horizonLayout.horizonEntry.placeholderBodyMarginTop, minHeight: horizonLayout.modePicker.closeSize, justifyContent: 'center' },
   lockedActionText: { color: colors.mint, fontSize: horizonLayout.horizonEntry.placeholderBodyFontSize },
-  notice: { position: 'absolute', top: horizonLayout.kaelHomeScreen.navHeight, left: 0, right: 0, zIndex: 1, backgroundColor: horizonColors.horizonEntry.noticeSurface, paddingHorizontal: horizonLayout.horizonEntry.noticePadding, gap: horizonLayout.horizonEntry.noticeGap, flexDirection: 'row', alignItems: 'center' },
+  noticeSlot: { position: 'absolute', top: horizonLayout.kaelHomeScreen.navHeight, left: 0, right: 0, zIndex: 1 },
+  notice: { backgroundColor: horizonColors.horizonEntry.noticeSurface, paddingHorizontal: horizonLayout.horizonEntry.noticePadding, gap: horizonLayout.horizonEntry.noticeGap, flexDirection: 'row', alignItems: 'center' },
   noticeText: { color: horizonColors.horizonEntry.noticeText, fontSize: horizonLayout.horizonEntry.noticeTextSize, lineHeight: horizonLayout.horizonEntry.noticeLineHeight, flex: 1 },
   noticeAction: { width: horizonLayout.horizonEntry.noticeActionSize, height: horizonLayout.horizonEntry.noticeActionSize, alignItems: 'center', justifyContent: 'center' },
 });
