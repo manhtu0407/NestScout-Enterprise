@@ -1,0 +1,89 @@
+import type { Job, Offer, Pause, WorkerJobCard } from '@/features/shared';
+
+import { workerBadgesFor } from './worker-jobs';
+import { expiryLabel, toWorkerJobs, type WorkerSnapshot } from './worker-views';
+
+const now = new Date('2026-11-02T10:00:00Z');
+
+const offer: Offer = { invitation_id: 'invite-1', quote_id: 'quote-1', quote_version: 1, scope: 'Sửa vòi', amount_minor: 450000, currency: 'VND', expires_at: '2026-11-02T10:25:00Z', basis: 'local_fixture' };
+const job = (id: string, stage: Job['stage'], amount = 300000): Job => ({ job_id: id, stage, version: 2, scope: `Việc ${id}`, amount_minor: amount, currency: 'VND' });
+const card = (kind: WorkerJobCard['kind'], ref: string, extra: Partial<WorkerJobCard> = {}): WorkerJobCard => ({
+  kind, ref_id: ref, title: `Tiêu đề ${ref}`, description: `Tiêu đề ${ref}\nChi tiết`, photo_count: 2, location: '12 Lê Lợi', customer_label: 'Lan', updated_at: '2026-11-02T08:00:00Z', ...extra,
+});
+const empty: WorkerSnapshot = { offers: [], jobs: [], changes: [], reports: [], corrections: [], pauses: [] };
+const pause = (jobId: string, category: Pause['category'], resume = false): Pause => ({ job_id: jobId, category, prior_stage: 'working', paused_from_version: 1, resume_requested: resume });
+
+test('an offer shows its terms and the time left without the address or the customer name', () => {
+  const [view] = toWorkerJobs({ ...empty, offers: [offer] }, [card('offer', 'invite-1', { location: '', customer_label: '' })], now);
+  expect(view).toMatchObject({ id: 'invite-1', stage: 'offer', title: 'Tiêu đề invite-1', amountMinor: 450000, photoCount: 2, address: '', clientName: '', expiresLabel: 'Hết hạn sau 25 phút' });
+});
+
+test('an offer without a projected card still shows the quoted scope', () => {
+  const [view] = toWorkerJobs({ ...empty, offers: [offer] }, [], now);
+  expect(view).toMatchObject({ title: 'Sửa vòi', photoCount: 0, description: 'Sửa vòi' });
+});
+
+test.each([
+  ['assigned', 0],
+  ['en_route', 1],
+  ['arrived', 2],
+] as const)('a %s job sits in the assigned stage at step %i', (stage, step) => {
+  const [view] = toWorkerJobs({ ...empty, jobs: [job('a', stage)] }, [card('job', 'a')], now);
+  expect(view).toMatchObject({ stage: 'assigned', step, address: '12 Lê Lợi', clientName: 'Khách Lan' });
+});
+
+test('a delay report is remembered for travelling jobs and a no-answer report for arrived jobs', () => {
+  const reports = [{ id: 'r1', job_id: 'a', kind: 'delay' as const, details: 'x' }, { id: 'r2', job_id: 'b', kind: 'delay' as const, details: 'x' }];
+  const views = toWorkerJobs({ ...empty, jobs: [job('a', 'en_route'), job('b', 'arrived')], reports }, [], now);
+  expect(views.map(view => view.delayReported)).toEqual([true, false]);
+});
+
+test('working jobs are active unless the customer asked for a correction', () => {
+  const corrections = [{ job_id: 'b', note: 'Chụp thêm ảnh' }];
+  const [active, correcting] = toWorkerJobs({ ...empty, jobs: [job('a', 'working'), job('b', 'working')], corrections }, [], now);
+  expect(active).toMatchObject({ stage: 'active', canPropose: true });
+  expect(correcting).toMatchObject({ stage: 'review', correctionNote: 'Chụp thêm ảnh', stageLabel: 'Khách yêu cầu chỉnh sửa' });
+});
+
+test('a pending scope proposal blocks another proposal', () => {
+  const changes = [{ id: 'c', job_id: 'a', sequence: 1, old_scope: 'x', old_amount_minor: 1, new_scope: 'y', new_amount_minor: 2, currency: 'VND' as const, rationale: 'z', decision: 'pending' as const }];
+  const [view] = toWorkerJobs({ ...empty, jobs: [job('a', 'working')], changes }, [], now);
+  expect(view?.canPropose).toBe(false);
+});
+
+test('paused jobs report whether the worker can ask to resume, is waiting or is blocked for safety', () => {
+  const pauses = [pause('a', 'ordinary_interruption'), pause('b', 'ordinary_interruption', true), pause('c', 'safety_concern')];
+  const views = toWorkerJobs({ ...empty, jobs: [job('a', 'paused'), job('b', 'paused'), job('c', 'paused')], pauses }, [], now);
+  expect(views.map(view => view.pause)).toEqual(['paused', 'resume', 'safety']);
+  expect(views.every(view => view.stage === 'active')).toBe(true);
+});
+
+test('submitted jobs wait for the customer and completed jobs go to history', () => {
+  const [submitted, done] = toWorkerJobs({ ...empty, jobs: [job('a', 'submitted'), job('b', 'completed')] }, [card('job', 'a'), card('job', 'b', { updated_at: '2026-11-01T08:00:00Z' })], now);
+  expect(submitted).toMatchObject({ stage: 'review', stageLabel: 'Đã nộp 2 giờ trước' });
+  expect(done).toMatchObject({ stage: 'done', stageLabel: 'Hôm qua' });
+});
+
+test('the amount follows the job, so an approved scope change is already reflected', () => {
+  const [view] = toWorkerJobs({ ...empty, jobs: [job('a', 'working', 777000)] }, [], now);
+  expect(view?.amountMinor).toBe(777000);
+});
+
+test('the title falls back to the scope and the icon follows the description', () => {
+  const [view] = toWorkerJobs({ ...empty, jobs: [job('a', 'working')] }, [card('job', 'a', { title: '', description: 'Sửa vòi nước bị rò' })], now);
+  expect(view).toMatchObject({ title: 'Việc a', icon: 'drop' });
+});
+
+test('expiry labels count down in minutes, hours and days and never go negative', () => {
+  expect(expiryLabel('2026-11-02T10:01:00Z', now)).toBe('Hết hạn sau 1 phút');
+  expect(expiryLabel('2026-11-02T12:30:00Z', now)).toBe('Hết hạn sau 3 giờ');
+  expect(expiryLabel('2026-11-04T11:00:00Z', now)).toBe('Hết hạn sau 3 ngày');
+  expect(expiryLabel('2026-11-02T09:59:00Z', now)).toBe('Đã hết hạn');
+  expect(expiryLabel('not a date', now)).toBe('Đã hết hạn');
+});
+
+test('sidebar badges count offers, assigned jobs and corrections from live data', () => {
+  const corrections = [{ job_id: 'c', note: 'Sửa lại' }];
+  const views = toWorkerJobs({ ...empty, offers: [offer], jobs: [job('a', 'assigned'), job('b', 'arrived'), job('c', 'working'), job('d', 'completed')], corrections }, [], now);
+  expect(workerBadgesFor(views)).toEqual({ 'worker-offers': 1, 'worker-assigned': 2, 'worker-review': 1 });
+});

@@ -9,7 +9,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ModePicker, type HorizonMode, type ModeNotice } from './mode-picker';
 import { AccountSheet } from './account-sheet';
 import { WorkerSidebarBody } from './worker-sidebar-body';
-import { workerSidebarBadges } from './worker-jobs';
 import { CollapsibleGroup } from './sidebar-group';
 import { PopBadge } from './motion-count';
 import { SkeletonReveal } from './skeleton';
@@ -105,7 +104,7 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={pickerVisible ? closePicker : accountOpen ? () => setAccountCloseRequest(value => value + 1) : closeSidebar} statusBarTranslucent>
     <View style={styles.full}>
       <View pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'} accessibilityElementsHidden={pickerVisible || accountOpen} importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} style={[styles.drawer, { width: Math.min(width * horizonLayout.sidebar.drawerWidthRatio, horizonLayout.sidebar.drawerMaxWidth), paddingTop: topInset, paddingBottom: Math.max(insets.bottom, horizonLayout.sidebar.drawerMinimumBottom) }]}>
-        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={{ ...workerSidebarBadges, ...badges }}/> : <>
+        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={badges}/> : <>
         <View style={styles.heading}>
           <View style={styles.brand}>
             <View accessible accessibilityRole="header" accessibilityLabel="NestScout Horizon" style={styles.lockup}>

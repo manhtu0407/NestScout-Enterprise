@@ -121,8 +121,10 @@ drift establishes only local application migration consistency, **not** complete
 hosted catalog parity. PostgreSQL major versions agree (17); local image release
 17.11.0.006 and hosted 17.11.0.003 differ. Generate future migration names with the pinned CLI.
 
-`supabase/seed.sql` contains no data. Add synthetic fixtures alongside real product
-migrations. `supabase/database.types.ts` is the single generated artifact, from
+`supabase/seed.sql` holds synthetic local fixtures only: two public worker profiles, and one
+worker with a grant and dispatch eligibility plus an open invitation and assigned, working
+and submitted jobs for the customer `Nguyễn Văn Lan`. Add further fixtures alongside real
+product migrations. `supabase/database.types.ts` is the single generated artifact, from
 local `public`, normalized to LF without trailing whitespace. The mobile app does not
 import it yet. It includes `worker_access_grants`, regenerated with `npm run db:types`
 from the pinned images, and `db:types:check` compares it with the local database. The

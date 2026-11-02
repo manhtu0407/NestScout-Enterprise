@@ -15,6 +15,9 @@ import { Presence, useRetained } from './motion-presence';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
 import { countActionableQuotes, countUnreadNotifications, toRecentSessions } from './request-views';
 import { useCustomerData } from './use-customer-data';
+import { useWorkerData } from './use-worker-data';
+import { workerBadgesFor } from './worker-jobs';
+import { toWorkerJobs } from './worker-views';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
@@ -36,17 +39,21 @@ export function HorizonEntry() {
   const customerUserId = access.phase === 'client' && access.identity === 'verified' ? access.userId : null;
   const customer = useCustomerData(customerUserId);
   const { data } = customer;
+  const workerUserId = access.phase === 'worker' && access.identity === 'verified' ? access.userId : null;
+  const worker = useWorkerData(workerUserId);
   const recentSessions = useMemo(() => toRecentSessions({ requests: data.requests, quotes: data.quotes, activity: data.activity }, data.pinnedIds, now), [data, now]);
   const badges = useMemo(() => ({
     quotes: countActionableQuotes(data.requests, data.quotes, now),
     notifications: countUnreadNotifications(data.notifications),
-  }), [data, now]);
+    ...(workerUserId === null ? {} : workerBadgesFor(toWorkerJobs(worker.data.snapshot, worker.data.cards, now))),
+  }), [data, now, workerUserId, worker.data]);
 
   const openMenu = useCallback(() => {
     setNow(new Date());
     customer.refresh();
+    worker.refresh();
     setDrawerOpen(true);
-  }, [customer]);
+  }, [customer, worker]);
 
   const openRequest = useCallback((id: string) => {
     setDrawerOpen(false);

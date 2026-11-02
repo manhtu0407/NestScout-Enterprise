@@ -21,17 +21,17 @@ function mount() {
 
 test('a section opens as its own stack entry and the back button returns to home', async () => {
   await mount();
-  await act(() => router.push({ pathname: '/section', params: { id: 'worker-offers' } }));
+  await act(() => router.push({ pathname: '/section', params: { id: 'worker-earnings' } }));
   expect(screen).toHavePathname('/section');
-  expect(screen.getByText('Việc mới')).toBeTruthy();
+  expect(screen.getByText('Thu nhập')).toBeTruthy();
   await fireEvent.press(screen.getByRole('button', { name: 'Quay về' }));
   expect(screen).toHavePathname('/');
 });
 
 test('worker sections show their own title instead of the raw id', async () => {
   await mount();
-  await act(() => router.push({ pathname: '/section', params: { id: 'worker-offers' } }));
-  expect(screen.getByText('Việc mới')).toBeTruthy();
+  await act(() => router.push({ pathname: '/section', params: { id: 'worker-earnings' } }));
+  expect(screen.getByText('Thu nhập')).toBeTruthy();
 });
 
 test('the requests route goes back to the home route', async () => {

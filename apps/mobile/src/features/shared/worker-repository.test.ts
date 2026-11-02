@@ -3,7 +3,7 @@ import { readJobReports } from './job-reports';
 import { readScopeChanges } from './scope-changes';
 import { WorkflowError } from './workflow-error';
 
-import { advanceJob, pauseJob, readJobs, readOffers, readWorkerCorrections, readWorkerPauses, readWorkerSnapshot, requestResume, type Job } from './worker-repository';
+import { advanceJob, pauseJob, readJobs, readOffers, readWorkerJobCards, readWorkerCorrections, readWorkerPauses, readWorkerSnapshot, requestResume, type Job } from './worker-repository';
 
 jest.mock('@/lib/authenticated-rest', () => ({ authenticatedRequest: jest.fn() }));
 jest.mock('./job-reports', () => ({ readJobReports: jest.fn() }));
@@ -270,4 +270,22 @@ test.each([
 test('a refused pause command keeps its classification', async () => {
   jest.mocked(authenticatedRequest).mockResolvedValue({ ok: false, status: 400, json: async () => ({ code: '40001', message: 'stale job' }) } as Response);
   await expect(pauseJob('worker-a', pausedJob, 'safety_concern', new AbortController().signal)).rejects.toMatchObject({ failure: 'stale' });
+});
+
+const card = { kind: 'job', ref_id: job.job_id, title: 'Sửa vòi', description: 'Sửa vòi\nBị rò', photo_count: 2, location: '12 Lê Lợi', customer_label: 'Lan', updated_at: '2026-11-02T08:00:00Z' };
+
+test('job cards come from the worker projection and keep every projected field', async () => {
+  answer([card, { ...card, kind: 'offer', ref_id: 'invite', location: '', customer_label: '', updated_at: null }]);
+  await expect(readWorkerJobCards('worker-a', new AbortController().signal)).resolves.toHaveLength(2);
+  expect(requestedPath()).toBe('rpc/worker_job_cards');
+});
+
+test.each([
+  ['a missing field', { ...card, title: undefined }],
+  ['an unknown kind', { ...card, kind: 'quote' }],
+  ['a fractional photo count', { ...card, photo_count: 1.5 }],
+  ['a non-string location', { ...card, location: null }],
+])('job cards with %s are rejected', async (_label, row) => {
+  answer([row]);
+  await expect(readWorkerJobCards('worker-a', new AbortController().signal)).rejects.toThrow('Invalid job cards');
 });

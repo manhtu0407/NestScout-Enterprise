@@ -90,7 +90,7 @@ The root `overrides` entry for `react` keeps a single React copy for the test re
 | `src/app` | Thin Expo Router files: one default export of a feature component, plus the root layout | State, Supabase access, policy |
 | `src/features/access` | Guest entry, phone sign-in, session and capability state, mode preference, route policy, sign-out | Worker qualification, privileged grants |
 | `src/features/client` | Client-only screens | Authorization, session code |
-| `src/features/worker` | Worker-only screens | Entitlement granting |
+| `src/features/worker` | Worker mode shell (role switch, sign-out) | Entitlement granting |
 | `src/features/shared` | UI used by both modes, including the glass surfaces, press controls and icon set | Other features, privileged credentials |
 | `src/features/horizon` | Kael chat shell, sidebar, preview | Authorization, session code |
 | `src/lib` | Validated public config, the one Supabase client, keychain storage | Feature behavior |
@@ -525,3 +525,18 @@ counting animation would make sample data look like live data. Durations and siz
 in `horizonLayout.appMotion`, colours in `horizonColors.appMotion`, and Reduce Motion
 replaces movement with a short fade. The motion lab shows each piece. Behaviour on a
 device is NOT VERIFIED.
+
+## Worker jobs
+
+The Worker sidebar entries New jobs, Accepted, In progress, Awaiting review and
+History read Supabase through `features/shared/worker-repository.ts`. The
+`useWorkerData` hook loads the worker snapshot and the `worker_job_cards()` projection
+together, maps them with `worker-views.ts`, and sends every command (accept, decline,
+advance, pause, resume, submit, propose scope, report) through one `perform` function
+that reloads afterwards. Submit, scope proposal and report forms generate an
+idempotency key when the form opens and reuse it for retries until the form closes. An
+invitation shows no address or customer name until the worker accepts it. A safety
+pause cannot be resumed. The Kael entry stays a mock. Sample data and local simulation
+remain only in `HorizonPreview` (`useSampleWorkerJobs`), where the screen shows its
+sample footnote. Drafts are not persisted across app restarts. Native device behavior
+is NOT VERIFIED.
