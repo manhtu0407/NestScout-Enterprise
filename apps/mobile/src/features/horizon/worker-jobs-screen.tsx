@@ -1,7 +1,7 @@
 import { randomUUID } from 'expo-crypto';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Icon, type IconName } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
@@ -16,6 +16,7 @@ import { ActionButton } from './worker-action-button';
 import { workerJobStages, workerJobStepActions, workerJobSteps, type WorkerCommand, type WorkerJob, type WorkerJobStage, type WorkerPerform } from './worker-jobs';
 import { workflowMessage } from './workflow-messages';
 
+const webField = Platform.select({ web: { outlineStyle: 'solid', outlineWidth: 0 } as const, default: undefined });
 const metrics = horizonLayout.workerJobs;
 const colors = horizonColors.workerJobs;
 const card = horizonLayout.requestsScreen;
@@ -429,7 +430,7 @@ const styles = StyleSheet.create({
   problemText: { color: colors.waitingText, fontSize: metrics.noticeSize, lineHeight: metrics.noticeLineHeight },
   form: { gap: metrics.composerGap },
   formTitle: { color: horizonColors.text, fontSize: card.statusSize, fontWeight: card.statusWeight },
-  field: { minHeight: metrics.fieldHeight, paddingHorizontal: metrics.fieldPaddingHorizontal, paddingVertical: metrics.composerPadding, borderRadius: metrics.fieldRadius, backgroundColor: colors.fieldFill, color: colors.fieldText, fontSize: metrics.fieldFontSize },
+  field: { ...webField, minHeight: metrics.fieldHeight, paddingHorizontal: metrics.fieldPaddingHorizontal, paddingVertical: metrics.composerPadding, borderRadius: metrics.fieldRadius, backgroundColor: colors.fieldFill, color: colors.fieldText, fontSize: metrics.fieldFontSize },
   fieldMultiline: { minHeight: metrics.fieldMultilineHeight, textAlignVertical: 'top' },
   correction: { padding: metrics.noticePadding, borderRadius: metrics.noticeRadius, backgroundColor: colors.waitingFill },
   correctionText: { color: colors.waitingText, fontSize: metrics.noticeSize, lineHeight: metrics.noticeLineHeight },

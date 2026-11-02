@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Icon } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
@@ -18,6 +18,7 @@ import {
 } from './worker-profile';
 import { workflowMessage } from './workflow-messages';
 
+const webField = Platform.select({ web: { outlineStyle: 'solid', outlineWidth: 0 } as const, default: undefined });
 const support = horizonLayout.supportScreens;
 const supportColors = horizonColors.supportScreens;
 const jobs = horizonLayout.workerJobs;
@@ -381,7 +382,7 @@ const styles = StyleSheet.create({
   form: { gap: jobs.composerGap },
   fieldBlock: { gap: jobs.noticeGap },
   fieldLabel: { color: supportColors.sectionTitle, fontSize: support.sectionTitleSize, fontWeight: support.sectionTitleWeight, marginLeft: support.sectionTitleInset },
-  field: { minHeight: jobs.fieldHeight, paddingHorizontal: jobs.fieldPaddingHorizontal, paddingVertical: jobs.composerPadding, borderRadius: jobs.fieldRadius, backgroundColor: jobColors.fieldFill, color: jobColors.fieldText, fontSize: jobs.fieldFontSize },
+  field: { ...webField, minHeight: jobs.fieldHeight, paddingHorizontal: jobs.fieldPaddingHorizontal, paddingVertical: jobs.composerPadding, borderRadius: jobs.fieldRadius, backgroundColor: jobColors.fieldFill, color: jobColors.fieldText, fontSize: jobs.fieldFontSize },
   fieldMultiline: { minHeight: jobs.fieldMultilineHeight, textAlignVertical: 'top' },
   sectionGap: { marginBottom: support.sectionGap },
   addRow: { gap: jobs.composerGap, marginTop: jobs.noticeGap },
