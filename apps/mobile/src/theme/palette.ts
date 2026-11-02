@@ -140,7 +140,7 @@ export const horizonColors = {
     timelineDone: '#0E9E8E', timelineDoneIcon: '#FFFFFF', timelineCurrent: '#11161C', timelinePending: 'rgba(118,118,128,0.22)', timelineLine: 'rgba(118,118,128,0.22)', timelinePendingText: '#8A8A90', actionFill: '#0B0F14', actionLabel: '#FFFFFF', actionSecondaryFill: 'rgba(118,118,128,0.12)', actionSecondaryLabel: '#11161C', chevron: '#9AA0AB', toggleFill: 'rgba(118,118,128,0.12)', toggleIcon: '#3C4650',
   },
   workerEarnings: {
-    heroFill: '#0B0F14', heroLabel: 'rgba(255,255,255,0.68)', heroAmount: '#FFFFFF', heroMeta: 'rgba(255,255,255,0.68)',
+    heroFill: '#E9EBEE', heroLabel: '#5B6672', heroAmount: '#11161C', heroMeta: '#5B6672',
     chartFill: '#F5F6F8', barFill: 'rgba(14,158,142,0.28)', barToday: '#0E9E8E', barLabel: '#6B7683', barLabelToday: '#11161C', chartTitle: '#6B7683',
     amount: '#0B7C70', quickFill: 'rgba(118,118,128,0.12)', quickText: '#11161C',
   },
