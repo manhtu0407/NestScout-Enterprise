@@ -47,7 +47,7 @@ const snapshotBody = {
   busy: false,
   messages: [{ id: '44444444-4444-4444-8444-444444444444', role: 'user', content: 'Sửa máy lạnh', status: 'complete' }],
   tasks: [{ id: '55555555-5555-4555-8555-555555555555', title: 'Sửa máy lạnh', kind: 'service_request', status: 'waiting_for_approval', version: 3, summary: '' }],
-  approvals: [{ id: '66666666-6666-4666-8666-666666666666', task_id: '55555555-5555-4555-8555-555555555555', tool: 'service_request_submit', summary: 'Gửi yêu cầu dịch vụ', details: { 'Mô tả': 'Rò nước' }, fingerprint: 'a'.repeat(64), expires_at: '2026-11-03T04:00:00+00:00' }],
+  approvals: [{ id: '66666666-6666-4666-8666-666666666666', task_id: '55555555-5555-4555-8555-555555555555', tool: 'service_request_submit', summary: 'Gửi yêu cầu dịch vụ', details: { 'Mô tả': 'Rò nước' }, fingerprint: 'a'.repeat(64), kind: 'confirm', expires_at: '2026-11-03T04:00:00+00:00' }],
 };
 
 test('recovers the current conversation through the account-scoped read contract only', async () => {
@@ -57,6 +57,9 @@ test('recovers the current conversation through the account-scoped read contract
   expect(snapshot.conversationId).toBe(conversation);
   expect(snapshot.messages).toEqual([{ id: '44444444-4444-4444-8444-444444444444', role: 'user', text: 'Sửa máy lạnh', incomplete: false }]);
   expect(snapshot.approvals[0]?.details).toEqual({ 'Mô tả': 'Rò nước' });
+  const reconcile = { ...snapshotBody.approvals[0], kind: 'reconcile', expires_at: null };
+  const uncertain = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ ...snapshotBody, approvals: [reconcile] }) }) as unknown as Response);
+  expect((await loadKaelConversation('customer-a', 'client', new AbortController().signal, uncertain)).approvals).toEqual([expect.objectContaining({ kind: 'reconcile', expires_at: null, id: reconcile.id })]);
 });
 
 test('an unreadable or out-of-contract recovery is an error, never an empty conversation', async () => {

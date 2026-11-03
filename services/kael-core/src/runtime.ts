@@ -173,10 +173,12 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
   }
 }
 
+export type ApprovalDecision = 'approve' | 'reject' | 'reconcile';
+
 export type ApprovalInput = {
   approvalId: string;
   fingerprint: string;
-  approve: boolean;
+  decision: ApprovalDecision;
   actor: Actor;
   config: KaelConfig;
   store: KaelStore;
@@ -192,9 +194,12 @@ const invalidApproval: Record<string, string> = {
   stale: 'Bản nháp đã thay đổi sau khi tạo xác nhận. Chưa có thao tác nào được thực hiện.',
   rejected: 'Bước này đã được hủy trước đó. Chưa có thao tác nào được thực hiện.',
   consumed: 'Bước này đã được xác nhận trước đó nên không thể hủy nữa.',
+  unconfirmed: 'Bước này chưa được bạn xác nhận nên không có gì để kiểm tra lại. Chưa có thao tác nào được thực hiện.',
   unavailable: 'Thao tác này hiện không khả dụng cho tài khoản hoặc chế độ đang dùng. Chưa có thao tác nào được thực hiện; bạn vẫn có thể tiếp tục trò chuyện với Kael.',
   invalid: 'Không tìm thấy xác nhận hợp lệ cho tài khoản này. Chưa có thao tác nào được thực hiện.',
 };
+
+const reconcilableStatuses: readonly string[] = ['running', 'paused', 'waiting_for_input'];
 
 export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome> {
   const outcome: RunOutcome = { status: 'completed', text: '', complete: true, provider: null, model: null, requestedModel: null, inputTokens: 0, outputTokens: 0, steps: 0, error: null };
@@ -203,19 +208,20 @@ export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome>
     input.emit({ type: 'message_delta', text });
   };
   const publish = (task: TaskRecord | null) => { if (task) input.emit({ type: 'task_updated', task: toTaskView(task) }); };
+  const refuse = (status: string): RunOutcome => {
+    say(invalidApproval[status] ?? failureMessages.approval_invalid);
+    return { ...outcome, status: 'failed', complete: true, error: 'approval_invalid' };
+  };
 
-  if (!input.approve) {
+  if (input.decision === 'reject') {
     const rejection = await input.store.rejectApproval(input.runId, input.approvalId, input.fingerprint);
-    if (rejection.status !== 'ok') {
-      say(invalidApproval[rejection.status] ?? failureMessages.approval_invalid);
-      return { ...outcome, status: 'failed', complete: true, error: 'approval_invalid' };
-    }
+    if (rejection.status !== 'ok') return refuse(rejection.status);
     publish(rejection.task);
     say('Đã dừng bước gửi theo ý bạn. Bản nháp vẫn được giữ để bạn chỉnh sửa hoặc gửi sau.');
     return outcome;
   }
 
-  const consumed = await input.store.consumeApproval(input.runId, input.approvalId, input.fingerprint, confirmableTools(input.actor, input.config));
+  const consumed = await input.store.consumeApproval(input.runId, input.approvalId, input.fingerprint, confirmableTools(input.actor, input.config), input.decision);
   if (consumed.status === 'consumed') {
     const resource = typeof consumed.result?.resource_id === 'string' ? consumed.result.resource_id : null;
     say(consumed.outcome === 'succeeded' && resource
@@ -223,13 +229,10 @@ export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome>
       : 'Xác nhận này đã được xử lý trước đó. Kael không thực hiện lại.');
     return outcome;
   }
-  if (consumed.status !== 'ok' && consumed.status !== 'reconcile') {
-    say(invalidApproval[consumed.status] ?? failureMessages.approval_invalid);
-    return { ...outcome, status: 'failed', complete: true, error: 'approval_invalid' };
-  }
+  if (consumed.status !== 'ok' && consumed.status !== 'reconcile') return refuse(consumed.status);
 
   const callId = `approval:${input.approvalId}`;
-  const label = 'Đang gửi yêu cầu dịch vụ';
+  const label = consumed.status === 'reconcile' ? 'Đang kiểm tra lại yêu cầu đã xác nhận' : 'Đang gửi yêu cầu dịch vụ';
   input.emit({ type: 'tool_started', call_id: callId, tool: consumed.tool, label });
   const effect = await executeApprovedEffect(input.approvalId, consumed, input.rest, input.signal);
   let completion: ApprovalCompletion;
@@ -245,27 +248,45 @@ export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome>
   }
   const verdict = verifiedOutcome(effect, completion);
   await input.store.recordTool({
-    runId: input.runId, callId, taskId: consumed.task_id, tool: consumed.tool, sideEffect: 'consequential', outcome: verdict,
-    fingerprint: input.fingerprint, error: verdict === 'succeeded' ? null : effect.status === 'succeeded' ? 'unverified_result' : effect.reason,
+    runId: input.runId, callId, taskId: consumed.task_id, tool: consumed.tool, sideEffect: 'consequential', outcome: verdict.outcome,
+    fingerprint: input.fingerprint, error: verdict.outcome === 'succeeded' ? null : effect.status === 'succeeded' ? 'unverified_result' : effect.reason,
   });
-  input.emit({ type: 'tool_completed', call_id: callId, tool: consumed.tool, outcome: verdict, label });
-  if (completion.status !== 'invalid' && (verdict === 'succeeded' || completion.task.status !== 'completed')) publish(completion.task);
-  if (verdict === 'succeeded' && effect.status === 'succeeded') {
-    say(`Đã gửi yêu cầu dịch vụ (mã ${effect.resourceId.slice(0, 8)}). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.`);
-  } else if (verdict === 'uncertain') {
-    say('Chưa xác định được yêu cầu đã được ghi nhận hay chưa, nên Kael chưa báo là đã gửi. Bạn có thể xác nhận lại: Kael dùng cùng mã gửi nên sẽ không tạo yêu cầu trùng.');
-  } else {
+  input.emit({ type: 'tool_completed', call_id: callId, tool: consumed.tool, outcome: verdict.outcome, label });
+  if (completion.status !== 'invalid' && (verdict.outcome === 'succeeded' || completion.task.status !== 'completed')) publish(completion.task);
+  if (verdict.outcome === 'succeeded') {
+    say(`Đã gửi yêu cầu dịch vụ (mã ${verdict.resourceId.slice(0, 8)}). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.`);
+    return outcome;
+  }
+  if (verdict.outcome === 'failed') {
     say('Hệ thống chưa nhận yêu cầu này. Bản nháp vẫn được giữ; chưa có yêu cầu nào được gửi.');
     outcome.status = 'failed';
     outcome.error = 'internal';
+    return outcome;
   }
+  const reconcilable = completion.status === 'invalid' || (completion.outcome === 'uncertain' && reconcilableStatuses.includes(completion.task.status));
+  if (!reconcilable) {
+    say('Chưa xác định được yêu cầu đã được ghi nhận hay chưa, và việc này đã thay đổi trong lúc gửi nên Kael không thử lại. Bạn có thể xem danh sách yêu cầu của mình để kiểm tra.');
+    return outcome;
+  }
+  input.emit({
+    type: 'approval_required',
+    approval: {
+      id: input.approvalId, task_id: consumed.task_id, tool: consumed.tool, summary: consumed.summary, details: consumed.details,
+      fingerprint: input.fingerprint, kind: 'reconcile', expires_at: null,
+    },
+  });
+  say('Chưa xác định được yêu cầu đã được ghi nhận hay chưa, nên Kael chưa báo là đã gửi. Bạn có thể bấm "Kiểm tra lại": Kael kiểm tra đúng yêu cầu bạn đã xác nhận với cùng mã gửi, nên sẽ không tạo yêu cầu trùng.');
   return outcome;
 }
 
-function verifiedOutcome(effect: EffectOutcome, completion: ApprovalCompletion): 'succeeded' | 'failed' | 'uncertain' {
-  if (effect.status !== 'succeeded') return effect.status;
-  if (completion.status === 'invalid' || completion.status === 'conflict') return 'uncertain';
-  const verified = completion.outcome === 'succeeded' && completion.task.status === 'completed'
-    && completion.result?.resource_kind === 'service_request' && completion.result.resource_id === effect.resourceId;
-  return verified ? 'succeeded' : 'uncertain';
+type Verdict = { outcome: 'succeeded'; resourceId: string } | { outcome: 'failed' | 'uncertain' };
+
+function verifiedOutcome(effect: EffectOutcome, completion: ApprovalCompletion): Verdict {
+  if (completion.status !== 'ok' && completion.status !== 'final') return { outcome: 'uncertain' };
+  if (completion.outcome === 'failed') return { outcome: effect.status === 'failed' ? 'failed' : 'uncertain' };
+  if (completion.outcome !== 'succeeded') return { outcome: 'uncertain' };
+  const resource = completion.result?.resource_id;
+  if (typeof resource !== 'string' || completion.task.status !== 'completed' || completion.result?.resource_kind !== 'service_request') return { outcome: 'uncertain' };
+  if (effect.status === 'succeeded' && effect.resourceId !== resource) return { outcome: 'uncertain' };
+  return { outcome: 'succeeded', resourceId: resource };
 }

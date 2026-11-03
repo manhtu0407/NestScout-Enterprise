@@ -20,6 +20,31 @@ const now = () => new Date().toISOString();
 const clone = value => structuredClone(value);
 const taskJson = task => clone({ id: task.id, conversation_id: task.conversation_id, title: task.title, kind: task.kind, status: task.status, version: task.version, summary: task.summary, artifact: task.artifact, updated_at: task.updated_at });
 
+const reconcilableStatuses = ['running', 'paused', 'waiting_for_input'];
+
+export function conversationState(db, owner, mode) {
+  const conversation = [...db.conversations.values()].filter(item => item.owner === owner && item.mode === mode).at(-1);
+  if (!conversation) return { conversation_id: null, busy: false, messages: [], tasks: [], approvals: [] };
+  const busy = [...db.runs.values()].some(run => run.conversation_id === conversation.id && run.status === 'running');
+  const tasks = [...db.tasks.values()].filter(task => task.owner === owner && task.conversation_id === conversation.id);
+  const approvals = [...db.approvals.values()].filter(approval => {
+    const task = db.tasks.get(approval.task_id);
+    if (approval.owner !== owner || task.conversation_id !== conversation.id) return false;
+    if (approval.status === 'pending') return Date.parse(approval.expires_at) > Date.now() && task.status === 'waiting_for_approval' && task.version === approval.task_version;
+    return approval.status === 'consumed' && (approval.outcome === 'uncertain' || (approval.outcome === null && !busy)) && reconcilableStatuses.includes(task.status);
+  });
+  return {
+    conversation_id: conversation.id,
+    busy,
+    messages: db.messages.filter(m => m.conversation_id === conversation.id && m.owner === owner).map(m => ({ id: m.id, role: m.role, content: m.content, status: m.status })),
+    tasks: tasks.map(task => ({ id: task.id, title: task.title, kind: task.kind, status: task.status, version: task.version, summary: task.summary })),
+    approvals: approvals.map(approval => ({
+      id: approval.id, task_id: approval.task_id, tool: approval.tool, summary: approval.summary, details: clone(approval.details), fingerprint: approval.fingerprint,
+      kind: approval.status === 'pending' ? 'confirm' : 'reconcile', expires_at: approval.status === 'pending' ? approval.expires_at : null,
+    })),
+  };
+}
+
 export function memoryStore(db, owner) {
   const runningRun = runId => {
     const run = db.runs.get(runId);
@@ -57,14 +82,14 @@ export function memoryStore(db, owner) {
       }
       const run = { id: randomUUID(), owner, conversation_id: conversation, request_id: requestId, status: 'running' };
       db.runs.set(run.id, run);
-      db.messages.push({ conversation_id: conversation, owner, run_id: run.id, role: 'user', content: userText.trim(), status: 'complete' });
+      db.messages.push({ id: randomUUID(), conversation_id: conversation, owner, run_id: run.id, role: 'user', content: userText.trim(), status: 'complete' });
       return { status: 'started', run_id: run.id, conversation_id: conversation };
     },
     async finishRun(input) {
       const run = runningRun(input.runId);
       if (!run) return;
       Object.assign(run, { status: input.status, provider: input.provider, steps: input.steps, error: input.error });
-      if (input.text.trim()) db.messages.push({ conversation_id: run.conversation_id, owner, run_id: run.id, role: 'assistant', content: input.text.trim(), status: input.complete && input.status === 'completed' ? 'complete' : 'incomplete' });
+      if (input.text.trim()) db.messages.push({ id: randomUUID(), conversation_id: run.conversation_id, owner, run_id: run.id, role: 'assistant', content: input.text.trim(), status: input.complete && input.status === 'completed' ? 'complete' : 'incomplete' });
     },
     async loadContext(conversationId, mode, limit) {
       const history = db.messages.filter(m => m.conversation_id === conversationId && m.owner === owner).slice(-limit).map(m => ({ role: m.role, content: m.content, status: m.status }));
@@ -106,29 +131,32 @@ export function memoryStore(db, owner) {
     },
     async requestApproval(input) {
       const task = ownTask(input.taskId);
+      if (task && [...db.approvals.values()].some(item => item.task_id === task.id && item.status === 'consumed' && (item.outcome === null || item.outcome === 'uncertain'))) return { status: 'unresolved' };
       if (!runningRun(input.runId) || !task || task.kind !== 'service_request' || !['running', 'waiting_for_input'].includes(task.status)) return { status: 'invalid' };
       if (task.version !== input.expectedVersion) return { status: 'stale' };
       const draft = task.artifact.draft;
       if (!draft || draft.missing.length > 0 || input.args.description !== draft.description || input.args.location !== draft.location || input.args.preferred_time !== draft.preferred_time) return { status: 'invalid' };
       for (const approval of db.approvals.values()) if (approval.task_id === task.id && approval.status === 'pending') approval.status = 'superseded';
       touch(task, 'waiting_for_approval', 'Đang chờ bạn xác nhận gửi yêu cầu');
-      const approval = { id: randomUUID(), owner, task_id: task.id, tool: input.tool, args: clone(input.args), fingerprint: input.fingerprint, details: clone(input.details), task_version: task.version, status: 'pending', outcome: null, result: null, expires_at: new Date(Date.now() + input.ttlSeconds * 1000).toISOString() };
+      const approval = { id: randomUUID(), owner, task_id: task.id, tool: input.tool, args: clone(input.args), fingerprint: input.fingerprint, summary: input.summary, details: clone(input.details), task_version: task.version, status: 'pending', outcome: null, result: null, expires_at: new Date(Date.now() + input.ttlSeconds * 1000).toISOString() };
       db.approvals.set(approval.id, approval);
       return { status: 'ok', approval_id: approval.id, expires_at: approval.expires_at, task: taskJson(task) };
     },
-    async consumeApproval(runId, id, fingerprint, allowedTools) {
+    async consumeApproval(runId, id, fingerprint, allowedTools, intent) {
       const approval = db.approvals.get(id);
       const run = runningRun(runId);
-      if (!approval || approval.owner !== owner || !run) return { status: 'invalid' };
+      if (!approval || approval.owner !== owner || !run || !['approve', 'reconcile'].includes(intent)) return { status: 'invalid' };
       const task = db.tasks.get(approval.task_id);
       if (task.conversation_id !== run.conversation_id) return { status: 'invalid' };
       if (approval.fingerprint !== fingerprint) return { status: 'mismatch' };
+      if (intent === 'reconcile' && approval.status !== 'consumed') return { status: 'unconfirmed' };
       if (!allowedTools.includes(approval.tool)) return { status: 'unavailable' };
+      const view = { tool: approval.tool, args: clone(approval.args), task_id: task.id, summary: approval.summary, details: clone(approval.details) };
       if (approval.status === 'consumed') {
         if (approval.outcome === null || approval.outcome === 'uncertain') {
-          if (isTerminal(task.status)) return { status: 'stale' };
-          if (task.status === 'paused') touch(task, 'running');
-          return { status: 'reconcile', tool: approval.tool, args: clone(approval.args), task_id: task.id };
+          if (!reconcilableStatuses.includes(task.status)) return { status: 'stale' };
+          if (task.status !== 'running') touch(task, 'running', 'Đang kiểm tra lại yêu cầu đã được xác nhận');
+          return { status: 'reconcile', ...view };
         }
         return { status: 'consumed', outcome: approval.outcome, result: clone(approval.result), task_id: task.id };
       }
@@ -138,7 +166,7 @@ export function memoryStore(db, owner) {
       if (task.version !== approval.task_version || task.status !== 'waiting_for_approval') { approval.status = 'superseded'; return { status: 'stale' }; }
       approval.status = 'consumed';
       touch(task, 'running', 'Đang gửi yêu cầu đã được xác nhận');
-      return { status: 'ok', tool: approval.tool, args: clone(approval.args), task_id: task.id };
+      return { status: 'ok', ...view };
     },
     async completeApproval(runId, id, outcome, result) {
       const approval = db.approvals.get(id);
@@ -278,7 +306,10 @@ export function harness({ env = {}, providers = () => [], fixtures = {}, db = cr
   async function decide(user, conversation, approval, approve = true, fingerprint = approval.fingerprint, mode = 'client') {
     return send(user, { request_id: randomUUID(), conversation_id: conversation, mode, action: { type: approve ? 'approve' : 'reject', approval_id: approval.id, fingerprint } });
   }
-  return { db, service, handle, send, message, decide, logs };
+  async function reconcile(user, conversation, approval, fingerprint = approval.fingerprint) {
+    return send(user, { request_id: randomUUID(), conversation_id: conversation, mode: 'client', action: { type: 'reconcile', approval_id: approval.id, fingerprint } });
+  }
+  return { db, service, handle, send, message, decide, reconcile, logs };
 }
 
 export function terminal(result) {

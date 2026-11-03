@@ -160,6 +160,13 @@ async function requestSubmitApproval(ctx: ToolContext, args: Record<string, unkn
     runId: ctx.runId, taskId: task.id, expectedVersion: task.version, tool, args: approvalArgs, fingerprint: bound,
     summary: 'Gửi yêu cầu dịch vụ', details, ttlSeconds: ctx.config.limits.approvalTtlSeconds,
   });
+  if (result.status === 'unresolved') {
+    return {
+      outcome: 'failed',
+      content: { error: 'previous_submission_unresolved', notice: 'A confirmed submission for this task has an unknown result. Do not ask for a new confirmation; tell the user to use "Kiểm tra lại" on the earlier confirmation, which checks that same submission with its original key.' },
+      taskId: task.id,
+    };
+  }
   if (result.status !== 'ok') return failed(result.status === 'stale' ? 'task_changed_elsewhere' : 'approval_unavailable', task.id);
   rememberTask(ctx, result.task);
   const approval: KaelApprovalView = {
@@ -169,6 +176,7 @@ async function requestSubmitApproval(ctx: ToolContext, args: Record<string, unkn
     summary: 'Gửi yêu cầu dịch vụ',
     details,
     fingerprint: bound,
+    kind: 'confirm',
     expires_at: result.expires_at,
   };
   ctx.emit({ type: 'approval_required', approval });

@@ -93,12 +93,14 @@ export type ApprovalRequest = {
   ttlSeconds: number;
 };
 
-export type ApprovalRequestResult = { status: 'ok'; approval_id: string; expires_at: string; task: TaskRecord } | { status: 'invalid' | 'stale' };
+export type ApprovalRequestResult = { status: 'ok'; approval_id: string; expires_at: string; task: TaskRecord } | { status: 'invalid' | 'stale' | 'unresolved' };
+
+export type ApprovalIntent = 'approve' | 'reconcile';
 
 export type ApprovalConsume =
-  | { status: 'ok' | 'reconcile'; tool: string; args: Record<string, unknown>; task_id: string }
+  | { status: 'ok' | 'reconcile'; tool: string; args: Record<string, unknown>; task_id: string; summary: string; details: Record<string, string> }
   | { status: 'consumed'; outcome: string; result: Record<string, unknown> | null; task_id: string }
-  | { status: 'expired' | 'mismatch' | 'invalid' | 'stale' | 'rejected' | 'unavailable' };
+  | { status: 'expired' | 'mismatch' | 'invalid' | 'stale' | 'rejected' | 'unavailable' | 'unconfirmed' };
 
 export type ApprovalCompletion =
   | { status: 'ok' | 'final' | 'conflict'; outcome: 'succeeded' | 'failed' | 'uncertain'; result: Record<string, unknown> | null; task: TaskRecord }
@@ -116,7 +118,7 @@ export type KaelStore = {
   saveTask(input: SaveTaskInput): Promise<SaveTaskResult>;
   recordTool(input: ToolRecord): Promise<void>;
   requestApproval(input: ApprovalRequest): Promise<ApprovalRequestResult>;
-  consumeApproval(runId: string, approvalId: string, fingerprint: string, allowedTools: readonly string[]): Promise<ApprovalConsume>;
+  consumeApproval(runId: string, approvalId: string, fingerprint: string, allowedTools: readonly string[], intent: ApprovalIntent): Promise<ApprovalConsume>;
   completeApproval(runId: string, approvalId: string, outcome: 'succeeded' | 'failed' | 'uncertain', result: Record<string, unknown>): Promise<ApprovalCompletion>;
   rejectApproval(runId: string, approvalId: string, fingerprint: string): Promise<ApprovalRejection>;
 };
@@ -181,8 +183,10 @@ export function createSupabaseStore(rest: Rest, server: ServerRpc, actorId: stri
         p_summary: input.summary, p_details: input.details, p_ttl_seconds: input.ttlSeconds,
       });
     },
-    consumeApproval(runId, approvalId, fingerprintValue, allowedTools) {
-      return internal<ApprovalConsume>('kael_consume_approval', { p_run_id: runId, p_approval_id: approvalId, p_fingerprint: fingerprintValue, p_allowed_tools: allowedTools });
+    consumeApproval(runId, approvalId, fingerprintValue, allowedTools, intent) {
+      return internal<ApprovalConsume>('kael_consume_approval', {
+        p_run_id: runId, p_approval_id: approvalId, p_fingerprint: fingerprintValue, p_allowed_tools: allowedTools, p_intent: intent,
+      });
     },
     completeApproval(runId, approvalId, outcome, result) {
       return internal<ApprovalCompletion>('kael_complete_approval', { p_run_id: runId, p_approval_id: approvalId, p_outcome: outcome, p_result: result });

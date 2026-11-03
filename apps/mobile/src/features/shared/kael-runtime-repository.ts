@@ -6,7 +6,7 @@ export type KaelMode = 'client' | 'worker';
 
 export type KaelTurnAction =
   | { type: 'message'; text: string }
-  | { type: 'approve' | 'reject'; approval_id: string; fingerprint: string };
+  | { type: 'approve' | 'reject' | 'reconcile'; approval_id: string; fingerprint: string };
 
 export type KaelTurnRequest = { requestId: string; conversationId: string | null; mode: KaelMode; action: KaelTurnAction };
 

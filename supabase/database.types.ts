@@ -572,7 +572,7 @@ isOneToOne: false
 { Args: { "p_actor": string,"p_approval_id": string,"p_outcome": string,"p_result": Json,"p_run_id": string }; Returns: Json
                            },
 "kael_consume_approval":
-{ Args: { "p_actor": string,"p_allowed_tools": (string)[],"p_approval_id": string,"p_fingerprint": string,"p_run_id": string }; Returns: Json
+{ Args: { "p_actor": string,"p_allowed_tools": (string)[],"p_approval_id": string,"p_fingerprint": string,"p_intent"?: string,"p_run_id": string }; Returns: Json
                            },
 "kael_context_tasks":
 { Args: { "p_conversation_id": string,"p_mode": string }; Returns: Json

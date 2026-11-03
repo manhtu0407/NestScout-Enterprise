@@ -54,13 +54,28 @@ export function KaelTaskList({ tasks }: { tasks: readonly KaelTask[] }) {
 
 type ApprovalProps = { approval: KaelApproval; disabled: boolean; onDecide: (approval: KaelApproval, approve: boolean) => void };
 
-export function KaelApprovalCard({ approval, disabled, onDecide }: ApprovalProps) {
-  return <View accessibilityLabel={`Cần xác nhận: ${approval.summary}`} style={styles.card}>
+function ApprovalDetails({ approval }: { approval: KaelApproval }) {
+  return <>
     <Text style={styles.cardTitle}>{approval.summary}</Text>
     {Object.entries(approval.details).map(([label, value]) => <View key={label} style={styles.detail}>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value}</Text>
     </View>)}
+  </>;
+}
+
+export function KaelApprovalCard({ approval, disabled, onDecide }: ApprovalProps) {
+  if (approval.kind === 'reconcile') {
+    return <View accessibilityLabel={`Cần kiểm tra lại: ${approval.summary}`} style={styles.card}>
+      <ApprovalDetails approval={approval}/>
+      <Text style={styles.detailLabel}>Bạn đã xác nhận yêu cầu này nhưng chưa rõ hệ thống đã nhận hay chưa. Kiểm tra lại dùng đúng nội dung và mã gửi đã xác nhận, nên không tạo yêu cầu mới.</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Kiểm tra lại ${approval.summary}`} disabled={disabled} onPress={() => onDecide(approval, true)} style={styles.decline}>
+        <Text style={styles.declineText}>Kiểm tra lại</Text>
+      </Pressable>
+    </View>;
+  }
+  return <View accessibilityLabel={`Cần xác nhận: ${approval.summary}`} style={styles.card}>
+    <ApprovalDetails approval={approval}/>
     <Text style={styles.detailLabel}>Chưa có gì được gửi cho đến khi bạn xác nhận.</Text>
     <SlideToConfirm label="Trượt để xác nhận" accessibilityLabel={`Xác nhận ${approval.summary}`} disabled={disabled} onConfirm={() => onDecide(approval, true)}/>
     <Pressable accessibilityRole="button" accessibilityLabel="Không thực hiện" disabled={disabled} onPress={() => onDecide(approval, false)} style={styles.decline}>

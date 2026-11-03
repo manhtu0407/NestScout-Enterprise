@@ -23,7 +23,7 @@ export type GatewayDependencies = {
 
 type Action =
   | { type: 'message'; text: string }
-  | { type: 'approve' | 'reject'; approval_id: string; fingerprint: string };
+  | { type: 'approve' | 'reject' | 'reconcile'; approval_id: string; fingerprint: string };
 
 type TurnRequest = { request_id: string; conversation_id: string | null; mode: KaelMode; action: Action };
 
@@ -60,7 +60,7 @@ export function parseTurnRequest(raw: string, maxInputChars: number): TurnReques
     if (text.length === 0 || text.length > maxInputChars) return null;
     return { ...base, action: { type: 'message', text } };
   }
-  if ((action.type === 'approve' || action.type === 'reject') && base.conversation_id !== null
+  if ((action.type === 'approve' || action.type === 'reject' || action.type === 'reconcile') && base.conversation_id !== null
     && typeof action.approval_id === 'string' && uuidPattern.test(action.approval_id)
     && typeof action.fingerprint === 'string' && /^[0-9a-f]{64}$/.test(action.fingerprint)) {
     return { ...base, action: { type: action.type, approval_id: action.approval_id.toLowerCase(), fingerprint: action.fingerprint } };
@@ -96,6 +96,7 @@ export function configuredProviders(config: KaelConfig, fetcher: Fetcher): Model
 
 function userTextFor(action: Action): string {
   if (action.type === 'message') return action.text;
+  if (action.type === 'reconcile') return 'Kiểm tra lại thao tác đã xác nhận trước đó.';
   return action.type === 'approve' ? 'Đồng ý thực hiện thao tác Kael đề xuất.' : 'Không thực hiện thao tác Kael đề xuất.';
 }
 
@@ -189,7 +190,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
             fetcher, runId, conversationId, emit, signal: controller.signal, today: todayIn(now()),
           })
           : await resolveApproval({
-            approvalId: turn.action.approval_id, fingerprint: turn.action.fingerprint, approve: turn.action.type === 'approve',
+            approvalId: turn.action.approval_id, fingerprint: turn.action.fingerprint, decision: turn.action.type,
             actor, config: config as KaelConfig, store, rest, runId, emit, signal: controller.signal,
           });
       } catch {

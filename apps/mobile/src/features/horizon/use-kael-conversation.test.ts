@@ -33,7 +33,7 @@ function scriptedStreamer(scripts: { events: Body[]; outcome?: KaelTurnOutcome }
 const started = { type: 'run_started' as const, conversation_id: conversation, request_id: 'r', replayed: false };
 const task = (status: string) => ({ type: 'task_updated' as const, task: { id: taskId, title: 'Sửa máy lạnh', kind: 'service_request', status, version: 1, summary: '' } });
 const later = new Date(Date.now() + 600_000).toISOString();
-const approval = { id: approvalId, task_id: taskId, tool: 'service_request_submit', summary: 'Gửi yêu cầu dịch vụ', details: { 'Địa điểm': 'Quận 3' }, fingerprint: 'a'.repeat(64), expires_at: later };
+const approval = { id: approvalId, task_id: taskId, tool: 'service_request_submit', summary: 'Gửi yêu cầu dịch vụ', details: { 'Địa điểm': 'Quận 3' }, fingerprint: 'a'.repeat(64), kind: 'confirm' as const, expires_at: later };
 const empty: KaelConversationSnapshot = { conversationId: null, busy: false, messages: [], tasks: [], approvals: [] };
 const emptyLoader = jest.fn(async () => empty);
 
@@ -104,6 +104,8 @@ const storedSnapshot: KaelConversationSnapshot = {
   approvals: [approval],
 };
 
+const submitted: KaelConversationSnapshot = { ...storedSnapshot, tasks: [{ ...storedSnapshot.tasks[0]!, status: 'completed', version: 4 }], approvals: [] };
+
 function deferred<T>() {
   let resolve: (value: T) => void = () => undefined;
   const promise = new Promise<T>(done => { resolve = done; });
@@ -111,7 +113,7 @@ function deferred<T>() {
 }
 
 test('reopening Kael restores the signed-in account\'s conversation, tasks and still-pending confirmation', async () => {
-  const loader = jest.fn(async () => storedSnapshot);
+  const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValueOnce(storedSnapshot).mockResolvedValue(submitted);
   const { streamer, requests } = scriptedStreamer([{ events: [started, task('completed'), { type: 'run_completed', text: 'Đã gửi.' }] }]);
   const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
   await act(async () => { await Promise.resolve(); });
@@ -174,4 +176,72 @@ test('a confirmation is withdrawn from the screen once it expires', async () => 
   } finally {
     jest.useRealTimers();
   }
+});
+
+const reconciliation = { ...approval, kind: 'reconcile' as const, expires_at: null };
+const uncertainSnapshot: KaelConversationSnapshot = {
+  ...storedSnapshot,
+  tasks: [{ ...storedSnapshot.tasks[0]!, status: 'paused', version: 5 }],
+  approvals: [reconciliation],
+};
+
+test('after a restart an uncertain confirmed submission returns as a check of the original approval, not a new confirmation', async () => {
+  const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValueOnce(uncertainSnapshot).mockResolvedValue(submitted);
+  const { streamer, requests } = scriptedStreamer([{ events: [started, task('completed'), { type: 'run_completed', text: 'Đã gửi yêu cầu dịch vụ.' }] }]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.approvals).toEqual([reconciliation]);
+  await act(async () => { result.current.decide(reconciliation, false); });
+  expect(streamer).not.toHaveBeenCalled();
+  await act(async () => { result.current.decide(result.current.approvals[0]!, true); });
+  expect(requests).toEqual([expect.objectContaining({ conversationId: conversation, action: { type: 'reconcile', approval_id: approvalId, fingerprint: 'a'.repeat(64) } })]);
+  expect(result.current.messages.some(message => message.role === 'user' && message.text === 'Kiểm tra lại: Gửi yêu cầu dịch vụ')).toBe(true);
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.approvals).toHaveLength(0);
+  expect(result.current.tasks[0]?.status).toBe('completed');
+});
+
+test('an uncertain result during the session replaces the confirmation with a check card that does not expire', async () => {
+  jest.useFakeTimers();
+  try {
+    const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValueOnce(storedSnapshot).mockResolvedValue(uncertainSnapshot);
+    const { streamer } = scriptedStreamer([{ events: [started, task('paused'), { type: 'approval_required', approval: reconciliation }, { type: 'run_completed', text: 'Chưa xác định được.' }] }]);
+    const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { result.current.decide(result.current.approvals[0]!, true); });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.approvals).toEqual([reconciliation]);
+    await act(async () => { jest.advanceTimersByTime(3_600_000); });
+    expect(result.current.approvals).toEqual([reconciliation]);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('a decision the server refuses without consuming the confirmation brings the card back', async () => {
+  const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValue(storedSnapshot);
+  const { streamer } = scriptedStreamer([
+    { events: [], outcome: { kind: 'refused', code: 'busy', message: 'Kael vẫn đang xử lý.', retryable: true } },
+    { events: [started, { type: 'message_delta', text: 'Không khớp.' }, { type: 'run_failed', code: 'approval_invalid', message: 'Xác nhận không hợp lệ.', retryable: false }] },
+  ]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { result.current.decide(result.current.approvals[0]!, true); });
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.notice).toBe('Kael vẫn đang xử lý.');
+  expect(result.current.approvals).toEqual([approval]);
+  await act(async () => { result.current.decide(result.current.approvals[0]!, false); });
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.approvals).toEqual([approval]);
+  expect(loader).toHaveBeenCalledTimes(3);
+});
+
+test('when the server cannot be reached after a refused decision, the same card is restored locally', async () => {
+  const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValueOnce(storedSnapshot).mockRejectedValue(new Error('offline'));
+  const { streamer } = scriptedStreamer([{ events: [], outcome: { kind: 'refused', code: 'internal', message: 'Không kết nối được với Kael.', retryable: true } }]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { result.current.decide(result.current.approvals[0]!, true); });
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.approvals).toEqual([approval]);
 });

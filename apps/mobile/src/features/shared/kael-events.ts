@@ -3,6 +3,8 @@ export type KaelTaskStatus = typeof kaelTaskStatuses[number];
 
 export type KaelTask = { id: string; title: string; kind: string; status: KaelTaskStatus; version: number; summary: string };
 
+export const kaelApprovalKinds = ['confirm', 'reconcile'] as const;
+
 export type KaelApproval = {
   id: string;
   task_id: string;
@@ -10,7 +12,8 @@ export type KaelApproval = {
   summary: string;
   details: Record<string, string>;
   fingerprint: string;
-  expires_at: string;
+  kind: typeof kaelApprovalKinds[number];
+  expires_at: string | null;
 };
 
 export const kaelToolOutcomes = ['succeeded', 'failed', 'denied', 'approval_required', 'unavailable', 'uncertain'] as const;
@@ -50,11 +53,11 @@ function parseTask(value: unknown): KaelTask | null {
 
 function parseApproval(value: unknown): KaelApproval | null {
   if (!isObject(value) || !isObject(value.details)) return null;
-  const { id, task_id, tool, summary, fingerprint, expires_at } = value;
+  const { id, task_id, tool, summary, fingerprint, kind, expires_at } = value;
   const details = Object.entries(value.details);
   if (!isId(id) || !isId(task_id) || !isText(tool, 64) || !isText(summary, 200) || typeof fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(fingerprint)
-    || !isText(expires_at, 40) || details.length > 12 || !details.every(([key, item]) => isText(key, 60) && isText(item, 4000))) return null;
-  return { id, task_id, tool, summary, fingerprint, expires_at, details: Object.fromEntries(details) as Record<string, string> };
+    || !oneOf(kaelApprovalKinds, kind) || (kind === 'confirm' ? !isText(expires_at, 40) : expires_at !== null) || details.length > 12 || !details.every(([key, item]) => isText(key, 60) && isText(item, 4000))) return null;
+  return { id, task_id, tool, summary, fingerprint, kind, expires_at: expires_at as string | null, details: Object.fromEntries(details) as Record<string, string> };
 }
 
 function parsePayload(value: Json): KaelEventPayload | null {

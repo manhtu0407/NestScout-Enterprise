@@ -22,7 +22,8 @@ export type KaelApprovalView = {
   summary: string;
   details: Record<string, string>;
   fingerprint: string;
-  expires_at: string;
+  kind: 'confirm' | 'reconcile';
+  expires_at: string | null;
 };
 
 export type KaelToolOutcome = 'succeeded' | 'failed' | 'denied' | 'approval_required' | 'unavailable' | 'uncertain';

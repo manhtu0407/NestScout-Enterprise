@@ -67,11 +67,18 @@ the account id the gateway verified.
   the approval and task, requires the same conversation, verifies that the created
   request belongs to the account and carries the approval's submission key, and
   completes the task in the same transaction; a concurrently changed task leaves
-  the outcome uncertain. The runtime reports success only from that verified,
-  persisted result. Agreement typed in chat is never consent.
+  the outcome uncertain. The runtime reports success and failure only from that
+  persisted result; a conflict, an unrecorded outcome or an HTTP refusal the
+  database did not record is reported as uncertain. Agreement typed in chat is
+  never consent.
+- An uncertain outcome is offered as a reconciliation of the original approval, not
+  a new confirmation: a `reconcile` action with the same approval id and fingerprint
+  reruns the effect with the same submission key, and is refused for any approval
+  that was never consumed. A new confirmation for that task is refused until the
+  outcome is resolved.
 - The mobile app restores the latest conversation per mode after a restart through
   `kael_conversation_state`, a read-only RPC on the user's token that exposes only
-  view fields and pending, unexpired confirmations.
+  view fields, pending unexpired confirmations and uncertain submissions to check.
 - Execution classes, resources and the BPMN mapping are documented in
   `docs/service-workflow.md` (Kael capability boundary); a denied operation is
   reported to the model as that operation only, so conversation continues.
@@ -93,8 +100,9 @@ the account id the gateway verified.
   "action": { "type": "message", "text": "…" } }
 ```
 
-Approvals use `{ "type": "approve" | "reject", "approval_id": "uuid", "fingerprint": "hex" }`
-with the conversation id. Refusals before a run starts return JSON
+Approvals use `{ "type": "approve" | "reject" | "reconcile", "approval_id": "uuid", "fingerprint": "hex" }`
+with the conversation id; `reconcile` only checks an approval that was already
+consumed and whose outcome is uncertain. Refusals before a run starts return JSON
 `{ "error": { "code", "message", "retryable" } }` with HTTP 400, 401, 409, 413, 429
 or 503. A started run returns `application/x-ndjson`, one event per line, each with
 `v: 1`, `run_id` and a gap-free `seq`:
@@ -105,7 +113,7 @@ or 503. A started run returns `application/x-ndjson`, one event per line, each w
 | `message_delta` | Streamed assistant text |
 | `tool_started` / `tool_completed` | User-facing activity label and outcome (`succeeded`, `failed`, `denied`, `approval_required`, `unavailable`, `uncertain`) |
 | `task_updated` | Current task view after a persisted transition |
-| `approval_required` | Exact action, details, fingerprint and expiry awaiting the user |
+| `approval_required` | Exact action, details and fingerprint awaiting the user: `kind: confirm` with an expiry, or `kind: reconcile` with no expiry for an uncertain submission to check |
 | `run_completed` | Terminal success with the final text |
 | `run_failed` | Terminal failure with a code, message and retry hint |
 

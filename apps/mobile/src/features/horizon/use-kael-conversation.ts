@@ -1,7 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { loadKaelConversation, streamKaelTurn, type KaelApproval, type KaelConversationSnapshot, type KaelEvent, type KaelMode, type KaelTask, type KaelTurnAction, type KaelTurnOutcome } from '@/features/shared';
+import { loadKaelConversation, streamKaelTurn, type KaelApproval, type KaelConversationSnapshot, type KaelEvent, type KaelMode, type KaelTask, type KaelTaskStatus, type KaelTurnAction, type KaelTurnOutcome } from '@/features/shared';
 
 export type KaelChatMessage = { id: string; role: 'user' | 'assistant'; text: string; incomplete?: boolean };
 
@@ -23,6 +23,15 @@ const interruptedNotice = 'Kết nối bị gián đoạn trước khi Kael tr�
 const restoreFailedNotice = 'Chưa tải lại được cuộc trò chuyện trước đó. Bạn vẫn có thể tiếp tục trò chuyện với Kael.';
 const stillRunningNotice = 'Kael vẫn đang xử lý tin nhắn trước trong cuộc trò chuyện này. Vui lòng mở lại sau ít phút.';
 const busyLabel = 'Kael đang xử lý';
+const reconcilableStatuses: readonly KaelTaskStatus[] = ['running', 'paused', 'waiting_for_input'];
+
+function stillOpen(approval: KaelApproval, status: KaelTaskStatus): boolean {
+  return approval.kind === 'confirm' ? status === 'waiting_for_approval' : reconcilableStatuses.includes(status);
+}
+
+function unexpired(approval: KaelApproval): boolean {
+  return approval.expires_at === null || Date.parse(approval.expires_at) > Date.now();
+}
 
 function applyEvent(state: KaelConversationState, event: KaelEvent, assistantId: string): KaelConversationState {
   switch (event.type) {
@@ -41,7 +50,7 @@ function applyEvent(state: KaelConversationState, event: KaelEvent, assistantId:
       return { ...state, activity: busyLabel };
     case 'task_updated': {
       const others = state.tasks.filter(task => task.id !== event.task.id);
-      return { ...state, tasks: [...others, event.task], approvals: event.task.status === 'waiting_for_approval' ? state.approvals : state.approvals.filter(item => item.task_id !== event.task.id) };
+      return { ...state, tasks: [...others, event.task], approvals: state.approvals.filter(item => item.task_id !== event.task.id || stillOpen(item, event.task.status)) };
     }
     case 'approval_required':
       return { ...state, approvals: [...state.approvals.filter(item => item.task_id !== event.approval.task_id), event.approval] };
@@ -128,11 +137,33 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     };
   }, [rehydrate]);
 
-  const nextExpiry = useMemo(() => Math.min(...state.approvals.map(approval => Date.parse(approval.expires_at))), [state.approvals]);
+  const verifyDecision = useCallback(async (expected: string, decided: KaelApproval, accepted: boolean) => {
+    if (userId === null) return;
+    restoreRef.current?.abort();
+    const controller = new AbortController();
+    restoreRef.current = controller;
+    let snapshot: KaelConversationSnapshot | null = null;
+    try {
+      snapshot = await loader(userId, mode, controller.signal);
+    } catch {
+      snapshot = null;
+    }
+    if (controller.signal.aborted || restoreRef.current !== controller) return;
+    restoreRef.current = null;
+    setState(current => {
+      if (current.running || current.conversationId !== expected) return current;
+      if (snapshot === null) {
+        return accepted || current.approvals.some(item => item.id === decided.id) || !unexpired(decided) ? current : { ...current, approvals: [...current.approvals, decided] };
+      }
+      return snapshot.conversationId === expected ? { ...current, tasks: snapshot.tasks, approvals: snapshot.approvals } : current;
+    });
+  }, [loader, mode, userId]);
+
+  const nextExpiry = useMemo(() => Math.min(...state.approvals.flatMap(approval => (approval.expires_at === null ? [] : [Date.parse(approval.expires_at)]))), [state.approvals]);
   useEffect(() => {
     if (!Number.isFinite(nextExpiry)) return;
     const timer = setTimeout(() => {
-      setState(current => ({ ...current, approvals: current.approvals.filter(approval => Date.parse(approval.expires_at) > Date.now()) }));
+      setState(current => ({ ...current, approvals: current.approvals.filter(unexpired) }));
     }, Math.max(0, nextExpiry - Date.now()) + 50);
     return () => clearTimeout(timer);
   }, [nextExpiry]);
@@ -146,7 +177,7 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     setState(idleState);
   }, []);
 
-  const run = useCallback(async (action: KaelTurnAction, userText: string) => {
+  const run = useCallback(async (action: KaelTurnAction, userText: string, decided: KaelApproval | null = null) => {
     if (userId === null || runningRef.current) return;
     runningRef.current = true;
     restoreRef.current?.abort();
@@ -177,8 +208,10 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     controllerRef.current = null;
     runningRef.current = false;
     setState(current => settle(current, outcome, assistantId));
-    if (conversationId !== null && (outcome.kind === 'interrupted' || replayed)) void rehydrate(conversationId);
-  }, [mode, rehydrate, state.conversationId, streamer, userId]);
+    if (conversationId === null) return;
+    if (outcome.kind === 'interrupted' || replayed) void rehydrate(conversationId);
+    else if (decided) void verifyDecision(conversationId, decided, outcome.kind === 'terminal' && outcome.event.type === 'run_completed');
+  }, [mode, rehydrate, state.conversationId, streamer, userId, verifyDecision]);
 
   const send = useCallback((text: string) => {
     const trimmed = text.trim();
@@ -187,9 +220,14 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
   }, [run]);
 
   const decide = useCallback((approval: KaelApproval, approve: boolean) => {
+    if (approval.kind === 'reconcile') {
+      if (approve) void run({ type: 'reconcile', approval_id: approval.id, fingerprint: approval.fingerprint }, `Kiểm tra lại: ${approval.summary}`, approval);
+      return;
+    }
     void run(
       { type: approve ? 'approve' : 'reject', approval_id: approval.id, fingerprint: approval.fingerprint },
       approve ? `Xác nhận: ${approval.summary}` : `Không thực hiện: ${approval.summary}`,
+      approval,
     );
   }, [run]);
 

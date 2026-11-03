@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { createAnthropicProvider } from '../services/kael-core/src/anthropic.ts';
-import { call, conversationOf, effectsCount, harness, lastToolResults, scriptedProvider, terminal, users } from './kael-test-harness.mjs';
+import { parseKaelConversationSnapshot } from '../apps/mobile/src/features/shared/kael-events.ts';
+import { call, conversationOf, conversationState, effectsCount, harness, lastToolResults, scriptedProvider, terminal, users } from './kael-test-harness.mjs';
 
 const ledger = [];
 
@@ -640,6 +641,110 @@ test('the run records the model the provider actually served, apart from the req
   const run = h.logs.find(event => event.event === 'kael_run');
   assert.equal(run.model, 'anthropic-fallback');
   assert.equal(run.requested_model, 'anthropic-scripted');
+});
+
+const reconcileCards = result => result.events.filter(event => event.type === 'approval_required' && event.approval.kind === 'reconcile').map(event => event.approval);
+const submitCalls = h => h.service.calls.filter(entry => entry.path.endsWith('submit_service_request')).length;
+
+test('an uncertain submission survives an app restart and reconciles the original approval into exactly one request', async () => {
+  const primary = scriptedProvider('anthropic', [
+    ...submitFlow(),
+    request => ({ tools: [call('service_request_submit', { task_id: knownTasks(request)[0].task_id })] }),
+    request => {
+      assert.equal(lastToolResults(request)[0].error, 'previous_submission_unresolved');
+      return { text: ['Yêu cầu trước chưa rõ kết quả; bạn bấm Kiểm tra lại nhé.'] };
+    },
+  ]);
+  const h = harness({ env: effects, providers: () => [primary] });
+  ledger.push(h.db);
+  const { conversation, approval } = await pendingApproval(h);
+  h.service.fixtures.submitFailure = async () => {
+    h.service.fixtures.submitFailure = null;
+    await h.service.fetcher('https://project.supabase.test/rest/v1/rpc/submit_service_request', {
+      method: 'POST', headers: { authorization: `Bearer ${users.customer.token}` }, body: JSON.stringify({ p_submission_key: approval.id, p_description: 'x', p_location: '' }),
+    });
+    return new Response('{}', { status: 503 });
+  };
+  const uncertain = await h.decide(users.customer, conversation, approval);
+  assertNoSuccess(uncertain, 'response lost after the request landed');
+  assert.match(streamedText(uncertain), /Chưa xác định được.*Kiểm tra lại/s);
+  assert.deepEqual(reconcileCards(uncertain).map(card => [card.id, card.fingerprint, card.expires_at]), [[approval.id, approval.fingerprint, null]]);
+  assert.equal(effectsCount(h.db), 1, 'the request exists although the user was not told it was sent');
+
+  const retried = await h.message(users.customer, 'Gửi lại giúp mình đi', { conversation });
+  assert.equal(terminal(retried).type, 'run_completed');
+  assert.equal(retried.events.some(event => event.type === 'approval_required'), false, 'chat cannot open a second confirmation for the same uncertain effect');
+  assert.equal(h.db.approvals.size, 1, 'no new approval or submission key was created');
+
+  const recovered = parseKaelConversationSnapshot(conversationState(h.db, users.customer.id, 'client'));
+  assert.ok(recovered, 'the recovery payload satisfies the mobile contract');
+  assert.equal(recovered.conversationId, conversation);
+  assert.deepEqual(recovered.approvals.map(card => [card.id, card.fingerprint, card.kind, card.expires_at]), [[approval.id, approval.fingerprint, 'reconcile', null]]);
+  assert.equal(recovered.tasks[0].status, 'paused');
+
+  const restarted = harness({ db: h.db, env: effects });
+  const forged = await restarted.reconcile(users.customer, recovered.conversationId, recovered.approvals[0], 'b'.repeat(64));
+  assert.equal(terminal(forged).code, 'approval_invalid', 'a reconciliation is bound to the original fingerprint');
+  const reconciled = await restarted.reconcile(users.customer, recovered.conversationId, recovered.approvals[0]);
+  assert.equal(terminal(reconciled).type, 'run_completed');
+  assert.match(terminal(reconciled).text, /Đã gửi yêu cầu dịch vụ/);
+  assert.deepEqual(toolOutcomes(reconciled), ['service_request_submit:succeeded']);
+  assert.equal(completedTasks(reconciled).length, 1);
+  assert.equal(submitCalls(restarted), 1, 'reconciliation re-ran the same submission once');
+  assert.deepEqual(restarted.service.calls.find(entry => entry.path.endsWith('submit_service_request')).body.p_submission_key, approval.id, 'the original approval id is the submission key');
+  assert.equal(effectsCount(h.db), 1, 'exactly one service request exists');
+  assert.equal([...h.db.requests.values()].filter(request => request.key === approval.id).length, 1);
+  assert.equal(tasksOf(h.db)[0].artifact.effect_result.resource_id, [...h.db.requests.keys()][0]);
+  assert.deepEqual(parseKaelConversationSnapshot(conversationState(h.db, users.customer.id, 'client')).approvals, [], 'nothing is left to reconcile');
+});
+
+test('a reconciliation request never authorizes a confirmation the user has not given', async () => {
+  const h = scripted(effects, submitFlow());
+  const { conversation, approval } = await pendingApproval(h);
+  const premature = await h.reconcile(users.customer, conversation, approval);
+  assert.equal(terminal(premature).code, 'approval_invalid');
+  assert.match(streamedText(premature), /chưa được bạn xác nhận/);
+  assert.equal(h.db.approvals.get(approval.id).status, 'pending', 'the pending confirmation is untouched');
+  assert.equal(effectsCount(h.db), 0);
+  assert.equal(submitCalls(h), 0);
+  assert.equal(terminal(await h.decide(users.customer, conversation, approval)).type, 'run_completed');
+  assert.equal(effectsCount(h.db), 1);
+});
+
+test('a refused HTTP submission is reported as a failure only when the database records that failure', async () => {
+  const unsettled = {
+    'the task changed concurrently': (_outcome, _result, task) => ({ status: 'conflict', outcome: 'uncertain', result: { reason: 'task_changed' }, task }),
+    'the outcome could not be recorded': () => ({ status: 'invalid' }),
+    'the verification call fails': () => { throw new Error('store down'); },
+    'the database records it as uncertain': (_outcome, _result, task) => ({ status: 'ok', outcome: 'uncertain', result: { reason: 'unverified_result' }, task: { ...task, status: 'paused' } }),
+    'a final success the task does not show': (_outcome, _result, task) => ({ status: 'final', outcome: 'succeeded', result: { resource_kind: 'service_request', resource_id: 'not-checked' }, task: { ...task, status: 'running' } }),
+  };
+  for (const [label, verify] of Object.entries(unsettled)) {
+    const primary = scriptedProvider('anthropic', submitFlow());
+    const h = harness({
+      env: effects, providers: () => [primary], fixtures: { submitFailure: () => new Response('{}', { status: 400 }) },
+      wrapStore: store => ({ ...store, completeApproval: async (_runId, _id, outcome, result) => verify(outcome, result, [...h.db.tasks.values()][0]) }),
+    });
+    ledger.push(h.db);
+    const { conversation, approval } = await pendingApproval(h);
+    const decided = await h.decide(users.customer, conversation, approval);
+    assertNoSuccess(decided, label);
+    assert.doesNotMatch(streamedText(decided), /Hệ thống chưa nhận yêu cầu/, `${label}: no definitive failure from the HTTP status alone`);
+    assert.match(streamedText(decided), /Chưa xác định được/, `${label}: the user is told the outcome is unknown`);
+    assert.equal(terminal(decided).type, 'run_completed', `${label}: the turn is not reported as failed`);
+    assert.deepEqual(toolOutcomes(decided), ['service_request_submit:uncertain'], label);
+  }
+
+  const primary = scriptedProvider('anthropic', submitFlow());
+  const h = harness({ env: effects, providers: () => [primary], fixtures: { submitFailure: () => new Response('{}', { status: 400 }) } });
+  ledger.push(h.db);
+  const { conversation, approval } = await pendingApproval(h);
+  const refused = await h.decide(users.customer, conversation, approval);
+  assert.match(streamedText(refused), /Hệ thống chưa nhận yêu cầu/, 'a failure the database records is reported as one');
+  assert.deepEqual(toolOutcomes(refused), ['service_request_submit:failed']);
+  assert.equal(h.db.approvals.get(approval.id).outcome, 'failed');
+  assert.equal(tasksOf(h.db)[0].status, 'waiting_for_input');
+  assert.equal(reconcileCards(refused).length, 0);
 });
 
 test('evaluation ledger: zero unauthorized effects and zero false completions across all scenarios', t => {

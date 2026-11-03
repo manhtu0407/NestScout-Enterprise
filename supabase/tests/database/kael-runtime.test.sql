@@ -292,7 +292,7 @@ select is((select count(*)::integer from jsonb_array_elements(current_setting('t
 select is((select count(*)::integer from jsonb_array_elements(current_setting('test.state')::jsonb -> 'tasks') x where x ? 'artifact'), 0, 'Recovered tasks carry only view fields');
 select is(current_setting('test.state')::jsonb -> 'approvals', jsonb_build_array(jsonb_build_object(
     'id', current_setting('test.approval5'), 'task_id', current_setting('test.task4'), 'tool', 'service_request_submit', 'summary', 'Gửi yêu cầu dịch vụ',
-    'details', '{"Mô tả":"Cửa kẹt","Địa điểm":"Quận 4"}'::jsonb, 'fingerprint', repeat('9', 64),
+    'details', '{"Mô tả":"Cửa kẹt","Địa điểm":"Quận 4"}'::jsonb, 'fingerprint', repeat('9', 64), 'kind', 'confirm',
     'expires_at', (current_setting('test.state')::jsonb #>> '{approvals,0,expires_at}')::timestamptz)),
   'Recovery returns only the still-pending confirmation, with display fields and without its executable arguments');
 select is(public.kael_conversation_state('worker') ->> 'conversation_id', null, 'Recovery is mode-scoped');
@@ -323,6 +323,82 @@ select is(jsonb_array_length(public.kael_context_tasks(current_setting('test.con
 select is(jsonb_array_length(public.kael_context_tasks(current_setting('test.conversation')::uuid, 'worker')), 0, 'Worker context excludes client tasks');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000c3","role":"authenticated"}', true);
 select is(public.kael_actor_capabilities(), '{"customer":true,"worker":true}'::jsonb, 'An eligible worker has worker capability');
+reset role;
+
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('test.task5', public.kael_save_task('00000000-0000-4000-8000-0000000000a1', null, current_setting('test.conversation')::uuid, current_setting('test.resume')::uuid, null,
+  'Sửa bình nóng lạnh', 'service_request', 'running', '',
+  '{"draft":{"description":"Bình nóng lạnh không nóng","location":"Quận 7","preferred_time":"","missing":[]}}'::jsonb, 'created') #>> '{task,id}', true);
+select set_config('test.approval6', public.kael_request_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.resume')::uuid, current_setting('test.task5')::uuid, 1, 'service_request_submit',
+  jsonb_build_object('task_id', current_setting('test.task5'), 'description', 'Bình nóng lạnh không nóng', 'location', 'Quận 7', 'preferred_time', ''),
+  repeat('8', 64), 'Gửi yêu cầu dịch vụ', '{"Mô tả":"Bình nóng lạnh không nóng"}'::jsonb, 600) ->> 'approval_id', true);
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.resume')::uuid,
+  current_setting('test.approval6')::uuid, repeat('8', 64), array['service_request_submit'], 'reconcile') ->> 'status', 'unconfirmed',
+  'A reconciliation never consumes a confirmation the user has not given');
+reset role;
+select is((select status from nestscout_private.kael_approvals where id = current_setting('test.approval6')::uuid), 'pending',
+  'The refused reconciliation leaves the confirmation pending');
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.resume')::uuid,
+  current_setting('test.approval6')::uuid, repeat('8', 64), array['service_request_submit'], 'approve') - 'args',
+  jsonb_build_object('status', 'ok', 'tool', 'service_request_submit', 'task_id', current_setting('test.task5'), 'summary', 'Gửi yêu cầu dịch vụ',
+    'details', '{"Mô tả":"Bình nóng lạnh không nóng"}'::jsonb),
+  'Approving returns the display fields needed to offer a later check of the same approval');
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
+select set_config('test.request6', public.submit_service_request(current_setting('test.approval6')::uuid, 'Bình nóng lạnh không nóng', 'Quận 7')::text, true);
+select is(public.kael_conversation_state('client') -> 'approvals', '[]'::jsonb, 'An effect still in flight in a running turn is not offered for checking');
+reset role;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is(public.kael_complete_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.resume')::uuid, current_setting('test.approval6')::uuid, 'uncertain',
+  '{"reason":"backend_http_503"}'::jsonb) #>> '{task,status}', 'paused', 'A lost response after the request landed leaves the task paused and uncertain');
+select is(public.kael_request_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.resume')::uuid, current_setting('test.task5')::uuid, 99, 'service_request_submit',
+  jsonb_build_object('task_id', current_setting('test.task5'), 'description', 'Bình nóng lạnh không nóng', 'location', 'Quận 7', 'preferred_time', ''),
+  repeat('7', 64), 'Gửi yêu cầu dịch vụ', '{}'::jsonb, 600) ->> 'status', 'unresolved',
+  'No second confirmation or submission key can be opened while a confirmed submission is unresolved');
+select ok(public.kael_finish_run('00000000-0000-4000-8000-0000000000a1', current_setting('test.resume')::uuid, 'completed', 'Chưa xác định được.', true, null, null, 0, 0, 0, null),
+  'The turn ends before the app restarts');
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
+select set_config('test.restart', public.kael_conversation_state('client')::text, true);
+select is(current_setting('test.restart')::jsonb ->> 'busy', 'false', 'No turn is running after the restart');
+select is(current_setting('test.restart')::jsonb -> 'approvals', jsonb_build_array(jsonb_build_object(
+    'id', current_setting('test.approval6'), 'task_id', current_setting('test.task5'), 'tool', 'service_request_submit', 'summary', 'Gửi yêu cầu dịch vụ',
+    'details', '{"Mô tả":"Bình nóng lạnh không nóng"}'::jsonb, 'fingerprint', repeat('8', 64), 'kind', 'reconcile', 'expires_at', null)),
+  'After a restart the uncertain submission is offered as a check of the same approval and fingerprint, without arguments or expiry');
+reset role;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('test.recheck', public.kael_start_run('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-000000000030', current_setting('test.conversation')::uuid, 'client',
+  'Kiểm tra lại thao tác đã xác nhận trước đó.') ->> 'run_id', true);
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.recheck')::uuid,
+  current_setting('test.approval6')::uuid, repeat('8', 64), array['service_request_submit'], 'reconcile') ->> 'status', 'reconcile',
+  'The recovered check reconciles the original approval in a new turn');
+reset role;
+select is((select status from public.kael_tasks where id = current_setting('test.task5')::uuid), 'running', 'Reconciling resumes the paused task');
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
+select is(public.submit_service_request(current_setting('test.approval6')::uuid, 'Bình nóng lạnh không nóng', 'Quận 7')::text, current_setting('test.request6'),
+  'Re-running the submission with the original key returns the request that already landed');
+reset role;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is(public.kael_complete_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.recheck')::uuid, current_setting('test.approval6')::uuid, 'succeeded',
+  jsonb_build_object('resource_id', current_setting('test.request6'))) - 'task',
+  jsonb_build_object('status', 'ok', 'outcome', 'succeeded', 'result', jsonb_build_object('resource_kind', 'service_request', 'resource_id', current_setting('test.request6'))),
+  'The reconciled outcome is the verified original request');
+reset role;
+select is((select count(*)::integer from public.service_requests where submission_key = current_setting('test.approval6')::uuid), 1,
+  'Exactly one service request exists for the reconciled approval');
+select is((select status from public.kael_tasks where id = current_setting('test.task5')::uuid), 'completed', 'The reconciled task is completed');
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
+select is(public.kael_conversation_state('client') -> 'approvals', '[]'::jsonb, 'Nothing is left to check after reconciliation');
 reset role;
 
 set local role service_role;

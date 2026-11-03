@@ -340,7 +340,14 @@ test('the gateway rejects unauthenticated, malformed and misconfigured requests 
 test('the mobile parser rejects malformed or out-of-contract events', () => {
   const base = { v: 1, run_id: users.customer.id, seq: 1 };
   assert.ok(parseKaelEvent(JSON.stringify({ ...base, type: 'message_delta', text: 'x' })));
+  const approval = { id: users.customer.id, task_id: users.customer.id, tool: 't', summary: 's', details: {}, fingerprint: 'a'.repeat(64) };
+  assert.ok(parseKaelEvent(JSON.stringify({ ...base, type: 'approval_required', approval: { ...approval, kind: 'confirm', expires_at: '2026-11-03T04:00:00Z' } })));
+  assert.ok(parseKaelEvent(JSON.stringify({ ...base, type: 'approval_required', approval: { ...approval, kind: 'reconcile', expires_at: null } })));
   for (const bad of [
+    JSON.stringify({ ...base, type: 'approval_required', approval: { ...approval, expires_at: '2026-11-03T04:00:00Z' } }),
+    JSON.stringify({ ...base, type: 'approval_required', approval: { ...approval, kind: 'confirm', expires_at: null } }),
+    JSON.stringify({ ...base, type: 'approval_required', approval: { ...approval, kind: 'reconcile', expires_at: '2026-11-03T04:00:00Z' } }),
+    JSON.stringify({ ...base, type: 'approval_required', approval: { ...approval, kind: 'execute', expires_at: null } }),
     'not json', JSON.stringify({ ...base, v: 2, type: 'message_delta', text: 'x' }), JSON.stringify({ ...base, seq: 0, type: 'message_delta', text: 'x' }),
     JSON.stringify({ ...base, type: 'run_completed_ok', text: 'x' }), JSON.stringify({ ...base, type: 'run_failed', code: 'pwned', message: 'x', retryable: true }),
     JSON.stringify({ ...base, type: 'task_updated', task: { id: 'x', title: 't', kind: 'k', status: 'done', version: 1, summary: '' } }),
@@ -432,7 +439,7 @@ test('Kael-internal writes leave only through named server RPCs bound to the ver
   await store.saveTask({ taskId: null, conversationId: id, runId: id, expectedVersion: null, title: 't', kind: 'general', status: 'running', summary: '', artifact: {}, event: 'created' });
   await store.recordTool({ runId: id, callId: 'c', taskId: null, tool: 'task_create', sideEffect: 'internal', outcome: 'succeeded', fingerprint: 'a'.repeat(64), error: null });
   await store.requestApproval({ runId: id, taskId: id, expectedVersion: 1, tool: 'service_request_submit', args: {}, fingerprint: 'a'.repeat(64), summary: 's', details: { 'Mô tả': 'x' }, ttlSeconds: 900 });
-  await store.consumeApproval(id, id, 'a'.repeat(64), ['service_request_submit']);
+  await store.consumeApproval(id, id, 'a'.repeat(64), ['service_request_submit'], 'reconcile');
   await store.completeApproval(id, id, 'failed', { reason: 'x' });
   await store.rejectApproval(id, id, 'b'.repeat(64));
 
@@ -450,6 +457,7 @@ test('Kael-internal writes leave only through named server RPCs bound to the ver
     assert.equal(entry.apikey, baseEnv.SUPABASE_ANON_KEY, entry.path);
   }
   assert.deepEqual(internal.find(entry => entry.path.endsWith('kael_consume_approval')).body.p_allowed_tools, ['service_request_submit']);
+  assert.equal(internal.find(entry => entry.path.endsWith('kael_consume_approval')).body.p_intent, 'reconcile', 'the store forwards whether the user approved or only asked to reconcile');
   const bodyOf = name => internal.find(entry => entry.path.endsWith(name)).body;
   assert.deepEqual(bodyOf('kael_complete_approval'), { p_actor: users.customer.id, p_run_id: id, p_approval_id: id, p_outcome: 'failed', p_result: { reason: 'x' } });
   assert.deepEqual(bodyOf('kael_reject_approval'), { p_actor: users.customer.id, p_run_id: id, p_approval_id: id, p_fingerprint: 'b'.repeat(64) }, 'rejecting carries the run and fingerprint like approving');

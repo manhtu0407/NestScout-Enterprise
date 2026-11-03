@@ -9,6 +9,7 @@ const approval = {
   summary: 'Gửi yêu cầu dịch vụ',
   details: { 'Mô tả': 'Máy lạnh rò nước', 'Địa điểm': 'Quận 3' },
   fingerprint: 'a'.repeat(64),
+  kind: 'confirm' as const,
   expires_at: '2026-11-03T04:00:00Z',
 };
 
@@ -20,6 +21,20 @@ test('the approval card shows exactly what will be submitted and lets the user d
   expect(screen.getByText('Chưa có gì được gửi cho đến khi bạn xác nhận.')).toBeTruthy();
   await fireEvent.press(screen.getByLabelText('Không thực hiện'));
   expect(onDecide).toHaveBeenCalledWith(approval, false);
+});
+
+test('an uncertain confirmed submission is offered as a check of that same request, never as a new confirmation', async () => {
+  const onDecide = jest.fn();
+  const reconcile = { ...approval, kind: 'reconcile' as const, expires_at: null };
+  await render(<KaelApprovalCard approval={reconcile} disabled={false} onDecide={onDecide}/>);
+  expect(screen.getByLabelText('Cần kiểm tra lại: Gửi yêu cầu dịch vụ')).toBeTruthy();
+  expect(screen.getByText('Máy lạnh rò nước')).toBeTruthy();
+  expect(screen.getByText(/không tạo yêu cầu mới/)).toBeTruthy();
+  expect(screen.queryByText('Trượt để xác nhận')).toBeNull();
+  expect(screen.queryByLabelText('Không thực hiện')).toBeNull();
+  expect(screen.queryByText('Chưa có gì được gửi cho đến khi bạn xác nhận.')).toBeNull();
+  await fireEvent.press(screen.getByLabelText('Kiểm tra lại Gửi yêu cầu dịch vụ'));
+  expect(onDecide).toHaveBeenCalledWith(reconcile, true);
 });
 
 test('task rows name each task and its real status', async () => {

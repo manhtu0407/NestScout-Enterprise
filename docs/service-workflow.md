@@ -440,7 +440,7 @@ negative tests, not by this table.
 | `task_create` | internal_prepare | kael_task | Signed-in non-anonymous account | None; agent work state only | Any phase: coordination | Limit or invalid status is reported; no business record changes |
 | `task_update` | internal_prepare | kael_task | Same account; current task version | None; agent work state only | Any phase: pause, resume, switch | Completion without an observed effect is refused; a business record is never cancelled |
 | `service_request_draft` | internal_prepare | kael_task | Customer capability; client mode | None; the draft stays in the task | B intake: prepare request | Missing essentials keep the task waiting for input (B01) |
-| `service_request_submit` | explicit_confirmation | service_request | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `submit_service_request` with the approval id as submission key | B intake: submitRequest | Rejected keeps the draft; approving or rejecting from another conversation, with another fingerprint, after expiry or a second time changes nothing; an unverified, contradictory or concurrently changed result is reported as uncertain, pauses or keeps the task and reconciles with the same key; disabled gate is unavailable |
+| `service_request_submit` | explicit_confirmation | service_request | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `submit_service_request` with the approval id as submission key | B intake: submitRequest | Rejected keeps the draft; approving or rejecting from another conversation, with another fingerprint, after expiry or a second time changes nothing; an unverified, contradictory or concurrently changed result is reported as uncertain, pauses or keeps the task and is offered as a "Kiểm tra lại" check that reconciles the original approval with the same key, also after a restart; no second confirmation can be opened for that task meanwhile; disabled gate is unavailable |
 | `customer_requests` | authorized_read | service_request | Customer capability; client mode; row-level security | Reads of `service_requests`, `service_quotes` and `service_jobs` | B–E: own request, quote and job stage | Backend error is reported; other accounts' rows are never returned |
 | `worker_jobs` | authorized_read | worker_job | Worker capability (grant and eligibility); worker mode | `worker_job_cards` | C–D: Worker offers and assigned jobs | Empty for an account without Worker access |
 | `worker_earnings` | authorized_read | worker_earnings | Worker capability; worker mode | `worker_earnings` | F: recorded earnings, not settlement | Empty for an account without Worker access |
@@ -474,18 +474,38 @@ and the task can move from running to completed; if the task changed meanwhile i
 records an uncertain outcome and leaves the task as it is. A verified outcome is
 never overwritten by a retry. The user and the event stream hear "sent" only from
 that persisted, verified result (task completed, outcome succeeded, the same
-request id); anything else, including a failed verification call, is reported as
-uncertain and can be reconciled with the same key, never as a definite failure
-when the request may exist.
+request id), and "not received" only when the business command refused the
+request and the database recorded that failure. Anything else, including a
+conflict, a failed verification call or an HTTP refusal the database did not
+record, is reported as uncertain, never as a definite failure when the request may
+exist.
+
+An uncertain outcome is reconciled, never retried as a new operation. The app
+shows it as a separate "Kiểm tra lại" card with no slide-to-confirm and no
+decline, and sends a `reconcile` action carrying the original approval id and
+fingerprint. `kael_consume_approval` with the `reconcile` intent accepts only an
+approval that was already consumed and whose outcome is unknown, for a task that
+is still running, paused or waiting for input; a pending confirmation is refused
+as `unconfirmed` and left untouched, so a check can never stand in for consent.
+The effect then reruns with the original approval id as its submission key, so a
+request that already landed is returned instead of duplicated. While such an
+outcome is unresolved, `kael_request_approval` refuses a new confirmation for the
+task (`unresolved`), so neither the model nor the user can create a second
+submission key for the same effect.
 
 After a restart, the app reads `kael_conversation_state(mode)` with the user's own
 token. It returns only the account's latest conversation in that mode: ordered
-messages, task view fields, whether a turn is still running, and confirmations
-that are pending, unexpired and still match their task version, with display
-fields and the fingerprint but not the executable arguments. A late result from a
-previous account or mode is discarded, a stream that breaks is treated as
-interrupted and reconciled from this read, and an expired confirmation leaves the
-screen. "Trò chuyện mới" starts a new conversation locally; stored history is not
+messages, task view fields, whether a turn is still running, confirmations
+(`kind: confirm`) that are pending, unexpired and still match their task version,
+and checks (`kind: reconcile`, no expiry) for consumed approvals whose outcome is
+uncertain, or unknown with no turn still running, while the task can still be
+reconciled. Each carries display fields and the fingerprint but not the executable
+arguments. A late result from a previous account or mode is discarded, a stream
+that breaks is treated as interrupted and reconciled from this read, and an
+expired confirmation leaves the screen. After every decision the app rereads the
+pending confirmations and checks, so a decision the server refused without
+consuming the confirmation (busy, mismatched, unavailable) brings the card back;
+if the read itself fails, the card is restored locally unless the turn completed. "Trò chuyện mới" starts a new conversation locally; stored history is not
 deleted, so the menu offers no delete action until a retention and deletion policy
 exists.
 
