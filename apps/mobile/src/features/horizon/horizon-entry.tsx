@@ -15,6 +15,11 @@ import { Presence, useRetained } from './motion-presence';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
 import { countActionableQuotes, countUnreadNotifications, toRecentSessions } from './request-views';
 import { useCustomerData } from './use-customer-data';
+import { useWorkerData } from './use-worker-data';
+import { workerBadgesFor } from './worker-jobs';
+import { formatMoney } from './content';
+import { earningsTodayMinor } from './worker-earnings';
+import { nextJobLabel, toWorkerJobs, toWorkerProfileView } from './worker-views';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
@@ -36,17 +41,44 @@ export function HorizonEntry() {
   const customerUserId = access.phase === 'client' && access.identity === 'verified' ? access.userId : null;
   const customer = useCustomerData(customerUserId);
   const { data } = customer;
+  const workerUserId = access.phase === 'worker' && access.identity === 'verified' ? access.userId : null;
+  const worker = useWorkerData(workerUserId);
   const recentSessions = useMemo(() => toRecentSessions({ requests: data.requests, quotes: data.quotes, activity: data.activity }, data.pinnedIds, now), [data, now]);
   const badges = useMemo(() => ({
     quotes: countActionableQuotes(data.requests, data.quotes, now),
     notifications: countUnreadNotifications(data.notifications),
-  }), [data, now]);
+    ...(workerUserId === null ? {} : { ...workerBadgesFor(toWorkerJobs(worker.data.snapshot, worker.data.cards, now)), 'worker-notifications': countUnreadNotifications(worker.data.notifications) }),
+  }), [data, now, workerUserId, worker.data]);
+
+  const workerProfile = useMemo(() => {
+    if (access.phase !== 'worker') return undefined;
+    if (workerUserId === null || !worker.loaded) return 'loading' as const;
+    const view = toWorkerProfileView(worker.data.profile, now);
+    return view === null ? null : { area: view.area, radiusKm: view.radiusKm, accepting: view.accepting };
+  }, [access.phase, now, worker.data.profile, worker.loaded, workerUserId]);
+
+  const workerStats = useMemo(() => {
+    if (workerUserId === null || !worker.loaded) return undefined;
+    return {
+      acceptedToday: formatMoney(earningsTodayMinor(worker.data.earnings, now), 'VND'),
+      nextJob: nextJobLabel(toWorkerJobs(worker.data.snapshot, worker.data.cards, now)),
+    };
+  }, [now, worker.data, worker.loaded, workerUserId]);
+
+  const setAccepting = useCallback(async (accepting: boolean) => {
+    try {
+      await worker.performProfile({ type: 'accepting', accepting });
+    } catch {
+      setDataNotice('Chưa lưu được trạng thái nhận việc. Vui lòng thử lại.');
+    }
+  }, [worker]);
 
   const openMenu = useCallback(() => {
     setNow(new Date());
     customer.refresh();
+    worker.refresh();
     setDrawerOpen(true);
-  }, [customer]);
+  }, [customer, worker]);
 
   const openRequest = useCallback((id: string) => {
     setDrawerOpen(false);
@@ -110,7 +142,7 @@ export function HorizonEntry() {
         <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={openMenu} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
-    <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
+    <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
       if (access.phase === 'guest') {
         kaelIntroSession.markPlayed();
         access.prepareHorizonDraftTransfer({ text: inputRef.current, images: imagesRef.current });

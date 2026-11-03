@@ -258,7 +258,7 @@ export const horizonLayout = {
       descriptionSize: 14, descriptionLineHeight: 20, factsGap: 6, factGap: 8, factIconSize: 16, factSize: 13, factLineHeight: 18,
       amountLabelSize: 12, amountSize: 22, amountWeight: '700', amountTracking: -0.4, amountGap: 2,
       composerGap: 10, composerPadding: 12, composerRadius: 14, fieldHeight: 48, fieldRadius: 12, fieldPaddingHorizontal: 14, fieldBorder: 1.5,
-      fieldFontSize: 17, fieldFontWeight: '600', suffixSize: 15, fieldGap: 6, hintSize: 12, hintLineHeight: 17,
+      fieldFontSize: 17, fieldFontWeight: '600', fieldMultilineHeight: 96, removeHitSlop: 8, suffixSize: 15, fieldGap: 6, hintSize: 12, hintLineHeight: 17,
       disabledOpacity: 0.4, footnoteSize: 12, footnoteLineHeight: 17,
     },
     workerEarnings: {

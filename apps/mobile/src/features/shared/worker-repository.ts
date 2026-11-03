@@ -1,5 +1,7 @@
 import { authenticatedRequest } from '@/lib/authenticated-rest';
-import { readJobReports, readScopeChanges, workflowErrorFrom, type JobReport, type ScopeChange } from '@/features/shared';
+import { readJobReports, type JobReport } from './job-reports';
+import { readScopeChanges, type ScopeChange } from './scope-changes';
+import { workflowErrorFrom } from './workflow-error';
 
 export type Offer = {
   invitation_id: string;
@@ -22,6 +24,17 @@ export type Job = {
 };
 
 export type Correction = { job_id: string; note: string };
+
+export type WorkerJobCard = {
+  kind: 'offer' | 'job';
+  ref_id: string;
+  title: string;
+  description: string;
+  photo_count: number;
+  location: string;
+  customer_label: string;
+  updated_at: string | null;
+};
 
 export type Pause = {
   job_id: string;
@@ -60,6 +73,18 @@ export async function readOffers(userId: string, signal: AbortSignal): Promise<O
       && Number.isSafeInteger(row.quote_version) && typeof row.expires_at === 'string' && typeof row.basis === 'string' && terms(row);
   })) throw new Error('Invalid offers');
   return complete(result as Offer[]);
+}
+
+export async function readWorkerJobCards(userId: string, signal: AbortSignal): Promise<WorkerJobCard[]> {
+  const result = await rpc(userId, 'worker_job_cards', {}, signal);
+  if (!Array.isArray(result) || !result.every((value: unknown) => {
+    if (typeof value !== 'object' || value === null) return false;
+    const row = value as Record<string, unknown>;
+    return (row.kind === 'offer' || row.kind === 'job') && typeof row.ref_id === 'string' && typeof row.title === 'string'
+      && typeof row.description === 'string' && Number.isSafeInteger(row.photo_count) && typeof row.location === 'string'
+      && typeof row.customer_label === 'string' && (row.updated_at === null || typeof row.updated_at === 'string');
+  })) throw new Error('Invalid job cards');
+  return complete(result as WorkerJobCard[]);
 }
 
 export async function readJobs(userId: string, signal: AbortSignal): Promise<Job[]> {

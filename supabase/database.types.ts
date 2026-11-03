@@ -359,16 +359,30 @@ isOneToOne: false
                   Relationships: [
 
                   ]
-                },"worker_public_profiles": {
+                },"worker_certificates": {
                   Row: {
-                    "area": string,"basis": string,"display_name": string,"experience_years": number,"id": string,"listed": boolean,"service_areas": (string)[],"skills": (string)[],"trade": string,"worker_id": string
+                    "created_at": string,"id": string,"status": string,"title": string,"worker_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "area": string,"basis"?: string,"display_name": string,"experience_years": number,"id"?: string,"listed"?: boolean,"service_areas"?: (string)[],"skills"?: (string)[],"trade": string,"worker_id": string
+                    "created_at"?: string,"id"?: string,"status"?: string,"title": string,"worker_id": string
                   }
                   Update: {
-                    "area"?: string,"basis"?: string,"display_name"?: string,"experience_years"?: number,"id"?: string,"listed"?: boolean,"service_areas"?: (string)[],"skills"?: (string)[],"trade"?: string,"worker_id"?: string
+                    "created_at"?: string,"id"?: string,"status"?: string,"title"?: string,"worker_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"worker_public_profiles": {
+                  Row: {
+                    "about": string,"accepting_jobs": boolean,"area": string,"basis": string,"display_name": string,"experience_years": number,"id": string,"listed": boolean,"radius_km": number,"service_areas": (string)[],"service_ids": (string)[],"skills": (string)[],"trade": string,"worker_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "about"?: string,"accepting_jobs"?: boolean,"area": string,"basis"?: string,"display_name": string,"experience_years": number,"id"?: string,"listed"?: boolean,"radius_km"?: number,"service_areas"?: (string)[],"service_ids"?: (string)[],"skills"?: (string)[],"trade": string,"worker_id": string
+                  }
+                  Update: {
+                    "about"?: string,"accepting_jobs"?: boolean,"area"?: string,"basis"?: string,"display_name"?: string,"experience_years"?: number,"id"?: string,"listed"?: boolean,"radius_km"?: number,"service_areas"?: (string)[],"service_ids"?: (string)[],"skills"?: (string)[],"trade"?: string,"worker_id"?: string
                   }
                   Relationships: [
 
@@ -417,6 +431,9 @@ isOneToOne: false
 "add_request_photo":
 { Args: { "p_path": string,"p_request_id": string }; Returns: string
                            },
+"add_worker_certificate":
+{ Args: { "p_title": string }; Returns: string
+                           },
 "advance_service_job":
 { Args: { "p_job_id": string,"p_next": string,"p_version": number }; Returns: number
                            },
@@ -448,6 +465,11 @@ isOneToOne: false
 "mark_notifications_read":
 { Args: { "p_ids": (string)[] }; Returns: number
                            },
+"my_worker_profile":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "about": string,"accepting_jobs": boolean,"area": string,"certificates": Json,"completed_jobs": number,"display_name": string,"experience_years": number,"listed": boolean,"profile_id": string,"radius_km": number,"rating_average": number,"review_count": number,"reviews": Json,"service_ids": (string)[],"skills": (string)[],"strengths": Json,"trade": string
+            }[]
+                           },
 "open_service_aftercare":
 { Args: { "p_job_id": string,"p_key": string,"p_reason": string }; Returns: string
                            },
@@ -459,6 +481,9 @@ isOneToOne: false
                            },
 "reject_service_quote":
 { Args: { "p_quote_id": string,"p_version": number }; Returns: string
+                           },
+"remove_worker_certificate":
+{ Args: { "p_id": string }; Returns: string
                            },
 "report_service_job":
 { Args: { "p_details": string,"p_job_id": string,"p_key": string,"p_kind": string,"p_version": number }; Returns: string
@@ -478,6 +503,12 @@ isOneToOne: false
 "save_worker":
 { Args: { "p_profile_id": string }; Returns: string
                            },
+"save_worker_coverage":
+{ Args: { "p_radius_km": number,"p_service_ids": (string)[] }; Returns: string
+                           },
+"save_worker_profile":
+{ Args: { "p_about": string,"p_area": string,"p_display_name": string,"p_experience_years": number,"p_skills": (string)[],"p_trade": string }; Returns: string
+                           },
 "saved_workers":
 { Args: Record<PropertyKey, never>; Returns: {
               "area": string,"basis": string,"completed_jobs": number,"display_name": string,"experience_years": number,"profile_id": string,"rating_average": number,"review_count": number,"reviews": Json,"saved_at": string,"service_areas": (string)[],"skills": (string)[],"strengths": Json,"trade": string
@@ -488,6 +519,9 @@ isOneToOne: false
                            },
 "set_request_pinned":
 { Args: { "p_pinned": boolean,"p_request_id": string }; Returns: boolean
+                           },
+"set_worker_accepting":
+{ Args: { "p_accepting": boolean }; Returns: boolean
                            },
 "submit_service_request":
 { Args: { "p_description": string,"p_location"?: string,"p_submission_key": string }; Returns: string
@@ -504,6 +538,16 @@ isOneToOne: false
 "worker_corrections":
 { Args: Record<PropertyKey, never>; Returns: {
               "job_id": string,"note": string,"submitted_from_version": number
+            }[]
+                           },
+"worker_earnings":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "accepted_at": string,"amount_minor": number,"completed_on": string,"currency": string,"job_id": string,"title": string
+            }[]
+                           },
+"worker_job_cards":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "customer_label": string,"description": string,"kind": string,"location": string,"photo_count": number,"ref_id": string,"title": string,"updated_at": string
             }[]
                            },
 "worker_jobs":

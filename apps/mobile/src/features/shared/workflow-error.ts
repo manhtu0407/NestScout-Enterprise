@@ -18,6 +18,8 @@ const byDomainMessage: Record<string, WorkflowFailure> = {
   'invalid reason': 'invalid',
   'invalid decision': 'invalid',
   'invalid pause': 'invalid',
+  'certificate limit': 'invalid',
+  'profile required': 'invalid',
 };
 
 function classify(code: unknown, message: unknown): WorkflowFailure {

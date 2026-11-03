@@ -20,12 +20,13 @@ import { ProfileEditScreen } from './profile-edit-screen';
 import { QuotesScreen } from './quotes-screen';
 import { SavedWorkersScreen } from './saved-workers-screen';
 import { sampleNotifications, sampleProfile, sampleQuotes, sampleSavedWorkers } from './content';
-import { WorkerJobsScreen } from './worker-jobs-screen';
+import { SampleWorkerJobsScreen } from './sample-worker-jobs-screen';
 import { WorkerKaelScreen } from './worker-kael-screen';
-import { WorkerProfileScreen } from './worker-profile-screen';
+import { SampleWorkerProfileScreen } from './sample-worker-profile-screen';
 import { workerProfileTabForSidebarId, type WorkerProfileTab } from './worker-profile';
+import { sampleEarningRecords, toEarningsView } from './worker-earnings';
 import { WorkerEarningsScreen, type EarningsMode } from './worker-earnings-screen';
-import { sampleWorkerJobs, workerJobStageForSidebarId, type WorkerJobStage } from './worker-jobs';
+import { sampleWorkerBadges, workerJobStageForSidebarId, type WorkerJobStage } from './worker-jobs';
 
 type SupportScreenId = 'notifications' | 'help' | 'settings' | 'profile' | 'edit-profile' | 'quotes' | 'saved';
 
@@ -103,6 +104,7 @@ export function HorizonPreview() {
   const [quotesFromRequests, setQuotesFromRequests] = useState(false);
   const [jobsStage, setJobsStage] = useState<WorkerJobStage | null>(null);
   const [earningsMode, setEarningsMode] = useState<EarningsMode | null>(null);
+  const [sampleEarnings] = useState(() => toEarningsView(sampleEarningRecords(new Date()), new Date()));
   const [profileTab, setProfileTab] = useState<WorkerProfileTab | null>(null);
   const [workerKael, setWorkerKael] = useState(false);
   const backToSidebar = () => { setRequestsOpen(false); setSupportScreen(null); setJobsStage(null); setEarningsMode(null); setProfileTab(null); setWorkerKael(false); setDrawer(true); };
@@ -139,10 +141,10 @@ export function HorizonPreview() {
         <KaelHomeScreen input={input} onInput={value => { setInput(value); setComposerError(null); }} onSubmit={start} onMenu={() => setDrawer(true)} onNew={reset} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} />
       </View>
       {requestsOpen && <RequestsScreen requests={sampleRequests} onBack={goBack} onViewQuotes={() => { setRequestsOpen(false); setQuotesFromRequests(true); setSupportScreen('quotes'); }} onAskKael={() => setRequestsOpen(false)} />}
-      {jobsStage !== null && <WorkerJobsScreen key={jobsStage} initialStage={jobsStage} jobs={sampleWorkerJobs} onBack={goBack} onAskKael={() => setJobsStage(null)} />}
+      {jobsStage !== null && <SampleWorkerJobsScreen key={jobsStage} initialStage={jobsStage} onBack={goBack} onAskKael={() => setJobsStage(null)} />}
       {workerKael && <WorkerKaelScreen onBack={goBack} onAsk={prompt => { setInput(prompt); setComposerError(null); setWorkerKael(false); }} />}
-      {profileTab !== null && <WorkerProfileScreen key={profileTab} initialTab={profileTab} name={profile.name} onBack={goBack} />}
-      {earningsMode !== null && <WorkerEarningsScreen key={earningsMode} initialMode={earningsMode} onBack={goBack} />}
+      {profileTab !== null && <SampleWorkerProfileScreen key={profileTab} initialTab={profileTab} onBack={goBack} />}
+      {earningsMode !== null && <WorkerEarningsScreen key={earningsMode} sample initialMode={earningsMode} earnings={sampleEarnings} onBack={goBack} />}
       {supportScreen === 'notifications' &&<NotificationsScreen items={sampleNotifications} onBack={goBack} />}
       {supportScreen === 'quotes' && <QuotesScreen items={sampleQuotes} onBack={goBack} onAskKael={() => setSupportScreen(null)} />}
       {supportScreen === 'saved' && <SavedWorkersScreen items={sampleSavedWorkers} onBack={goBack} onAskKael={() => setSupportScreen(null)} />}
@@ -151,7 +153,7 @@ export function HorizonPreview() {
       {supportScreen === 'edit-profile' && <ProfileEditScreen profile={profile} onBack={goBack} onSave={setProfile} />}
       {supportScreen === 'profile' && <AccountScreen mode={role} profileName={role === 'guest' ? undefined : profile.name} avatarUri={role === 'guest' ? undefined : profile.avatarUri} phoneLabel={role === 'guest' ? undefined : profile.phone} onEditProfile={editProfileFrom('profile')} onBack={goBack} onSignIn={next => setSigningInAs(next)} onChangeMode={() => { setSupportScreen(null); setDrawer(true); }} onSignOut={() => { setSupportScreen(null); setRole('guest'); }} />}
     </View>
-    <Sidebar profileName={role === 'guest' ? undefined : profile.name} profileAvatarUri={role === 'guest' ? undefined : profile.avatarUri} badges={{ quotes: 2 }} recentLoading={recentLoading} recentSessions={sessions} activeSessionId="sample-1" onOpenSession={() => setDrawer(false)} onTogglePin={togglePin} onSessionMore={() => undefined} visible={drawer} onClose={() => setDrawer(false)} mode={role} modePending={false} modeNotice={null} onModeSelect={next => { setDrawer(false); if (role === 'guest') setSigningInAs(next); else setRole(next); }} onModeCancel={() => undefined} onDismissModeNotice={() => undefined} onSelectService={prompt => { setInput(prompt); setComposerError(null); setDrawer(false); }} onNavigate={id => { if (id === 'new' || id === 'home') { reset(); setRequestsOpen(false); setSupportScreen(null); setJobsStage(null); setEarningsMode(null); setProfileTab(null); setWorkerKael(false); } else if (id === 'requests') { setRequestsOpen(true); setDrawer(false); } else if (id === 'notifications' || id === 'quotes' || id === 'saved' || id === 'help' || id === 'settings' || id === 'profile') { setQuotesFromRequests(false); setSupportScreen(id); setDrawer(false); } else if (workerJobStageForSidebarId(id) !== null) { setJobsStage(workerJobStageForSidebarId(id)); setDrawer(false); } else if (id === 'worker-earnings' || id === 'worker-payout') { setEarningsMode(id === 'worker-payout' ? 'payout' : 'overview'); setDrawer(false); } else if (workerProfileTabForSidebarId(id) !== null) { setProfileTab(workerProfileTabForSidebarId(id)); setDrawer(false); } else if (id === 'worker-kael') { setWorkerKael(true); setDrawer(false); } else if (id.startsWith('worker-')) { setDrawer(false); setComposerError('Tài khoản chưa được kết nối trong bản xem trước.'); } else { setInput(id); setDrawer(false); } }} />
+    <Sidebar profileName={role === 'guest' ? undefined : profile.name} profileAvatarUri={role === 'guest' ? undefined : profile.avatarUri} badges={{ quotes: 2, ...sampleWorkerBadges }} recentLoading={recentLoading} recentSessions={sessions} activeSessionId="sample-1" onOpenSession={() => setDrawer(false)} onTogglePin={togglePin} onSessionMore={() => undefined} visible={drawer} onClose={() => setDrawer(false)} mode={role} modePending={false} modeNotice={null} onModeSelect={next => { setDrawer(false); if (role === 'guest') setSigningInAs(next); else setRole(next); }} onModeCancel={() => undefined} onDismissModeNotice={() => undefined} onSelectService={prompt => { setInput(prompt); setComposerError(null); setDrawer(false); }} onNavigate={id => { if (id === 'new' || id === 'home') { reset(); setRequestsOpen(false); setSupportScreen(null); setJobsStage(null); setEarningsMode(null); setProfileTab(null); setWorkerKael(false); } else if (id === 'requests') { setRequestsOpen(true); setDrawer(false); } else if (id === 'notifications' || id === 'quotes' || id === 'saved' || id === 'help' || id === 'settings' || id === 'profile') { setQuotesFromRequests(false); setSupportScreen(id); setDrawer(false); } else if (workerJobStageForSidebarId(id) !== null) { setJobsStage(workerJobStageForSidebarId(id)); setDrawer(false); } else if (id === 'worker-earnings' || id === 'worker-payout') { setEarningsMode(id === 'worker-payout' ? 'payout' : 'overview'); setDrawer(false); } else if (workerProfileTabForSidebarId(id) !== null) { setProfileTab(workerProfileTabForSidebarId(id)); setDrawer(false); } else if (id === 'worker-kael') { setWorkerKael(true); setDrawer(false); } else if (id.startsWith('worker-')) { setDrawer(false); setComposerError('Tài khoản chưa được kết nối trong bản xem trước.'); } else { setInput(id); setDrawer(false); } }} />
   </SafeAreaView>
   {signingInAs && <View style={StyleSheet.absoluteFill}><SignInPreview initialRole={signingInAs} onClose={() => setSigningInAs(null)} onDone={next => { kaelIntroSession.markPlayed(); setRole(next); setSigningInAs(null); }} /></View>}
   </SafeAreaProvider>;

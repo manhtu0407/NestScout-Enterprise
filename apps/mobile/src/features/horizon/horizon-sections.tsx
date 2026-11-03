@@ -9,6 +9,7 @@ import { horizonColors } from '@/theme/palette';
 
 import { screenTitles } from './content';
 import { CustomerSection, isCustomerSection, type CustomerSectionId } from './customer-sections';
+import { WorkerSection, isWorkerSection } from './worker-sections';
 
 const metrics = horizonLayout.horizonEntry;
 
@@ -42,6 +43,14 @@ export function SectionRoute() {
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <StatusBar style="dark" />
         <CustomerSection id={id} onBack={() => router.back()} onNavigate={navigate} />
+      </SafeAreaView>
+    );
+  }
+  if (isWorkerSection(id)) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <StatusBar style="dark" />
+        <WorkerSection id={id} onBack={() => router.back()} onNavigate={target => router.push({ pathname: '/section', params: { id: target } })} />
       </SafeAreaView>
     );
   }

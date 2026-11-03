@@ -2,7 +2,10 @@ import { authenticatedRequest } from '@/lib/authenticated-rest';
 
 import { workflowErrorFrom } from './workflow-error';
 
-export type NotificationKind = 'quote_received' | 'job_assigned' | 'job_progress' | 'work_submitted' | 'job_completed' | 'scope_proposed';
+export type CustomerNotificationKind = 'quote_received' | 'job_assigned' | 'job_progress' | 'work_submitted' | 'job_completed' | 'scope_proposed';
+export type WorkerNotificationKind = 'job_offered' | 'work_approved' | 'revision_requested' | 'work_disputed' | 'scope_approved' | 'scope_rejected' | 'resume_agreed' | 'review_received';
+export type NotificationKind = CustomerNotificationKind | WorkerNotificationKind;
+export type NotificationAudience = 'customer' | 'worker';
 export type CustomerNotification = { id: string; kind: NotificationKind; request_id: string; title: string; body: string; created_at: string; read_at: string | null };
 export type CustomerProfile = { display_name: string; email: string; address: string };
 export type StoredCustomerProfile = CustomerProfile & { avatar_path: string; updated_at: string };
@@ -29,7 +32,10 @@ export type SavedWorkerRecord = {
   basis: string;
 };
 
-const notificationKinds: readonly string[] = ['quote_received', 'job_assigned', 'job_progress', 'work_submitted', 'job_completed', 'scope_proposed'];
+const notificationKindsByAudience: Readonly<Record<NotificationAudience, readonly NotificationKind[]>> = {
+  customer: ['quote_received', 'job_assigned', 'job_progress', 'work_submitted', 'job_completed', 'scope_proposed'],
+  worker: ['job_offered', 'work_approved', 'revision_requested', 'work_disputed', 'scope_approved', 'scope_rejected', 'resume_agreed', 'review_received'],
+};
 const notificationLimit = 100;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -90,8 +96,9 @@ export async function setRequestPinned(userId: string, requestId: string, pinned
   if (result !== pinned) throw new Error('Invalid pin response');
 }
 
-export async function readNotifications(userId: string, signal: AbortSignal): Promise<CustomerNotification[]> {
-  const rows = await readRows(userId, `notifications?select=id,kind,request_id,title,body,created_at,read_at&order=created_at.desc&limit=${notificationLimit}`, signal, 'Could not read notifications');
+export async function readNotifications(userId: string, signal: AbortSignal, audience: NotificationAudience = 'customer'): Promise<CustomerNotification[]> {
+  const notificationKinds: readonly string[] = notificationKindsByAudience[audience];
+  const rows = await readRows(userId, `notifications?select=id,kind,request_id,title,body,created_at,read_at&kind=in.(${notificationKinds.join(',')})&order=created_at.desc&limit=${notificationLimit}`, signal, 'Could not read notifications');
   if (!rows.every(row => isRecord(row) && typeof row.id === 'string' && typeof row.kind === 'string' && notificationKinds.includes(row.kind)
     && typeof row.request_id === 'string' && typeof row.title === 'string' && typeof row.body === 'string'
     && typeof row.created_at === 'string' && (row.read_at === null || typeof row.read_at === 'string'))) throw new Error('Invalid notification response');

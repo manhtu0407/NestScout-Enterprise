@@ -1,8 +1,9 @@
+import { randomUUID } from 'expo-crypto';
 import * as Haptics from 'expo-haptics';
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Icon, type IconName, PressScale } from '@/features/shared';
+import { Icon, type IconName } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
@@ -11,76 +12,110 @@ import { Presence, useRetained } from './motion-presence';
 import { SlideToConfirm } from './slide-to-confirm';
 import { SlidingChips } from './sliding-chips';
 import { ScreenHeader } from './support-shell';
-import { workerJobStages, workerJobStepActions, workerJobSteps, type WorkerJob, type WorkerJobStage } from './worker-jobs';
+import { ActionButton } from './worker-action-button';
+import { workerJobStages, workerJobStepActions, workerJobSteps, type WorkerCommand, type WorkerJob, type WorkerJobStage, type WorkerPerform } from './worker-jobs';
+import { workflowMessage } from './workflow-messages';
 
+const webField = Platform.select({ web: { outlineStyle: 'solid', outlineWidth: 0 } as const, default: undefined });
 const metrics = horizonLayout.workerJobs;
 const colors = horizonColors.workerJobs;
 const card = horizonLayout.requestsScreen;
 const cardColors = horizonColors.requestsScreen;
 
-type Change = Partial<Pick<WorkerJob, 'stage' | 'step' | 'stageLabel' | 'pause' | 'delayReported' | 'correctionNote'>>;
+type Props = {
+  initialStage: WorkerJobStage;
+  jobs: readonly WorkerJob[];
+  perform: WorkerPerform;
+  onBack: () => void;
+  onAskKael?: () => void;
+  sample?: boolean;
+};
 
-type Props = { initialStage: WorkerJobStage; jobs?: readonly WorkerJob[]; onBack: () => void; onAskKael?: () => void };
+type FormKind = 'submit' | 'propose' | 'report' | 'pause';
+
+type FormState = { jobId: string; kind: FormKind; key: string };
 
 type Actions = {
+  busy: boolean;
   onAccept: () => void;
   onDecline: () => void;
   onAdvance: () => void;
-  onDelay: () => void;
-  onPause: () => void;
-  onRequestResume: () => void;
-  onSubmit: () => void;
-  onResubmit: () => void;
+  onResume: () => void;
+  onOpen: (kind: FormKind) => void;
   onAskKael?: () => void;
 };
 
-export function WorkerJobsScreen({ initialStage, jobs = [], onBack, onAskKael }: Props) {
+type FormProps = { job: WorkerJob; form: FormState; busy: boolean; error: string | null; onCancel: () => void; onRun: (command: WorkerCommand) => void; onInvalid: (message: string) => void };
+
+type CardProps = { job: WorkerJob; actions: Actions; form: FormState | null; busy: boolean; error: string | null; onCancelForm: () => void; onRun: (command: WorkerCommand) => void; onInvalid: (message: string) => void };
+
+const maxText = 4000;
+
+export function WorkerJobsScreen({ initialStage, jobs, perform, onBack, onAskKael, sample = false }: Props) {
   const [stage, setStage] = useState(initialStage);
-  const [changes, setChanges] = useState<Readonly<Record<string, Change>>>({});
-  const [dismissed, setDismissed] = useState<readonly string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const running = useRef(false);
+  const mounted = useRef(true);
   const retainedNotice = useRetained(notice);
-  const live = jobs.filter(job => !dismissed.includes(job.id)).map(job => ({ ...job, ...changes[job.id] }));
   const current = workerJobStages.find(info => info.stage === stage) ?? workerJobStages[0];
-  const visible = live.filter(job => job.stage === stage);
+  const visible = jobs.filter(job => job.stage === stage);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const select = (next: WorkerJobStage) => {
     setStage(next);
     setNotice(null);
+    setError(null);
+    setForm(null);
   };
-  const move = (id: string, change: Change, message: string) => {
-    setChanges(existing => ({ ...existing, [id]: { ...existing[id], ...change } }));
-    setNotice(message);
+
+  const run = async (id: string, command: WorkerCommand) => {
+    if (running.current) return;
+    running.current = true;
+    setBusyId(id);
+    setNotice(null);
+    setError(null);
+    try {
+      const message = await perform(id, command);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (!mounted.current) return;
+      setNotice(message);
+      setForm(null);
+    } catch (failure) {
+      if (mounted.current) setError(workflowMessage(failure));
+    } finally {
+      running.current = false;
+      if (mounted.current) setBusyId(null);
+    }
   };
+
+  const open = (jobId: string, kind: FormKind) => {
+    setError(null);
+    setNotice(null);
+    setForm({ jobId, kind, key: randomUUID() });
+  };
+
   const actionsFor = (job: WorkerJob): Actions => ({
+    busy: busyId !== null,
     onAccept: () => {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      move(job.id, { stage: 'assigned', step: 0 }, 'Đã nhận việc. Xem trong mục Đã nhận.');
+      void run(job.id, { type: 'accept' });
     },
-    onDecline: () => {
-      setDismissed(existing => [...existing, job.id]);
-      setNotice('Đã từ chối lời mời này.');
-    },
+    onDecline: () => void run(job.id, { type: 'decline' }),
     onAdvance: () => {
-      const step = job.step ?? 0;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      if (step + 1 < workerJobSteps.length) {
-        move(job.id, { step: step + 1 }, `Đã cập nhật: ${workerJobSteps[step + 1]}.`);
-        return;
-      }
-      move(job.id, { stage: 'active', step: undefined, stageLabel: 'Vừa bắt đầu' }, 'Đã bắt đầu làm. Xem trong mục Đang làm.');
+      void run(job.id, { type: 'advance' });
     },
-    onDelay: () => move(job.id, { delayReported: true }, 'Đã ghi nhận báo chậm. Không có khoản phí hay thay đổi lịch tự động.'),
-    onPause: () => move(job.id, { pause: 'paused' }, 'Đã tạm dừng việc. Muốn làm tiếp cần khách đồng ý.'),
-    onRequestResume: () => move(job.id, { pause: 'resume' }, 'Đã gửi yêu cầu làm tiếp. Chờ khách đồng ý.'),
-    onSubmit: () => {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      move(job.id, { stage: 'review', pause: undefined, stageLabel: 'Vừa nộp' }, 'Đã nộp kết quả. Xem trong mục Chờ duyệt.');
-    },
-    onResubmit: () => {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      move(job.id, { correctionNote: undefined, stageLabel: 'Vừa nộp lại' }, 'Đã nộp lại kết quả. Chờ khách duyệt.');
-    },
+    onResume: () => void run(job.id, { type: 'resume' }),
+    onOpen: kind => open(job.id, kind),
     onAskKael,
   });
 
@@ -91,7 +126,7 @@ export function WorkerJobsScreen({ initialStage, jobs = [], onBack, onAskKael }:
       </View>
       <View style={styles.chipsBlock}>
         <SlidingChips
-          items={workerJobStages.map(info => ({ key: info.stage, label: info.label, count: live.filter(job => job.stage === info.stage).length }))}
+          items={workerJobStages.map(info => ({ key: info.stage, label: info.label, count: jobs.filter(job => job.stage === info.stage).length }))}
           selectedKey={stage}
           onSelect={key => { const next = workerJobStages.find(info => info.stage === key); if (next) select(next.stage); }}
         />
@@ -103,8 +138,25 @@ export function WorkerJobsScreen({ initialStage, jobs = [], onBack, onAskKael }:
             <Text style={styles.noticeText}>{retainedNotice}</Text>
           </View>
         </Presence>
+        {error !== null && form === null ? (
+          <View accessibilityRole="alert" style={styles.problem}>
+            <Text style={styles.problemText}>{error}</Text>
+          </View>
+        ) : null}
         {visible.length > 0 ? (
-          visible.map(job => <JobCard key={job.id} job={job} actions={actionsFor(job)} />)
+          visible.map(job => (
+            <JobCard
+              key={job.id}
+              job={job}
+              actions={actionsFor(job)}
+              form={form !== null && form.jobId === job.id ? form : null}
+              busy={busyId === job.id}
+              error={error}
+              onCancelForm={() => { setForm(null); setError(null); }}
+              onRun={command => void run(job.id, command)}
+              onInvalid={setError}
+            />
+          ))
         ) : (
           <View accessibilityLiveRegion="polite" style={styles.empty}>
             <Icon name={current?.emptyIcon ?? 'bolt'} size={card.emptyIconSize} color={cardColors.emptyIcon} />
@@ -112,8 +164,76 @@ export function WorkerJobsScreen({ initialStage, jobs = [], onBack, onAskKael }:
             <Text style={styles.emptyBody}>{current?.emptyBody}</Text>
           </View>
         )}
-        <Text style={styles.footnote}>Dữ liệu mẫu. Lời mời, giá và thanh toán chưa được kết nối.</Text>
+        {sample ? <Text style={styles.footnote}>Dữ liệu mẫu. Lời mời, giá và thanh toán chưa được kết nối.</Text> : null}
       </ScrollView>
+    </View>
+  );
+}
+
+function JobForm({ job, form, busy, error, onCancel, onRun, onInvalid }: FormProps) {
+  const [text, setText] = useState('');
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const reportKind = job.step === 2 ? 'customer_absent' : 'delay';
+  const field = (label: string, value: string, onChange: (value: string) => void, multiline = true, keyboardType: 'default' | 'number-pad' = 'default') => (
+    <TextInput
+      accessibilityLabel={label}
+      placeholder={label}
+      placeholderTextColor={colors.placeholder}
+      value={value}
+      onChangeText={onChange}
+      editable={!busy}
+      multiline={multiline}
+      keyboardType={keyboardType}
+      maxLength={maxText}
+      style={[styles.field, multiline && styles.fieldMultiline]}
+    />
+  );
+  const send = () => {
+    if (form.kind === 'submit') {
+      const evidence = text.trim();
+      if (!evidence) return onInvalid('Hãy mô tả công việc đã làm, tối đa 4000 ký tự.');
+      return onRun({ type: 'submit', evidence, key: form.key });
+    }
+    if (form.kind === 'report') {
+      const details = text.trim();
+      if (!details) return onInvalid('Hãy ghi rõ nội dung cần báo.');
+      return onRun({ type: 'report', kind: reportKind, details, key: form.key });
+    }
+    const scope = text.trim();
+    const rationale = reason.trim();
+    const value = Number(amount);
+    if (!scope || !rationale || !/^\d+$/.test(amount) || !Number.isSafeInteger(value)) return onInvalid('Nhập phạm vi mới, số tiền (chỉ chữ số) và lý do thay đổi.');
+    return onRun({ type: 'propose', scope, amount: value, rationale, key: form.key });
+  };
+  if (form.kind === 'pause') {
+    return (
+      <View style={styles.form}>
+        <Text style={styles.formTitle}>Vì sao bạn tạm dừng?</Text>
+        <ActionButton secondary disabled={busy} label="Gián đoạn thông thường" accessibilityLabel={`Tạm dừng thông thường ${job.title}`} onPress={() => onRun({ type: 'pause', category: 'ordinary_interruption' })} />
+        <ActionButton secondary disabled={busy} label="Lo ngại về an toàn" accessibilityLabel={`Tạm dừng vì an toàn ${job.title}`} onPress={() => onRun({ type: 'pause', category: 'safety_concern' })} />
+        <Text style={styles.footnoteInline}>Tạm dừng vì an toàn là quyết định cuối: việc đó không thể làm tiếp.</Text>
+        {error ? <Text accessibilityRole="alert" style={styles.problemText}>{error}</Text> : null}
+        <ActionButton secondary disabled={busy} label="Đóng" accessibilityLabel="Đóng lựa chọn tạm dừng" onPress={onCancel} />
+      </View>
+    );
+  }
+  const title = form.kind === 'submit' ? 'Mô tả công việc đã làm' : form.kind === 'propose' ? 'Đề xuất đổi phạm vi hoặc giá' : reportKind === 'delay' ? 'Báo chậm' : 'Khách không trả lời';
+  const hint = form.kind === 'propose'
+    ? 'Khách phải đồng ý thì phạm vi và giá mới mới có hiệu lực.'
+    : form.kind === 'report' ? 'Ghi nhận này chưa được xác minh độc lập và không hứa giờ đến cụ thể.' : null;
+  return (
+    <View style={styles.form}>
+      <Text style={styles.formTitle}>{title}</Text>
+      {form.kind === 'propose' ? field('Phạm vi mới', text, setText) : field(form.kind === 'submit' ? 'Kết quả công việc' : 'Nội dung báo', text, setText)}
+      {form.kind === 'propose' ? field('Tổng tiền mới (VND)', amount, setAmount, false, 'number-pad') : null}
+      {form.kind === 'propose' ? field('Lý do thay đổi', reason, setReason) : null}
+      {hint ? <Text style={styles.footnoteInline}>{hint}</Text> : null}
+      {error ? <Text accessibilityRole="alert" style={styles.problemText}>{error}</Text> : null}
+      <View style={styles.actions}>
+        <ActionButton secondary disabled={busy} label="Hủy" accessibilityLabel={`Hủy ${title}`} onPress={onCancel} />
+        <ActionButton disabled={busy} label={busy ? 'Đang gửi…' : 'Gửi'} accessibilityLabel={`Gửi: ${title}`} onPress={send} />
+      </View>
     </View>
   );
 }
@@ -131,9 +251,9 @@ type Tag = { label: string; waiting: boolean };
 
 function statusOf(job: WorkerJob): string {
   switch (job.stage) {
-    case 'offer': return `${job.clientName} · ${job.expiresLabel ?? ''}`.trim();
+    case 'offer': return job.expiresLabel ?? '';
     case 'assigned': return workerJobSteps[job.step ?? 0] ?? '';
-    case 'active': return job.pause === 'paused' ? 'Đang tạm dừng' : job.pause === 'resume' ? 'Chờ khách đồng ý làm tiếp' : job.stageLabel ?? 'Đang thực hiện';
+    case 'active': return job.pause === 'paused' ? 'Đang tạm dừng' : job.pause === 'resume' ? 'Chờ khách đồng ý làm tiếp' : job.pause === 'safety' ? 'Đã tạm dừng vì an toàn' : job.stageLabel ?? 'Đang thực hiện';
     case 'review': return job.stageLabel ?? 'Chờ khách duyệt';
     default: return `Hoàn tất · ${job.stageLabel ?? ''}`.trim();
   }
@@ -142,7 +262,7 @@ function statusOf(job: WorkerJob): string {
 function tagOf(job: WorkerJob): Tag | null {
   if (job.stage === 'offer') return job.photoCount > 0 ? { label: `${job.photoCount} ảnh`, waiting: false } : null;
   if (job.stage === 'assigned') return job.delayReported ? { label: 'Đã báo chậm', waiting: true } : null;
-  if (job.stage === 'active') return job.pause ? { label: job.pause === 'paused' ? 'Tạm dừng' : 'Chờ khách', waiting: true } : null;
+  if (job.stage === 'active') return job.pause ? { label: job.pause === 'resume' ? 'Chờ khách' : 'Tạm dừng', waiting: true } : null;
   if (job.stage === 'review') return { label: job.correctionNote ? 'Cần sửa' : 'Chờ khách', waiting: true };
   return null;
 }
@@ -150,75 +270,65 @@ function tagOf(job: WorkerJob): Tag | null {
 function noteOf(job: WorkerJob): string | null {
   switch (job.stage) {
     case 'offer': return 'Khách đã chấp nhận giá này trước khi mời bạn. Nhận việc nghĩa là nhận đúng phạm vi và giá đó.';
-    case 'active': return job.pause === 'paused' ? 'Việc đang tạm dừng. Cần khách đồng ý thì mới làm tiếp.' : null;
+    case 'active': return job.pause === 'safety' ? 'Việc đã tạm dừng vì lo ngại an toàn và không thể làm tiếp. Hãy liên hệ hỗ trợ nếu cần.' : job.pause ? 'Việc đang tạm dừng. Cần khách đồng ý thì mới làm tiếp.' : null;
     case 'review': return job.correctionNote ? null : 'Kết quả đã nộp. Khách sẽ nghiệm thu hoặc yêu cầu chỉnh sửa. Nếu có tranh chấp, việc được xử lý ngoài ứng dụng.';
     case 'done': return 'Thanh toán chưa được kết nối nên chưa có khoản thu thật.';
     default: return null;
   }
 }
 
-type ActionButtonProps = { label: string; accessibilityLabel: string; onPress: () => void; secondary?: boolean; disabled?: boolean };
-
-function ActionButton({ label, accessibilityLabel, onPress, secondary = false, disabled = false }: ActionButtonProps) {
-  return (
-    <PressScale
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={[styles.action, secondary && styles.actionSecondary, disabled && styles.disabled]}
-      wrapperStyle={styles.actionWrap}
-    >
-      <Text style={[styles.actionLabel, secondary && styles.actionSecondaryLabel]}>{label}</Text>
-    </PressScale>
-  );
-}
-
 function JobActions({ job, actions }: { job: WorkerJob; actions: Actions }) {
   const { title } = job;
+  const { busy } = actions;
   const advanceLabel = workerJobStepActions[job.step ?? 0] ?? '';
+  const delayLabel = job.step === 2 ? 'Khách không trả lời' : 'Báo chậm';
   switch (job.stage) {
     case 'offer':
       return (
         <View style={styles.offerActions}>
-          <SlideToConfirm label="Trượt để nhận việc" accessibilityLabel={`Nhận việc ${title}`} onConfirm={actions.onAccept} />
-          <ActionButton secondary label="Từ chối" accessibilityLabel={`Từ chối ${title}`} onPress={actions.onDecline} />
+          <SlideToConfirm label="Trượt để nhận việc" accessibilityLabel={`Nhận việc ${title}`} disabled={busy} onConfirm={actions.onAccept} />
+          <ActionButton secondary disabled={busy} label="Từ chối" accessibilityLabel={`Từ chối ${title}`} onPress={actions.onDecline} />
         </View>
       );
     case 'assigned':
       return (
         <View style={styles.actions}>
-          <ActionButton secondary disabled={job.delayReported === true} label="Báo chậm" accessibilityLabel={`Báo chậm ${title}`} onPress={actions.onDelay} />
-          <ActionButton label={advanceLabel} accessibilityLabel={`${advanceLabel}, ${title}`} onPress={actions.onAdvance} />
+          <ActionButton secondary disabled={busy || job.delayReported === true} label={job.delayReported ? 'Đã ghi nhận' : delayLabel} accessibilityLabel={`${delayLabel} ${title}`} onPress={() => actions.onOpen('report')} />
+          <ActionButton disabled={busy} label={advanceLabel} accessibilityLabel={`${advanceLabel}, ${title}`} onPress={actions.onAdvance} />
         </View>
       );
     case 'active':
       if (job.pause === 'paused') {
         return (
           <View style={styles.actions}>
-            <ActionButton label="Xin làm tiếp" accessibilityLabel={`Xin làm tiếp ${title}`} onPress={actions.onRequestResume} />
+            <ActionButton disabled={busy} label="Xin làm tiếp" accessibilityLabel={`Xin làm tiếp ${title}`} onPress={actions.onResume} />
           </View>
         );
       }
-      if (job.pause === 'resume') {
+      if (job.pause === 'resume' || job.pause === 'safety') {
+        const label = job.pause === 'resume' ? 'Chờ khách đồng ý' : 'Không thể làm tiếp';
         return (
           <View style={styles.actions}>
-            <ActionButton disabled label="Chờ khách đồng ý" accessibilityLabel={`Chờ khách đồng ý làm tiếp ${title}`} onPress={actions.onRequestResume} />
+            <ActionButton disabled label={label} accessibilityLabel={`${label} ${title}`} onPress={actions.onResume} />
           </View>
         );
       }
       return (
-        <View style={styles.actions}>
-          <ActionButton secondary label="Tạm dừng" accessibilityLabel={`Tạm dừng ${title}`} onPress={actions.onPause} />
-          <ActionButton label="Nộp kết quả" accessibilityLabel={`Nộp kết quả ${title}`} onPress={actions.onSubmit} />
+        <View style={styles.offerActions}>
+          <View style={styles.actions}>
+            <ActionButton secondary disabled={busy} label="Tạm dừng" accessibilityLabel={`Tạm dừng ${title}`} onPress={() => actions.onOpen('pause')} />
+            <ActionButton disabled={busy} label="Nộp kết quả" accessibilityLabel={`Nộp kết quả ${title}`} onPress={() => actions.onOpen('submit')} />
+          </View>
+          {job.canPropose === false ? null : (
+            <ActionButton secondary disabled={busy} label="Đề xuất đổi phạm vi" accessibilityLabel={`Đề xuất đổi phạm vi ${title}`} onPress={() => actions.onOpen('propose')} />
+          )}
         </View>
       );
     case 'review':
       return (
         <View style={styles.actions}>
-          <ActionButton secondary label="Hỏi Kael" accessibilityLabel={`Hỏi Kael về ${title}`} onPress={() => actions.onAskKael?.()} />
-          {job.correctionNote ? <ActionButton label="Nộp lại" accessibilityLabel={`Nộp lại ${title}`} onPress={actions.onResubmit} /> : null}
+          {actions.onAskKael ? <ActionButton secondary label="Hỏi Kael" accessibilityLabel={`Hỏi Kael về ${title}`} onPress={actions.onAskKael} /> : null}
+          {job.correctionNote ? <ActionButton disabled={busy} label="Nộp lại" accessibilityLabel={`Nộp lại ${title}`} onPress={() => actions.onOpen('submit')} /> : null}
         </View>
       );
     default:
@@ -226,7 +336,7 @@ function JobActions({ job, actions }: { job: WorkerJob; actions: Actions }) {
   }
 }
 
-function JobCard({ job, actions }: { job: WorkerJob; actions: Actions }) {
+function JobCard({ job, actions, form, busy, error, onCancelForm, onRun, onInvalid }: CardProps) {
   const { stage } = job;
   const step = job.step ?? 0;
   const amount = formatMoney(job.amountMinor, 'VND');
@@ -241,7 +351,7 @@ function JobCard({ job, actions }: { job: WorkerJob; actions: Actions }) {
         </View>
         <View style={styles.cardCopy}>
           <Text numberOfLines={2} style={styles.cardTitle}>{job.title}</Text>
-          <Text numberOfLines={1} style={styles.cardMeta}>{job.area} · {job.distanceLabel}</Text>
+          <Text numberOfLines={1} style={styles.cardMeta}>{job.area || (stage === 'offer' ? 'Địa chỉ hiện sau khi nhận việc' : '')}</Text>
         </View>
       </View>
       <View style={styles.cardBottom}>
@@ -279,7 +389,7 @@ function JobCard({ job, actions }: { job: WorkerJob; actions: Actions }) {
         </View>
       ) : null}
       {note ? <Text style={styles.footnoteInline}>{note}</Text> : null}
-      <JobActions job={job} actions={actions} />
+      {form ? <JobForm key={form.key} job={job} form={form} busy={busy} error={error} onCancel={onCancelForm} onRun={onRun} onInvalid={onInvalid} /> : <JobActions job={job} actions={actions} />}
     </View>
   );
 }
@@ -316,17 +426,17 @@ const styles = StyleSheet.create({
   segment: { flex: 1, height: card.stepSegmentHeight, borderRadius: card.stepSegmentRadius, backgroundColor: cardColors.stepTrack },
   segmentDone: { backgroundColor: cardColors.stepFill },
   caption: { color: cardColors.stepCaption, fontSize: card.stepCaptionSize, fontWeight: card.stepCaptionWeight },
+  problem: { padding: metrics.noticePadding, borderRadius: metrics.noticeRadius, backgroundColor: colors.waitingFill },
+  problemText: { color: colors.waitingText, fontSize: metrics.noticeSize, lineHeight: metrics.noticeLineHeight },
+  form: { gap: metrics.composerGap },
+  formTitle: { color: horizonColors.text, fontSize: card.statusSize, fontWeight: card.statusWeight },
+  field: { ...webField, minHeight: metrics.fieldHeight, paddingHorizontal: metrics.fieldPaddingHorizontal, paddingVertical: metrics.composerPadding, borderRadius: metrics.fieldRadius, backgroundColor: colors.fieldFill, color: colors.fieldText, fontSize: metrics.fieldFontSize },
+  fieldMultiline: { minHeight: metrics.fieldMultilineHeight, textAlignVertical: 'top' },
   correction: { padding: metrics.noticePadding, borderRadius: metrics.noticeRadius, backgroundColor: colors.waitingFill },
   correctionText: { color: colors.waitingText, fontSize: metrics.noticeSize, lineHeight: metrics.noticeLineHeight },
   footnoteInline: { color: horizonColors.muted, fontSize: metrics.footnoteSize, lineHeight: metrics.footnoteLineHeight },
   actions: { flexDirection: 'row', gap: card.actionGap },
   offerActions: { gap: card.actionGap },
-  actionWrap: { flex: 1 },
-  action: { height: card.actionHeight, borderRadius: card.actionRadius, alignItems: 'center', justifyContent: 'center', backgroundColor: cardColors.actionFill },
-  actionSecondary: { backgroundColor: cardColors.actionSecondaryFill },
-  actionLabel: { color: cardColors.actionLabel, fontSize: card.actionSize, fontWeight: card.actionWeight },
-  actionSecondaryLabel: { color: cardColors.actionSecondaryLabel },
-  disabled: { opacity: metrics.disabledOpacity },
   empty: { alignItems: 'center', paddingTop: card.emptyPaddingTop, paddingHorizontal: card.emptyPaddingHorizontal, gap: card.emptyGap },
   emptyTitle: { color: horizonColors.text, fontSize: card.emptyTitleSize, fontWeight: card.emptyTitleWeight, textAlign: 'center' },
   emptyBody: { color: horizonColors.muted, fontSize: card.emptyBodySize, lineHeight: card.emptyBodyLineHeight, textAlign: 'center' },

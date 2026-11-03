@@ -55,8 +55,21 @@ test('notifications are validated and ordered newest first', async () => {
   expect(jest.mocked(authenticatedRequest).mock.calls[0]?.[1]).toContain('order=created_at.desc');
   respond([{ ...notification, kind: 'unknown_kind' }]);
   await expect(readNotifications('u1', signal)).rejects.toThrow('Invalid notification response');
+  respond([{ ...notification, kind: 'job_offered' }]);
+  await expect(readNotifications('u1', signal)).rejects.toThrow('Invalid notification response');
   respond([{ ...notification, read_at: 5 }]);
   await expect(readNotifications('u1', signal)).rejects.toThrow('Invalid notification response');
+});
+
+test('each audience asks only for its own notification kinds', async () => {
+  respond([{ ...notification, kind: 'job_offered' }]);
+  await expect(readNotifications('u1', signal, 'worker')).resolves.toHaveLength(1);
+  expect(jest.mocked(authenticatedRequest).mock.calls[0]?.[1]).toContain('kind=in.(job_offered,');
+  expect(jest.mocked(authenticatedRequest).mock.calls[0]?.[1]).not.toContain('quote_received');
+  respond([notification]);
+  await readNotifications('u1', signal);
+  expect(jest.mocked(authenticatedRequest).mock.calls[1]?.[1]).toContain('kind=in.(quote_received,');
+  expect(jest.mocked(authenticatedRequest).mock.calls[1]?.[1]).not.toContain('job_offered');
 });
 
 test('marking nothing read makes no request', async () => {

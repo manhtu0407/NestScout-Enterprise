@@ -90,7 +90,7 @@ The root `overrides` entry for `react` keeps a single React copy for the test re
 | `src/app` | Thin Expo Router files: one default export of a feature component, plus the root layout | State, Supabase access, policy |
 | `src/features/access` | Guest entry, phone sign-in, session and capability state, mode preference, route policy, sign-out | Worker qualification, privileged grants |
 | `src/features/client` | Client-only screens | Authorization, session code |
-| `src/features/worker` | Worker-only screens | Entitlement granting |
+| `src/features/worker` | Worker mode shell (role switch, sign-out) | Entitlement granting |
 | `src/features/shared` | UI used by both modes, including the glass surfaces, press controls and icon set | Other features, privileged credentials |
 | `src/features/horizon` | Kael chat shell, sidebar, preview | Authorization, session code |
 | `src/lib` | Validated public config, the one Supabase client, keychain storage | Feature behavior |
@@ -525,3 +525,68 @@ counting animation would make sample data look like live data. Durations and siz
 in `horizonLayout.appMotion`, colours in `horizonColors.appMotion`, and Reduce Motion
 replaces movement with a short fade. The motion lab shows each piece. Behaviour on a
 device is NOT VERIFIED.
+
+## Worker jobs
+
+The Worker sidebar entries New jobs, Accepted, In progress, Awaiting review and
+History read Supabase through `features/shared/worker-repository.ts`. The
+`useWorkerData` hook loads the worker snapshot and the `worker_job_cards()` projection
+together, maps them with `worker-views.ts`, and sends every command (accept, decline,
+advance, pause, resume, submit, propose scope, report) through one `perform` function
+that reloads afterwards. Submit, scope proposal and report forms generate an
+idempotency key when the form opens and reuse it for retries until the form closes. An
+invitation shows no address or customer name until the worker accepts it. A safety
+pause cannot be resumed. The Kael entry stays a mock. Sample data and local simulation
+remain only in `HorizonPreview` (`useSampleWorkerJobs`), where the screen shows its
+sample footnote. Drafts are not persisted across app restarts. Native device behavior
+is NOT VERIFIED.
+
+## Worker profile
+
+The Worker sidebar entries Profile and certificates, Areas and services, and Customer
+reviews read and write Supabase through `features/shared/worker-profile-repository.ts`.
+`useWorkerData` loads `my_worker_profile()` with the job data, and `performProfile` sends
+every profile command (save profile, save coverage, availability, add and remove
+certificate) and reloads afterwards. A worker without a profile sees a creation form and
+is asked to create one before choosing areas, services or reading reviews. A saved profile
+is `worker_submitted` and never listed: only the operator changes `listed` and a
+certificate `status`, and customers see neither until then. Certificates are titles with
+a verification status; no document upload exists. Coverage and the availability switch in
+the sidebar are stored on the profile, but no automatic matching reads them yet, so they do
+not route jobs. Customers can review a worker whose profile is not listed, so ratings
+accumulate before approval; the rating shows only from three reviews. Sample data and
+local simulation remain only in `HorizonPreview` (`SampleWorkerProfileScreen`). Native
+device behavior is NOT VERIFIED.
+
+## Worker earnings
+
+The Worker sidebar entries Earnings and Payout read `worker_earnings()` through
+`features/shared/worker-earnings-repository.ts`; `useWorkerData` loads it with the jobs.
+The function lists the worker's completed jobs that have an acceptance event, newest
+first (at most 500), with the amount of the latest approved scope change or the quote
+amount, and the acceptance day in `Asia/Ho_Chi_Minh`. `toEarningsView` buckets those days
+on the client (today, the last seven days, the current month, a seven-day chart) using
+the Vietnam day, so a late-evening acceptance counts for the next calendar day. The
+figures are the value of work the customer accepted: no platform fee is deducted and no
+payment is confirmed, and the screen says so. Payout is an honest closed state, with no
+balance, no amount field and no withdraw button, until payment confirmation and a payout
+process exist. The sidebar shows today's accepted value and the next job (first assigned,
+else first active) from the same data, and placeholders while it loads. Sample figures
+remain only in `HorizonPreview`. Native device behavior is NOT VERIFIED.
+
+## Worker support and notifications
+
+Help and Settings in the Worker sidebar are the same account-level screens as for
+customers; Help sends `submit_support_request` for any verified account. Worker
+notifications reuse the `notifications` table with eight extra kinds (`job_offered`,
+`work_approved`, `revision_requested`, `work_disputed`, `scope_approved`, `scope_rejected`,
+`resume_agreed`, `review_received`). They are created by database triggers on new open
+invitations, customer decisions recorded as job events and new reviews, never by the
+client, and their text carries only the request title. `readNotifications` takes an
+audience and asks the server for only that audience's kinds, so a user holding both roles
+sees customer notices as a customer and worker notices as a worker. The Notifications
+entry of the Worker sidebar shows an unread badge; opening a notice marks it read and moves
+to the matching tab (new offers, history, awaiting customer, in progress or reviews).
+Notices for a job being offered, resumed or reviewed depend on those events existing, and
+offers still arrive only through fixtures until the matching executor exists. The preview
+does not simulate worker notifications. Native device behavior is NOT VERIFIED.

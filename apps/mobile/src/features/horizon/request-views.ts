@@ -198,6 +198,14 @@ const notificationIcons: Record<NotificationKind, IconName> = {
   work_submitted: 'check',
   job_completed: 'check',
   scope_proposed: 'receipt',
+  job_offered: 'bolt',
+  work_approved: 'check',
+  revision_requested: 'clock',
+  work_disputed: 'help',
+  scope_approved: 'receipt',
+  scope_rejected: 'receipt',
+  resume_agreed: 'briefcase',
+  review_received: 'star',
 };
 
 export function toNotificationItems(notifications: readonly CustomerNotification[], now: Date): NotificationItem[] {
