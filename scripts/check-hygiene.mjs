@@ -65,6 +65,7 @@ export function checkPath(file, artifacts = []) {
     || new RegExp(`^supabase/migrations/[0-9]{14}_[a-z0-9]+(?:_[a-z0-9]+)*\\.sql$`).test(file)
     || new RegExp(`^supabase/tests/database/${segments}${word}\\.test\\.sql$`).test(file)
     || new RegExp(`^supabase/functions/${word}/${word}\\.ts$`).test(file)
+    || new RegExp(`^services/kael-core/src/${word}\\.ts$`).test(file)
     || new RegExp(`^apps/mobile/src/app/(?:(?:${word}|\\(${word}\\))/)*(?:${word}|_layout)\\.tsx$`).test(file)
     || (!file.startsWith('apps/mobile/src/app/') && new RegExp(`^${mobileSource}${word}(?:\\.test)?\\.tsx?$`).test(file))
     || new RegExp(`^(?:${word}/)+(?:README\\.md|LICENSE|NOTICE|AUTHORS|CONTRIBUTORS\\.md)$`).test(file)

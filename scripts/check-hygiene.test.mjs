@@ -124,7 +124,8 @@ test('approved Expo application, Kael boundary and empty process paths pass', ()
     'apps/mobile/src/app/(auth)/phone.tsx', 'apps/mobile/src/lib/config.ts', 'apps/mobile/src/lib/config.test.ts',
     'apps/mobile/src/theme/palette.ts', 'apps/mobile/src/features/access/index.ts',
     'apps/mobile/src/features/access/state/access-provider.tsx', 'apps/mobile/src/features/access/state/access-provider.test.tsx',
-    'apps/mobile/src/testing/navigation.test.tsx', 'services/kael-core/README.md', 'docs/processes/.gitkeep']) {
+    'apps/mobile/src/testing/navigation.test.tsx', 'services/kael-core/README.md', 'services/kael-core/src/runtime.ts',
+    'services/kael-core/src/model-gateway.ts', 'supabase/functions/kael/index.ts', 'docs/processes/.gitkeep']) {
     assert.doesNotThrow(() => checkPath(file), file);
   }
 });
@@ -136,7 +137,9 @@ test('unapproved application, native, service and process paths still fail', () 
     'apps/mobile/assets/icon.png', 'apps/mobile/babel.config.js', 'apps/mobile/metro.config.js', 'apps/mobile/package-lock.json',
     'apps/mobile/.env', 'apps/mobile/.env.local', 'apps/mobile/ios/Podfile', 'apps/mobile/android/build.gradle',
     'apps/api/index.ts', 'packages/shared/index.ts', 'services/kael-core/server.ts', 'services/kael-core/package.json',
-    'services/kael-core/agent.mjs', 'process.bpmn', 'docs/order.bpmn',
+    'services/kael-core/agent.mjs', 'services/kael-core/src/Runtime.ts', 'services/kael-core/src/nested/runtime.ts',
+    'services/kael-core/src/runtime.js', 'services/kael-core/src/runtime.test.ts', 'services/kael-core/src/runtime.d.ts', 'services/kael-core/src/package.json',
+    'services/kael-core/tsconfig.json', 'services/other/src/runtime.ts', 'services/kael-core/src/notes.ts', 'process.bpmn', 'docs/order.bpmn',
     'supabase/functions/SendSms/index.ts', 'supabase/functions/send-sms-hook/Index.ts', 'supabase/functions/send-sms-hook/nested/index.ts',
     'supabase/functions/send-sms-hook/index.js', 'supabase/functions/index.ts', 'supabase/functions/send-sms-hook/deno.json']) {
     assert.throws(() => checkPath(file), /No approved naming convention|Disposable document\/source name/, file);

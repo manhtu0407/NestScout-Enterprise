@@ -23,6 +23,23 @@ export async function authenticatedRequest(userId: string, path: string, init: R
   });
 }
 
+export type FunctionFetch = (url: string, init: { method: 'POST'; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<Response>;
+
+export async function authenticatedFunctionRequest(userId: string, name: string, body: unknown, signal: AbortSignal, fetcher: FunctionFetch): Promise<Response> {
+  const { session, config } = await sessionFor(userId, signal);
+  return fetcher(`${config.supabaseUrl}/functions/v1/${name}`, {
+    method: 'POST',
+    signal,
+    headers: {
+      apikey: config.supabasePublishableKey,
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/x-ndjson',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function authenticatedStorageRequest(
   userId: string,
   path: string,

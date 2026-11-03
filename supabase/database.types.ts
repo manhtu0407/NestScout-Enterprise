@@ -53,6 +53,112 @@ isOneToOne: false
                   Relationships: [
 
                   ]
+                },"kael_conversations": {
+                  Row: {
+                    "created_at": string,"id": string,"mode": string,"owner_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"mode": string,"owner_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"mode"?: string,"owner_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"kael_messages": {
+                  Row: {
+                    "content": string,"conversation_id": string,"created_at": string,"id": string,"owner_id": string,"role": string,"run_id": string,"seq": number,"status": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "content": string,"conversation_id": string,"created_at"?: string,"id"?: string,"owner_id": string,"role": string,"run_id": string,"seq": number,"status"?: string
+                  }
+                  Update: {
+                    "content"?: string,"conversation_id"?: string,"created_at"?: string,"id"?: string,"owner_id"?: string,"role"?: string,"run_id"?: string,"seq"?: number,"status"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "kael_messages_conversation_id_fkey"
+      columns: ["conversation_id"]
+isOneToOne: false
+      referencedRelation: "kael_conversations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "kael_messages_run_id_fkey"
+      columns: ["run_id"]
+isOneToOne: false
+      referencedRelation: "kael_runs"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"kael_runs": {
+                  Row: {
+                    "conversation_id": string,"error_code": string | null,"finished_at": string | null,"id": string,"input_tokens": number,"model": string | null,"output_tokens": number,"owner_id": string,"provider": string | null,"request_id": string,"started_at": string,"status": string,"steps": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "conversation_id": string,"error_code"?: string | null,"finished_at"?: string | null,"id"?: string,"input_tokens"?: number,"model"?: string | null,"output_tokens"?: number,"owner_id": string,"provider"?: string | null,"request_id": string,"started_at"?: string,"status"?: string,"steps"?: number
+                  }
+                  Update: {
+                    "conversation_id"?: string,"error_code"?: string | null,"finished_at"?: string | null,"id"?: string,"input_tokens"?: number,"model"?: string | null,"output_tokens"?: number,"owner_id"?: string,"provider"?: string | null,"request_id"?: string,"started_at"?: string,"status"?: string,"steps"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "kael_runs_conversation_id_fkey"
+      columns: ["conversation_id"]
+isOneToOne: false
+      referencedRelation: "kael_conversations"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"kael_task_events": {
+                  Row: {
+                    "created_at": string,"event": string,"from_status": string | null,"id": string,"owner_id": string,"run_id": string | null,"task_id": string,"to_status": string,"version": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"event": string,"from_status"?: string | null,"id"?: string,"owner_id": string,"run_id"?: string | null,"task_id": string,"to_status": string,"version": number
+                  }
+                  Update: {
+                    "created_at"?: string,"event"?: string,"from_status"?: string | null,"id"?: string,"owner_id"?: string,"run_id"?: string | null,"task_id"?: string,"to_status"?: string,"version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "kael_task_events_run_id_fkey"
+      columns: ["run_id"]
+isOneToOne: false
+      referencedRelation: "kael_runs"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "kael_task_events_task_id_fkey"
+      columns: ["task_id"]
+isOneToOne: false
+      referencedRelation: "kael_tasks"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"kael_tasks": {
+                  Row: {
+                    "artifact": NonNullable<Json>,"conversation_id": string,"created_at": string,"id": string,"kind": string,"owner_id": string,"status": string,"summary": string,"title": string,"updated_at": string,"version": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "artifact"?: NonNullable<Json>,"conversation_id": string,"created_at"?: string,"id"?: string,"kind": string,"owner_id": string,"status": string,"summary"?: string,"title": string,"updated_at"?: string,"version"?: number
+                  }
+                  Update: {
+                    "artifact"?: NonNullable<Json>,"conversation_id"?: string,"created_at"?: string,"id"?: string,"kind"?: string,"owner_id"?: string,"status"?: string,"summary"?: string,"title"?: string,"updated_at"?: string,"version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "kael_tasks_conversation_id_fkey"
+      columns: ["conversation_id"]
+isOneToOne: false
+      referencedRelation: "kael_conversations"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"notifications": {
                   Row: {
                     "body": string,"created_at": string,"id": string,"kind": string,"read_at": string | null,"recipient_id": string,"request_id": string,"title": string
@@ -459,8 +565,38 @@ isOneToOne: false
               "display_name": string,"job_id": string,"profile_id": string,"request_id": string,"review_rating": number,"saved": boolean
             }[]
                            },
+"kael_actor_capabilities":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"kael_complete_approval":
+{ Args: { "p_approval_id": string,"p_outcome": string,"p_result": Json }; Returns: Json
+                           },
+"kael_consume_approval":
+{ Args: { "p_approval_id": string,"p_fingerprint": string }; Returns: Json
+                           },
+"kael_context_tasks":
+{ Args: { "p_conversation_id": string,"p_mode": string }; Returns: Json
+                           },
+"kael_finish_run":
+{ Args: { "p_complete": boolean,"p_error": string,"p_input_tokens": number,"p_model": string,"p_output_tokens": number,"p_provider": string,"p_run_id": string,"p_status": string,"p_steps": number,"p_text": string }; Returns: boolean
+                           },
 "kael_read_context":
 { Args: { "p_kind": string,"p_resource_id": string }; Returns: Json
+                           },
+"kael_record_tool":
+{ Args: { "p_call_id": string,"p_error": string,"p_fingerprint": string,"p_outcome": string,"p_run_id": string,"p_side_effect": string,"p_task_id": string,"p_tool": string }; Returns: boolean
+                           },
+"kael_reject_approval":
+{ Args: { "p_approval_id": string }; Returns: Json
+                           },
+"kael_request_approval":
+{ Args: { "p_args": Json,"p_expected_version": number,"p_fingerprint": string,"p_run_id": string,"p_summary": string,"p_task_id": string,"p_tool": string,"p_ttl_seconds": number }; Returns: Json
+                           },
+"kael_save_task":
+{ Args: { "p_artifact": Json,"p_conversation_id": string,"p_event": string,"p_expected_version": number,"p_kind": string,"p_run_id": string,"p_status": string,"p_summary": string,"p_task_id": string,"p_title": string }; Returns: Json
+                           },
+"kael_start_run":
+{ Args: { "p_conversation_id": string,"p_mode": string,"p_request_id": string,"p_user_text": string }; Returns: Json
                            },
 "mark_notifications_read":
 { Args: { "p_ids": (string)[] }; Returns: number

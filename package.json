@@ -22,7 +22,7 @@
     "check:languages": "node scripts/check-languages.mjs",
     "check:metadata": "node scripts/check-metadata.mjs",
     "scan:secrets": "node scripts/check-tools.mjs secrets",
-    "check": "npm run check:reserved && npm run check:hygiene && npm run check:comments && npm run check:format && npm run check:languages && npm run check:metadata && npm run lint:markdown && npm run lint:yaml && npm run lint:workflows && npm run scan:secrets && npm run verify:supabase && npm run typecheck:db && npm run check:test-selection && npm run check:capabilities && npm run verify:foundation && npm run check:skills && npm run check:mobile",
+    "check": "npm run check:reserved && npm run check:hygiene && npm run check:comments && npm run check:format && npm run check:languages && npm run check:metadata && npm run lint:markdown && npm run lint:yaml && npm run lint:workflows && npm run scan:secrets && npm run verify:supabase && npm run typecheck:db && npm run typecheck:kael && npm run check:test-selection && npm run check:capabilities && npm run verify:foundation && npm run check:skills && npm run check:mobile",
     "check:skills": "node scripts/check-skills.mjs",
     "check:mobile": "npm run typecheck:mobile && npm run lint:mobile && npm run test:mobile",
     "typecheck:mobile": "npm run typecheck --workspace apps/mobile",
@@ -44,7 +44,8 @@
     "db:stop": "node scripts/supabase-local.mjs stop",
     "verify:supabase": "node scripts/run-tests.mjs scripts/supabase-local.test.mjs",
     "typecheck:db": "tsc --noEmit --strict --skipLibCheck supabase/database.types.ts",
-    "verify:foundation": "node scripts/run-tests.mjs scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs scripts/check-skills.test.mjs scripts/test-integrity-reporter.test.mjs scripts/send-sms-hook.test.mjs scripts/review-diff.test.mjs scripts/dead-code-evaluation.test.mjs",
+    "typecheck:kael": "tsc --noEmit --strict --skipLibCheck --noUncheckedIndexedAccess --target es2024 --module esnext --moduleResolution bundler --allowImportingTsExtensions --verbatimModuleSyntax --erasableSyntaxOnly --lib es2024,dom,dom.iterable,dom.asynciterable supabase/functions/kael/index.ts",
+    "verify:foundation": "node scripts/run-tests.mjs scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs scripts/check-skills.test.mjs scripts/test-integrity-reporter.test.mjs scripts/send-sms-hook.test.mjs scripts/kael-core.test.mjs scripts/kael-evaluation.test.mjs scripts/review-diff.test.mjs scripts/dead-code-evaluation.test.mjs",
     "agents:evaluate": "node scripts/agent-evaluation.mjs",
     "health:dead-code": "knip --no-exit-code --no-progress",
     "health:review-diff": "node scripts/review-diff.mjs",
@@ -77,9 +78,10 @@
           "scripts/*.test.mjs",
           "scripts/supabase-mcp.mjs",
           "scripts/test-integrity-reporter.mjs",
-          "supabase/database.types.ts"
+          "supabase/database.types.ts",
+          "supabase/functions/kael/index.ts"
         ],
-        "project": ["scripts/**/*.mjs", "supabase/**/*.ts"],
+        "project": ["scripts/**/*.mjs", "supabase/**/*.ts", "services/**/*.ts"],
         "ignoreDependencies": ["supabase"]
       },
       "apps/mobile": {
