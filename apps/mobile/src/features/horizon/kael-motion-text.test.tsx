@@ -9,7 +9,10 @@ import { KaelThinkingStatus } from './kael-thinking-status';
 
 const metrics = horizonLayout.kaelMotion;
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+});
 
 function reduceMotion(value: boolean) {
   jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(value);
@@ -95,11 +98,13 @@ test('only the phases where Kael is still working show the thinking row', async 
   expect(isKaelThinking('matching')).toBe(true);
   expect(isKaelThinking('quotes')).toBe(false);
   expect(isKaelThinking('completed')).toBe(false);
+  jest.useFakeTimers();
   await render(<KaelThinkingRow phase="matching"/>);
   expect(screen.getByLabelText('Đang tìm thợ phù hợp…')).toBeTruthy();
 });
 
 test('an issue replaces the busy wording so the row never implies progress', async () => {
+  jest.useFakeTimers();
   await render(<KaelThinkingRow phase="matching" issue="unavailable"/>);
   expect(screen.getByLabelText('Chưa thể ghép thợ lúc này')).toBeTruthy();
   expect(screen.queryByLabelText('Đang tìm thợ phù hợp…')).toBeNull();
