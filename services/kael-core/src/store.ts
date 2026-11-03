@@ -25,6 +25,27 @@ export function createRest(config: KaelConfig, accessToken: string, fetcher: Fet
   });
 }
 
+export const kaelServerOperations = [
+  'kael_start_run', 'kael_finish_run', 'kael_save_task', 'kael_record_tool',
+  'kael_request_approval', 'kael_consume_approval', 'kael_complete_approval', 'kael_reject_approval',
+] as const;
+
+export type KaelServerOperation = typeof kaelServerOperations[number];
+
+export type ServerRpc = (operation: KaelServerOperation, body: Record<string, unknown>, signal?: AbortSignal) => Promise<Response>;
+
+export function createServerRpc(config: KaelConfig, fetcher: Fetcher = fetch): ServerRpc {
+  return (operation, body, signal) => {
+    if (!(kaelServerOperations as readonly string[]).includes(operation)) throw new StoreError(String(operation), 403);
+    return fetcher(`${config.supabaseUrl}/rest/v1/rpc/${operation}`, {
+      method: 'POST',
+      headers: { apikey: config.supabaseServiceKey, authorization: `Bearer ${config.supabaseServiceKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    });
+  };
+}
+
 export type RunStart =
   | { status: 'started'; run_id: string; conversation_id: string }
   | { status: 'replay'; run_id: string; conversation_id: string; run_status: string; assistant_text: string | null }
@@ -76,7 +97,7 @@ export type ApprovalRequestResult = { status: 'ok'; approval_id: string; expires
 export type ApprovalConsume =
   | { status: 'ok' | 'reconcile'; tool: string; args: Record<string, unknown>; task_id: string }
   | { status: 'consumed'; outcome: string; result: Record<string, unknown> | null; task_id: string }
-  | { status: 'expired' | 'mismatch' | 'invalid' | 'stale' | 'rejected' };
+  | { status: 'expired' | 'mismatch' | 'invalid' | 'stale' | 'rejected' | 'unavailable' };
 
 export type KaelStore = {
   capabilities(signal: AbortSignal): Promise<Set<Capability>>;
@@ -86,13 +107,12 @@ export type KaelStore = {
   saveTask(input: SaveTaskInput): Promise<SaveTaskResult>;
   recordTool(input: ToolRecord): Promise<void>;
   requestApproval(input: ApprovalRequest): Promise<ApprovalRequestResult>;
-  consumeApproval(approvalId: string, fingerprint: string): Promise<ApprovalConsume>;
+  consumeApproval(runId: string, approvalId: string, fingerprint: string, allowedTools: readonly string[]): Promise<ApprovalConsume>;
   completeApproval(approvalId: string, outcome: 'succeeded' | 'failed' | 'uncertain', result: Record<string, unknown>): Promise<TaskRecord | null>;
   rejectApproval(approvalId: string): Promise<TaskRecord | null>;
 };
 
-async function rpc<T>(rest: Rest, name: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
-  const response = await rest(`rpc/${name}`, { method: 'POST', body, signal });
+async function parsed<T>(name: string, response: Response): Promise<T> {
   if (!response.ok) {
     await response.body?.cancel();
     throw new StoreError(name, response.status);
@@ -100,7 +120,13 @@ async function rpc<T>(rest: Rest, name: string, body: Record<string, unknown>, s
   return await response.json() as T;
 }
 
-export function createSupabaseStore(rest: Rest): KaelStore {
+async function rpc<T>(rest: Rest, name: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+  return await parsed<T>(name, await rest(`rpc/${name}`, { method: 'POST', body, signal }));
+}
+
+export function createSupabaseStore(rest: Rest, server: ServerRpc, actorId: string): KaelStore {
+  const internal = async <T>(operation: KaelServerOperation, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> =>
+    await parsed<T>(operation, await server(operation, { p_actor: actorId, ...body }, signal));
   return {
     async capabilities(signal) {
       const result = await rpc<{ customer?: boolean; worker?: boolean }>(rest, 'kael_actor_capabilities', {}, signal);
@@ -110,10 +136,10 @@ export function createSupabaseStore(rest: Rest): KaelStore {
       return capabilities;
     },
     startRun(requestId, conversationId, mode, userText, signal) {
-      return rpc<RunStart>(rest, 'kael_start_run', { p_request_id: requestId, p_conversation_id: conversationId, p_mode: mode, p_user_text: userText }, signal);
+      return internal<RunStart>('kael_start_run', { p_request_id: requestId, p_conversation_id: conversationId, p_mode: mode, p_user_text: userText }, signal);
     },
     async finishRun(input) {
-      await rpc<boolean>(rest, 'kael_finish_run', {
+      await internal<boolean>('kael_finish_run', {
         p_run_id: input.runId, p_status: input.status, p_text: input.text, p_complete: input.complete, p_provider: input.provider,
         p_model: input.model, p_input_tokens: input.inputTokens, p_output_tokens: input.outputTokens, p_steps: input.steps, p_error: input.error,
       });
@@ -129,31 +155,31 @@ export function createSupabaseStore(rest: Rest): KaelStore {
       return { history: rows.reverse(), tasks };
     },
     saveTask(input) {
-      return rpc<SaveTaskResult>(rest, 'kael_save_task', {
+      return internal<SaveTaskResult>('kael_save_task', {
         p_task_id: input.taskId, p_conversation_id: input.conversationId, p_run_id: input.runId, p_expected_version: input.expectedVersion,
         p_title: input.title, p_kind: input.kind, p_status: input.status, p_summary: input.summary, p_artifact: input.artifact, p_event: input.event,
       });
     },
     async recordTool(input) {
-      await rpc<boolean>(rest, 'kael_record_tool', {
+      await internal<boolean>('kael_record_tool', {
         p_run_id: input.runId, p_call_id: input.callId, p_task_id: input.taskId, p_tool: input.tool, p_side_effect: input.sideEffect,
         p_outcome: input.outcome, p_fingerprint: input.fingerprint, p_error: input.error,
       });
     },
     requestApproval(input) {
-      return rpc<ApprovalRequestResult>(rest, 'kael_request_approval', {
+      return internal<ApprovalRequestResult>('kael_request_approval', {
         p_run_id: input.runId, p_task_id: input.taskId, p_expected_version: input.expectedVersion, p_tool: input.tool, p_args: input.args, p_fingerprint: input.fingerprint,
         p_summary: input.summary, p_ttl_seconds: input.ttlSeconds,
       });
     },
-    consumeApproval(approvalId, fingerprintValue) {
-      return rpc<ApprovalConsume>(rest, 'kael_consume_approval', { p_approval_id: approvalId, p_fingerprint: fingerprintValue });
+    consumeApproval(runId, approvalId, fingerprintValue, allowedTools) {
+      return internal<ApprovalConsume>('kael_consume_approval', { p_run_id: runId, p_approval_id: approvalId, p_fingerprint: fingerprintValue, p_allowed_tools: allowedTools });
     },
     completeApproval(approvalId, outcome, result) {
-      return rpc<TaskRecord | null>(rest, 'kael_complete_approval', { p_approval_id: approvalId, p_outcome: outcome, p_result: result });
+      return internal<TaskRecord | null>('kael_complete_approval', { p_approval_id: approvalId, p_outcome: outcome, p_result: result });
     },
     rejectApproval(approvalId) {
-      return rpc<TaskRecord | null>(rest, 'kael_reject_approval', { p_approval_id: approvalId });
+      return internal<TaskRecord | null>('kael_reject_approval', { p_approval_id: approvalId });
     },
   };
 }

@@ -32,7 +32,11 @@ export function evaluateCall(call: ToolCall, offered: readonly ToolContract[], a
   if (denial) return { kind: 'deny', reason: denial, tool };
   if (toolCallsUsed >= config.limits.maxToolCalls) return { kind: 'deny', reason: 'tool_budget', tool };
   if (!validateArguments(tool, call.input)) return { kind: 'deny', reason: 'invalid_arguments', tool };
-  return tool.approval === 'required' ? { kind: 'approval', tool, args: call.input } : { kind: 'execute', tool, args: call.input };
+  return tool.executionClass === 'explicit_confirmation' ? { kind: 'approval', tool, args: call.input } : { kind: 'execute', tool, args: call.input };
+}
+
+export function confirmableTools(actor: Actor, config: KaelConfig): string[] {
+  return toolRegistry.filter(tool => tool.executionClass === 'explicit_confirmation' && permitted(tool, actor, config) === null).map(tool => tool.id);
 }
 
 export function canonicalJson(value: unknown): string {

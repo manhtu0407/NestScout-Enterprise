@@ -8,7 +8,7 @@ import type { Fetcher, ModelProvider } from './model.ts';
 import type { Actor } from './policy.ts';
 import { failureMessage, isRetryable, resolveApproval, runAgentTurn } from './runtime.ts';
 import type { RunOutcome } from './runtime.ts';
-import { createRest, createSupabaseStore } from './store.ts';
+import { createRest, createServerRpc, createSupabaseStore } from './store.ts';
 import type { KaelStore, Rest, RunStart } from './store.ts';
 import type { Capability, KaelMode } from './tools.ts';
 
@@ -127,7 +127,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
     if (!userId) return failure(401, 'unauthenticated');
 
     const rest = createRest(config, token, fetcher);
-    const store = dependencies.store ? dependencies.store(rest, userId) : createSupabaseStore(rest);
+    const store = dependencies.store ? dependencies.store(rest, userId) : createSupabaseStore(rest, createServerRpc(config, fetcher), userId);
     const setup = AbortSignal.timeout(10_000);
     let capabilities: Set<Capability>;
     let started: RunStart;
@@ -190,7 +190,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
           })
           : await resolveApproval({
             approvalId: turn.action.approval_id, fingerprint: turn.action.fingerprint, approve: turn.action.type === 'approve',
-            store, rest, runId, emit, signal: controller.signal,
+            actor, config: config as KaelConfig, store, rest, runId, emit, signal: controller.signal,
           });
       } catch {
         result = { status: 'failed', text: '', complete: false, provider: null, model: null, inputTokens: 0, outputTokens: 0, steps: 0, error: 'internal' };

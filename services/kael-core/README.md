@@ -24,20 +24,27 @@ dependency.
 | `src/policy.ts` | Independent tool authorization and approval fingerprints |
 | `src/executor.ts` | Executes authorized tools through Supabase with the caller's JWT |
 | `src/tasks.ts` | Task state machine shared with the SQL transition table |
-| `src/store.ts` | Persistence port backed by the `kael_*` RPCs |
+| `src/store.ts` | Persistence port: user-scoped reads, and the eight named server RPCs for Kael-internal writes |
 | `src/events.ts` | Runtime event contract |
 | `src/config.ts`, `src/sse.ts` | Environment configuration and SSE parsing |
 
 Persistence lives in `supabase/migrations/20261103130000_create_kael_runtime.sql`.
 Conversations, messages, runs, tasks and task events are owner-readable through RLS;
 approvals and tool executions stay in `nestscout_private`. Every write goes through a
-`security definer` function keyed on `auth.uid()`.
+`security definer` function that only the `service_role` can execute and that takes
+the account id the gateway verified.
 
 ## Trust model
 
-- The Edge Function never uses a service-role key. All persistence and business
-  calls carry the signed-in user's JWT, so RLS and existing RPC guards apply to every
-  tool, and Kael can never exceed the user's own rights.
+- Business reads and the confirmed business effect carry the signed-in user's JWT,
+  so RLS and the existing RPC guards apply to every tool and Kael never exceeds the
+  user's own rights.
+- Kael-internal state (runs, messages, tasks, tool audit, approvals) is written only
+  by the gateway, after Supabase Auth verifies the user: eight named RPCs, executable
+  only by `service_role`, receive the verified account id and repeat every ownership,
+  version and transition guard. A signed-in client cannot call them, so it cannot
+  forge history, approvals or outcomes around the agent's policy. The server key is
+  used for nothing else and never reaches the model, logs or the mobile bundle.
 - Capabilities come from `kael_actor_capabilities()` (non-anonymous customer, and
   `current_worker_eligible()` for Worker data), never from the presentation mode or
   the model. Worker tools are offered only in Worker mode with verified eligibility.
@@ -49,8 +56,14 @@ approvals and tool executions stay in `nestscout_private`. Every write goes thro
   a SHA-256 fingerprint and an expiry. Only a later `approve` action carrying that
   fingerprint can consume it once; the effect uses the approval id as the submission
   key, so reconciliation after an uncertain outcome cannot duplicate the request.
-  `kael_complete_approval` verifies the created request in the database before the
-  task can be completed.
+  Consuming the approval also requires the same conversation and that the owner gate
+  and the account's capability still allow the operation, checked in the same
+  transaction, reconciliation included. `kael_complete_approval` verifies that the
+  created request belongs to the account and carries the approval's submission key
+  before the task can be completed. Agreement typed in chat is never consent.
+- Execution classes, resources and the BPMN mapping are documented in
+  `docs/service-workflow.md` (Kael capability boundary); a denied operation is
+  reported to the model as that operation only, so conversation continues.
 - A model cannot mark a service task completed, request approval through the
   generic task tool or forge an effect result; both the runtime and SQL refuse it.
 - Tool results and stored text are labelled as data. Prompt instructions inside
@@ -99,7 +112,7 @@ state, not open connections.
 
 | Setting | Effect |
 | --- | --- |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Required; injected by the Edge runtime |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Required; injected by the Edge runtime. The server key only signs the eight Kael-internal RPCs |
 | `ANTHROPIC_API_KEY` + `KAEL_ANTHROPIC_MODEL` | Enables Anthropic (Messages API `2026-10-21`, streaming, server-side refusal fallback where supported); `KAEL_ANTHROPIC_EFFORT` = `low`, `medium` (default) or `high` |
 | `DEEPSEEK_API_KEY` + `KAEL_DEEPSEEK_MODEL` | Enables DeepSeek chat completions; `KAEL_DEEPSEEK_THINKING=enabled` turns on thinking mode with in-run `reasoning_content` replay |
 | `KAEL_MODEL_ROUTE` | Provider order, default `anthropic,deepseek`; only approved providers are accepted |

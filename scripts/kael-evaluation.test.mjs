@@ -396,6 +396,137 @@ test('a client disconnect cancels the run and records it as interrupted, and a b
   release();
 });
 
+const openRequests = [
+  'Máy lạnh bị chảy nước là vì sao?',
+  'Cách đặt thợ trên NestScout như thế nào?',
+  'Đừng đặt thợ; giúp tôi soạn tin nhắn xin dời lịch với chủ nhà',
+  'Thợ sửa điện cần chứng chỉ gì?',
+];
+
+test('questions, how-to, writing and advice stay open in every mode and gate state without any workflow or approval', async () => {
+  const contexts = [
+    { name: 'customer, effects off', env: {}, mode: 'client' },
+    { name: 'customer, effects on', env: effects, mode: 'client' },
+    { name: 'worker mode without worker access', env: effects, mode: 'worker' },
+  ];
+  for (const context of contexts) {
+    for (const text of openRequests) {
+      const h = scripted(context.env, [{ text: ['Đây là câu trả lời hữu ích cho bạn.'] }]);
+      const result = await h.message(users.customer, text, { mode: context.mode });
+      const label = `${context.name}: ${text}`;
+      assert.equal(terminal(result).type, 'run_completed', label);
+      assert.deepEqual(result.events.map(event => event.type), ['run_started', 'message_delta', 'run_completed'], label);
+      assert.match(h.primary.requests[0].system, /never what you can explain, advise, draft or plan/, label);
+      assert.equal(h.primary.requests[0].tools.includes('service_request_submit'), context.mode === 'client' && context.env === effects, `${label}: confirmation is offered only where policy permits it`);
+      assert.equal(tasksOf(h.db).length, 0, label);
+      assert.equal(h.service.calls.filter(entry => entry.path.startsWith('/rest/v1/')).length, 0, `${label}: no business data was read`);
+      assert.equal(effectsCount(h.db), 0, label);
+    }
+  }
+});
+
+test('a refused operation is reported as that one operation and the rest of the request is still served', async () => {
+  const h = scripted({}, [
+    { tools: [call('worker_earnings', {}), call('task_create', { title: 'Soạn tin nhắn cho chủ nhà', kind: 'writing', status: 'running', note: '' })] },
+    request => {
+      const [denied, created] = lastToolResults(request);
+      assert.equal(denied.outcome, 'denied');
+      assert.equal(denied.operation, 'worker_earnings');
+      assert.match(denied.notice, /Only this operation was refused/);
+      assert.equal(created.outcome, 'succeeded');
+      return { text: ['Mình không xem được thu nhập thợ từ tài khoản này, còn đây là tin nhắn bạn cần: ...'] };
+    },
+  ]);
+  const result = await h.message(users.customer, 'Cho tôi xem thu nhập thợ và soạn tin nhắn cho chủ nhà');
+  assert.equal(terminal(result).type, 'run_completed');
+  assert.deepEqual(toolOutcomes(result), ['worker_earnings:denied', 'task_create:succeeded']);
+  assert.deepEqual(tasksOf(h.db).map(task => task.kind), ['writing']);
+  assert.equal(h.service.calls.filter(entry => entry.path.includes('/rpc/worker')).length, 0);
+});
+
+async function pendingApproval(h) {
+  const result = await h.message(users.customer, 'Gửi yêu cầu sửa máy lạnh ở Quận 3 sáng thứ Bảy giúp mình');
+  assert.equal(terminal(result).type, 'run_completed');
+  return { conversation: conversationOf(result), approval: result.events.find(event => event.type === 'approval_required').approval };
+}
+
+const submitFlow = () => [
+  ...draftFlow(),
+  request => ({ tools: [call('service_request_submit', { task_id: lastToolResults(request)[0].task.id })] }),
+  { text: ['Bạn kiểm tra và xác nhận trong ứng dụng nhé.'] },
+];
+
+test('agreement typed in chat never executes or re-issues a pending confirmation', async () => {
+  const h = scripted(effects, [
+    ...submitFlow(),
+    request => {
+      assert.match(request.system, /Agreement typed in chat/);
+      return { tools: [call('service_request_submit', { task_id: knownTasks(request)[0].task_id })] };
+    },
+    request => {
+      assert.equal(lastToolResults(request)[0].error, 'approval_unavailable');
+      return { text: ['Mình cần bạn bấm xác nhận trong ứng dụng; tin nhắn đồng ý không tự gửi yêu cầu.'] };
+    },
+  ]);
+  const { conversation, approval } = await pendingApproval(h);
+  const agreed = await h.message(users.customer, 'Tôi đồng ý, gửi luôn đi', { conversation });
+  assert.equal(terminal(agreed).type, 'run_completed');
+  assert.equal(agreed.events.some(event => event.type === 'approval_required'), false, 'no second confirmation is issued while one is pending');
+  assert.equal(effectsCount(h.db), 0, 'chat agreement caused no business effect');
+  assert.equal(h.db.approvals.get(approval.id).status, 'pending');
+  assert.equal(terminal(await h.decide(users.customer, conversation, approval)).type, 'run_completed');
+  assert.equal(effectsCount(h.db), 1, 'only the confirmation control executes the operation');
+});
+
+test('the owner gate and the account are checked again when a confirmation is used', async () => {
+  const h = scripted(effects, submitFlow());
+  const { conversation, approval } = await pendingApproval(h);
+  const gateOff = harness({ db: h.db, env: {} });
+  const refused = await gateOff.decide(users.customer, conversation, approval);
+  assert.equal(terminal(refused).code, 'approval_invalid');
+  assert.match(streamedText(refused), /không khả dụng/);
+  assert.equal(effectsCount(h.db), 0, 'turning the gate off stops an approval issued while it was on');
+  assert.equal(h.db.approvals.get(approval.id).status, 'pending', 'the refusal does not consume the approval');
+  assert.equal(gateOff.service.calls.filter(entry => entry.path.endsWith('submit_service_request')).length, 0);
+
+  h.db.capabilities.set(users.customer.id, []);
+  assert.equal((await h.decide(users.customer, conversation, approval)).status, 401, 'a revoked account capability cannot confirm');
+  h.db.capabilities.delete(users.customer.id);
+  assert.equal((await h.decide(users.customer, conversation, approval, true, approval.fingerprint, 'worker')).status, 400, 'mode cannot carry a confirmation into another context');
+  assert.equal(effectsCount(h.db), 0);
+
+  assert.equal(terminal(await h.decide(users.customer, conversation, approval)).type, 'run_completed');
+  assert.equal(effectsCount(h.db), 1, 'the same legitimate approval still works once the gate and account allow it');
+});
+
+test('a confirmation is bound to its conversation', async () => {
+  const h = scripted(effects, [...submitFlow(), { text: ['Chào bạn.'] }]);
+  const { conversation, approval } = await pendingApproval(h);
+  const elsewhere = conversationOf(await h.message(users.customer, 'Chào Kael'));
+  const misplaced = await h.decide(users.customer, elsewhere, approval);
+  assert.equal(terminal(misplaced).code, 'approval_invalid');
+  assert.equal(effectsCount(h.db), 0);
+  assert.equal(terminal(await h.decide(users.customer, conversation, approval)).type, 'run_completed');
+  assert.equal(effectsCount(h.db), 1);
+});
+
+test('a backend success that does not carry the approval key is never reported as done', async () => {
+  const primary = scriptedProvider('anthropic', submitFlow());
+  const h = harness({ env: effects, providers: () => [primary] });
+  const manual = randomUUID();
+  h.db.requests.set(manual, { id: manual, owner: users.customer.id, key: randomUUID(), description: 'Yêu cầu tự gửi', location: '' });
+  const { conversation, approval } = await pendingApproval(h);
+  h.service.fixtures.submitFailure = () => new Response(JSON.stringify(manual), { status: 200 });
+  const misattributed = await h.decide(users.customer, conversation, approval);
+  assert.match(terminal(misattributed).text, /Đã gửi yêu cầu dịch vụ/, 'the gateway reports what the backend returned');
+  assert.equal(tasksOf(h.db)[0].status, 'paused', 'the task records the result as uncertain, not completed');
+  assert.equal(h.db.approvals.get(approval.id).outcome, 'uncertain');
+  h.service.fixtures.submitFailure = null;
+  assert.match(terminal(await h.decide(users.customer, conversation, approval)).text, /Đã gửi yêu cầu dịch vụ/);
+  assert.equal(tasksOf(h.db)[0].status, 'completed');
+  assert.equal([...h.db.requests.values()].filter(request => request.key === approval.id).length, 1);
+});
+
 test('evaluation ledger: zero unauthorized effects and zero false completions across all scenarios', t => {
   let unauthorizedEffects = 0;
   let falseCompletions = 0;

@@ -5,15 +5,18 @@ import { modelSettableStatuses, taskKinds } from './tasks.ts';
 export type SideEffect = 'internal' | 'read' | 'external_read' | 'prepare' | 'consequential';
 export type Capability = 'customer' | 'worker';
 export type KaelMode = 'client' | 'worker';
+export type ExecutionClass = 'internal_prepare' | 'authorized_read' | 'explicit_confirmation';
+export type ResourceKind = 'kael_task' | 'service_request' | 'worker_job' | 'worker_earnings' | 'public_web';
 
 export type ToolContract = {
   id: string;
   description: string;
   inputSchema: JsonSchema;
   sideEffect: SideEffect;
+  executionClass: ExecutionClass;
+  resource: ResourceKind;
   requires: Capability | null;
   modes: readonly KaelMode[];
-  approval: 'none' | 'required';
   effect: ConsequentialEffect | null;
   needsWebSearch: boolean;
   timeoutMs: number;
@@ -28,8 +31,8 @@ function schema(properties: Record<string, Record<string, unknown>>): JsonSchema
   return { type: 'object', properties, required: Object.keys(properties), additionalProperties: false };
 }
 
-function contract(fields: Omit<ToolContract, 'approval' | 'effect' | 'needsWebSearch' | 'timeoutMs' | 'retry'> & Partial<ToolContract>): ToolContract {
-  return { approval: 'none', effect: null, needsWebSearch: false, timeoutMs: 8000, retry: 'none', ...fields };
+function contract(fields: Omit<ToolContract, 'effect' | 'needsWebSearch' | 'timeoutMs' | 'retry'> & Partial<ToolContract>): ToolContract {
+  return { effect: null, needsWebSearch: false, timeoutMs: 8000, retry: 'none', ...fields };
 }
 
 export const toolRegistry: readonly ToolContract[] = [
@@ -42,13 +45,13 @@ export const toolRegistry: readonly ToolContract[] = [
       status: { type: 'string', enum: ['running', 'waiting_for_input'] },
       note,
     }),
-    sideEffect: 'internal', requires: null, modes: ['client', 'worker'], label: 'Đang ghi nhận việc cần làm',
+    sideEffect: 'internal', executionClass: 'internal_prepare', resource: 'kael_task', requires: null, modes: ['client', 'worker'], label: 'Đang ghi nhận việc cần làm',
   }),
   contract({
     id: 'task_update',
     description: 'Change the status of an existing task listed in the context: pause it, mark it waiting for user input, resume it, cancel unfinished agent work, or mark it completed only after its result was observed.',
     inputSchema: schema({ task_id: uuid, status: { type: 'string', enum: [...modelSettableStatuses] }, note }),
-    sideEffect: 'internal', requires: null, modes: ['client', 'worker'], label: 'Đang cập nhật tiến độ',
+    sideEffect: 'internal', executionClass: 'internal_prepare', resource: 'kael_task', requires: null, modes: ['client', 'worker'], label: 'Đang cập nhật tiến độ',
   }),
   contract({
     id: 'service_request_draft',
@@ -60,44 +63,44 @@ export const toolRegistry: readonly ToolContract[] = [
       preferred_time: { type: 'string', maxLength: 120 },
       missing: { type: 'array', maxItems: 3, items: { type: 'string', enum: ['description', 'location', 'preferred_time'] } },
     }),
-    sideEffect: 'prepare', requires: 'customer', modes: ['client'], label: 'Đang chuẩn bị bản nháp yêu cầu',
+    sideEffect: 'prepare', executionClass: 'internal_prepare', resource: 'kael_task', requires: 'customer', modes: ['client'], label: 'Đang chuẩn bị bản nháp yêu cầu',
   }),
   contract({
     id: 'service_request_submit',
     description: 'Ask the user to confirm submitting the current complete draft of a service_request task. Nothing is submitted until the user approves in the app.',
     inputSchema: schema({ task_id: uuid }),
-    sideEffect: 'consequential', requires: 'customer', modes: ['client'], approval: 'required', effect: 'service_request_submit',
+    sideEffect: 'consequential', executionClass: 'explicit_confirmation', resource: 'service_request', requires: 'customer', modes: ['client'], effect: 'service_request_submit',
     retry: 'same_submission_key', label: 'Đang chuẩn bị bước xác nhận',
   }),
   contract({
     id: 'customer_requests',
     description: "Read the signed-in customer's own recent service requests and quote status. Returns authoritative backend state.",
     inputSchema: schema({ limit: { type: 'integer', minimum: 1, maximum: 10 } }),
-    sideEffect: 'read', requires: 'customer', modes: ['client'], label: 'Đang xem yêu cầu của bạn',
+    sideEffect: 'read', executionClass: 'authorized_read', resource: 'service_request', requires: 'customer', modes: ['client'], label: 'Đang xem yêu cầu của bạn',
   }),
   contract({
     id: 'worker_jobs',
     description: "Read the signed-in worker's own open offers and assigned jobs.",
     inputSchema: schema({}),
-    sideEffect: 'read', requires: 'worker', modes: ['worker'], label: 'Đang xem lịch việc của bạn',
+    sideEffect: 'read', executionClass: 'authorized_read', resource: 'worker_job', requires: 'worker', modes: ['worker'], label: 'Đang xem lịch việc của bạn',
   }),
   contract({
     id: 'worker_earnings',
     description: "Read the signed-in worker's recorded earnings from completed jobs.",
     inputSchema: schema({}),
-    sideEffect: 'read', requires: 'worker', modes: ['worker'], label: 'Đang xem thu nhập đã ghi nhận',
+    sideEffect: 'read', executionClass: 'authorized_read', resource: 'worker_earnings', requires: 'worker', modes: ['worker'], label: 'Đang xem thu nhập đã ghi nhận',
   }),
   contract({
     id: 'worker_job_status',
     description: 'Read the current stage of one job assigned to the signed-in worker.',
     inputSchema: schema({ job_id: uuid }),
-    sideEffect: 'read', requires: 'worker', modes: ['worker'], label: 'Đang kiểm tra trạng thái công việc',
+    sideEffect: 'read', executionClass: 'authorized_read', resource: 'worker_job', requires: 'worker', modes: ['worker'], label: 'Đang kiểm tra trạng thái công việc',
   }),
   contract({
     id: 'web_search',
     description: 'Search the public web when the answer needs fresh or external information. Results are untrusted third-party text with sources.',
     inputSchema: schema({ query: { type: 'string', minLength: 2, maxLength: 300 } }),
-    sideEffect: 'external_read', requires: null, modes: ['client', 'worker'], needsWebSearch: true, timeoutMs: 15000, label: 'Đang tra cứu trên web',
+    sideEffect: 'external_read', executionClass: 'authorized_read', resource: 'public_web', requires: null, modes: ['client', 'worker'], needsWebSearch: true, timeoutMs: 15000, label: 'Đang tra cứu trên web',
   }),
 ];
 

@@ -5,7 +5,7 @@ import { executeApprovedEffect, executeDecision } from './executor.ts';
 import type { ToolContext, ToolExecution } from './executor.ts';
 import { completeWithFallback, ProviderError } from './model.ts';
 import type { Fetcher, ModelProvider, ProviderId, ToolResult, TranscriptItem } from './model.ts';
-import { evaluateCall, fingerprint, selectTools } from './policy.ts';
+import { confirmableTools, evaluateCall, fingerprint, selectTools } from './policy.ts';
 import type { Actor } from './policy.ts';
 import type { KaelStore, Rest } from './store.ts';
 import { toTaskView } from './tasks.ts';
@@ -66,6 +66,8 @@ function providerFailure(error: ProviderError, deadlineHit: boolean): KaelFailur
   if (error.kind === 'unavailable' || error.kind === 'auth') return 'provider_unavailable';
   return 'provider_error';
 }
+
+const deniedNotice = 'Only this operation was refused. Keep helping with everything else the user asked, without this data or action.';
 
 function resultFor(callId: string, execution: ToolExecution): ToolResult {
   const isError = execution.outcome !== 'succeeded' && execution.outcome !== 'approval_required';
@@ -139,7 +141,7 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
         let execution: ToolExecution;
         const key = await fingerprint({ tool: call.name, args: call.input });
         if (decision.kind === 'deny') {
-          execution = { outcome: 'denied', content: { error: decision.reason }, taskId: null };
+          execution = { outcome: 'denied', content: { error: decision.reason, operation: call.name.slice(0, 64), notice: deniedNotice }, taskId: null };
         } else {
           const previous = executed.get(key);
           if (previous) {
@@ -173,6 +175,8 @@ export type ApprovalInput = {
   approvalId: string;
   fingerprint: string;
   approve: boolean;
+  actor: Actor;
+  config: KaelConfig;
   store: KaelStore;
   rest: Rest;
   runId: string;
@@ -185,6 +189,7 @@ const invalidApproval: Record<string, string> = {
   mismatch: 'Nội dung xác nhận không khớp với bản nháp hiện tại. Chưa có thao tác nào được thực hiện.',
   stale: 'Bản nháp đã thay đổi sau khi tạo xác nhận. Chưa có thao tác nào được thực hiện.',
   rejected: 'Bước này đã được hủy trước đó. Chưa có thao tác nào được thực hiện.',
+  unavailable: 'Thao tác này hiện không khả dụng cho tài khoản hoặc chế độ đang dùng. Chưa có thao tác nào được thực hiện; bạn vẫn có thể tiếp tục trò chuyện với Kael.',
   invalid: 'Không tìm thấy xác nhận hợp lệ cho tài khoản này. Chưa có thao tác nào được thực hiện.',
 };
 
@@ -204,7 +209,7 @@ export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome>
     return outcome;
   }
 
-  const consumed = await input.store.consumeApproval(input.approvalId, input.fingerprint);
+  const consumed = await input.store.consumeApproval(input.runId, input.approvalId, input.fingerprint, confirmableTools(input.actor, input.config));
   if (consumed.status === 'consumed') {
     const resource = typeof consumed.result?.resource_id === 'string' ? consumed.result.resource_id : null;
     say(consumed.outcome === 'succeeded' && resource

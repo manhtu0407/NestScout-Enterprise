@@ -6,12 +6,14 @@ import { configurationReport, defaultLimits, readKaelConfig } from '../services/
 import { createDeepSeekProvider, deepseekEndpoint } from '../services/kael-core/src/deepseek.ts';
 import { completeWithFallback, ProviderError } from '../services/kael-core/src/model.ts';
 import { perplexitySearchEndpoint, searchWeb } from '../services/kael-core/src/perplexity.ts';
-import { canonicalJson, evaluateCall, fingerprint, selectTools } from '../services/kael-core/src/policy.ts';
+import { canonicalJson, confirmableTools, evaluateCall, fingerprint, selectTools } from '../services/kael-core/src/policy.ts';
+import { createRest, createServerRpc, createSupabaseStore, kaelServerOperations } from '../services/kael-core/src/store.ts';
 import { readSse } from '../services/kael-core/src/sse.ts';
 import { checkModelTransition, taskTransitions } from '../services/kael-core/src/tasks.ts';
-import { findTool, validateArguments } from '../services/kael-core/src/tools.ts';
+import { findTool, toolRegistry, validateArguments } from '../services/kael-core/src/tools.ts';
+import { createKaelHandler } from '../services/kael-core/src/gateway.ts';
 import { parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
-import { baseEnv, harness, users } from './kael-test-harness.mjs';
+import { baseEnv, harness, scriptedProvider, users } from './kael-test-harness.mjs';
 
 const encoder = new TextEncoder();
 
@@ -289,7 +291,10 @@ test('configuration never invents models, keeps spending opt-in and reports only
   assert.deepEqual(full.route, ['deepseek', 'anthropic'], 'only approved providers are routable');
   assert.deepEqual([...full.enabledEffects], ['service_request_submit']);
   const report = JSON.stringify(configurationReport({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a' }));
-  assert.ok(!report.includes('secret-a') && !report.includes('anon-key-for-tests'));
+  assert.ok(!report.includes('secret-a') && !report.includes('anon-key-for-tests') && !report.includes('server-key-for-tests'));
+  const withoutServer = { ...baseEnv, SUPABASE_SERVICE_ROLE_KEY: '' };
+  assert.equal(readKaelConfig(withoutServer), null, 'the gateway does not run without its server credential');
+  assert.match(configurationReport(withoutServer).gateway, /SUPABASE_SERVICE_ROLE_KEY/);
 });
 
 test('the gateway rejects unauthenticated, malformed and misconfigured requests without starting runs', async () => {
@@ -303,7 +308,6 @@ test('the gateway rejects unauthenticated, malformed and misconfigured requests 
   assert.equal((await handle(new Request('https://edge.test/functions/v1/kael', { method: 'GET' }))).status, 405);
   assert.equal(db.runs.size, 0);
   const logs = [];
-  const { createKaelHandler } = await import('../services/kael-core/src/gateway.ts');
   const misconfigured = createKaelHandler({ env: { ANTHROPIC_API_KEY: 'secret-a' }, log: event => logs.push(event) });
   const response = await misconfigured(new Request('https://edge.test', { method: 'POST', headers: { authorization: `Bearer ${users.customer.token}` }, body: '{}' }));
   assert.equal(response.status, 503);
@@ -319,4 +323,124 @@ test('the mobile parser rejects malformed or out-of-contract events', () => {
     JSON.stringify({ ...base, type: 'task_updated', task: { id: 'x', title: 't', kind: 'k', status: 'done', version: 1, summary: '' } }),
     JSON.stringify({ ...base, type: 'approval_required', approval: { id: users.customer.id, task_id: users.customer.id, tool: 't', summary: 's', details: {}, fingerprint: 'short', expires_at: 'x' } }),
   ]) assert.equal(parseKaelEvent(bad), null, bad);
+});
+
+const validInputs = {
+  task_create: { title: 'Viết thư', kind: 'writing', status: 'running', note: '' },
+  task_update: { task_id: users.customer.id, status: 'paused', note: '' },
+  service_request_draft: { task_id: users.customer.id, description: 'Máy lạnh rò nước', location: '', preferred_time: '', missing: ['location'] },
+  service_request_submit: { task_id: users.customer.id },
+  customer_requests: { limit: 3 },
+  worker_jobs: {},
+  worker_earnings: {},
+  worker_job_status: { job_id: users.customer.id },
+  web_search: { query: 'giá điện sinh hoạt' },
+};
+
+test('each operation has one execution class and only explicit confirmation turns a call into an approval', () => {
+  assert.deepEqual(Object.keys(validInputs), toolRegistry.map(tool => tool.id), 'every registered operation has a classification case');
+  const classes = ['internal_prepare', 'authorized_read', 'explicit_confirmation'];
+  const all = config({ enabledEffects: new Set(['service_request_submit']), perplexity: { apiKey: 'k', maxResults: 5, timeoutMs: 1 } });
+  for (const tool of toolRegistry) {
+    assert.ok(classes.includes(tool.executionClass), tool.id);
+    assert.equal(tool.effect !== null, tool.executionClass === 'explicit_confirmation', `${tool.id}: an owner gate exists exactly for confirmed operations`);
+    assert.equal(tool.sideEffect === 'consequential', tool.executionClass === 'explicit_confirmation', tool.id);
+    const actor = { userId: users.worker.id, capabilities: new Set(['customer', 'worker']), mode: tool.modes[0] };
+    const decision = evaluateCall({ id: 'c', name: tool.id, input: validInputs[tool.id] }, selectTools(actor, all), actor, all, 0);
+    assert.equal(decision.kind, tool.executionClass === 'explicit_confirmation' ? 'approval' : 'execute', tool.id);
+  }
+  const customer = { userId: users.customer.id, capabilities: new Set(['customer']), mode: 'client' };
+  const gated = config({ enabledEffects: new Set(['service_request_submit']) });
+  assert.deepEqual(confirmableTools(customer, gated), ['service_request_submit']);
+  assert.deepEqual(confirmableTools(customer, config()), [], 'a disabled owner gate leaves nothing to confirm');
+  assert.deepEqual(confirmableTools({ ...customer, mode: 'worker' }, gated), [], 'worker mode cannot confirm a customer operation');
+  assert.deepEqual(confirmableTools({ ...customer, capabilities: new Set() }, gated), [], 'a revoked capability leaves nothing to confirm');
+});
+
+test('the workflow reference maps every Kael capability exactly as the registry defines it', () => {
+  const doc = readFileSync(new URL('../docs/service-workflow.md', import.meta.url), 'utf8');
+  const section = doc.split('\n## Kael capability boundary\n')[1].split('\n## ')[0];
+  const rows = [...section.matchAll(/^\| `([a-z_]+)` \| ([a-z_]+) \| ([a-z_]+) \|/gm)].map(match => ({ id: match[1], executionClass: match[2], resource: match[3] }));
+  assert.deepEqual(rows, toolRegistry.map(tool => ({ id: tool.id, executionClass: tool.executionClass, resource: tool.resource })));
+  for (const tool of toolRegistry.filter(item => item.effect !== null)) assert.match(section, new RegExp(`^\\| \`${tool.id}\` [^\\n]*KAEL_ENABLED_EFFECTS`, 'm'));
+});
+
+const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+const serverAuthorization = `Bearer ${baseEnv.SUPABASE_SERVICE_ROLE_KEY}`;
+const isServerOperation = path => kaelServerOperations.some(operation => path === `/rest/v1/rpc/${operation}`);
+
+test('Kael-internal writes leave only through named server RPCs bound to the verified account, never with the user token', async () => {
+  const calls = [];
+  const fetcher = async (url, init) => {
+    const path = new URL(String(url)).pathname;
+    calls.push({ path, authorization: init.headers.authorization, apikey: init.headers.apikey, body: init.body ? JSON.parse(init.body) : null });
+    if (path.endsWith('/kael_actor_capabilities')) return json({ customer: true, worker: false });
+    if (path.endsWith('/kael_messages') || path.endsWith('/kael_context_tasks')) return json([]);
+    return json({ status: 'ok' });
+  };
+  const cfg = readKaelConfig(baseEnv);
+  const server = createServerRpc(cfg, fetcher);
+  const store = createSupabaseStore(createRest(cfg, users.customer.token, fetcher), server, users.customer.id);
+  const signal = AbortSignal.timeout(5000);
+  const id = users.other.id;
+  await store.capabilities(signal);
+  await store.loadContext(id, 'client', 4, signal);
+  await store.startRun(id, null, 'client', 'Xin chào', signal);
+  await store.finishRun({ runId: id, status: 'completed', text: 'x', complete: true, provider: null, model: null, inputTokens: 0, outputTokens: 0, steps: 1, error: null });
+  await store.saveTask({ taskId: null, conversationId: id, runId: id, expectedVersion: null, title: 't', kind: 'general', status: 'running', summary: '', artifact: {}, event: 'created' });
+  await store.recordTool({ runId: id, callId: 'c', taskId: null, tool: 'task_create', sideEffect: 'internal', outcome: 'succeeded', fingerprint: 'a'.repeat(64), error: null });
+  await store.requestApproval({ runId: id, taskId: id, expectedVersion: 1, tool: 'service_request_submit', args: {}, fingerprint: 'a'.repeat(64), summary: 's', ttlSeconds: 900 });
+  await store.consumeApproval(id, id, 'a'.repeat(64), ['service_request_submit']);
+  await store.completeApproval(id, 'failed', { reason: 'x' });
+  await store.rejectApproval(id);
+
+  const internal = calls.filter(entry => isServerOperation(entry.path));
+  assert.deepEqual(internal.map(entry => entry.path.split('/rpc/')[1]).sort(), [...kaelServerOperations].sort());
+  for (const entry of internal) {
+    assert.equal(entry.authorization, serverAuthorization, entry.path);
+    assert.equal(entry.apikey, baseEnv.SUPABASE_SERVICE_ROLE_KEY, entry.path);
+    assert.equal(entry.body.p_actor, users.customer.id, `${entry.path} carries the verified account, not a caller-chosen one`);
+  }
+  const userScoped = calls.filter(entry => !isServerOperation(entry.path));
+  assert.equal(userScoped.length, 3);
+  for (const entry of userScoped) {
+    assert.equal(entry.authorization, `Bearer ${users.customer.token}`, entry.path);
+    assert.equal(entry.apikey, baseEnv.SUPABASE_ANON_KEY, entry.path);
+  }
+  assert.deepEqual(internal.find(entry => entry.path.endsWith('kael_consume_approval')).body.p_allowed_tools, ['service_request_submit']);
+  assert.throws(() => server('service_requests', {}), /HTTP 403/, 'the server credential cannot reach an arbitrary table');
+  assert.throws(() => server('submit_service_request', {}), /HTTP 403/, 'the server credential cannot run a business command');
+});
+
+test('the gateway persists runs only through the server boundary for the account Auth verified, whatever the request claims', async () => {
+  const runId = crypto.randomUUID();
+  const conversationId = crypto.randomUUID();
+  const calls = [];
+  const fetcher = async (url, init = {}) => {
+    const path = new URL(String(url)).pathname;
+    const authorization = init.headers?.authorization;
+    calls.push({ path, authorization, body: init.body ? JSON.parse(init.body) : null });
+    if (path === '/auth/v1/user') return authorization === `Bearer ${users.customer.token}` ? json({ id: users.customer.id, is_anonymous: false }) : json({}, 401);
+    if (isServerOperation(path) && authorization !== serverAuthorization) return json({ message: 'permission denied' }, 403);
+    if (path === '/rest/v1/rpc/kael_actor_capabilities') return json({ customer: true, worker: false });
+    if (path === '/rest/v1/rpc/kael_start_run') return json({ status: 'started', run_id: runId, conversation_id: conversationId });
+    if (path === '/rest/v1/kael_messages') return json([{ role: 'user', content: 'Xin chào', status: 'complete' }]);
+    if (path === '/rest/v1/rpc/kael_context_tasks') return json([]);
+    if (path === '/rest/v1/rpc/kael_finish_run') return json(true);
+    return json({}, 404);
+  };
+  const provider = scriptedProvider('anthropic', [{ text: ['Chào bạn!'] }]);
+  const handle = createKaelHandler({ env: baseEnv, fetcher, log: () => {}, providers: () => [provider] });
+  const response = await handle(new Request('https://edge.test/functions/v1/kael', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${users.customer.token}` },
+    body: JSON.stringify({ request_id: crypto.randomUUID(), conversation_id: null, mode: 'client', p_actor: users.other.id, action: { type: 'message', text: 'Xin chào', p_actor: users.other.id } }),
+  }));
+  const events = (await response.text()).split('\n').filter(Boolean).map(line => JSON.parse(line));
+  assert.equal(events.at(-1).type, 'run_completed');
+  const writes = calls.filter(entry => isServerOperation(entry.path));
+  assert.deepEqual(writes.map(entry => entry.path.split('/rpc/')[1]), ['kael_start_run', 'kael_finish_run']);
+  assert.ok(writes.every(entry => entry.authorization === serverAuthorization && entry.body.p_actor === users.customer.id));
+  assert.ok(calls.filter(entry => entry.authorization === serverAuthorization).every(entry => writes.includes(entry)), 'the server credential is used for nothing else');
+  assert.ok(!JSON.stringify(events).includes(baseEnv.SUPABASE_SERVICE_ROLE_KEY));
 });

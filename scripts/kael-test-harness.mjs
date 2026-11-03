@@ -10,7 +10,7 @@ export const users = {
   worker: { id: '00000000-0000-4000-8000-0000000000c3', token: 'token-worker-cccccccccccccccccccccccc' },
 };
 
-export const baseEnv = { SUPABASE_URL: 'https://project.supabase.test', SUPABASE_ANON_KEY: 'anon-key-for-tests' };
+export const baseEnv = { SUPABASE_URL: 'https://project.supabase.test', SUPABASE_ANON_KEY: 'anon-key-for-tests', SUPABASE_SERVICE_ROLE_KEY: 'server-key-for-tests' };
 
 export function createDb() {
   return { conversations: new Map(), runs: new Map(), messages: [], tasks: new Map(), events: [], approvals: new Map(), tools: [], requests: new Map(), capabilities: new Map() };
@@ -116,11 +116,14 @@ export function memoryStore(db, owner) {
       db.approvals.set(approval.id, approval);
       return { status: 'ok', approval_id: approval.id, expires_at: approval.expires_at, task: taskJson(task) };
     },
-    async consumeApproval(id, fingerprint) {
+    async consumeApproval(runId, id, fingerprint, allowedTools) {
       const approval = db.approvals.get(id);
-      if (!approval || approval.owner !== owner) return { status: 'invalid' };
-      if (approval.fingerprint !== fingerprint) return { status: 'mismatch' };
+      const run = runningRun(runId);
+      if (!approval || approval.owner !== owner || !run) return { status: 'invalid' };
       const task = db.tasks.get(approval.task_id);
+      if (task.conversation_id !== run.conversation_id) return { status: 'invalid' };
+      if (approval.fingerprint !== fingerprint) return { status: 'mismatch' };
+      if (!allowedTools.includes(approval.tool)) return { status: 'unavailable' };
       if (approval.status === 'consumed') {
         if (approval.outcome === null || approval.outcome === 'uncertain') {
           if (isTerminal(task.status)) return { status: 'stale' };
@@ -141,7 +144,8 @@ export function memoryStore(db, owner) {
       const approval = db.approvals.get(id);
       if (!approval || approval.owner !== owner || approval.status !== 'consumed') return null;
       let verified = outcome;
-      if (outcome === 'succeeded' && db.requests.get(result.resource_id)?.owner !== owner) verified = 'uncertain';
+      const created = db.requests.get(result.resource_id);
+      if (outcome === 'succeeded' && (created?.owner !== owner || created?.key !== id)) verified = 'uncertain';
       approval.outcome = verified;
       approval.result = verified === 'succeeded' ? { resource_kind: 'service_request', resource_id: result.resource_id } : { reason: result.reason ?? 'unverified_result' };
       const task = db.tasks.get(approval.task_id);
@@ -257,8 +261,8 @@ export function harness({ env = {}, providers = () => [], fixtures = {}, db = cr
   async function message(user, text, { mode = 'client', conversation = null, requestId = randomUUID() } = {}) {
     return send(user, { request_id: requestId, conversation_id: conversation, mode, action: { type: 'message', text } });
   }
-  async function decide(user, conversation, approval, approve = true, fingerprint = approval.fingerprint) {
-    return send(user, { request_id: randomUUID(), conversation_id: conversation, mode: 'client', action: { type: approve ? 'approve' : 'reject', approval_id: approval.id, fingerprint } });
+  async function decide(user, conversation, approval, approve = true, fingerprint = approval.fingerprint, mode = 'client') {
+    return send(user, { request_id: randomUUID(), conversation_id: conversation, mode, action: { type: approve ? 'approve' : 'reject', approval_id: approval.id, fingerprint } });
   }
   return { db, service, handle, send, message, decide };
 }

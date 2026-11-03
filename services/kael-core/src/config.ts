@@ -23,6 +23,7 @@ export type KaelLimits = {
 export type KaelConfig = {
   supabaseUrl: string;
   supabaseAnonKey: string;
+  supabaseServiceKey: string;
   anthropic: AnthropicConfig | null;
   deepseek: DeepSeekConfig | null;
   route: ProviderId[];
@@ -57,7 +58,8 @@ function list(env: Environment, name: string): string[] {
 export function readKaelConfig(env: Environment): KaelConfig | null {
   const supabaseUrl = value(env, 'SUPABASE_URL');
   const supabaseAnonKey = value(env, 'SUPABASE_ANON_KEY');
-  if (!supabaseUrl || !supabaseAnonKey) return null;
+  const supabaseServiceKey = value(env, 'SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) return null;
 
   const anthropicKey = value(env, 'ANTHROPIC_API_KEY');
   const anthropicModel = value(env, 'KAEL_ANTHROPIC_MODEL');
@@ -87,13 +89,13 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   const enabledEffects = new Set(list(env, 'KAEL_ENABLED_EFFECTS')
     .filter((id): id is ConsequentialEffect => (consequentialEffects as readonly string[]).includes(id)));
 
-  return { supabaseUrl: supabaseUrl.replace(/\/+$/, ''), supabaseAnonKey, anthropic, deepseek, route, perplexity, enabledEffects, limits: defaultLimits };
+  return { supabaseUrl: supabaseUrl.replace(/\/+$/, ''), supabaseAnonKey, supabaseServiceKey, anthropic, deepseek, route, perplexity, enabledEffects, limits: defaultLimits };
 }
 
 export function configurationReport(env: Environment): Record<string, string> {
   const config = readKaelConfig(env);
   return {
-    gateway: config ? 'configured' : 'missing SUPABASE_URL or SUPABASE_ANON_KEY',
+    gateway: config ? 'configured' : 'requires SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY',
     anthropic: config?.anthropic ? 'configured' : 'requires ANTHROPIC_API_KEY and KAEL_ANTHROPIC_MODEL',
     deepseek: config?.deepseek ? 'configured' : 'requires DEEPSEEK_API_KEY and KAEL_DEEPSEEK_MODEL',
     web_search: config?.perplexity ? 'configured' : 'requires PERPLEXITY_API_KEY and KAEL_WEB_SEARCH=enabled',
