@@ -17,6 +17,8 @@ export function classifyAuthError(error: ErrorLike): AuthFailure {
     case 'otp_disabled':
     case 'phone_provider_disabled':
     case 'sms_send_failed':
+    case 'hook_timeout':
+    case 'hook_timeout_after_retry':
       return 'provider_unavailable';
     case 'validation_failed':
       return 'invalid_code';

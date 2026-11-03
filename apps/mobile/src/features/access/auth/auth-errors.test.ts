@@ -10,6 +10,8 @@ describe('classifyAuthError', () => {
     ['signup_disabled', 422, 'signup_disabled'],
     ['phone_provider_disabled', 422, 'provider_unavailable'],
     ['sms_send_failed', 500, 'provider_unavailable'],
+    ['hook_timeout', 500, 'provider_unavailable'],
+    ['hook_timeout_after_retry', 500, 'provider_unavailable'],
     ['validation_failed', 400, 'invalid_code'],
     [undefined, 429, 'rate_limited'],
     [undefined, 403, 'invalid_code'],
