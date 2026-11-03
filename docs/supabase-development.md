@@ -223,6 +223,53 @@ upstream `supabase/agent-skills` was inspected at
 `c9be0e931b7930f7d02126d04774d904c381e7d7`. No duplicate skill copies were added.
 Claude skill discovery/behavior is NOT VERIFIED. Skills remain technical references.
 
+## Phone OTP delivery (Send SMS Hook and eSMS)
+
+Supabase Auth creates, stores, expires and verifies every OTP. The Edge Function
+`supabase/functions/send-sms-hook` only relays the code Auth hands it to eSMS; the mobile
+app calls `signInWithOtp` and `verifyOtp` and never contacts eSMS.
+
+- The function verifies the Standard Webhooks signature (`webhook-id`, `webhook-timestamp`,
+  `webhook-signature`, 5 minute tolerance, constant-time comparison) over the raw body
+  before reading the payload, so a direct client call is refused with 401. It needs
+  `verify_jwt = false` because Auth does not send a user JWT; the signature is the only
+  gate, so never deploy it without `SEND_SMS_HOOK_SECRET`.
+- Server-side settings (names only; values never enter Git, the app bundle, logs or
+  reports): `SEND_SMS_HOOK_SECRET` (the hook signing secret, `v1,whsec_...`),
+  `ESMS_API_KEY`, `ESMS_SECRET_KEY`, `ESMS_BRANDNAME`, `ESMS_OTP_TEMPLATE` (must contain
+  `{{otp}}` and be an eSMS-approved template), optional `ESMS_SMS_TYPE` (default `2`) and
+  `ESMS_SANDBOX`. Missing settings fail closed with 503 and log only the setting names.
+- `ESMS_SANDBOX` defaults to sandbox: eSMS validates the request, sends nothing and
+  charges nothing. Only the exact value `0` requests live delivery, after the brandname,
+  template and `SmsType` are approved on the eSMS account.
+- eSMS `CodeResult` 100 means the request was accepted, not delivered. `124` (RequestId
+  reused) is a duplicate of an accepted message; the RequestId is a hash of the phone and
+  OTP so a repeated hook call cannot bill twice. Other codes (`101`, `104`, `146`, ...),
+  non-2xx replies, unreadable bodies and the 4 second timeout return a generic 500, which
+  Auth surfaces as a send failure; the message is never retried blindly.
+- Logs contain the outcome, the last three phone digits and the eSMS code, never the OTP,
+  the full number or any credential.
+- Hosted enablement is not part of the repository and needs owner approval: enable the
+  Phone provider with confirmations on, deploy the function, register its URL as the Send
+  SMS hook with the generated secret, and set OTP length 6, expiry 300 seconds and a 60
+  second resend interval. Local `config.toml` keeps signup and the hook disabled.
+- Cost and abuse controls are enforced by Supabase Auth, not by the app or the hook. Official
+  defaults: 30 SMS per hour per project, 30 sign-in or OTP requests per 5 minutes per IP, 30
+  verifications per 5 minutes per IP and one OTP per user per 60 seconds. Each is adjustable
+  under Authentication, Rate Limits. Recommended for a private beta: SMS per hour at 15 and
+  the per-IP request limit at 10 per 5 minutes (carrier NAT shares IPs, so do not go lower),
+  leaving the verify limit and the 60 second user window alone. Raise the hourly cap when
+  real peak logins approach it, because a global cap is also a way to block real users.
+- The hook accepts Vietnamese mobile numbers only, which removes the international
+  premium-route incentive behind SMS pumping. Keep the eSMS balance prepaid and low with no
+  automatic top-up, so the balance is the final cost ceiling. Use Supabase test phone
+  numbers for development and QA; they skip the hook and send nothing.
+- Before a public launch, add CAPTCHA on the OTP request (Supabase supports hCaptcha and
+  Cloudflare Turnstile) and a per-phone daily cap, and watch the ratio of OTPs sent to OTPs
+  verified in the function logs. Neither is implemented yet.
+- Live delivery, the Auth-to-function round trip and the hosted rate limits are NOT
+  VERIFIED; the repository tests cover the function against a mocked eSMS.
+
 ## Delivery and references
 
 The workflow now runs `Supabase local verification` on a standard Ubuntu 24.04

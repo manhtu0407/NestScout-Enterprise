@@ -10,7 +10,7 @@ export const phoneMessages: Record<PhoneRejection, string> = {
 
 export const authMessages: Record<AuthFailure, string> = {
   invalid_code: 'Mã chưa đúng. Kiểm tra lại và thử lần nữa.',
-  expired_code: 'Mã đã hết hạn. Hãy yêu cầu mã mới.',
+  expired_code: 'Mã không đúng hoặc đã hết hạn. Kiểm tra lại hoặc yêu cầu mã mới.',
   rate_limited: 'Bạn thử quá nhiều lần. Vui lòng chờ một lát.',
   signup_disabled: 'Môi trường này chưa cho phép tạo tài khoản mới.',
   provider_unavailable: 'Đăng nhập bằng tin nhắn chưa khả dụng trong môi trường này.',

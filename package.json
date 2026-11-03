@@ -44,7 +44,7 @@
     "db:stop": "node scripts/supabase-local.mjs stop",
     "verify:supabase": "node scripts/run-tests.mjs scripts/supabase-local.test.mjs",
     "typecheck:db": "tsc --noEmit --strict --skipLibCheck supabase/database.types.ts",
-    "verify:foundation": "node scripts/run-tests.mjs scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs scripts/check-skills.test.mjs scripts/test-integrity-reporter.test.mjs scripts/review-diff.test.mjs scripts/dead-code-evaluation.test.mjs",
+    "verify:foundation": "node scripts/run-tests.mjs scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs scripts/check-skills.test.mjs scripts/test-integrity-reporter.test.mjs scripts/send-sms-hook.test.mjs scripts/review-diff.test.mjs scripts/dead-code-evaluation.test.mjs",
     "agents:evaluate": "node scripts/agent-evaluation.mjs",
     "health:dead-code": "knip --no-exit-code --no-progress",
     "health:review-diff": "node scripts/review-diff.mjs",
