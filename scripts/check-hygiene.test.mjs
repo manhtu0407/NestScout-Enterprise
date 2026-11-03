@@ -95,6 +95,7 @@ test('existing naming categories and exact required/generated/legal filenames pa
     'scripts/tools.json', 'docs/claude.architecture.md', 'docs/agents.design.md', 'docs/setup-evidence.md',
     'supabase/database.types.ts', 'supabase/config.toml', 'supabase/supabase.lock',
     'supabase/migrations/20261025090000_add_example.sql', 'supabase/tests/database/security.test.sql',
+    'supabase/functions/send-sms-hook/index.ts', 'supabase/functions/send-sms-hook/webhook.ts',
     'module/README.md', '.cursor/mcp.json', '.claude-plugin/marketplace.json', '.agents/skills/example/SKILL.md', '.claude/skills/example/SKILL.md',
     '.agents/skills/example/references/adoption-review.md', '.claude/skills/example/references/adoption-review.md']) {
     assert.doesNotThrow(() => checkPath(file), file);
@@ -135,7 +136,9 @@ test('unapproved application, native, service and process paths still fail', () 
     'apps/mobile/assets/icon.png', 'apps/mobile/babel.config.js', 'apps/mobile/metro.config.js', 'apps/mobile/package-lock.json',
     'apps/mobile/.env', 'apps/mobile/.env.local', 'apps/mobile/ios/Podfile', 'apps/mobile/android/build.gradle',
     'apps/api/index.ts', 'packages/shared/index.ts', 'services/kael-core/server.ts', 'services/kael-core/package.json',
-    'services/kael-core/agent.mjs', 'process.bpmn', 'docs/order.bpmn']) {
+    'services/kael-core/agent.mjs', 'process.bpmn', 'docs/order.bpmn',
+    'supabase/functions/SendSms/index.ts', 'supabase/functions/send-sms-hook/Index.ts', 'supabase/functions/send-sms-hook/nested/index.ts',
+    'supabase/functions/send-sms-hook/index.js', 'supabase/functions/index.ts', 'supabase/functions/send-sms-hook/deno.json']) {
     assert.throws(() => checkPath(file), /No approved naming convention|Disposable document\/source name/, file);
   }
   for (const file of ['docs/processes/order.bpmn', 'docs/processes/README.md', 'docs/processes/flow.md',
