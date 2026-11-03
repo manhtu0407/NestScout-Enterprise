@@ -112,7 +112,7 @@ export function memoryStore(db, owner) {
       if (!draft || draft.missing.length > 0 || input.args.description !== draft.description || input.args.location !== draft.location || input.args.preferred_time !== draft.preferred_time) return { status: 'invalid' };
       for (const approval of db.approvals.values()) if (approval.task_id === task.id && approval.status === 'pending') approval.status = 'superseded';
       touch(task, 'waiting_for_approval', 'Đang chờ bạn xác nhận gửi yêu cầu');
-      const approval = { id: randomUUID(), owner, task_id: task.id, tool: input.tool, args: clone(input.args), fingerprint: input.fingerprint, task_version: task.version, status: 'pending', outcome: null, result: null, expires_at: new Date(Date.now() + input.ttlSeconds * 1000).toISOString() };
+      const approval = { id: randomUUID(), owner, task_id: task.id, tool: input.tool, args: clone(input.args), fingerprint: input.fingerprint, details: clone(input.details), task_version: task.version, status: 'pending', outcome: null, result: null, expires_at: new Date(Date.now() + input.ttlSeconds * 1000).toISOString() };
       db.approvals.set(approval.id, approval);
       return { status: 'ok', approval_id: approval.id, expires_at: approval.expires_at, task: taskJson(task) };
     },
@@ -140,30 +140,43 @@ export function memoryStore(db, owner) {
       touch(task, 'running', 'Đang gửi yêu cầu đã được xác nhận');
       return { status: 'ok', tool: approval.tool, args: clone(approval.args), task_id: task.id };
     },
-    async completeApproval(id, outcome, result) {
+    async completeApproval(runId, id, outcome, result) {
       const approval = db.approvals.get(id);
-      if (!approval || approval.owner !== owner || approval.status !== 'consumed') return null;
+      const run = runningRun(runId);
+      if (!approval || approval.owner !== owner || approval.status !== 'consumed' || !run) return { status: 'invalid' };
+      const task = db.tasks.get(approval.task_id);
+      if (task.conversation_id !== run.conversation_id) return { status: 'invalid' };
+      if (approval.outcome === 'succeeded' || approval.outcome === 'failed') return { status: 'final', outcome: approval.outcome, result: clone(approval.result), task: taskJson(task) };
       let verified = outcome;
       const created = db.requests.get(result.resource_id);
       if (outcome === 'succeeded' && (created?.owner !== owner || created?.key !== id)) verified = 'uncertain';
+      const target = verified === 'succeeded' ? 'completed' : verified === 'failed' ? 'waiting_for_input' : 'paused';
+      if (task.status !== 'running' || !canTransition(task.status, target)) {
+        approval.outcome = 'uncertain';
+        approval.result = { reason: 'task_changed' };
+        return { status: 'conflict', outcome: 'uncertain', result: clone(approval.result), task: taskJson(task) };
+      }
       approval.outcome = verified;
-      approval.result = verified === 'succeeded' ? { resource_kind: 'service_request', resource_id: result.resource_id } : { reason: result.reason ?? 'unverified_result' };
-      const task = db.tasks.get(approval.task_id);
-      if (task.status !== 'running') return taskJson(task);
+      approval.result = verified === 'succeeded' ? { resource_kind: 'service_request', resource_id: result.resource_id } : { reason: outcome === 'succeeded' ? 'unverified_result' : result.reason ?? 'unverified_result' };
       if (verified === 'succeeded') {
         task.artifact.effect_result = { status: 'succeeded', resource_kind: 'service_request', resource_id: result.resource_id };
         touch(task, 'completed', 'Đã gửi yêu cầu dịch vụ; chưa có thợ hay lịch hẹn được xác nhận');
       } else if (verified === 'failed') touch(task, 'waiting_for_input', 'Hệ thống chưa nhận yêu cầu; bản nháp vẫn được giữ');
       else touch(task, 'paused', 'Chưa xác định được kết quả gửi; có thể xác nhận lại an toàn');
-      return taskJson(task);
+      return { status: 'ok', outcome: verified, result: clone(approval.result), task: taskJson(task) };
     },
-    async rejectApproval(id) {
+    async rejectApproval(runId, id, fingerprint) {
       const approval = db.approvals.get(id);
-      if (!approval || approval.owner !== owner || approval.status !== 'pending') return null;
-      approval.status = 'rejected';
+      const run = runningRun(runId);
+      if (!approval || approval.owner !== owner || !run) return { status: 'invalid' };
       const task = db.tasks.get(approval.task_id);
+      if (task.conversation_id !== run.conversation_id) return { status: 'invalid' };
+      if (approval.fingerprint !== fingerprint) return { status: 'mismatch' };
+      if (approval.status !== 'pending') return { status: ['rejected', 'consumed', 'expired'].includes(approval.status) ? approval.status : 'stale' };
+      if (Date.parse(approval.expires_at) <= Date.now()) { approval.status = 'expired'; return { status: 'expired' }; }
+      approval.status = 'rejected';
       if (task.status === 'waiting_for_approval' && task.version === approval.task_version) touch(task, 'waiting_for_input', 'Bạn đã dừng bước gửi; bản nháp vẫn được giữ');
-      return taskJson(task);
+      return { status: 'ok', task: taskJson(task) };
     },
   };
 }
@@ -217,7 +230,7 @@ export function scriptedProvider(id, steps) {
       for (const chunk of step.text ?? []) onText(chunk);
       const tools = step.tools ?? [];
       return {
-        provider: id, model: `${id}-scripted`, text: [...(step.partial ?? []), ...(step.text ?? [])].join(''), toolCalls: tools,
+        provider: id, model: step.servedModel ?? `${id}-scripted`, requestedModel: `${id}-scripted`, text: [...(step.partial ?? []), ...(step.text ?? [])].join(''), toolCalls: tools,
         stopReason: step.stop ?? (tools.length > 0 ? 'tool_use' : 'end_turn'), usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 0 }, providerState: null,
       };
     },
@@ -233,15 +246,16 @@ export function call(name, input, id = `call_${randomUUID().slice(0, 8)}`) {
   return { id, name, input };
 }
 
-export function harness({ env = {}, providers = () => [], fixtures = {}, db = createDb() } = {}) {
+export function harness({ env = {}, providers = () => [], fixtures = {}, db = createDb(), wrapStore = store => store } = {}) {
   const service = backend(db, fixtures);
+  const logs = [];
   const handle = createKaelHandler({
     env: { ...baseEnv, ...env },
     fetcher: service.fetcher,
     now: () => new Date('2026-11-03T03:00:00Z'),
-    log: () => {},
+    log: event => logs.push(event),
     providers,
-    store: (_rest, userId) => memoryStore(db, userId),
+    store: (_rest, userId) => wrapStore(memoryStore(db, userId)),
   });
   async function send(user, body) {
     const response = await handle(new Request('https://edge.test/functions/v1/kael', {
@@ -264,7 +278,7 @@ export function harness({ env = {}, providers = () => [], fixtures = {}, db = cr
   async function decide(user, conversation, approval, approve = true, fingerprint = approval.fingerprint, mode = 'client') {
     return send(user, { request_id: randomUUID(), conversation_id: conversation, mode, action: { type: approve ? 'approve' : 'reject', approval_id: approval.id, fingerprint } });
   }
-  return { db, service, handle, send, message, decide };
+  return { db, service, handle, send, message, decide, logs };
 }
 
 export function terminal(result) {

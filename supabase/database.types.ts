@@ -569,13 +569,16 @@ isOneToOne: false
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
 "kael_complete_approval":
-{ Args: { "p_actor": string,"p_approval_id": string,"p_outcome": string,"p_result": Json }; Returns: Json
+{ Args: { "p_actor": string,"p_approval_id": string,"p_outcome": string,"p_result": Json,"p_run_id": string }; Returns: Json
                            },
 "kael_consume_approval":
 { Args: { "p_actor": string,"p_allowed_tools": (string)[],"p_approval_id": string,"p_fingerprint": string,"p_run_id": string }; Returns: Json
                            },
 "kael_context_tasks":
 { Args: { "p_conversation_id": string,"p_mode": string }; Returns: Json
+                           },
+"kael_conversation_state":
+{ Args: { "p_mode": string }; Returns: Json
                            },
 "kael_finish_run":
 { Args: { "p_actor": string,"p_complete": boolean,"p_error": string,"p_input_tokens": number,"p_model": string,"p_output_tokens": number,"p_provider": string,"p_run_id": string,"p_status": string,"p_steps": number,"p_text": string }; Returns: boolean
@@ -587,10 +590,10 @@ isOneToOne: false
 { Args: { "p_actor": string,"p_call_id": string,"p_error": string,"p_fingerprint": string,"p_outcome": string,"p_run_id": string,"p_side_effect": string,"p_task_id": string,"p_tool": string }; Returns: boolean
                            },
 "kael_reject_approval":
-{ Args: { "p_actor": string,"p_approval_id": string }; Returns: Json
+{ Args: { "p_actor": string,"p_approval_id": string,"p_fingerprint": string,"p_run_id": string }; Returns: Json
                            },
 "kael_request_approval":
-{ Args: { "p_actor": string,"p_args": Json,"p_expected_version": number,"p_fingerprint": string,"p_run_id": string,"p_summary": string,"p_task_id": string,"p_tool": string,"p_ttl_seconds": number }; Returns: Json
+{ Args: { "p_actor": string,"p_args": Json,"p_details": Json,"p_expected_version": number,"p_fingerprint": string,"p_run_id": string,"p_summary": string,"p_task_id": string,"p_tool": string,"p_ttl_seconds": number }; Returns: Json
                            },
 "kael_save_task":
 { Args: { "p_actor": string,"p_artifact": Json,"p_conversation_id": string,"p_event": string,"p_expected_version": number,"p_kind": string,"p_run_id": string,"p_status": string,"p_summary": string,"p_task_id": string,"p_title": string }; Returns: Json

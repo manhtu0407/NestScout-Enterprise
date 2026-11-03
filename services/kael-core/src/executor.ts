@@ -155,9 +155,10 @@ async function requestSubmitApproval(ctx: ToolContext, args: Record<string, unkn
   if (task.kind !== 'service_request' || !draft || draft.missing.length > 0 || draft.description === '') return failed('draft_incomplete', task.id);
   const approvalArgs = { task_id: task.id, description: draft.description, location: draft.location, preferred_time: draft.preferred_time };
   const bound = await fingerprint({ tool, actor: ctx.actor.userId, task_id: task.id, base_version: task.version, args: approvalArgs });
+  const details = { 'Mô tả': draft.description, 'Địa điểm': draft.location || 'Chưa cung cấp', 'Thời gian mong muốn': draft.preferred_time || 'Chưa cung cấp' };
   const result = await ctx.store.requestApproval({
     runId: ctx.runId, taskId: task.id, expectedVersion: task.version, tool, args: approvalArgs, fingerprint: bound,
-    summary: 'Gửi yêu cầu dịch vụ', ttlSeconds: ctx.config.limits.approvalTtlSeconds,
+    summary: 'Gửi yêu cầu dịch vụ', details, ttlSeconds: ctx.config.limits.approvalTtlSeconds,
   });
   if (result.status !== 'ok') return failed(result.status === 'stale' ? 'task_changed_elsewhere' : 'approval_unavailable', task.id);
   rememberTask(ctx, result.task);
@@ -166,7 +167,7 @@ async function requestSubmitApproval(ctx: ToolContext, args: Record<string, unkn
     task_id: task.id,
     tool,
     summary: 'Gửi yêu cầu dịch vụ',
-    details: { 'Mô tả': draft.description, 'Địa điểm': draft.location || 'Chưa cung cấp', 'Thời gian mong muốn': draft.preferred_time || 'Chưa cung cấp' },
+    details,
     fingerprint: bound,
     expires_at: result.expires_at,
   };

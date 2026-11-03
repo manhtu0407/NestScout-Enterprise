@@ -44,7 +44,11 @@ the account id the gateway verified.
   only by `service_role`, receive the verified account id and repeat every ownership,
   version and transition guard. A signed-in client cannot call them, so it cannot
   forge history, approvals or outcomes around the agent's policy. The server key is
-  used for nothing else and never reaches the model, logs or the mobile bundle.
+  used for nothing else and never reaches the model, logs or the mobile bundle. The
+  eight-operation limit lives in `createServerRpc`; the `service_role` credential
+  itself is broader, so it must stay in the Edge Function environment. Only the
+  legacy service-role JWT is accepted; `sb_secret_` keys are refused at
+  configuration until verified.
 - Capabilities come from `kael_actor_capabilities()` (non-anonymous customer, and
   `current_worker_eligible()` for Worker data), never from the presentation mode or
   the model. Worker tools are offered only in Worker mode with verified eligibility.
@@ -58,9 +62,16 @@ the account id the gateway verified.
   key, so reconciliation after an uncertain outcome cannot duplicate the request.
   Consuming the approval also requires the same conversation and that the owner gate
   and the account's capability still allow the operation, checked in the same
-  transaction, reconciliation included. `kael_complete_approval` verifies that the
-  created request belongs to the account and carries the approval's submission key
-  before the task can be completed. Agreement typed in chat is never consent.
+  transaction, reconciliation included. Rejecting requires the same run,
+  conversation, fingerprint and a pending approval. `kael_complete_approval` locks
+  the approval and task, requires the same conversation, verifies that the created
+  request belongs to the account and carries the approval's submission key, and
+  completes the task in the same transaction; a concurrently changed task leaves
+  the outcome uncertain. The runtime reports success only from that verified,
+  persisted result. Agreement typed in chat is never consent.
+- The mobile app restores the latest conversation per mode after a restart through
+  `kael_conversation_state`, a read-only RPC on the user's token that exposes only
+  view fields and pending, unexpired confirmations.
 - Execution classes, resources and the BPMN mapping are documented in
   `docs/service-workflow.md` (Kael capability boundary); a denied operation is
   reported to the model as that operation only, so conversation continues.
@@ -68,7 +79,10 @@ the account id the gateway verified.
   generic task tool or forge an effect result; both the runtime and SQL refuse it.
 - Tool results and stored text are labelled as data. Prompt instructions inside
   them cannot widen the offered tools or bypass approval.
-- Logs carry run ids, statuses, providers, token counts and error codes only.
+- Logs carry run ids, statuses, providers, the requested and the served model,
+  token counts and error codes only. The served model comes from the provider's
+  stream (`message_start.message.model` for Anthropic); when the field is absent the
+  requested model is recorded, never a guessed fallback.
 
 ## Runtime contract
 
@@ -89,7 +103,7 @@ or 503. A started run returns `application/x-ndjson`, one event per line, each w
 | --- | --- |
 | `run_started` | Run accepted; carries `conversation_id`, `request_id`, `replayed` |
 | `message_delta` | Streamed assistant text |
-| `tool_started` / `tool_completed` | User-facing activity label and outcome (`succeeded`, `failed`, `denied`, `approval_required`, `unavailable`) |
+| `tool_started` / `tool_completed` | User-facing activity label and outcome (`succeeded`, `failed`, `denied`, `approval_required`, `unavailable`, `uncertain`) |
 | `task_updated` | Current task view after a persisted transition |
 | `approval_required` | Exact action, details, fingerprint and expiry awaiting the user |
 | `run_completed` | Terminal success with the final text |
@@ -112,7 +126,7 @@ state, not open connections.
 
 | Setting | Effect |
 | --- | --- |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Required; injected by the Edge runtime. The server key only signs the eight Kael-internal RPCs |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Required; injected by the Edge runtime. The gateway uses the server key only for the eight Kael-internal RPCs; it must be the legacy service-role JWT |
 | `ANTHROPIC_API_KEY` + `KAEL_ANTHROPIC_MODEL` | Enables Anthropic (Messages API `2026-10-21`, streaming, server-side refusal fallback where supported); `KAEL_ANTHROPIC_EFFORT` = `low`, `medium` (default) or `high` |
 | `DEEPSEEK_API_KEY` + `KAEL_DEEPSEEK_MODEL` | Enables DeepSeek chat completions; `KAEL_DEEPSEEK_THINKING=enabled` turns on thinking mode with in-run `reasoning_content` replay |
 | `KAEL_MODEL_ROUTE` | Provider order, default `anthropic,deepseek`; only approved providers are accepted |

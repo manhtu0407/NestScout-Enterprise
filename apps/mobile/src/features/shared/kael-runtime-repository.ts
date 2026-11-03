@@ -1,6 +1,6 @@
-import { authenticatedFunctionRequest, type FunctionFetch } from '@/lib/authenticated-rest';
+import { authenticatedFunctionRequest, authenticatedRequest, type FunctionFetch } from '@/lib/authenticated-rest';
 
-import { kaelFailureCodes, parseKaelEvent, type KaelEvent, type KaelFailureCode } from './kael-events';
+import { kaelFailureCodes, parseKaelConversationSnapshot, parseKaelEvent, type KaelConversationSnapshot, type KaelEvent, type KaelFailureCode } from './kael-events';
 
 export type KaelMode = 'client' | 'worker';
 
@@ -91,4 +91,14 @@ export async function streamKaelTurn(
     return signal.aborted ? { kind: 'cancelled' } : { kind: 'interrupted' };
   }
   return { kind: 'interrupted' };
+}
+
+export type KaelRestRequest = typeof authenticatedRequest;
+
+export async function loadKaelConversation(userId: string, mode: KaelMode, signal: AbortSignal, request: KaelRestRequest = authenticatedRequest): Promise<KaelConversationSnapshot> {
+  const response = await request(userId, 'rpc/kael_conversation_state', { method: 'POST', body: JSON.stringify({ p_mode: mode }), signal });
+  if (!response.ok) throw new Error(`Kael conversation state failed with HTTP ${response.status}`);
+  const snapshot = parseKaelConversationSnapshot(await response.json());
+  if (!snapshot) throw new Error('Kael conversation state is outside the contract');
+  return snapshot;
 }

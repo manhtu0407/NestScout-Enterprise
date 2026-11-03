@@ -416,7 +416,7 @@ test('questions, how-to, writing and advice stay open in every mode and gate sta
       const label = `${context.name}: ${text}`;
       assert.equal(terminal(result).type, 'run_completed', label);
       assert.deepEqual(result.events.map(event => event.type), ['run_started', 'message_delta', 'run_completed'], label);
-      assert.match(h.primary.requests[0].system, /never what you can explain, advise, draft or plan/, label);
+      assert.match(h.primary.requests[0].system, /never depend on a booking or any other workflow/, label);
       assert.equal(h.primary.requests[0].tools.includes('service_request_submit'), context.mode === 'client' && context.env === effects, `${label}: confirmation is offered only where policy permits it`);
       assert.equal(tasksOf(h.db).length, 0, label);
       assert.equal(h.service.calls.filter(entry => entry.path.startsWith('/rest/v1/')).length, 0, `${label}: no business data was read`);
@@ -510,7 +510,15 @@ test('a confirmation is bound to its conversation', async () => {
   assert.equal(effectsCount(h.db), 1);
 });
 
-test('a backend success that does not carry the approval key is never reported as done', async () => {
+const completedTasks = result => result.events.filter(event => event.type === 'task_updated' && event.task.status === 'completed');
+
+function assertNoSuccess(result, label) {
+  assert.doesNotMatch(streamedText(result), /Đã gửi yêu cầu dịch vụ/, `${label}: no success text`);
+  assert.equal(toolOutcomes(result).some(outcome => outcome.endsWith(':succeeded')), false, `${label}: no succeeded tool event`);
+  assert.equal(completedTasks(result).length, 0, `${label}: no completed task event`);
+}
+
+test('a backend success that does not carry the approval key is reported as uncertain on every channel and reconciles with the same key', async () => {
   const primary = scriptedProvider('anthropic', submitFlow());
   const h = harness({ env: effects, providers: () => [primary] });
   const manual = randomUUID();
@@ -518,13 +526,120 @@ test('a backend success that does not carry the approval key is never reported a
   const { conversation, approval } = await pendingApproval(h);
   h.service.fixtures.submitFailure = () => new Response(JSON.stringify(manual), { status: 200 });
   const misattributed = await h.decide(users.customer, conversation, approval);
-  assert.match(terminal(misattributed).text, /Đã gửi yêu cầu dịch vụ/, 'the gateway reports what the backend returned');
+  assertNoSuccess(misattributed, 'misattributed');
+  assert.match(terminal(misattributed).text, /Chưa xác định được/);
+  assert.deepEqual(toolOutcomes(misattributed), ['service_request_submit:uncertain']);
   assert.equal(tasksOf(h.db)[0].status, 'paused', 'the task records the result as uncertain, not completed');
   assert.equal(h.db.approvals.get(approval.id).outcome, 'uncertain');
+  assert.equal(h.db.tools.find(row => row.callId === `approval:${approval.id}`).outcome, 'uncertain');
   h.service.fixtures.submitFailure = null;
-  assert.match(terminal(await h.decide(users.customer, conversation, approval)).text, /Đã gửi yêu cầu dịch vụ/);
+  const reconciled = await h.decide(users.customer, conversation, approval);
+  assert.match(terminal(reconciled).text, /Đã gửi yêu cầu dịch vụ/);
+  assert.deepEqual(toolOutcomes(reconciled), ['service_request_submit:succeeded']);
+  assert.equal(completedTasks(reconciled).length, 1);
   assert.equal(tasksOf(h.db)[0].status, 'completed');
   assert.equal([...h.db.requests.values()].filter(request => request.key === approval.id).length, 1);
+});
+
+test('a missing, failed, stale or contradictory verification never reaches the user as success', async () => {
+  const contradictions = {
+    'verification call fails': () => { throw new Error('store down'); },
+    'verification is invalid': () => ({ status: 'invalid' }),
+    'task is not completed': (_run, _id, _outcome, result, task) => ({ status: 'ok', outcome: 'succeeded', result: { resource_kind: 'service_request', resource_id: result.resource_id }, task: { ...task, status: 'running' } }),
+    'another resource is recorded': (_run, _id, _outcome, _result, task) => ({ status: 'ok', outcome: 'succeeded', result: { resource_kind: 'service_request', resource_id: randomUUID() }, task: { ...task, status: 'completed' } }),
+    'the outcome is not success': (_run, _id, _outcome, result, task) => ({ status: 'ok', outcome: 'uncertain', result: { resource_kind: 'service_request', resource_id: result.resource_id }, task: { ...task, status: 'completed' } }),
+    'the task changed concurrently': (_run, _id, _outcome, _result, task) => ({ status: 'conflict', outcome: 'uncertain', result: { reason: 'task_changed' }, task }),
+  };
+  for (const [label, verify] of Object.entries(contradictions)) {
+    const primary = scriptedProvider('anthropic', submitFlow());
+    const h = harness({
+      env: effects, providers: () => [primary],
+      wrapStore: store => ({ ...store, completeApproval: async (runId, id, outcome, result) => verify(runId, id, outcome, result, [...h.db.tasks.values()][0]) }),
+    });
+    const { conversation, approval } = await pendingApproval(h);
+    const decided = await h.decide(users.customer, conversation, approval);
+    assertNoSuccess(decided, label);
+    assert.match(streamedText(decided), /Chưa xác định được/, `${label}: the user is told the outcome is uncertain`);
+    assert.deepEqual(toolOutcomes(decided), ['service_request_submit:uncertain'], label);
+    assert.equal(effectsCount(h.db), 1, `${label}: the backend effect may exist, so nothing claims it failed`);
+  }
+});
+
+test('a task changed while the effect ran leaves the approval uncertain, never succeeded beside a contradictory task', async () => {
+  const primary = scriptedProvider('anthropic', submitFlow());
+  const h = harness({ env: effects, providers: () => [primary] });
+  ledger.push(h.db);
+  const { conversation, approval } = await pendingApproval(h);
+  h.service.fixtures.submitFailure = () => {
+    const task = tasksOf(h.db)[0];
+    task.status = 'cancelled';
+    task.version += 1;
+    h.service.fixtures.submitFailure = null;
+    return h.service.fetcher('https://project.supabase.test/rest/v1/rpc/submit_service_request', {
+      method: 'POST', headers: { authorization: `Bearer ${users.customer.token}` }, body: JSON.stringify({ p_submission_key: approval.id, p_description: 'x', p_location: '' }),
+    });
+  };
+  const raced = await h.decide(users.customer, conversation, approval);
+  assertNoSuccess(raced, 'raced');
+  assert.equal(h.db.approvals.get(approval.id).outcome, 'uncertain');
+  assert.deepEqual(h.db.approvals.get(approval.id).result, { reason: 'task_changed' });
+  assert.equal(tasksOf(h.db)[0].status, 'cancelled', 'the concurrent change is kept, not overwritten');
+  assert.equal(tasksOf(h.db)[0].artifact.effect_result, undefined);
+});
+
+test('rejecting is bound to the conversation, the fingerprint and a pending state, exactly like approving', async () => {
+  const h = scripted(effects, [...submitFlow(), { text: ['Chào bạn.'] }]);
+  const { conversation, approval } = await pendingApproval(h);
+  const elsewhere = conversationOf(await h.message(users.customer, 'Chào Kael'));
+  const foreignConversation = await h.decide(users.customer, elsewhere, approval, false);
+  assert.equal(terminal(foreignConversation).code, 'approval_invalid');
+  assert.equal(h.db.approvals.get(approval.id).status, 'pending', 'a reject from another conversation changes nothing');
+  const altered = await h.decide(users.customer, conversation, approval, false, 'f'.repeat(64));
+  assert.equal(terminal(altered).code, 'approval_invalid');
+  assert.match(streamedText(altered), /không khớp/);
+  assert.equal(h.db.approvals.get(approval.id).status, 'pending', 'a reject with an altered fingerprint changes nothing');
+  const intruder = await h.decide(users.other, conversation, approval, false);
+  assert.equal(intruder.status, 400, 'another account cannot even open the conversation');
+  assert.equal(h.db.approvals.get(approval.id).status, 'pending');
+
+  const rejected = await h.decide(users.customer, conversation, approval, false);
+  assert.equal(terminal(rejected).type, 'run_completed');
+  assert.equal(h.db.approvals.get(approval.id).status, 'rejected');
+  assert.equal(tasksOf(h.db)[0].status, 'waiting_for_input');
+  assert.ok(tasksOf(h.db)[0].artifact.draft, 'the draft is kept');
+  const replayed = await h.decide(users.customer, conversation, approval, false);
+  assert.equal(terminal(replayed).code, 'approval_invalid', 'a second reject is not applied again');
+  assert.equal(terminal(await h.decide(users.customer, conversation, approval)).code, 'approval_invalid', 'a rejected approval cannot be approved');
+  assert.equal(effectsCount(h.db), 0);
+});
+
+test('after one protected operation is refused, the next harmless question is answered normally', async () => {
+  const h = scripted({}, [
+    { tools: [call('worker_earnings', {})] },
+    request => {
+      assert.equal(lastToolResults(request)[0].outcome, 'denied');
+      assert.match(request.system, /Never guess, reconstruct or claim access to the private records that were refused/);
+      return { text: ['Tài khoản này không xem được thu nhập thợ.'] };
+    },
+    request => {
+      assert.ok(request.tools.length > 0, 'the refusal did not remove the tools that remain permitted');
+      return { text: ['Bạn có thể vệ sinh lưới lọc máy lạnh mỗi tháng một lần.'] };
+    },
+  ]);
+  const refused = await h.message(users.customer, 'Thu nhập thợ của tôi tháng này là bao nhiêu?');
+  assert.equal(terminal(refused).type, 'run_completed');
+  const next = await h.message(users.customer, 'Bao lâu thì nên vệ sinh máy lạnh?', { conversation: conversationOf(refused) });
+  assert.equal(terminal(next).type, 'run_completed');
+  assert.deepEqual(next.events.map(event => event.type), ['run_started', 'message_delta', 'run_completed']);
+  assert.equal(h.service.calls.filter(entry => entry.path.includes('/rpc/worker')).length, 0);
+});
+
+test('the run records the model the provider actually served, apart from the requested one', async () => {
+  const h = scripted({}, [{ text: ['Chào bạn.'], servedModel: 'anthropic-fallback' }]);
+  await h.message(users.customer, 'Chào Kael');
+  const run = h.logs.find(event => event.event === 'kael_run');
+  assert.equal(run.model, 'anthropic-fallback');
+  assert.equal(run.requested_model, 'anthropic-scripted');
 });
 
 test('evaluation ledger: zero unauthorized effects and zero false completions across all scenarios', t => {

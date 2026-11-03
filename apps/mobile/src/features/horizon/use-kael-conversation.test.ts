@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react-native';
 
-import type { KaelEvent, KaelTurnOutcome, KaelTurnRequest } from '@/features/shared';
+import type { KaelConversationSnapshot, KaelEvent, KaelMode, KaelTurnOutcome, KaelTurnRequest } from '@/features/shared';
 
 import { useKaelConversation } from './use-kael-conversation';
 
@@ -32,14 +32,17 @@ function scriptedStreamer(scripts: { events: Body[]; outcome?: KaelTurnOutcome }
 
 const started = { type: 'run_started' as const, conversation_id: conversation, request_id: 'r', replayed: false };
 const task = (status: string) => ({ type: 'task_updated' as const, task: { id: taskId, title: 'Sửa máy lạnh', kind: 'service_request', status, version: 1, summary: '' } });
-const approval = { id: approvalId, task_id: taskId, tool: 'service_request_submit', summary: 'Gửi yêu cầu dịch vụ', details: { 'Địa điểm': 'Quận 3' }, fingerprint: 'a'.repeat(64), expires_at: '2026-11-03T04:00:00Z' };
+const later = new Date(Date.now() + 600_000).toISOString();
+const approval = { id: approvalId, task_id: taskId, tool: 'service_request_submit', summary: 'Gửi yêu cầu dịch vụ', details: { 'Địa điểm': 'Quận 3' }, fingerprint: 'a'.repeat(64), expires_at: later };
+const empty: KaelConversationSnapshot = { conversationId: null, busy: false, messages: [], tasks: [], approvals: [] };
+const emptyLoader = jest.fn(async () => empty);
 
 test('streams a reply, tracks tasks and approvals, and continues in the same conversation', async () => {
   const { streamer, requests } = scriptedStreamer([
     { events: [started, { type: 'tool_started', call_id: 'c', tool: 'task_create', label: 'Đang ghi nhận việc cần làm' }, task('waiting_for_approval'), { type: 'approval_required', approval }, { type: 'message_delta', text: 'Bạn xác nhận nhé.' }, { type: 'run_completed', text: 'Bạn xác nhận nhé.' }] },
     { events: [started, task('completed'), { type: 'message_delta', text: 'Đã gửi.' }, { type: 'run_completed', text: 'Đã gửi.' }] },
   ]);
-  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer));
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader));
   await act(async () => { result.current.send('Gửi yêu cầu sửa máy lạnh'); });
   expect(result.current.messages.map(message => [message.role, message.text])).toEqual([['user', 'Gửi yêu cầu sửa máy lạnh'], ['assistant', 'Bạn xác nhận nhé.']]);
   expect(result.current.tasks[0]?.status).toBe('waiting_for_approval');
@@ -59,7 +62,7 @@ test('failures and interruptions are shown honestly and mark partial replies inc
     { events: [started, { type: 'message_delta', text: 'Đang' }] },
     { events: [], outcome: { kind: 'refused', code: 'provider_unavailable', message: 'Mô hình AI chưa được cấu hình.', retryable: false } },
   ]);
-  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer));
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader));
   await act(async () => { result.current.send('Vì sao?'); });
   expect(result.current.notice).toBe('Phản hồi bị gián đoạn.');
   expect(result.current.messages.at(-1)).toEqual(expect.objectContaining({ text: 'Nguyên nhân là', incomplete: true }));
@@ -76,16 +79,99 @@ test('guests cannot send, and switching mode starts a fresh conversation', async
     { events: [started, { type: 'run_completed', text: 'Chào' }] },
     { events: [{ ...started, conversation_id: '77777777-7777-4777-8777-777777777777' }, { type: 'run_completed', text: 'Chào thợ' }] },
   ]);
-  const guest = await renderHook(() => useKaelConversation(null, 'client', streamer));
+  const guest = await renderHook(() => useKaelConversation(null, 'client', streamer, emptyLoader));
   await act(async () => { guest.result.current.send('Xin chào'); });
   expect(streamer).not.toHaveBeenCalled();
   expect(guest.result.current.available).toBe(false);
 
-  const { result, rerender } = await renderHook(({ mode }: { mode: 'client' | 'worker' }) => useKaelConversation('worker-a', mode, streamer), { initialProps: { mode: 'client' } });
+  const { result, rerender } = await renderHook(({ mode }: { mode: 'client' | 'worker' }) => useKaelConversation('worker-a', mode, streamer, emptyLoader), { initialProps: { mode: 'client' } });
   await act(async () => { result.current.send('Xin chào'); });
   expect(result.current.messages).toHaveLength(2);
   await rerender({ mode: 'worker' });
   expect(result.current.messages).toHaveLength(0);
   await act(async () => { result.current.send('Lịch hôm nay'); });
   expect(requests[1]).toEqual(expect.objectContaining({ mode: 'worker', conversationId: null }));
+});
+
+const storedSnapshot: KaelConversationSnapshot = {
+  conversationId: conversation,
+  busy: false,
+  messages: [
+    { id: '88888888-8888-4888-8888-888888888881', role: 'user', text: 'Gửi yêu cầu sửa máy lạnh', incomplete: false },
+    { id: '88888888-8888-4888-8888-888888888882', role: 'assistant', text: 'Bạn xác nhận trong ứng dụng nhé.', incomplete: false },
+  ],
+  tasks: [{ id: taskId, title: 'Sửa máy lạnh', kind: 'service_request', status: 'waiting_for_approval', version: 3, summary: '' }],
+  approvals: [approval],
+};
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+test('reopening Kael restores the signed-in account\'s conversation, tasks and still-pending confirmation', async () => {
+  const loader = jest.fn(async () => storedSnapshot);
+  const { streamer, requests } = scriptedStreamer([{ events: [started, task('completed'), { type: 'run_completed', text: 'Đã gửi.' }] }]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  expect(loader).toHaveBeenCalledWith('customer-a', 'client', expect.any(AbortSignal));
+  expect(result.current.conversationId).toBe(conversation);
+  expect(result.current.messages.map(message => message.text)).toEqual(['Gửi yêu cầu sửa máy lạnh', 'Bạn xác nhận trong ứng dụng nhé.']);
+  expect(result.current.tasks[0]?.status).toBe('waiting_for_approval');
+  expect(result.current.approvals).toEqual([approval]);
+  await act(async () => { result.current.decide(result.current.approvals[0]!, true); });
+  expect(requests[0]).toEqual(expect.objectContaining({ conversationId: conversation, action: { type: 'approve', approval_id: approvalId, fingerprint: 'a'.repeat(64) } }));
+  expect(result.current.approvals).toHaveLength(0);
+});
+
+test('a late recovery from the previous account or mode is never shown under the next one', async () => {
+  const pending = deferred<KaelConversationSnapshot>();
+  const loader = jest.fn((userId: string, _mode: KaelMode) => (userId === 'customer-a' ? pending.promise : Promise.resolve(empty)));
+  const { result, rerender } = await renderHook(({ userId }: { userId: string }) => useKaelConversation(userId, 'client', scriptedStreamer([]).streamer, loader), { initialProps: { userId: 'customer-a' } });
+  await rerender({ userId: 'customer-b' });
+  await act(async () => { pending.resolve(storedSnapshot); await pending.promise; });
+  expect(result.current.messages).toHaveLength(0);
+  expect(result.current.approvals).toHaveLength(0);
+  expect(result.current.conversationId).toBeNull();
+  expect(loader.mock.calls.map(call => call[0])).toEqual(['customer-a', 'customer-b']);
+});
+
+test('an interrupted turn is reconciled from stored state instead of being treated as complete', async () => {
+  const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>()
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce({ ...storedSnapshot, messages: [...storedSnapshot.messages], busy: false });
+  const { streamer } = scriptedStreamer([{ events: [started, { type: 'message_delta', text: 'Bạn xác' }] }]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+  await act(async () => { result.current.send('Gửi yêu cầu sửa máy lạnh'); });
+  await act(async () => { await Promise.resolve(); });
+  expect(loader).toHaveBeenCalledTimes(2);
+  expect(result.current.notice).toMatch(/gián đoạn/);
+  expect(result.current.approvals).toEqual([approval]);
+  expect(result.current.messages.at(-1)).toEqual(expect.objectContaining({ text: 'Bạn xác nhận trong ứng dụng nhé.', incomplete: false }));
+});
+
+test('a failed recovery is reported, and starting a new conversation does not bring the old one back', async () => {
+  const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockRejectedValueOnce(new Error('offline'));
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', scriptedStreamer([]).streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.notice).toMatch(/Chưa tải lại được/);
+  expect(result.current.messages).toHaveLength(0);
+  await act(async () => { result.current.reset(); });
+  expect(result.current.notice).toBeNull();
+  expect(loader).toHaveBeenCalledTimes(1);
+});
+
+test('a confirmation is withdrawn from the screen once it expires', async () => {
+  jest.useFakeTimers();
+  try {
+    const soon = { ...approval, expires_at: new Date(Date.now() + 1_000).toISOString() };
+    const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', scriptedStreamer([]).streamer, jest.fn(async () => ({ ...storedSnapshot, approvals: [soon] }))));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.approvals).toHaveLength(1);
+    await act(async () => { jest.advanceTimersByTime(1_100); });
+    expect(result.current.approvals).toHaveLength(0);
+  } finally {
+    jest.useRealTimers();
+  }
 });

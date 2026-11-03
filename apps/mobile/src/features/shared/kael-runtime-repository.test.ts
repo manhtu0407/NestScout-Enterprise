@@ -1,4 +1,4 @@
-import { streamKaelTurn, type KaelTurnRequest } from './kael-runtime-repository';
+import { loadKaelConversation, streamKaelTurn, type KaelTurnRequest } from './kael-runtime-repository';
 import type { KaelEvent } from './kael-events';
 
 const mockGetSession = jest.fn();
@@ -40,6 +40,30 @@ test('posts the turn to the Kael function with the session token and streams ord
   expect(init.headers.Authorization).toBe('Bearer token-a');
   expect(JSON.parse(init.body)).toEqual({ request_id: request.requestId, conversation_id: null, mode: 'client', action: { type: 'message', text: 'Xin chào' } });
   expect(cancel).toHaveBeenCalled();
+});
+
+const snapshotBody = {
+  conversation_id: conversation,
+  busy: false,
+  messages: [{ id: '44444444-4444-4444-8444-444444444444', role: 'user', content: 'Sửa máy lạnh', status: 'complete' }],
+  tasks: [{ id: '55555555-5555-4555-8555-555555555555', title: 'Sửa máy lạnh', kind: 'service_request', status: 'waiting_for_approval', version: 3, summary: '' }],
+  approvals: [{ id: '66666666-6666-4666-8666-666666666666', task_id: '55555555-5555-4555-8555-555555555555', tool: 'service_request_submit', summary: 'Gửi yêu cầu dịch vụ', details: { 'Mô tả': 'Rò nước' }, fingerprint: 'a'.repeat(64), expires_at: '2026-11-03T04:00:00+00:00' }],
+};
+
+test('recovers the current conversation through the account-scoped read contract only', async () => {
+  const request = jest.fn(async () => ({ ok: true, status: 200, json: async () => snapshotBody }) as unknown as Response);
+  const snapshot = await loadKaelConversation('customer-a', 'worker', new AbortController().signal, request);
+  expect(request).toHaveBeenCalledWith('customer-a', 'rpc/kael_conversation_state', expect.objectContaining({ method: 'POST', body: JSON.stringify({ p_mode: 'worker' }) }));
+  expect(snapshot.conversationId).toBe(conversation);
+  expect(snapshot.messages).toEqual([{ id: '44444444-4444-4444-8444-444444444444', role: 'user', text: 'Sửa máy lạnh', incomplete: false }]);
+  expect(snapshot.approvals[0]?.details).toEqual({ 'Mô tả': 'Rò nước' });
+});
+
+test('an unreadable or out-of-contract recovery is an error, never an empty conversation', async () => {
+  const failing = jest.fn(async () => ({ ok: false, status: 401, json: async () => ({}) }) as unknown as Response);
+  await expect(loadKaelConversation('customer-a', 'client', new AbortController().signal, failing)).rejects.toThrow('HTTP 401');
+  const malformed = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ ...snapshotBody, approvals: [{ ...snapshotBody.approvals[0], fingerprint: 'short' }] }) }) as unknown as Response);
+  await expect(loadKaelConversation('customer-a', 'client', new AbortController().signal, malformed)).rejects.toThrow('outside the contract');
 });
 
 test('a stream that ends without a terminal event is interrupted, never completed', async () => {

@@ -13,7 +13,7 @@ export type KaelApproval = {
   expires_at: string;
 };
 
-export const kaelToolOutcomes = ['succeeded', 'failed', 'denied', 'approval_required', 'unavailable'] as const;
+export const kaelToolOutcomes = ['succeeded', 'failed', 'denied', 'approval_required', 'unavailable', 'uncertain'] as const;
 export type KaelToolOutcome = typeof kaelToolOutcomes[number];
 
 export const kaelFailureCodes = [
@@ -98,4 +98,38 @@ export function parseKaelEvent(line: string): KaelEvent | null {
   if (!isObject(value) || value.v !== 1 || !isId(value.run_id) || !Number.isSafeInteger(value.seq) || (value.seq as number) < 1) return null;
   const payload = parsePayload(value);
   return payload ? { ...payload, v: 1, run_id: value.run_id, seq: value.seq as number } : null;
+}
+
+export type KaelStoredMessage = { id: string; role: 'user' | 'assistant'; text: string; incomplete: boolean };
+
+export type KaelConversationSnapshot = {
+  conversationId: string | null;
+  busy: boolean;
+  messages: KaelStoredMessage[];
+  tasks: KaelTask[];
+  approvals: KaelApproval[];
+};
+
+function parseStoredMessage(value: unknown): KaelStoredMessage | null {
+  if (!isObject(value)) return null;
+  const { id, role, content, status } = value;
+  if (!isId(id) || (role !== 'user' && role !== 'assistant') || !isText(content) || (status !== 'complete' && status !== 'incomplete')) return null;
+  return { id, role, text: content, incomplete: status === 'incomplete' };
+}
+
+function parseAll<T>(value: unknown, limit: number, parse: (item: unknown) => T | null): T[] | null {
+  if (!Array.isArray(value) || value.length > limit) return null;
+  const parsed = value.map(parse);
+  return parsed.every(item => item !== null) ? parsed as T[] : null;
+}
+
+export function parseKaelConversationSnapshot(value: unknown): KaelConversationSnapshot | null {
+  if (!isObject(value) || typeof value.busy !== 'boolean') return null;
+  const conversationId = value.conversation_id;
+  if (conversationId !== null && !isId(conversationId)) return null;
+  const messages = parseAll(value.messages, 60, parseStoredMessage);
+  const tasks = parseAll(value.tasks, 12, parseTask);
+  const approvals = parseAll(value.approvals, 12, parseApproval);
+  if (!messages || !tasks || !approvals) return null;
+  return { conversationId, busy: value.busy, messages, tasks, approvals };
 }

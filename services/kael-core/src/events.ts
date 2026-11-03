@@ -25,7 +25,7 @@ export type KaelApprovalView = {
   expires_at: string;
 };
 
-export type KaelToolOutcome = 'succeeded' | 'failed' | 'denied' | 'approval_required' | 'unavailable';
+export type KaelToolOutcome = 'succeeded' | 'failed' | 'denied' | 'approval_required' | 'unavailable' | 'uncertain';
 
 export const kaelFailureCodes = [
   'unauthenticated', 'invalid_request', 'rate_limited', 'busy', 'provider_unavailable', 'provider_error',

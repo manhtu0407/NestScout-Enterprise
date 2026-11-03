@@ -106,7 +106,6 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messag
     { id: 'find', label: 'Tìm trong cuộc trò chuyện', icon: 'search', onPress: () => notify('Tìm trong cuộc trò chuyện chưa được kết nối.') },
     { id: 'archive', label: 'Lưu trữ', icon: 'archive', onPress: () => notify('Lưu trữ cuộc trò chuyện chưa được kết nối.') },
     { id: 'timeline', label: 'Tiến độ', icon: 'clock', onPress: () => setTimelineOpen(true) },
-    { id: 'delete', label: 'Xóa', icon: 'trash', destructive: true, onPress: () => { if (hasConversation) startNew(); else notify('Chưa có cuộc trò chuyện để xóa.'); } },
   ];
   const firstUserMessage = messages.find(m => m.role === 'user');
   const chatOpacity = progress.interpolate({ inputRange: [0, metrics.chatFadeStart, 1], outputRange: [0, 0, 1] });

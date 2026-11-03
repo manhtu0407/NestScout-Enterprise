@@ -95,6 +95,7 @@ create table nestscout_private.kael_approvals (
   args jsonb not null check (jsonb_typeof(args) = 'object' and pg_column_size(args) <= 16384),
   fingerprint text not null check (fingerprint ~ '^[0-9a-f]{64}$'),
   summary text not null check (char_length(summary) between 1 and 200),
+  details jsonb not null default '{}'::jsonb check (jsonb_typeof(details) = 'object' and pg_column_size(details) <= 4096),
   task_version integer not null check (task_version > 0),
   status text not null default 'pending' check (status in ('pending', 'consumed', 'rejected', 'expired', 'superseded')),
   outcome text check (outcome in ('succeeded', 'failed', 'uncertain')),
@@ -412,7 +413,7 @@ end;
 $$;
 
 create function nestscout_private.kael_request_approval(p_actor uuid, p_run_id uuid, p_task_id uuid, p_expected_version integer, p_tool text,
-  p_args jsonb, p_fingerprint text, p_summary text, p_ttl_seconds integer)
+  p_args jsonb, p_fingerprint text, p_summary text, p_details jsonb, p_ttl_seconds integer)
 returns jsonb
 language plpgsql
 security definer
@@ -427,7 +428,7 @@ declare
   v_expires timestamptz;
 begin
   if v_run.id is null or p_tool <> 'service_request_submit' or p_fingerprint !~ '^[0-9a-f]{64}$'
-    or p_ttl_seconds not between 60 and 3600 or jsonb_typeof(p_args) <> 'object' then
+    or p_ttl_seconds not between 60 and 3600 or jsonb_typeof(p_args) <> 'object' or jsonb_typeof(p_details) is distinct from 'object' then
     return jsonb_build_object('status', 'invalid');
   end if;
   select * into v_task from public.kael_tasks t where t.id = p_task_id and t.owner_id = v_actor for update;
@@ -451,8 +452,8 @@ begin
     summary = 'Đang chờ bạn xác nhận gửi yêu cầu'
     where id = v_task.id returning * into v_task;
   v_expires := clock_timestamp() + make_interval(secs => p_ttl_seconds);
-  insert into nestscout_private.kael_approvals (owner_id, task_id, run_id, tool, args, fingerprint, summary, task_version, expires_at)
-    values (v_actor, v_task.id, v_run.id, p_tool, p_args, p_fingerprint, left(p_summary, 200), v_task.version, v_expires)
+  insert into nestscout_private.kael_approvals (owner_id, task_id, run_id, tool, args, fingerprint, summary, details, task_version, expires_at)
+    values (v_actor, v_task.id, v_run.id, p_tool, p_args, p_fingerprint, left(p_summary, 200), p_details, v_task.version, v_expires)
     returning id into v_approval;
   insert into public.kael_task_events (task_id, owner_id, run_id, event, from_status, to_status, version)
     values (v_task.id, v_actor, v_run.id, 'approval_requested', v_from, v_task.status, v_task.version);
@@ -526,7 +527,7 @@ begin
 end;
 $$;
 
-create function nestscout_private.kael_complete_approval(p_actor uuid, p_approval_id uuid, p_outcome text, p_result jsonb)
+create function nestscout_private.kael_complete_approval(p_actor uuid, p_run_id uuid, p_approval_id uuid, p_outcome text, p_result jsonb)
 returns jsonb
 language plpgsql
 security definer
@@ -534,10 +535,12 @@ set search_path = ''
 as $$
 declare
   v_actor uuid := nestscout_private.kael_server_actor(p_actor);
+  v_run public.kael_runs := nestscout_private.kael_running_run(p_run_id, v_actor);
   v_approval nestscout_private.kael_approvals;
   v_task public.kael_tasks;
   v_outcome text := p_outcome;
   v_resource uuid;
+  v_result jsonb;
   v_from text;
   v_status text;
   v_summary text;
@@ -548,8 +551,15 @@ begin
   end if;
   select * into v_approval from nestscout_private.kael_approvals a
     where a.id = p_approval_id and a.owner_id = v_actor and a.status = 'consumed' for update;
-  if not found then
-    return null;
+  if not found or v_run.id is null then
+    return jsonb_build_object('status', 'invalid');
+  end if;
+  select * into v_task from public.kael_tasks t where t.id = v_approval.task_id and t.owner_id = v_actor for update;
+  if v_task.conversation_id <> v_run.conversation_id then
+    return jsonb_build_object('status', 'invalid');
+  end if;
+  if v_approval.outcome in ('succeeded', 'failed') then
+    return jsonb_build_object('status', 'final', 'outcome', v_approval.outcome, 'result', v_approval.result, 'task', nestscout_private.kael_task_json(v_task));
   end if;
   if v_outcome = 'succeeded' then
     begin
@@ -562,36 +572,38 @@ begin
       v_outcome := 'uncertain';
     end if;
   end if;
-  update nestscout_private.kael_approvals set outcome = v_outcome,
-    result = case when v_outcome = 'succeeded' then jsonb_build_object('resource_kind', 'service_request', 'resource_id', v_resource)
-      else jsonb_build_object('reason', left(coalesce(p_result ->> 'reason', 'unverified_result'), 80)) end
-    where id = v_approval.id;
-  select * into v_task from public.kael_tasks t where t.id = v_approval.task_id and t.owner_id = v_actor for update;
   v_from := v_task.status;
   v_artifact := v_task.artifact;
   if v_outcome = 'succeeded' then
     v_status := 'completed';
     v_summary := 'Đã gửi yêu cầu dịch vụ; chưa có thợ hay lịch hẹn được xác nhận';
+    v_result := jsonb_build_object('resource_kind', 'service_request', 'resource_id', v_resource);
     v_artifact := v_artifact || jsonb_build_object('effect_result', jsonb_build_object('status', 'succeeded', 'resource_kind', 'service_request', 'resource_id', v_resource));
   elsif v_outcome = 'failed' then
     v_status := 'waiting_for_input';
     v_summary := 'Hệ thống chưa nhận yêu cầu; bản nháp vẫn được giữ';
+    v_result := jsonb_build_object('reason', left(coalesce(p_result ->> 'reason', 'backend_refused'), 80));
   else
     v_status := 'paused';
     v_summary := 'Chưa xác định được kết quả gửi; có thể xác nhận lại an toàn';
+    v_result := jsonb_build_object('reason', case when p_outcome = 'succeeded' then 'unverified_result'
+      else left(coalesce(p_result ->> 'reason', 'unverified_result'), 80) end);
   end if;
   if v_from <> 'running' or not nestscout_private.kael_task_transition_allowed(v_from, v_status) then
-    return nestscout_private.kael_task_json(v_task);
+    v_result := jsonb_build_object('reason', 'task_changed');
+    update nestscout_private.kael_approvals set outcome = 'uncertain', result = v_result where id = v_approval.id;
+    return jsonb_build_object('status', 'conflict', 'outcome', 'uncertain', 'result', v_result, 'task', nestscout_private.kael_task_json(v_task));
   end if;
+  update nestscout_private.kael_approvals set outcome = v_outcome, result = v_result where id = v_approval.id;
   update public.kael_tasks set status = v_status, summary = v_summary, artifact = v_artifact, version = version + 1, updated_at = clock_timestamp()
     where id = v_task.id returning * into v_task;
   insert into public.kael_task_events (task_id, owner_id, run_id, event, from_status, to_status, version)
-    values (v_task.id, v_actor, null, 'effect_' || v_outcome, v_from, v_task.status, v_task.version);
-  return nestscout_private.kael_task_json(v_task);
+    values (v_task.id, v_actor, v_run.id, 'effect_' || v_outcome, v_from, v_task.status, v_task.version);
+  return jsonb_build_object('status', 'ok', 'outcome', v_outcome, 'result', v_result, 'task', nestscout_private.kael_task_json(v_task));
 end;
 $$;
 
-create function nestscout_private.kael_reject_approval(p_actor uuid, p_approval_id uuid)
+create function nestscout_private.kael_reject_approval(p_actor uuid, p_run_id uuid, p_approval_id uuid, p_fingerprint text)
 returns jsonb
 language plpgsql
 security definer
@@ -599,48 +611,101 @@ set search_path = ''
 as $$
 declare
   v_actor uuid := nestscout_private.kael_server_actor(p_actor);
+  v_run public.kael_runs := nestscout_private.kael_running_run(p_run_id, v_actor);
   v_approval nestscout_private.kael_approvals;
   v_task public.kael_tasks;
 begin
-  select * into v_approval from nestscout_private.kael_approvals a
-    where a.id = p_approval_id and a.owner_id = v_actor and a.status = 'pending' for update;
-  if not found then
-    return null;
+  select * into v_approval from nestscout_private.kael_approvals a where a.id = p_approval_id and a.owner_id = v_actor for update;
+  if not found or v_run.id is null then
+    return jsonb_build_object('status', 'invalid');
+  end if;
+  select * into v_task from public.kael_tasks t where t.id = v_approval.task_id and t.owner_id = v_actor for update;
+  if v_task.conversation_id <> v_run.conversation_id then
+    return jsonb_build_object('status', 'invalid');
+  end if;
+  if v_approval.fingerprint <> coalesce(p_fingerprint, '') then
+    return jsonb_build_object('status', 'mismatch');
+  end if;
+  if v_approval.status <> 'pending' then
+    return jsonb_build_object('status', case v_approval.status when 'rejected' then 'rejected' when 'consumed' then 'consumed'
+      when 'expired' then 'expired' else 'stale' end);
+  end if;
+  if v_approval.expires_at <= clock_timestamp() then
+    update nestscout_private.kael_approvals set status = 'expired' where id = v_approval.id;
+    return jsonb_build_object('status', 'expired');
   end if;
   update nestscout_private.kael_approvals set status = 'rejected', decided_at = clock_timestamp() where id = v_approval.id;
-  select * into v_task from public.kael_tasks t where t.id = v_approval.task_id and t.owner_id = v_actor for update;
   if v_task.status = 'waiting_for_approval' and v_task.version = v_approval.task_version then
     update public.kael_tasks set status = 'waiting_for_input', version = version + 1, updated_at = clock_timestamp(),
       summary = 'Bạn đã dừng bước gửi; bản nháp vẫn được giữ'
       where id = v_task.id returning * into v_task;
     insert into public.kael_task_events (task_id, owner_id, run_id, event, from_status, to_status, version)
-      values (v_task.id, v_actor, null, 'approval_rejected', 'waiting_for_approval', v_task.status, v_task.version);
+      values (v_task.id, v_actor, v_run.id, 'approval_rejected', 'waiting_for_approval', v_task.status, v_task.version);
   end if;
-  return nestscout_private.kael_task_json(v_task);
+  return jsonb_build_object('status', 'ok', 'task', nestscout_private.kael_task_json(v_task));
+end;
+$$;
+
+create function nestscout_private.kael_conversation_state(p_mode text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor uuid := nestscout_private.kael_actor();
+  v_conversation uuid;
+begin
+  if p_mode is null or p_mode not in ('client', 'worker') then
+    raise exception using errcode = '22023', message = 'invalid mode';
+  end if;
+  select c.id into v_conversation from public.kael_conversations c
+    where c.owner_id = v_actor and c.mode = p_mode order by c.updated_at desc limit 1;
+  if v_conversation is null then
+    return jsonb_build_object('conversation_id', null, 'busy', false, 'messages', '[]'::jsonb, 'tasks', '[]'::jsonb, 'approvals', '[]'::jsonb);
+  end if;
+  return jsonb_build_object(
+    'conversation_id', v_conversation,
+    'busy', exists (select 1 from public.kael_runs r where r.conversation_id = v_conversation and r.status = 'running'
+      and r.started_at > clock_timestamp() - interval '3 minutes'),
+    'messages', (select coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'role', m.role, 'content', m.content, 'status', m.status) order by m.seq), '[]'::jsonb)
+      from (select * from public.kael_messages x where x.conversation_id = v_conversation and x.owner_id = v_actor order by x.seq desc limit 60) m),
+    'tasks', (select coalesce(jsonb_agg(jsonb_build_object('id', t.id, 'title', t.title, 'kind', t.kind, 'status', t.status, 'version', t.version, 'summary', t.summary)
+      order by t.updated_at), '[]'::jsonb)
+      from (select * from public.kael_tasks x where x.conversation_id = v_conversation and x.owner_id = v_actor order by x.updated_at desc limit 12) t),
+    'approvals', (select coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'task_id', a.task_id, 'tool', a.tool, 'summary', a.summary, 'details', a.details,
+      'fingerprint', a.fingerprint, 'expires_at', a.expires_at) order by a.created_at), '[]'::jsonb)
+      from nestscout_private.kael_approvals a join public.kael_tasks t on t.id = a.task_id
+      where a.owner_id = v_actor and t.conversation_id = v_conversation and a.status = 'pending' and a.expires_at > clock_timestamp()
+        and t.status = 'waiting_for_approval' and t.version = a.task_version)
+  );
 end;
 $$;
 
 revoke all on function nestscout_private.kael_actor_capabilities() from public, anon, authenticated;
 revoke all on function nestscout_private.kael_context_tasks(uuid, text) from public, anon, authenticated;
+revoke all on function nestscout_private.kael_conversation_state(text) from public, anon, authenticated;
 revoke all on function nestscout_private.kael_start_run(uuid, uuid, uuid, text, text) from public, anon, authenticated;
 revoke all on function nestscout_private.kael_finish_run(uuid, uuid, text, text, boolean, text, text, integer, integer, integer, text) from public, anon, authenticated;
 revoke all on function nestscout_private.kael_save_task(uuid, uuid, uuid, uuid, integer, text, text, text, text, jsonb, text) from public, anon, authenticated;
 revoke all on function nestscout_private.kael_record_tool(uuid, uuid, text, uuid, text, text, text, text, text) from public, anon, authenticated;
-revoke all on function nestscout_private.kael_request_approval(uuid, uuid, uuid, integer, text, jsonb, text, text, integer) from public, anon, authenticated;
+revoke all on function nestscout_private.kael_request_approval(uuid, uuid, uuid, integer, text, jsonb, text, text, jsonb, integer) from public, anon, authenticated;
 revoke all on function nestscout_private.kael_consume_approval(uuid, uuid, uuid, text, text[]) from public, anon, authenticated;
-revoke all on function nestscout_private.kael_complete_approval(uuid, uuid, text, jsonb) from public, anon, authenticated;
-revoke all on function nestscout_private.kael_reject_approval(uuid, uuid) from public, anon, authenticated;
+revoke all on function nestscout_private.kael_complete_approval(uuid, uuid, uuid, text, jsonb) from public, anon, authenticated;
+revoke all on function nestscout_private.kael_reject_approval(uuid, uuid, uuid, text) from public, anon, authenticated;
 grant execute on function nestscout_private.kael_actor_capabilities() to authenticated;
 grant execute on function nestscout_private.kael_context_tasks(uuid, text) to authenticated;
+grant execute on function nestscout_private.kael_conversation_state(text) to authenticated;
 grant usage on schema nestscout_private to service_role;
 grant execute on function nestscout_private.kael_start_run(uuid, uuid, uuid, text, text) to service_role;
 grant execute on function nestscout_private.kael_finish_run(uuid, uuid, text, text, boolean, text, text, integer, integer, integer, text) to service_role;
 grant execute on function nestscout_private.kael_save_task(uuid, uuid, uuid, uuid, integer, text, text, text, text, jsonb, text) to service_role;
 grant execute on function nestscout_private.kael_record_tool(uuid, uuid, text, uuid, text, text, text, text, text) to service_role;
-grant execute on function nestscout_private.kael_request_approval(uuid, uuid, uuid, integer, text, jsonb, text, text, integer) to service_role;
+grant execute on function nestscout_private.kael_request_approval(uuid, uuid, uuid, integer, text, jsonb, text, text, jsonb, integer) to service_role;
 grant execute on function nestscout_private.kael_consume_approval(uuid, uuid, uuid, text, text[]) to service_role;
-grant execute on function nestscout_private.kael_complete_approval(uuid, uuid, text, jsonb) to service_role;
-grant execute on function nestscout_private.kael_reject_approval(uuid, uuid) to service_role;
+grant execute on function nestscout_private.kael_complete_approval(uuid, uuid, uuid, text, jsonb) to service_role;
+grant execute on function nestscout_private.kael_reject_approval(uuid, uuid, uuid, text) to service_role;
 
 create function public.kael_actor_capabilities()
 returns jsonb language sql stable security invoker set search_path = ''
@@ -648,6 +713,9 @@ as $$ select nestscout_private.kael_actor_capabilities(); $$;
 create function public.kael_context_tasks(p_conversation_id uuid, p_mode text)
 returns jsonb language sql stable security invoker set search_path = ''
 as $$ select nestscout_private.kael_context_tasks(p_conversation_id, p_mode); $$;
+create function public.kael_conversation_state(p_mode text)
+returns jsonb language sql stable security invoker set search_path = ''
+as $$ select nestscout_private.kael_conversation_state(p_mode); $$;
 create function public.kael_start_run(p_actor uuid, p_request_id uuid, p_conversation_id uuid, p_mode text, p_user_text text)
 returns jsonb language sql security invoker set search_path = ''
 as $$ select nestscout_private.kael_start_run(p_actor, p_request_id, p_conversation_id, p_mode, p_user_text); $$;
@@ -664,36 +732,38 @@ create function public.kael_record_tool(p_actor uuid, p_run_id uuid, p_call_id t
 returns boolean language sql security invoker set search_path = ''
 as $$ select nestscout_private.kael_record_tool(p_actor, p_run_id, p_call_id, p_task_id, p_tool, p_side_effect, p_outcome, p_fingerprint, p_error); $$;
 create function public.kael_request_approval(p_actor uuid, p_run_id uuid, p_task_id uuid, p_expected_version integer, p_tool text,
-  p_args jsonb, p_fingerprint text, p_summary text, p_ttl_seconds integer)
+  p_args jsonb, p_fingerprint text, p_summary text, p_details jsonb, p_ttl_seconds integer)
 returns jsonb language sql security invoker set search_path = ''
-as $$ select nestscout_private.kael_request_approval(p_actor, p_run_id, p_task_id, p_expected_version, p_tool, p_args, p_fingerprint, p_summary, p_ttl_seconds); $$;
+as $$ select nestscout_private.kael_request_approval(p_actor, p_run_id, p_task_id, p_expected_version, p_tool, p_args, p_fingerprint, p_summary, p_details, p_ttl_seconds); $$;
 create function public.kael_consume_approval(p_actor uuid, p_run_id uuid, p_approval_id uuid, p_fingerprint text, p_allowed_tools text[])
 returns jsonb language sql security invoker set search_path = ''
 as $$ select nestscout_private.kael_consume_approval(p_actor, p_run_id, p_approval_id, p_fingerprint, p_allowed_tools); $$;
-create function public.kael_complete_approval(p_actor uuid, p_approval_id uuid, p_outcome text, p_result jsonb)
+create function public.kael_complete_approval(p_actor uuid, p_run_id uuid, p_approval_id uuid, p_outcome text, p_result jsonb)
 returns jsonb language sql security invoker set search_path = ''
-as $$ select nestscout_private.kael_complete_approval(p_actor, p_approval_id, p_outcome, p_result); $$;
-create function public.kael_reject_approval(p_actor uuid, p_approval_id uuid)
+as $$ select nestscout_private.kael_complete_approval(p_actor, p_run_id, p_approval_id, p_outcome, p_result); $$;
+create function public.kael_reject_approval(p_actor uuid, p_run_id uuid, p_approval_id uuid, p_fingerprint text)
 returns jsonb language sql security invoker set search_path = ''
-as $$ select nestscout_private.kael_reject_approval(p_actor, p_approval_id); $$;
+as $$ select nestscout_private.kael_reject_approval(p_actor, p_run_id, p_approval_id, p_fingerprint); $$;
 
 revoke all on function public.kael_actor_capabilities() from public, anon, authenticated;
 revoke all on function public.kael_context_tasks(uuid, text) from public, anon, authenticated;
+revoke all on function public.kael_conversation_state(text) from public, anon, authenticated;
 revoke all on function public.kael_start_run(uuid, uuid, uuid, text, text) from public, anon, authenticated;
 revoke all on function public.kael_finish_run(uuid, uuid, text, text, boolean, text, text, integer, integer, integer, text) from public, anon, authenticated;
 revoke all on function public.kael_save_task(uuid, uuid, uuid, uuid, integer, text, text, text, text, jsonb, text) from public, anon, authenticated;
 revoke all on function public.kael_record_tool(uuid, uuid, text, uuid, text, text, text, text, text) from public, anon, authenticated;
-revoke all on function public.kael_request_approval(uuid, uuid, uuid, integer, text, jsonb, text, text, integer) from public, anon, authenticated;
+revoke all on function public.kael_request_approval(uuid, uuid, uuid, integer, text, jsonb, text, text, jsonb, integer) from public, anon, authenticated;
 revoke all on function public.kael_consume_approval(uuid, uuid, uuid, text, text[]) from public, anon, authenticated;
-revoke all on function public.kael_complete_approval(uuid, uuid, text, jsonb) from public, anon, authenticated;
-revoke all on function public.kael_reject_approval(uuid, uuid) from public, anon, authenticated;
+revoke all on function public.kael_complete_approval(uuid, uuid, uuid, text, jsonb) from public, anon, authenticated;
+revoke all on function public.kael_reject_approval(uuid, uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.kael_actor_capabilities() to authenticated;
 grant execute on function public.kael_context_tasks(uuid, text) to authenticated;
+grant execute on function public.kael_conversation_state(text) to authenticated;
 grant execute on function public.kael_start_run(uuid, uuid, uuid, text, text) to service_role;
 grant execute on function public.kael_finish_run(uuid, uuid, text, text, boolean, text, text, integer, integer, integer, text) to service_role;
 grant execute on function public.kael_save_task(uuid, uuid, uuid, uuid, integer, text, text, text, text, jsonb, text) to service_role;
 grant execute on function public.kael_record_tool(uuid, uuid, text, uuid, text, text, text, text, text) to service_role;
-grant execute on function public.kael_request_approval(uuid, uuid, uuid, integer, text, jsonb, text, text, integer) to service_role;
+grant execute on function public.kael_request_approval(uuid, uuid, uuid, integer, text, jsonb, text, text, jsonb, integer) to service_role;
 grant execute on function public.kael_consume_approval(uuid, uuid, uuid, text, text[]) to service_role;
-grant execute on function public.kael_complete_approval(uuid, uuid, text, jsonb) to service_role;
-grant execute on function public.kael_reject_approval(uuid, uuid) to service_role;
+grant execute on function public.kael_complete_approval(uuid, uuid, uuid, text, jsonb) to service_role;
+grant execute on function public.kael_reject_approval(uuid, uuid, uuid, text) to service_role;

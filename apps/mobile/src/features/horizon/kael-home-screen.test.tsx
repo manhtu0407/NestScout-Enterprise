@@ -18,6 +18,7 @@ test('options button opens the conversation menu', async () => {
   await fireEvent.press(screen.getByLabelText('Tùy chọn cuộc trò chuyện'));
   expect(screen.getByLabelText('Menu cuộc trò chuyện')).toBeTruthy();
   expect(screen.getByLabelText('Trò chuyện mới')).toBeTruthy();
+  expect(screen.queryByLabelText('Xóa')).toBeNull();
 });
 
 test('focusing the composer moves from the introduction into the conversation layout', async () => {

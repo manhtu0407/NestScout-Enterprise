@@ -35,6 +35,7 @@ export type ModelUsage = { inputTokens: number; outputTokens: number; cachedInpu
 export type ModelTurn = {
   provider: ProviderId;
   model: string;
+  requestedModel: string;
   text: string;
   toolCalls: ToolCall[];
   stopReason: StopReason;

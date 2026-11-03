@@ -2,12 +2,12 @@ import type { KaelConfig } from './config.ts';
 import { buildSystemPrompt, buildTranscript } from './context.ts';
 import type { KaelEmitter, KaelFailureCode } from './events.ts';
 import { executeApprovedEffect, executeDecision } from './executor.ts';
-import type { ToolContext, ToolExecution } from './executor.ts';
+import type { EffectOutcome, ToolContext, ToolExecution } from './executor.ts';
 import { completeWithFallback, ProviderError } from './model.ts';
 import type { Fetcher, ModelProvider, ProviderId, ToolResult, TranscriptItem } from './model.ts';
 import { confirmableTools, evaluateCall, fingerprint, selectTools } from './policy.ts';
 import type { Actor } from './policy.ts';
-import type { KaelStore, Rest } from './store.ts';
+import type { ApprovalCompletion, KaelStore, Rest } from './store.ts';
 import { toTaskView } from './tasks.ts';
 import type { TaskRecord } from './tasks.ts';
 import { findTool, toDefinition } from './tools.ts';
@@ -32,6 +32,7 @@ export type RunOutcome = {
   complete: boolean;
   provider: ProviderId | null;
   model: string | null;
+  requestedModel: string | null;
   inputTokens: number;
   outputTokens: number;
   steps: number;
@@ -78,7 +79,7 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
   const { actor, config, store, emit } = input;
   const deadline = AbortSignal.timeout(config.limits.runDeadlineMs);
   const signal = AbortSignal.any([input.signal, deadline]);
-  const outcome: RunOutcome = { status: 'failed', text: '', complete: false, provider: null, model: null, inputTokens: 0, outputTokens: 0, steps: 0, error: null };
+  const outcome: RunOutcome = { status: 'failed', text: '', complete: false, provider: null, model: null, requestedModel: null, inputTokens: 0, outputTokens: 0, steps: 0, error: null };
   const say = (delta: string) => {
     outcome.text += delta;
     emit({ type: 'message_delta', text: delta });
@@ -114,6 +115,7 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
       });
       outcome.provider = turn.provider;
       outcome.model = turn.model;
+      outcome.requestedModel = turn.requestedModel;
       outcome.inputTokens += turn.usage.inputTokens;
       outcome.outputTokens += turn.usage.outputTokens;
 
@@ -189,12 +191,13 @@ const invalidApproval: Record<string, string> = {
   mismatch: 'Nội dung xác nhận không khớp với bản nháp hiện tại. Chưa có thao tác nào được thực hiện.',
   stale: 'Bản nháp đã thay đổi sau khi tạo xác nhận. Chưa có thao tác nào được thực hiện.',
   rejected: 'Bước này đã được hủy trước đó. Chưa có thao tác nào được thực hiện.',
+  consumed: 'Bước này đã được xác nhận trước đó nên không thể hủy nữa.',
   unavailable: 'Thao tác này hiện không khả dụng cho tài khoản hoặc chế độ đang dùng. Chưa có thao tác nào được thực hiện; bạn vẫn có thể tiếp tục trò chuyện với Kael.',
   invalid: 'Không tìm thấy xác nhận hợp lệ cho tài khoản này. Chưa có thao tác nào được thực hiện.',
 };
 
 export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome> {
-  const outcome: RunOutcome = { status: 'completed', text: '', complete: true, provider: null, model: null, inputTokens: 0, outputTokens: 0, steps: 0, error: null };
+  const outcome: RunOutcome = { status: 'completed', text: '', complete: true, provider: null, model: null, requestedModel: null, inputTokens: 0, outputTokens: 0, steps: 0, error: null };
   const say = (text: string) => {
     outcome.text += text;
     input.emit({ type: 'message_delta', text });
@@ -202,9 +205,12 @@ export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome>
   const publish = (task: TaskRecord | null) => { if (task) input.emit({ type: 'task_updated', task: toTaskView(task) }); };
 
   if (!input.approve) {
-    const task = await input.store.rejectApproval(input.approvalId);
-    if (!task) return { ...outcome, status: 'failed', complete: false, error: 'approval_invalid' };
-    publish(task);
+    const rejection = await input.store.rejectApproval(input.runId, input.approvalId, input.fingerprint);
+    if (rejection.status !== 'ok') {
+      say(invalidApproval[rejection.status] ?? failureMessages.approval_invalid);
+      return { ...outcome, status: 'failed', complete: true, error: 'approval_invalid' };
+    }
+    publish(rejection.task);
     say('Đã dừng bước gửi theo ý bạn. Bản nháp vẫn được giữ để bạn chỉnh sửa hoặc gửi sau.');
     return outcome;
   }
@@ -226,26 +232,40 @@ export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome>
   const label = 'Đang gửi yêu cầu dịch vụ';
   input.emit({ type: 'tool_started', call_id: callId, tool: consumed.tool, label });
   const effect = await executeApprovedEffect(input.approvalId, consumed, input.rest, input.signal);
-  const task = await input.store.completeApproval(
-    input.approvalId,
-    effect.status,
-    effect.status === 'succeeded' ? { resource_kind: 'service_request', resource_id: effect.resourceId } : { reason: effect.reason },
-  );
+  let completion: ApprovalCompletion;
+  try {
+    completion = await input.store.completeApproval(
+      input.runId,
+      input.approvalId,
+      effect.status,
+      effect.status === 'succeeded' ? { resource_kind: 'service_request', resource_id: effect.resourceId } : { reason: effect.reason },
+    );
+  } catch {
+    completion = { status: 'invalid' };
+  }
+  const verdict = verifiedOutcome(effect, completion);
   await input.store.recordTool({
-    runId: input.runId, callId, taskId: consumed.task_id, tool: consumed.tool, sideEffect: 'consequential',
-    outcome: effect.status === 'succeeded' ? 'succeeded' : effect.status === 'uncertain' ? 'uncertain' : 'failed',
-    fingerprint: input.fingerprint, error: effect.status === 'succeeded' ? null : effect.reason,
+    runId: input.runId, callId, taskId: consumed.task_id, tool: consumed.tool, sideEffect: 'consequential', outcome: verdict,
+    fingerprint: input.fingerprint, error: verdict === 'succeeded' ? null : effect.status === 'succeeded' ? 'unverified_result' : effect.reason,
   });
-  input.emit({ type: 'tool_completed', call_id: callId, tool: consumed.tool, outcome: effect.status === 'succeeded' ? 'succeeded' : 'failed', label });
-  publish(task);
-  if (effect.status === 'succeeded') {
+  input.emit({ type: 'tool_completed', call_id: callId, tool: consumed.tool, outcome: verdict, label });
+  if (completion.status !== 'invalid' && (verdict === 'succeeded' || completion.task.status !== 'completed')) publish(completion.task);
+  if (verdict === 'succeeded' && effect.status === 'succeeded') {
     say(`Đã gửi yêu cầu dịch vụ (mã ${effect.resourceId.slice(0, 8)}). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.`);
-  } else if (effect.status === 'uncertain') {
-    say('Chưa xác định được yêu cầu đã được gửi hay chưa do lỗi kết nối. Bạn có thể xác nhận lại: Kael dùng cùng mã gửi nên sẽ không tạo yêu cầu trùng.');
+  } else if (verdict === 'uncertain') {
+    say('Chưa xác định được yêu cầu đã được ghi nhận hay chưa, nên Kael chưa báo là đã gửi. Bạn có thể xác nhận lại: Kael dùng cùng mã gửi nên sẽ không tạo yêu cầu trùng.');
   } else {
     say('Hệ thống chưa nhận yêu cầu này. Bản nháp vẫn được giữ; chưa có yêu cầu nào được gửi.');
     outcome.status = 'failed';
     outcome.error = 'internal';
   }
   return outcome;
+}
+
+function verifiedOutcome(effect: EffectOutcome, completion: ApprovalCompletion): 'succeeded' | 'failed' | 'uncertain' {
+  if (effect.status !== 'succeeded') return effect.status;
+  if (completion.status === 'invalid' || completion.status === 'conflict') return 'uncertain';
+  const verified = completion.outcome === 'succeeded' && completion.task.status === 'completed'
+    && completion.result?.resource_kind === 'service_request' && completion.result.resource_id === effect.resourceId;
+  return verified ? 'succeeded' : 'uncertain';
 }

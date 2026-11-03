@@ -11,6 +11,12 @@ export type AnthropicConfig = { apiKey: string; model: string; effort: 'low' | '
 
 type Block = Record<string, unknown> & { type: string };
 
+const modelIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,79}$/;
+
+function reportedModel(value: unknown): string | null {
+  return typeof value === 'string' && modelIdPattern.test(value) ? value : null;
+}
+
 function toMessages(transcript: readonly TranscriptItem[], model: string): unknown[] {
   return transcript.map(item => {
     if (item.role === 'user') return { role: 'user', content: item.text };
@@ -81,11 +87,14 @@ export function createAnthropicProvider(config: AnthropicConfig, fetcher: Fetche
         let cachedInputTokens = 0;
         let outputTokens = 0;
         let finished = false;
+        let servedModel: string | null = null;
         for await (const message of readSse(response.body, signal)) {
           const data = JSON.parse(message.data) as Record<string, unknown>;
           const index = typeof data.index === 'number' ? data.index : -1;
           if (data.type === 'message_start') {
-            const usage = (data.message as { usage?: Record<string, unknown> } | undefined)?.usage ?? {};
+            const opened = data.message as { model?: unknown; usage?: Record<string, unknown> } | undefined;
+            servedModel = reportedModel(opened?.model);
+            const usage = opened?.usage ?? {};
             inputTokens = Number(usage.input_tokens ?? 0);
             cachedInputTokens = Number(usage.cache_read_input_tokens ?? 0);
           } else if (data.type === 'content_block_start') {
@@ -139,14 +148,16 @@ export function createAnthropicProvider(config: AnthropicConfig, fetcher: Fetche
           const { invalid: _invalid, ...rest } = block;
           return rest;
         });
+        const model = servedModel ?? config.model;
         return {
           provider: 'anthropic',
-          model: config.model,
+          model,
+          requestedModel: config.model,
           text,
           toolCalls,
           stopReason,
           usage: { inputTokens: inputTokens + cachedInputTokens, outputTokens, cachedInputTokens },
-          providerState: { provider: 'anthropic', model: config.model, data: replay },
+          providerState: { provider: 'anthropic', model, data: replay },
         };
       } catch (error) {
         if (error instanceof SyntaxError) throw new ProviderError('anthropic', started ? 'incomplete' : 'server', 'Anthropic sent malformed stream data.', started);

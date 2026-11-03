@@ -26,5 +26,5 @@ export { GlassCapsuleButton, GlassIconButton, GlassPill, GlassSegment, PressScal
 export { useGlassAccessibility, usePressFeedback } from './ui/glass-interaction';
 export { Icon, type IconName } from './ui/icon';
 export type { StorageSource } from '@/lib/authenticated-rest';
-export { streamKaelTurn, type KaelMode, type KaelTurnAction, type KaelTurnOutcome, type KaelTurnRequest } from './kael-runtime-repository';
-export type { KaelApproval, KaelEvent, KaelFailureCode, KaelTask, KaelTaskStatus } from './kael-events';
+export { loadKaelConversation, streamKaelTurn, type KaelMode, type KaelRestRequest, type KaelTurnAction, type KaelTurnOutcome, type KaelTurnRequest } from './kael-runtime-repository';
+export type { KaelApproval, KaelConversationSnapshot, KaelEvent, KaelFailureCode, KaelTask, KaelTaskStatus } from './kael-events';

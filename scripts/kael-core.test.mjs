@@ -106,6 +106,26 @@ test('Anthropic adapter streams text, parses tool input strictly and keeps think
   assert.equal(other.calls[0].body.messages[1].content.some(block => block.type === 'thinking'), false, 'state from another model is rebuilt from text and tool calls');
 });
 
+test('Anthropic adapter attributes the turn to the model the stream reports, never to an invented one', async () => {
+  const served = anthropicStream.replace('"message":{"usage"', '"message":{"model":"claude-sonnet-5-5","usage"');
+  assert.notEqual(served, anthropicStream);
+  const turn = await createAnthropicProvider(anthropicConfig, recordingFetch(new Response(streamOf([served]), { status: 200 })).fetcher).complete(request(), () => {});
+  assert.equal(turn.model, 'claude-sonnet-5-5', 'a server-side fallback is recorded as the model that answered');
+  assert.equal(turn.requestedModel, 'claude-opus-5-5');
+  assert.equal(turn.providerState.model, 'claude-sonnet-5-5');
+
+  const replay = recordingFetch(new Response(streamOf([sse([['message_stop', { type: 'message_stop' }]])]), { status: 200 }));
+  await createAnthropicProvider(anthropicConfig, replay.fetcher).complete(request({ transcript: [{ role: 'user', text: 'a' }, { role: 'assistant', text: turn.text, toolCalls: turn.toolCalls, providerState: turn.providerState }] }), () => {});
+  const rebuilt = replay.calls[0].body.messages[1].content;
+  assert.equal(rebuilt.some(block => block.type === 'thinking'), false, 'thinking from the fallback model is not replayed to the requested model');
+  assert.deepEqual(rebuilt.map(block => block.type), ['text', 'tool_use'], 'the turn is rebuilt from its text and tool calls');
+
+  const silent = await createAnthropicProvider(anthropicConfig, recordingFetch(new Response(streamOf([anthropicStream]), { status: 200 })).fetcher).complete(request(), () => {});
+  assert.equal(silent.model, 'claude-opus-5-5', 'without a reported model the requested model is kept, not a guessed fallback');
+  const odd = anthropicStream.replace('"message":{"usage"', '"message":{"model":"bad model\\n","usage"');
+  assert.equal((await createAnthropicProvider(anthropicConfig, recordingFetch(new Response(streamOf([odd]), { status: 200 })).fetcher).complete(request(), () => {})).model, 'claude-opus-5-5');
+});
+
 test('Anthropic adapter treats a stream without message_stop as incomplete and classifies HTTP failures', async () => {
   const truncated = anthropicStream.split('event: message_delta')[0];
   const provider = createAnthropicProvider(anthropicConfig, recordingFetch(new Response(streamOf([truncated]), { status: 200 })).fetcher);
@@ -177,6 +197,9 @@ test('DeepSeek adapter reports missing finish reasons, truncation and provider e
   const cut = deepseekChunks([{ choices: [{ index: 0, delta: { content: 'Đang' }, finish_reason: null }] }]);
   await assert.rejects(createDeepSeekProvider(deepseekConfig, recordingFetch(new Response(streamOf([cut]), { status: 200 })).fetcher).complete(request(), () => {}),
     error => error.kind === 'incomplete' && error.outputStarted);
+  const noTerminator = deepseekChunks([{ choices: [{ index: 0, delta: { content: 'Xong' }, finish_reason: 'stop' }] }]);
+  await assert.rejects(createDeepSeekProvider(deepseekConfig, recordingFetch(new Response(streamOf([noTerminator]), { status: 200 })).fetcher).complete(request(), () => {}),
+    error => error.kind === 'incomplete' && error.outputStarted, 'a finish reason without the [DONE] terminator is an incomplete stream');
   const length = deepseekChunks([{ choices: [{ index: 0, delta: { content: 'Dài' }, finish_reason: 'length' }] }, '[DONE]']);
   assert.equal((await createDeepSeekProvider(deepseekConfig, recordingFetch(new Response(streamOf([length]), { status: 200 })).fetcher).complete(request(), () => {})).stopReason, 'max_tokens');
   const busy = deepseekChunks([{ choices: [{ index: 0, delta: {}, finish_reason: 'insufficient_system_resource' }] }, '[DONE]']);
@@ -357,12 +380,31 @@ test('each operation has one execution class and only explicit confirmation turn
   assert.deepEqual(confirmableTools({ ...customer, capabilities: new Set() }, gated), [], 'a revoked capability leaves nothing to confirm');
 });
 
-test('the workflow reference maps every Kael capability exactly as the registry defines it', () => {
+test('the workflow reference maps every Kael capability exactly as the registry and executor define it', () => {
   const doc = readFileSync(new URL('../docs/service-workflow.md', import.meta.url), 'utf8');
+  const executor = readFileSync(new URL('../services/kael-core/src/executor.ts', import.meta.url), 'utf8');
   const section = doc.split('\n## Kael capability boundary\n')[1].split('\n## ')[0];
-  const rows = [...section.matchAll(/^\| `([a-z_]+)` \| ([a-z_]+) \| ([a-z_]+) \|/gm)].map(match => ({ id: match[1], executionClass: match[2], resource: match[3] }));
-  assert.deepEqual(rows, toolRegistry.map(tool => ({ id: tool.id, executionClass: tool.executionClass, resource: tool.resource })));
-  for (const tool of toolRegistry.filter(item => item.effect !== null)) assert.match(section, new RegExp(`^\\| \`${tool.id}\` [^\\n]*KAEL_ENABLED_EFFECTS`, 'm'));
+  const rows = [...section.matchAll(/^\| `([a-z_]+)` \| ([a-z_]+) \| ([a-z_]+) \| ([^|]+) \| ([^|]+) \|/gm)]
+    .map(match => ({ id: match[1], executionClass: match[2], resource: match[3], permission: match[4], command: match[5] }));
+  assert.deepEqual(rows.map(({ id, executionClass, resource }) => ({ id, executionClass, resource })),
+    toolRegistry.map(tool => ({ id: tool.id, executionClass: tool.executionClass, resource: tool.resource })));
+  const documentedCommands = new Set();
+  for (const tool of toolRegistry) {
+    const row = rows.find(item => item.id === tool.id);
+    const label = `${tool.id} permission column`;
+    assert.equal(/Customer capability/.test(row.permission), tool.requires === 'customer', label);
+    assert.equal(/Worker capability/.test(row.permission), tool.requires === 'worker', label);
+    assert.equal(/client mode/.test(row.permission), tool.modes.length === 1 && tool.modes[0] === 'client', label);
+    assert.equal(/worker mode/.test(row.permission), tool.modes.length === 1 && tool.modes[0] === 'worker', label);
+    assert.equal(/KAEL_ENABLED_EFFECTS/.test(row.permission), tool.effect !== null, label);
+    assert.equal(/KAEL_WEB_SEARCH/.test(row.permission), tool.needsWebSearch, label);
+    for (const [, command] of row.command.matchAll(/`([a-z_]+)`/g)) {
+      documentedCommands.add(command);
+      assert.match(executor, new RegExp(`['\`](rpc/)?${command}[?'\`]`), `${tool.id}: documented command ${command} is what the executor calls`);
+    }
+  }
+  const called = new Set([...executor.matchAll(/'rpc\/([a-z_]+)'|`([a-z_]+)\?/g)].map(match => match[1] ?? match[2]));
+  assert.deepEqual([...called].sort(), [...documentedCommands].sort(), 'every backend command the executor calls is documented');
 });
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -389,10 +431,10 @@ test('Kael-internal writes leave only through named server RPCs bound to the ver
   await store.finishRun({ runId: id, status: 'completed', text: 'x', complete: true, provider: null, model: null, inputTokens: 0, outputTokens: 0, steps: 1, error: null });
   await store.saveTask({ taskId: null, conversationId: id, runId: id, expectedVersion: null, title: 't', kind: 'general', status: 'running', summary: '', artifact: {}, event: 'created' });
   await store.recordTool({ runId: id, callId: 'c', taskId: null, tool: 'task_create', sideEffect: 'internal', outcome: 'succeeded', fingerprint: 'a'.repeat(64), error: null });
-  await store.requestApproval({ runId: id, taskId: id, expectedVersion: 1, tool: 'service_request_submit', args: {}, fingerprint: 'a'.repeat(64), summary: 's', ttlSeconds: 900 });
+  await store.requestApproval({ runId: id, taskId: id, expectedVersion: 1, tool: 'service_request_submit', args: {}, fingerprint: 'a'.repeat(64), summary: 's', details: { 'Mô tả': 'x' }, ttlSeconds: 900 });
   await store.consumeApproval(id, id, 'a'.repeat(64), ['service_request_submit']);
-  await store.completeApproval(id, 'failed', { reason: 'x' });
-  await store.rejectApproval(id);
+  await store.completeApproval(id, id, 'failed', { reason: 'x' });
+  await store.rejectApproval(id, id, 'b'.repeat(64));
 
   const internal = calls.filter(entry => isServerOperation(entry.path));
   assert.deepEqual(internal.map(entry => entry.path.split('/rpc/')[1]).sort(), [...kaelServerOperations].sort());
@@ -408,8 +450,21 @@ test('Kael-internal writes leave only through named server RPCs bound to the ver
     assert.equal(entry.apikey, baseEnv.SUPABASE_ANON_KEY, entry.path);
   }
   assert.deepEqual(internal.find(entry => entry.path.endsWith('kael_consume_approval')).body.p_allowed_tools, ['service_request_submit']);
+  const bodyOf = name => internal.find(entry => entry.path.endsWith(name)).body;
+  assert.deepEqual(bodyOf('kael_complete_approval'), { p_actor: users.customer.id, p_run_id: id, p_approval_id: id, p_outcome: 'failed', p_result: { reason: 'x' } });
+  assert.deepEqual(bodyOf('kael_reject_approval'), { p_actor: users.customer.id, p_run_id: id, p_approval_id: id, p_fingerprint: 'b'.repeat(64) }, 'rejecting carries the run and fingerprint like approving');
+  assert.deepEqual(bodyOf('kael_request_approval').p_details, { 'Mô tả': 'x' });
   assert.throws(() => server('service_requests', {}), /HTTP 403/, 'the server credential cannot reach an arbitrary table');
   assert.throws(() => server('submit_service_request', {}), /HTTP 403/, 'the server credential cannot run a business command');
+});
+
+test('an opaque sb_secret_ key is refused instead of being sent as a bearer JWT', () => {
+  const placeholder = 'placeholder'.repeat(2);
+  const opaque = { ...baseEnv, SUPABASE_SERVICE_ROLE_KEY: ['sb', 'secret', placeholder].join('_') };
+  assert.equal(readKaelConfig(opaque), null);
+  const report = configurationReport(opaque);
+  assert.match(report.gateway, /legacy service-role JWT; sb_secret_ keys are not supported yet/);
+  assert.ok(!JSON.stringify(report).includes(placeholder));
 });
 
 test('the gateway persists runs only through the server boundary for the account Auth verified, whatever the request claims', async () => {

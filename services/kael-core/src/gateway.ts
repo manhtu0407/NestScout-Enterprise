@@ -193,7 +193,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
             actor, config: config as KaelConfig, store, rest, runId, emit, signal: controller.signal,
           });
       } catch {
-        result = { status: 'failed', text: '', complete: false, provider: null, model: null, inputTokens: 0, outputTokens: 0, steps: 0, error: 'internal' };
+        result = { status: 'failed', text: '', complete: false, provider: null, model: null, requestedModel: null, inputTokens: 0, outputTokens: 0, steps: 0, error: 'internal' };
       }
       const status = result.status === 'completed' ? 'completed' : controller.signal.aborted ? 'interrupted' : result.status;
       try {
@@ -206,7 +206,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         if (result.status === 'completed') result = { ...result, status: 'failed', error: 'internal' };
       }
       log({
-        event: 'kael_run', run_id: runId, action: turn.action.type, status, provider: result.provider, model: result.model,
+        event: 'kael_run', run_id: runId, action: turn.action.type, status, provider: result.provider, model: result.model, requested_model: result.requestedModel,
         steps: result.steps, input_tokens: result.inputTokens, output_tokens: result.outputTokens, error: result.error,
       });
       if (result.status === 'completed') emit({ type: 'run_completed', text: result.text });

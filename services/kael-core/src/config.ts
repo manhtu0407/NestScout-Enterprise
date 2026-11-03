@@ -59,7 +59,7 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   const supabaseUrl = value(env, 'SUPABASE_URL');
   const supabaseAnonKey = value(env, 'SUPABASE_ANON_KEY');
   const supabaseServiceKey = value(env, 'SUPABASE_SERVICE_ROLE_KEY');
-  if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) return null;
+  if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey || supabaseServiceKey.startsWith('sb_')) return null;
 
   const anthropicKey = value(env, 'ANTHROPIC_API_KEY');
   const anthropicModel = value(env, 'KAEL_ANTHROPIC_MODEL');
@@ -95,7 +95,7 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
 export function configurationReport(env: Environment): Record<string, string> {
   const config = readKaelConfig(env);
   return {
-    gateway: config ? 'configured' : 'requires SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY',
+    gateway: config ? 'configured' : 'requires SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY holding the legacy service-role JWT; sb_secret_ keys are not supported yet',
     anthropic: config?.anthropic ? 'configured' : 'requires ANTHROPIC_API_KEY and KAEL_ANTHROPIC_MODEL',
     deepseek: config?.deepseek ? 'configured' : 'requires DEEPSEEK_API_KEY and KAEL_DEEPSEEK_MODEL',
     web_search: config?.perplexity ? 'configured' : 'requires PERPLEXITY_API_KEY and KAEL_WEB_SEARCH=enabled',

@@ -1,7 +1,7 @@
 import * as Crypto from 'expo-crypto';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { streamKaelTurn, type KaelApproval, type KaelEvent, type KaelMode, type KaelTask, type KaelTurnAction, type KaelTurnOutcome } from '@/features/shared';
+import { loadKaelConversation, streamKaelTurn, type KaelApproval, type KaelConversationSnapshot, type KaelEvent, type KaelMode, type KaelTask, type KaelTurnAction, type KaelTurnOutcome } from '@/features/shared';
 
 export type KaelChatMessage = { id: string; role: 'user' | 'assistant'; text: string; incomplete?: boolean };
 
@@ -16,9 +16,12 @@ export type KaelConversationState = {
 };
 
 type Streamer = typeof streamKaelTurn;
+type Loader = (userId: string, mode: KaelMode, signal: AbortSignal) => Promise<KaelConversationSnapshot>;
 
 const idleState: KaelConversationState = { messages: [], activity: null, tasks: [], approvals: [], notice: null, running: false, conversationId: null };
 const interruptedNotice = 'Kết nối bị gián đoạn trước khi Kael trả lời xong. Nội dung phía trên có thể chưa đầy đủ.';
+const restoreFailedNotice = 'Chưa tải lại được cuộc trò chuyện trước đó. Bạn vẫn có thể tiếp tục trò chuyện với Kael.';
+const stillRunningNotice = 'Kael vẫn đang xử lý tin nhắn trước trong cuộc trò chuyện này. Vui lòng mở lại sau ít phút.';
 const busyLabel = 'Kael đang xử lý';
 
 function applyEvent(state: KaelConversationState, event: KaelEvent, assistantId: string): KaelConversationState {
@@ -68,11 +71,23 @@ function settle(state: KaelConversationState, outcome: KaelTurnOutcome, assistan
   return { ...base, notice: interruptedNotice, messages: state.messages.map(message => (message.id === assistantId ? { ...message, incomplete: true } : message)) };
 }
 
-export function useKaelConversation(userId: string | null, mode: KaelMode, streamer: Streamer = streamKaelTurn) {
+function restored(state: KaelConversationState, snapshot: KaelConversationSnapshot): KaelConversationState {
+  return {
+    ...state,
+    conversationId: snapshot.conversationId,
+    messages: snapshot.messages.map(message => ({ id: `stored-${message.id}`, role: message.role, text: message.text, incomplete: message.incomplete })),
+    tasks: snapshot.tasks,
+    approvals: snapshot.approvals,
+    notice: snapshot.busy ? stillRunningNotice : state.notice,
+  };
+}
+
+export function useKaelConversation(userId: string | null, mode: KaelMode, streamer: Streamer = streamKaelTurn, loader: Loader = loadKaelConversation) {
   const scope = `${userId ?? 'guest'}:${mode}`;
   const [state, setState] = useState<KaelConversationState>(idleState);
   const [seenScope, setSeenScope] = useState(scope);
   const controllerRef = useRef<AbortController | null>(null);
+  const restoreRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
 
   if (seenScope !== scope) {
@@ -80,13 +95,51 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     setState(idleState);
   }
 
-  useEffect(() => () => {
-    controllerRef.current?.abort();
-    controllerRef.current = null;
-    runningRef.current = false;
-  }, [scope]);
+  const rehydrate = useCallback(async (expected: string | null) => {
+    if (userId === null) return;
+    restoreRef.current?.abort();
+    const controller = new AbortController();
+    restoreRef.current = controller;
+    let snapshot: KaelConversationSnapshot | null = null;
+    let failed = false;
+    try {
+      snapshot = await loader(userId, mode, controller.signal);
+    } catch {
+      failed = true;
+    }
+    if (controller.signal.aborted || restoreRef.current !== controller) return;
+    restoreRef.current = null;
+    setState(current => {
+      if (current.running || current.conversationId !== expected) return current;
+      if (failed || !snapshot) return { ...current, notice: restoreFailedNotice };
+      if (expected === null ? current.messages.length > 0 : snapshot.conversationId !== expected) return current;
+      return restored(current, snapshot);
+    });
+  }, [loader, mode, userId]);
+
+  useEffect(() => {
+    void rehydrate(null);
+    return () => {
+      restoreRef.current?.abort();
+      restoreRef.current = null;
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      runningRef.current = false;
+    };
+  }, [rehydrate]);
+
+  const nextExpiry = useMemo(() => Math.min(...state.approvals.map(approval => Date.parse(approval.expires_at))), [state.approvals]);
+  useEffect(() => {
+    if (!Number.isFinite(nextExpiry)) return;
+    const timer = setTimeout(() => {
+      setState(current => ({ ...current, approvals: current.approvals.filter(approval => Date.parse(approval.expires_at) > Date.now()) }));
+    }, Math.max(0, nextExpiry - Date.now()) + 50);
+    return () => clearTimeout(timer);
+  }, [nextExpiry]);
 
   const reset = useCallback(() => {
+    restoreRef.current?.abort();
+    restoreRef.current = null;
     controllerRef.current?.abort();
     controllerRef.current = null;
     runningRef.current = false;
@@ -96,10 +149,14 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
   const run = useCallback(async (action: KaelTurnAction, userText: string) => {
     if (userId === null || runningRef.current) return;
     runningRef.current = true;
+    restoreRef.current?.abort();
+    restoreRef.current = null;
     const requestId = Crypto.randomUUID();
     const assistantId = `assistant-${requestId}`;
     const controller = new AbortController();
     controllerRef.current = controller;
+    let conversationId = state.conversationId;
+    let replayed = false;
     setState(current => ({
       ...current,
       notice: null,
@@ -108,14 +165,20 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
       messages: [...current.messages, { id: `user-${requestId}`, role: 'user', text: userText }],
       approvals: action.type === 'message' ? current.approvals : current.approvals.filter(item => item.id !== action.approval_id),
     }));
-    const outcome = await streamer(userId, { requestId, conversationId: state.conversationId, mode, action }, event => {
-      if (!controller.signal.aborted) setState(current => applyEvent(current, event, assistantId));
+    const outcome = await streamer(userId, { requestId, conversationId, mode, action }, event => {
+      if (controller.signal.aborted) return;
+      if (event.type === 'run_started') {
+        conversationId = event.conversation_id;
+        replayed = event.replayed;
+      }
+      setState(current => applyEvent(current, event, assistantId));
     }, controller.signal);
     if (controllerRef.current !== controller) return;
     controllerRef.current = null;
     runningRef.current = false;
     setState(current => settle(current, outcome, assistantId));
-  }, [mode, state.conversationId, streamer, userId]);
+    if (conversationId !== null && (outcome.kind === 'interrupted' || replayed)) void rehydrate(conversationId);
+  }, [mode, rehydrate, state.conversationId, streamer, userId]);
 
   const send = useCallback((text: string) => {
     const trimmed = text.trim();

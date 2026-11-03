@@ -89,6 +89,7 @@ export type ApprovalRequest = {
   args: Record<string, unknown>;
   fingerprint: string;
   summary: string;
+  details: Record<string, string>;
   ttlSeconds: number;
 };
 
@@ -99,6 +100,14 @@ export type ApprovalConsume =
   | { status: 'consumed'; outcome: string; result: Record<string, unknown> | null; task_id: string }
   | { status: 'expired' | 'mismatch' | 'invalid' | 'stale' | 'rejected' | 'unavailable' };
 
+export type ApprovalCompletion =
+  | { status: 'ok' | 'final' | 'conflict'; outcome: 'succeeded' | 'failed' | 'uncertain'; result: Record<string, unknown> | null; task: TaskRecord }
+  | { status: 'invalid' };
+
+export type ApprovalRejection =
+  | { status: 'ok'; task: TaskRecord }
+  | { status: 'invalid' | 'mismatch' | 'rejected' | 'consumed' | 'expired' | 'stale' };
+
 export type KaelStore = {
   capabilities(signal: AbortSignal): Promise<Set<Capability>>;
   startRun(requestId: string, conversationId: string | null, mode: KaelMode, userText: string, signal: AbortSignal): Promise<RunStart>;
@@ -108,8 +117,8 @@ export type KaelStore = {
   recordTool(input: ToolRecord): Promise<void>;
   requestApproval(input: ApprovalRequest): Promise<ApprovalRequestResult>;
   consumeApproval(runId: string, approvalId: string, fingerprint: string, allowedTools: readonly string[]): Promise<ApprovalConsume>;
-  completeApproval(approvalId: string, outcome: 'succeeded' | 'failed' | 'uncertain', result: Record<string, unknown>): Promise<TaskRecord | null>;
-  rejectApproval(approvalId: string): Promise<TaskRecord | null>;
+  completeApproval(runId: string, approvalId: string, outcome: 'succeeded' | 'failed' | 'uncertain', result: Record<string, unknown>): Promise<ApprovalCompletion>;
+  rejectApproval(runId: string, approvalId: string, fingerprint: string): Promise<ApprovalRejection>;
 };
 
 async function parsed<T>(name: string, response: Response): Promise<T> {
@@ -169,17 +178,17 @@ export function createSupabaseStore(rest: Rest, server: ServerRpc, actorId: stri
     requestApproval(input) {
       return internal<ApprovalRequestResult>('kael_request_approval', {
         p_run_id: input.runId, p_task_id: input.taskId, p_expected_version: input.expectedVersion, p_tool: input.tool, p_args: input.args, p_fingerprint: input.fingerprint,
-        p_summary: input.summary, p_ttl_seconds: input.ttlSeconds,
+        p_summary: input.summary, p_details: input.details, p_ttl_seconds: input.ttlSeconds,
       });
     },
     consumeApproval(runId, approvalId, fingerprintValue, allowedTools) {
       return internal<ApprovalConsume>('kael_consume_approval', { p_run_id: runId, p_approval_id: approvalId, p_fingerprint: fingerprintValue, p_allowed_tools: allowedTools });
     },
-    completeApproval(approvalId, outcome, result) {
-      return internal<TaskRecord | null>('kael_complete_approval', { p_approval_id: approvalId, p_outcome: outcome, p_result: result });
+    completeApproval(runId, approvalId, outcome, result) {
+      return internal<ApprovalCompletion>('kael_complete_approval', { p_run_id: runId, p_approval_id: approvalId, p_outcome: outcome, p_result: result });
     },
-    rejectApproval(approvalId) {
-      return internal<TaskRecord | null>('kael_reject_approval', { p_approval_id: approvalId });
+    rejectApproval(runId, approvalId, fingerprintValue) {
+      return internal<ApprovalRejection>('kael_reject_approval', { p_run_id: runId, p_approval_id: approvalId, p_fingerprint: fingerprintValue });
     },
   };
 }

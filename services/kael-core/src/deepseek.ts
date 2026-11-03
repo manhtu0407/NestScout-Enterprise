@@ -82,8 +82,12 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
         let outputTokens = 0;
         let cachedInputTokens = 0;
         const calls = new Map<number, { id: string; name: string; args: string }>();
+        let terminated = false;
         for await (const message of readSse(response.body, signal)) {
-          if (message.data === '[DONE]') break;
+          if (message.data === '[DONE]') {
+            terminated = true;
+            break;
+          }
           const chunk = JSON.parse(message.data) as Record<string, unknown>;
           const usage = chunk.usage as Record<string, unknown> | null | undefined;
           if (usage) {
@@ -111,7 +115,7 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
           }
           if (choice.finish_reason !== null && choice.finish_reason !== undefined) finishReason = choice.finish_reason;
         }
-        if (finishReason === null) throw new ProviderError('deepseek', 'incomplete', 'The DeepSeek stream ended before completion.', started);
+        if (finishReason === null || !terminated) throw new ProviderError('deepseek', 'incomplete', 'The DeepSeek stream ended before completion.', started);
         if (finishReason === 'insufficient_system_resource' || finishReason === 'aborted') {
           throw new ProviderError('deepseek', started ? 'incomplete' : 'overloaded', 'DeepSeek stopped before completing the response.', started);
         }
@@ -123,6 +127,7 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
         return {
           provider: 'deepseek',
           model: config.model,
+          requestedModel: config.model,
           text,
           toolCalls,
           stopReason: stopReasonOf(finishReason),

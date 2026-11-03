@@ -428,15 +428,20 @@ narrow the operations offered, never add one.
 The `toolRegistry` in `services/kael-core/src/tools.ts` is the single source of
 each operation's execution class, resource, required capability, mode and
 owner gate; the policy evaluator and the database enforce it independently, and
-`scripts/kael-core.test.mjs` fails when the table below drifts from it.
+`scripts/kael-core.test.mjs` fails when the table below drifts from it: the
+class, resource, required capability, mode and owner gate of each row must match
+the registry, and every backend command named in the Business command column must
+be one the executor actually calls (and every command it calls must be named here).
+Business invariants themselves are proven by the executor, the SQL guards and their
+negative tests, not by this table.
 
 | Kael capability | Execution class | Resource | Required verified permission | Business command | BPMN activity | Exception path |
 | --- | --- | --- | --- | --- | --- | --- |
 | `task_create` | internal_prepare | kael_task | Signed-in non-anonymous account | None; agent work state only | Any phase: coordination | Limit or invalid status is reported; no business record changes |
 | `task_update` | internal_prepare | kael_task | Same account; current task version | None; agent work state only | Any phase: pause, resume, switch | Completion without an observed effect is refused; a business record is never cancelled |
 | `service_request_draft` | internal_prepare | kael_task | Customer capability; client mode | None; the draft stays in the task | B intake: prepare request | Missing essentials keep the task waiting for input (B01) |
-| `service_request_submit` | explicit_confirmation | service_request | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `submit_service_request` with the approval id as submission key | B intake: submitRequest | Rejected keeps the draft; expired, stale, mismatched or foreign approval executes nothing; uncertain result pauses the task and reconciles with the same key; disabled gate is unavailable |
-| `customer_requests` | authorized_read | service_request | Customer capability; client mode; row-level security | Reads of `service_requests`, `service_quotes`, `service_jobs` | B–E: own request, quote and job stage | Backend error is reported; other accounts' rows are never returned |
+| `service_request_submit` | explicit_confirmation | service_request | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `submit_service_request` with the approval id as submission key | B intake: submitRequest | Rejected keeps the draft; approving or rejecting from another conversation, with another fingerprint, after expiry or a second time changes nothing; an unverified, contradictory or concurrently changed result is reported as uncertain, pauses or keeps the task and reconciles with the same key; disabled gate is unavailable |
+| `customer_requests` | authorized_read | service_request | Customer capability; client mode; row-level security | Reads of `service_requests`, `service_quotes` and `service_jobs` | B–E: own request, quote and job stage | Backend error is reported; other accounts' rows are never returned |
 | `worker_jobs` | authorized_read | worker_job | Worker capability (grant and eligibility); worker mode | `worker_job_cards` | C–D: Worker offers and assigned jobs | Empty for an account without Worker access |
 | `worker_earnings` | authorized_read | worker_earnings | Worker capability; worker mode | `worker_earnings` | F: recorded earnings, not settlement | Empty for an account without Worker access |
 | `worker_job_status` | authorized_read | worker_job | Worker capability; worker mode; assigned job | `kael_read_context` | D: kaelReadContext | Unavailable or rate limited; no other Worker's job |
@@ -445,7 +450,11 @@ owner gate; the policy evaluator and the database enforce it independently, and
 Conversation needs no operation. Explanations, advice, writing, translation,
 planning and research questions are answered without a task, an approval or a
 business read, and a refused or unavailable operation is reported to the model as
-that single operation, so Kael keeps helping with the rest of the message.
+that single operation, so Kael keeps helping with the rest of the message. A
+refusal of protected data is not a licence to guess: the prompt tells Kael never to
+infer, reconstruct or claim access to the records it was refused. A plain-language
+request can start an operation that needs no app confirmation; it never stands in
+for the confirmation an `explicit_confirmation` operation requires.
 
 Consent is bound to one operation. A confirmation card appears only for an
 `explicit_confirmation` operation the model proposed on a complete draft. It is
@@ -454,9 +463,31 @@ fingerprint), the conversation, a 15-minute expiry and single use. Agreement
 typed in chat is never consent, and Kael cannot approve on anyone's behalf.
 Before execution the gateway reauthorizes the account's capability and mode and
 rechecks the owner gate inside the same database transaction that consumes the
-approval, including on reconciliation. The effect calls the same business command
-a Customer uses manually, with the Customer's own token, and the outcome counts
-only when the created request carries the approval's submission key.
+approval, including on reconciliation. Rejecting is bound the same way: the
+verified account, the running turn's conversation, the fingerprint and a pending,
+unexpired approval, so a reject from elsewhere or a replayed reject changes
+nothing. The effect calls the same business command a Customer uses manually, with
+the Customer's own token. `kael_complete_approval` then locks the approval and the
+task together, requires the same conversation, and records success only when the
+created request belongs to the account and carries the approval's submission key
+and the task can move from running to completed; if the task changed meanwhile it
+records an uncertain outcome and leaves the task as it is. A verified outcome is
+never overwritten by a retry. The user and the event stream hear "sent" only from
+that persisted, verified result (task completed, outcome succeeded, the same
+request id); anything else, including a failed verification call, is reported as
+uncertain and can be reconciled with the same key, never as a definite failure
+when the request may exist.
+
+After a restart, the app reads `kael_conversation_state(mode)` with the user's own
+token. It returns only the account's latest conversation in that mode: ordered
+messages, task view fields, whether a turn is still running, and confirmations
+that are pending, unexpired and still match their task version, with display
+fields and the fingerprint but not the executable arguments. A late result from a
+previous account or mode is discarded, a stream that breaks is treated as
+interrupted and reconciled from this read, and an expired confirmation leaves the
+screen. "Trò chuyện mới" starts a new conversation locally; stored history is not
+deleted, so the menu offers no delete action until a retention and deletion policy
+exists.
 
 Kael-internal state (runs, messages, tasks, tool audit and approvals) is written
 only by the gateway. It verifies the account with Supabase Auth and then calls
@@ -465,7 +496,14 @@ RPCs are executable only by `service_role`, check the account is a real,
 non-anonymous, unbanned user and repeat every ownership, version and transition
 guard. No generic server path exists, and signed-in clients keep read access to
 their own Kael rows only. The ordinary Customer and Worker business commands are
-unchanged and remain directly usable under their own authorization.
+unchanged and remain directly usable under their own authorization. The eight-RPC
+allow-list is enforced in the gateway code, not by the credential: the legacy
+`service_role` key itself bypasses row-level security and could reach any table,
+so it must stay in the Edge Function environment and never be given to another
+client. The gateway accepts only the legacy service-role JWT; an opaque
+`sb_secret_` key is refused at configuration time until that path is verified
+against the hosted gateway. Supabase states that legacy keys keep working until the
+end of 2026, so moving to secret keys is a release prerequisite.
 
 No operation uses the `bounded_self_service` or `privileged_or_financial`
 classes. En-route, arrival, delay and scope commands stay manual Worker actions,
