@@ -26,8 +26,9 @@ runtime loading is NOT RUN because the Codex CLI is unavailable on this machine.
 - Short notes in `CONTRIBUTING.md`, `docs/development-guide.md` and
   `docs/skills-foundation.md` (dated Claude Code observation).
 
-Deliberately not added: `CLAUDE.md`, a Claude skills copy or symlink, a plugin
-manifest or marketplace, subagent definitions, Python, Rust, or any new service.
+Deliberately not added: `CLAUDE.md`, a Claude skills copy or symlink, a plugin copy,
+subagent definitions, Python, Rust, or any new service. The one Claude addition is
+`.claude-plugin/marketplace.json`.
 
 ## Language policy
 
@@ -64,12 +65,14 @@ manifest or marketplace, subagent definitions, Python, Rust, or any new service.
 
 - Observed with `claude -p` in this checkout: the root `AGENTS.md` policy is loaded
   with no `CLAUDE.md`, so no adapter is needed or added.
-- Observed: project skills under `.agents/skills` are not discovered by default.
-  `claude -p --plugin-dir ./.agents` lists `.agents:be-auth-rls`,
-  `.agents:skill-lifecycle` and `.agents:kael-tool-permissions`.
-- A project-settings marketplace was tried in a scratch directory and did not load
-  headlessly. It was not added: it needs an interactive install and a new root folder.
-- Remaining gap: default Claude discovery of shared skills is not established.
+- Skills: `.claude-plugin/marketplace.json` declares one plugin, `nestscout-skills`, whose
+  source is `./.agents` (`strict: false`, `skills: ./skills`). After the one-time local-scope
+  installation in `docs/skills-foundation.md`, a normal session without `--plugin-dir` lists
+  all 17 skills as `nestscout-skills:<name>`, invokes them and reads their references from
+  `.agents/skills`. The plugin is read in place, so there is no copy and no second library.
+- Not automatic on clone: a committed project-scope marketplace did not load in a
+  noninteractive session, and the CLI writes an absolute path there. The installation is
+  per clone and per machine.
 
 ## Shared skills
 

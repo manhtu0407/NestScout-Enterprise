@@ -1,0 +1,14 @@
+{
+  "name": "nestscout",
+  "description": "NestScout project marketplace exposing the canonical .agents/skills library to Claude Code.",
+  "owner": { "name": "NestScout" },
+  "plugins": [
+    {
+      "name": "nestscout-skills",
+      "source": "./.agents",
+      "description": "The canonical NestScout skills library, read in place from .agents/skills.",
+      "strict": false,
+      "skills": "./skills"
+    }
+  ]
+}
