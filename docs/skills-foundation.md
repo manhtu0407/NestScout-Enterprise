@@ -14,7 +14,7 @@ The [Batch A record](skill-research-batch-a.md) is dated research, not adoption.
 The **NestScout Engineering Skills Library** (NESL) has machine ID
 `nestscout-engineering-skills` and semantic namespace `nestscout`.
 Its single canonical source is `.agents/skills/`: the existing lifecycle package
-plus the 16 specialist packages listed below. The namespace is library identity,
+plus the 17 specialist packages listed below. The namespace is library identity,
 not a name prefix, native routing field or replacement for the plugin namespace.
 
 | Consumer | Native project package | V1 inventory |
@@ -36,9 +36,9 @@ installation below; cloning alone installs nothing.
 Each package links its own source evidence, immutable upstream paths when
 applicable, legal notices, adaptation decision and individual quality assessment.
 Packages use string metadata identifying this library, domain, specialty,
-consumers and version. Thirteen specialists are `1.0.0`; `be-auth-rls` and
+consumers and version. Fourteen specialists are `1.0.0`; `be-auth-rls` and
 `be-transaction-integrity` are `1.0.1`, and `be-edge-api` is `1.0.2`.
-There are 17 total packages including
+There are 18 total packages including
 `skill-lifecycle`, whose files are unchanged.
 
 | Package | Responsibility | Source mode |
@@ -59,6 +59,7 @@ There are 17 total packages including
 | [qa-error-prevention](../.agents/skills/qa-error-prevention/SKILL.md) | Causal diagnosis and evidence-based prevention | ADAPTED, Matt Pocock/Lauren Tan MIT |
 | [qa-impact-review](../.agents/skills/qa-impact-review/SKILL.md) | Spec/contracts and downstream change impact | ADAPTED, Matt Pocock/Lauren Tan MIT |
 | [thermo-nuclear-code-quality-review](../.agents/skills/thermo-nuclear-code-quality-review/SKILL.md) | Explicit diff-scoped structural maintainability review | ADAPTED, Cursor MIT |
+| [codebase-graph](../.agents/skills/codebase-graph/SKILL.md) | Graph-based cross-file navigation with an owner-installed graphify CLI; no install, hooks or provider calls | ADAPTED, graphify Apache-2.0/MIT |
 
 The owner's 2026-10-26 implementation request supersedes Batch A's proposed
 candidate-by-candidate pilot order: all 15 specialists are installed before
@@ -106,7 +107,7 @@ is the plugin root. No manifest, loader, copy, symlink or saved setting is neede
 Review that root as a skills-only bundle before loading it. The flag is explicit session
 loading. Claude Code 2.1.310 was observed on 2026-11-03 on Windows: without the
 installation or the flag, none of the project skills; after the installation below, a
-normal session lists all 17 as `nestscout-skills:<name>`, invokes them and reads their
+normal session lists the 17 then-installed packages as `nestscout-skills:<name>`, invokes them and reads their
 `references/` files from `.agents/skills`; it loads the root `AGENTS.md` without any
 `CLAUDE.md`. Re-observe after upgrading either runtime.
 
