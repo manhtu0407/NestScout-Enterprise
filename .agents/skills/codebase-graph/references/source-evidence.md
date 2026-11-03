@@ -29,13 +29,15 @@ to the repository; the graphify CLI is an owner-installed external prerequisite.
   and [NOTICE](https://github.com/Graphify-Labs/graphify/blob/8e6a6d2129d4aeffc7a0e9ed79b153f7f057f42b/NOTICE)
   at the same revision.
 
-Reviewed scope: the complete `skill.md` text, `references/query.md` head and
-`references/hooks.md`, NOTICE, LICENSE-MIT, the `pyproject.toml` name/version/license fields,
-the CLI command dispatch and the `update`/`extract` usage text, plus the README data-flow
-statements. The other references (`update`, `add-watch`, `exports`, `github-and-merge`,
-`transcribe`, `extraction-spec`), the 1152-file tree, workflows, Dockerfile and Python modules were
-not reviewed line by line and are not installed. No signature audit is claimed and no upstream
-code was executed.
+Reviewed scope: the complete `skill.md` text, NOTICE, LICENSE-MIT, the `pyproject.toml`
+name/version/license fields, the CLI command dispatch and the `update`/`extract` usage text, plus
+the README data-flow statements. Of the eight `skills/claude/references/` files, `query`, `hooks`, `exports`
+and the head of `update` were read and the rest were scanned for network, install and subprocess
+behavior (only `yt-dlp` video download and Neo4j/FalkorDB pushes were found, both excluded). A grep of
+the Python modules outside the CLI, installer, ingest, LLM, serve, Google Workspace and hook
+modules found only local `subprocess` use. The 1152-file tree, workflows, Dockerfile and the
+remaining Python were not reviewed line by line and are not installed. No signature audit is
+claimed and no upstream code was executed.
 
 ## Technical authority and version boundary
 
@@ -52,7 +54,7 @@ path. Graph accuracy on this repository's TypeScript and SQL has not been measur
 | --- | --- |
 | Credibility/provenance | Named maintainers, immutable revision and retained notices below. Source popularity was not used as quality evidence. |
 | Correctness and depth | Grounded query expansion and confidence labels are kept; a graph answer must be checked against cited source before it supports a claim. |
-| Practical validation | Not run. Needs a fresh-session comparison against `rg` on a cross-file question and a single-symbol non-trigger. |
+| Practical validation | Fresh Claude Code 2.1.310 sessions on 2026-11-03: discovery listed `nestscout-skills:codebase-graph` among 18 packages from `.agents`; explicit invocation read no graph, reported the graph path NOT RUN, installed nothing and fell back to `rg` and file reads; an ordinary single-symbol lookup did not load the skill. Codex was not observed. Graph builds and the graph-versus-`rg` comparison are NOT RUN because the CLI is not installed. |
 | Security/permissions | No hidden execution, install, hook, telemetry, credential read, provider call or instruction-file write is requested. Upstream asks for `pip install`, `--break-system-packages`, hooks and `CLAUDE.md` edits, all removed. |
 | Compatibility/maintenance | Portable string metadata and linked Markdown only. Python is not admitted to the repository; the CLI is outside the repository. |
 
