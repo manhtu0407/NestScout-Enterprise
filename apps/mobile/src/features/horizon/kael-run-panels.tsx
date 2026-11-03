@@ -68,7 +68,7 @@ export function KaelApprovalCard({ approval, disabled, onDecide }: ApprovalProps
   if (approval.kind === 'reconcile') {
     return <View accessibilityLabel={`Cần kiểm tra lại: ${approval.summary}`} style={styles.card}>
       <ApprovalDetails approval={approval}/>
-      <Text style={styles.detailLabel}>Bạn đã xác nhận yêu cầu này nhưng chưa rõ hệ thống đã nhận hay chưa. Kiểm tra lại dùng đúng nội dung và mã gửi đã xác nhận, nên không tạo yêu cầu mới.</Text>
+      <Text style={styles.detailLabel}>Bạn đã xác nhận yêu cầu này nhưng chưa rõ hệ thống đã nhận hay chưa. Kiểm tra lại dùng đúng lần gửi bạn đã xác nhận, với cùng nội dung và mã gửi: nếu hệ thống đã nhận, Kael chỉ báo lại kết quả; nếu chưa, chính lần gửi đó được hoàn tất. Không tạo yêu cầu mới và không cần xác nhận lại.</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={`Kiểm tra lại ${approval.summary}`} disabled={disabled} onPress={() => onDecide(approval, true)} style={styles.decline}>
         <Text style={styles.declineText}>Kiểm tra lại</Text>
       </Pressable>

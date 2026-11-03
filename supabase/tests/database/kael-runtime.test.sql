@@ -207,7 +207,7 @@ select set_config('test.reject_elsewhere', public.kael_start_run('00000000-0000-
 select is(public.kael_reject_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.reject_elsewhere')::uuid, current_setting('test.approval2')::uuid, repeat('c', 64)) ->> 'status',
   'invalid', 'A reject from a different conversation is refused');
 select is(public.kael_complete_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.reject_elsewhere')::uuid, current_setting('test.approval_id')::uuid, 'failed', '{}'::jsonb) ->> 'status',
-  'invalid', 'An outcome cannot be recorded from a different conversation');
+  'invalid', 'An outcome can be recorded only by the run that consumed the approval');
 select ok(public.kael_finish_run('00000000-0000-4000-8000-0000000000a1', current_setting('test.reject_elsewhere')::uuid, 'completed', 'Ok', true, null, null, 0, 0, 0, null),
   'The other conversation finishes');
 select is(public.kael_reject_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.run')::uuid, current_setting('test.approval2')::uuid, repeat('e', 64)) ->> 'status',
@@ -272,6 +272,75 @@ select results_eq($$ select role, seq from public.kael_messages where conversati
   $$ values ('user'::text, 1), ('assistant'::text, 2) $$, 'Messages keep their order');
 select is(public.kael_start_run('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-000000000001', null, 'client', 'Xin chào') ->> 'assistant_text', 'Chào bạn!',
   'A replay after completion returns the stored answer without a new run');
+
+select set_config('test.cross_start', public.kael_start_run('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-000000000040', null, 'client', 'Cuộc trò chuyện mới')::text, true);
+select set_config('test.cross', current_setting('test.cross_start')::jsonb ->> 'run_id', true);
+select set_config('test.cross_conversation', current_setting('test.cross_start')::jsonb ->> 'conversation_id', true);
+select set_config('test.task_dup', public.kael_save_task('00000000-0000-4000-8000-0000000000a1', null, current_setting('test.cross_conversation')::uuid, current_setting('test.cross')::uuid, null,
+  'Sửa ổ điện', 'service_request', 'running', '',
+  '{"draft":{"description":"Ổ điện chập","location":"Quận 2","preferred_time":"","missing":[]}}'::jsonb, 'created') #>> '{task,id}', true);
+select is(public.kael_request_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.cross')::uuid, current_setting('test.task_dup')::uuid, 1, 'service_request_submit',
+  jsonb_build_object('task_id', current_setting('test.task_dup'), 'description', 'Ổ điện chập', 'location', 'Quận 2', 'preferred_time', ''),
+  repeat('1', 64), 'Gửi yêu cầu dịch vụ', '{"Mô tả":"Ổ điện chập"}'::jsonb, 600) ->> 'status', 'unresolved',
+  'A task in another conversation cannot open a second submission key while a confirmed submission of the account is unresolved');
+reset role;
+select is((select count(*)::integer from nestscout_private.kael_approvals where task_id = current_setting('test.task_dup')::uuid), 0,
+  'The refused request created no approval');
+
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
+select set_config('test.cross_state', public.kael_conversation_state('client')::text, true);
+select is(current_setting('test.cross_state')::jsonb ->> 'conversation_id', current_setting('test.cross_conversation'), 'The newest conversation is the one restored');
+select is(current_setting('test.cross_state')::jsonb -> 'approvals', jsonb_build_array(jsonb_build_object(
+    'id', current_setting('test.approval4'), 'task_id', current_setting('test.task3'), 'tool', 'service_request_submit', 'summary', 'Gửi yêu cầu dịch vụ',
+    'details', '{"Mô tả":"Ổ điện chập"}'::jsonb, 'fingerprint', repeat('f', 64), 'kind', 'reconcile', 'expires_at', null)),
+  'The uncertain submission of a cancelled task in an earlier conversation stays discoverable, without its arguments');
+select is((select count(*)::integer from jsonb_array_elements(current_setting('test.cross_state')::jsonb -> 'tasks') x where x ->> 'id' = current_setting('test.task3')), 0,
+  'Only the check crosses conversations, not the earlier conversation''s tasks');
+select is(public.kael_conversation_state('worker') -> 'approvals', '[]'::jsonb, 'The check is not offered in Worker mode');
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}', true);
+select is(public.kael_conversation_state('client') -> 'approvals', '[]'::jsonb, 'Another account is never offered the check');
+reset role;
+
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000b2', current_setting('test.cross')::uuid,
+  current_setting('test.approval4')::uuid, repeat('f', 64), array['service_request_submit'], 'reconcile') ->> 'status', 'invalid', 'Another account cannot check the submission');
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.cross')::uuid,
+  current_setting('test.approval4')::uuid, repeat('f', 64), array['service_request_submit'], 'reconcile') ->> 'status', 'reconcile',
+  'The submission of a cancelled task is checked from another conversation of the same account');
+reset role;
+select is((select status from public.kael_tasks where id = current_setting('test.task3')::uuid), 'cancelled', 'Checking does not reopen the cancelled Kael task');
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('test.cross2', public.kael_start_run('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-000000000041', null, 'client', 'Cuộc thứ ba') ->> 'run_id', true);
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.cross2')::uuid,
+  current_setting('test.approval4')::uuid, repeat('f', 64), array['service_request_submit'], 'reconcile') ->> 'status', 'busy', 'A second check cannot start while one is running');
+select is(public.kael_complete_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.cross2')::uuid, current_setting('test.approval4')::uuid, 'succeeded',
+  jsonb_build_object('resource_id', current_setting('test.request4'))) ->> 'status', 'invalid', 'Only the run that is checking the submission records its outcome');
+select is(public.kael_complete_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.cross')::uuid, current_setting('test.approval4')::uuid, 'succeeded',
+  jsonb_build_object('resource_id', current_setting('test.request4'))) - 'task',
+  jsonb_build_object('status', 'ok', 'outcome', 'succeeded', 'result', jsonb_build_object('resource_kind', 'service_request', 'resource_id', current_setting('test.request4'))),
+  'The check records the request that had already landed');
+reset role;
+select is((select status || ':' || (artifact #>> '{effect_result,resource_id}') from public.kael_tasks where id = current_setting('test.task3')::uuid),
+  'cancelled:' || current_setting('test.request4'), 'The cancelled task keeps its status and links the authoritative request');
+select is((select count(*)::integer from public.service_requests where submission_key = current_setting('test.approval4')::uuid), 1, 'Checking created no second request');
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('test.approval_dup', public.kael_request_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.cross')::uuid, current_setting('test.task_dup')::uuid, 1, 'service_request_submit',
+  jsonb_build_object('task_id', current_setting('test.task_dup'), 'description', 'Ổ điện chập', 'location', 'Quận 2', 'preferred_time', ''),
+  repeat('1', 64), 'Gửi yêu cầu dịch vụ', '{"Mô tả":"Ổ điện chập"}'::jsonb, 600) ->> 'approval_id', true);
+select isnt(current_setting('test.approval_dup'), '', 'Once resolved, another request can be confirmed; nothing compares request text');
+select is(public.kael_reject_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.cross')::uuid, current_setting('test.approval_dup')::uuid, repeat('1', 64)) #>> '{task,status}',
+  'waiting_for_input', 'The user can still decline that new confirmation');
+select is(public.kael_save_task('00000000-0000-4000-8000-0000000000a1', current_setting('test.task_dup')::uuid, null, current_setting('test.cross')::uuid, 3,
+  'Sửa ổ điện', 'service_request', 'cancelled', '', '{}'::jsonb, 'status_cancelled') ->> 'status', 'ok', 'An unsubmitted Kael task can be closed');
+select ok(public.kael_finish_run('00000000-0000-4000-8000-0000000000a1', current_setting('test.cross2')::uuid, 'failed', 'Đang được kiểm tra ở lượt khác.', true, null, null, 0, 0, 0, 'approval_invalid'),
+  'The refused check ends');
+select ok(public.kael_finish_run('00000000-0000-4000-8000-0000000000a1', current_setting('test.cross')::uuid, 'completed', 'Đã ghi nhận.', true, null, null, 0, 0, 0, null),
+  'The cross-conversation check ends');
+
 select set_config('test.resume', public.kael_start_run('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-000000000020', current_setting('test.conversation')::uuid, 'client', 'Gửi thêm yêu cầu sửa cửa') ->> 'run_id', true);
 select set_config('test.task4', public.kael_save_task('00000000-0000-4000-8000-0000000000a1', null, current_setting('test.conversation')::uuid, current_setting('test.resume')::uuid, null,
   'Sửa cửa', 'service_request', 'running', '',
@@ -400,6 +469,57 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
 select is(public.kael_conversation_state('client') -> 'approvals', '[]'::jsonb, 'Nothing is left to check after reconciliation');
 reset role;
+
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('test.task6', public.kael_save_task('00000000-0000-4000-8000-0000000000a1', null, current_setting('test.conversation')::uuid, current_setting('test.recheck')::uuid, null,
+  'Sơn tường', 'service_request', 'running', '',
+  '{"draft":{"description":"Sơn lại tường phòng khách","location":"Quận 9","preferred_time":"","missing":[]}}'::jsonb, 'created') #>> '{task,id}', true);
+select set_config('test.task7', public.kael_save_task('00000000-0000-4000-8000-0000000000a1', null, current_setting('test.conversation')::uuid, current_setting('test.recheck')::uuid, null,
+  'Lắp đèn', 'service_request', 'running', '',
+  '{"draft":{"description":"Lắp đèn trần","location":"Quận 10","preferred_time":"","missing":[]}}'::jsonb, 'created') #>> '{task,id}', true);
+select set_config('test.approval7', public.kael_request_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.recheck')::uuid, current_setting('test.task6')::uuid, 1, 'service_request_submit',
+  jsonb_build_object('task_id', current_setting('test.task6'), 'description', 'Sơn lại tường phòng khách', 'location', 'Quận 9', 'preferred_time', ''),
+  repeat('6', 64), 'Gửi yêu cầu dịch vụ', '{"Mô tả":"Sơn lại tường phòng khách"}'::jsonb, 600) ->> 'approval_id', true);
+select set_config('test.approval8', public.kael_request_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.recheck')::uuid, current_setting('test.task7')::uuid, 1, 'service_request_submit',
+  jsonb_build_object('task_id', current_setting('test.task7'), 'description', 'Lắp đèn trần', 'location', 'Quận 10', 'preferred_time', ''),
+  repeat('5', 64), 'Gửi yêu cầu dịch vụ', '{"Mô tả":"Lắp đèn trần"}'::jsonb, 600) ->> 'approval_id', true);
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.recheck')::uuid,
+  current_setting('test.approval7')::uuid, repeat('6', 64), array['service_request_submit'], 'approve') ->> 'status', 'ok', 'The first of two independent confirmations is used');
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.recheck')::uuid,
+  current_setting('test.approval8')::uuid, repeat('5', 64), array['service_request_submit'], 'approve') ->> 'status', 'unresolved',
+  'A second confirmation cannot be used while the first submission has no result yet');
+reset role;
+select is((select a.status || ':' || t.status from nestscout_private.kael_approvals a join public.kael_tasks t on t.id = a.task_id where a.id = current_setting('test.approval8')::uuid),
+  'pending:waiting_for_approval', 'The refused confirmation and its task are kept for the user');
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is(public.kael_complete_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.recheck')::uuid, current_setting('test.approval7')::uuid, 'uncertain',
+  '{"reason":"backend_unreachable"}'::jsonb) #>> '{task,status}', 'paused', 'The first submission becomes uncertain');
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.recheck')::uuid,
+  current_setting('test.approval8')::uuid, repeat('5', 64), array['service_request_submit'], 'approve') ->> 'status', 'unresolved',
+  'The second confirmation stays blocked while the first is uncertain');
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
+select set_config('test.request7', public.submit_service_request(current_setting('test.approval7')::uuid, 'Sơn lại tường phòng khách', 'Quận 9')::text, true);
+reset role;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.recheck')::uuid,
+  current_setting('test.approval7')::uuid, repeat('6', 64), array['service_request_submit'], 'reconcile') ->> 'status', 'reconcile', 'The uncertain submission is checked');
+select is(public.kael_complete_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.recheck')::uuid, current_setting('test.approval7')::uuid, 'succeeded',
+  jsonb_build_object('resource_id', current_setting('test.request7'))) ->> 'outcome', 'succeeded', 'The check resolves it');
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.recheck')::uuid,
+  current_setting('test.approval8')::uuid, repeat('5', 64), array['service_request_submit'], 'approve') ->> 'status', 'ok',
+  'The independent confirmation is usable once the first is resolved');
+select set_config('test.worker_run', public.kael_start_run('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-000000000050', null, 'worker', 'Chế độ thợ') ->> 'run_id', true);
+select is(public.kael_consume_approval('00000000-0000-4000-8000-0000000000a1', current_setting('test.worker_run')::uuid,
+  current_setting('test.approval8')::uuid, repeat('5', 64), array['service_request_submit'], 'reconcile') ->> 'status', 'invalid',
+  'A check is refused from a conversation in another mode');
+reset role;
+select is((select count(*)::integer from nestscout_private.kael_approvals where status = 'consumed' and (effect_run_id is null or effect_task_version is null)), 0,
+  'Every consumed approval names the run and task version that executed it');
 
 set local role service_role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);

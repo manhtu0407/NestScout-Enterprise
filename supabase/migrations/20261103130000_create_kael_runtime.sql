@@ -102,10 +102,15 @@ create table nestscout_private.kael_approvals (
   result jsonb check (result is null or (jsonb_typeof(result) = 'object' and pg_column_size(result) <= 4096)),
   expires_at timestamptz not null,
   decided_at timestamptz,
+  effect_run_id uuid references public.kael_runs (id),
+  effect_task_version integer check (effect_task_version > 0),
   created_at timestamptz not null default clock_timestamp(),
-  check ((status = 'pending') = (decided_at is null) or status = 'expired' or status = 'superseded')
+  check ((status = 'pending') = (decided_at is null) or status = 'expired' or status = 'superseded'),
+  check (status <> 'consumed' or (effect_run_id is not null and effect_task_version is not null))
 );
 create unique index kael_approvals_one_pending on nestscout_private.kael_approvals (task_id) where status = 'pending';
+create index kael_approvals_owner_unresolved on nestscout_private.kael_approvals (owner_id, tool)
+  where status = 'consumed' and (outcome is null or outcome = 'uncertain');
 
 alter table public.kael_conversations enable row level security;
 alter table public.kael_runs enable row level security;
@@ -326,6 +331,30 @@ as $$
 $$;
 revoke all on function nestscout_private.kael_running_run(uuid, uuid) from public, anon, authenticated;
 
+create function nestscout_private.kael_effect_unresolved(p_actor uuid, p_tool text, p_except uuid)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select exists (select 1 from nestscout_private.kael_approvals a
+    where a.owner_id = p_actor and a.tool = p_tool and a.id is distinct from p_except
+      and a.status = 'consumed' and (a.outcome is null or a.outcome = 'uncertain'));
+$$;
+revoke all on function nestscout_private.kael_effect_unresolved(uuid, text, uuid) from public, anon, authenticated;
+
+create function nestscout_private.kael_effect_in_flight(p_run_id uuid, p_except uuid)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select exists (select 1 from public.kael_runs r
+    where r.id = p_run_id and r.id is distinct from p_except and r.status = 'running'
+      and r.started_at > clock_timestamp() - interval '3 minutes');
+$$;
+revoke all on function nestscout_private.kael_effect_in_flight(uuid, uuid) from public, anon, authenticated;
+
 create function nestscout_private.kael_save_task(p_actor uuid, p_task_id uuid, p_conversation_id uuid, p_run_id uuid, p_expected_version integer,
   p_title text, p_kind text, p_status text, p_summary text, p_artifact jsonb, p_event text)
 returns jsonb
@@ -431,11 +460,11 @@ begin
     or p_ttl_seconds not between 60 and 3600 or jsonb_typeof(p_args) <> 'object' or jsonb_typeof(p_details) is distinct from 'object' then
     return jsonb_build_object('status', 'invalid');
   end if;
-  select * into v_task from public.kael_tasks t where t.id = p_task_id and t.owner_id = v_actor for update;
-  if found and exists (select 1 from nestscout_private.kael_approvals a where a.task_id = v_task.id and a.status = 'consumed'
-    and (a.outcome is null or a.outcome = 'uncertain')) then
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('kael-effect:' || v_actor::text, 0));
+  if nestscout_private.kael_effect_unresolved(v_actor, p_tool, null) then
     return jsonb_build_object('status', 'unresolved');
   end if;
+  select * into v_task from public.kael_tasks t where t.id = p_task_id and t.owner_id = v_actor for update;
   if not found or v_task.kind <> 'service_request' or v_task.status not in ('running', 'waiting_for_input') then
     return jsonb_build_object('status', 'invalid');
   end if;
@@ -479,12 +508,18 @@ declare
   v_task public.kael_tasks;
   v_from text;
 begin
+  if v_run.id is null or p_intent is null or p_intent not in ('approve', 'reconcile') then
+    return jsonb_build_object('status', 'invalid');
+  end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('kael-effect:' || v_actor::text, 0));
   select * into v_approval from nestscout_private.kael_approvals a where a.id = p_approval_id and a.owner_id = v_actor for update;
-  if not found or v_run.id is null or p_intent is null or p_intent not in ('approve', 'reconcile') then
+  if not found then
     return jsonb_build_object('status', 'invalid');
   end if;
   select * into v_task from public.kael_tasks t where t.id = v_approval.task_id and t.owner_id = v_actor for update;
-  if v_task.conversation_id <> v_run.conversation_id then
+  if (p_intent = 'approve' and v_task.conversation_id <> v_run.conversation_id)
+    or (select c.mode from public.kael_conversations c where c.id = v_task.conversation_id)
+      is distinct from (select c.mode from public.kael_conversations c where c.id = v_run.conversation_id) then
     return jsonb_build_object('status', 'invalid');
   end if;
   if v_approval.fingerprint <> coalesce(p_fingerprint, '') then
@@ -498,10 +533,13 @@ begin
   end if;
   if v_approval.status = 'consumed' then
     if v_approval.outcome is null or v_approval.outcome = 'uncertain' then
-      if v_task.status not in ('running', 'paused', 'waiting_for_input') then
+      if nestscout_private.kael_effect_in_flight(v_approval.effect_run_id, v_run.id) then
+        return jsonb_build_object('status', 'busy');
+      end if;
+      if v_task.status not in ('running', 'paused', 'waiting_for_input', 'cancelled', 'failed') then
         return jsonb_build_object('status', 'stale');
       end if;
-      if v_task.status <> 'running' then
+      if v_task.status in ('paused', 'waiting_for_input') then
         v_from := v_task.status;
         update public.kael_tasks set status = 'running', version = version + 1, updated_at = clock_timestamp(),
           summary = 'Đang kiểm tra lại yêu cầu đã được xác nhận'
@@ -509,6 +547,7 @@ begin
         insert into public.kael_task_events (task_id, owner_id, run_id, event, from_status, to_status, version)
           values (v_task.id, v_actor, v_run.id, 'effect_reconciling', v_from, v_task.status, v_task.version);
       end if;
+      update nestscout_private.kael_approvals set effect_run_id = v_run.id, effect_task_version = v_task.version where id = v_approval.id;
       return jsonb_build_object('status', 'reconcile', 'tool', v_approval.tool, 'args', v_approval.args, 'task_id', v_approval.task_id,
         'summary', v_approval.summary, 'details', v_approval.details);
     end if;
@@ -528,9 +567,13 @@ begin
     update nestscout_private.kael_approvals set status = 'superseded' where id = v_approval.id;
     return jsonb_build_object('status', 'stale');
   end if;
-  update nestscout_private.kael_approvals set status = 'consumed', decided_at = clock_timestamp() where id = v_approval.id;
+  if nestscout_private.kael_effect_unresolved(v_actor, v_approval.tool, v_approval.id) then
+    return jsonb_build_object('status', 'unresolved');
+  end if;
   update public.kael_tasks set status = 'running', version = version + 1, updated_at = clock_timestamp(), summary = 'Đang gửi yêu cầu đã được xác nhận'
     where id = v_task.id returning * into v_task;
+  update nestscout_private.kael_approvals set status = 'consumed', decided_at = clock_timestamp(), effect_run_id = v_run.id, effect_task_version = v_task.version
+    where id = v_approval.id;
   insert into public.kael_task_events (task_id, owner_id, run_id, event, from_status, to_status, version)
     values (v_task.id, v_actor, null, 'approval_consumed', 'waiting_for_approval', v_task.status, v_task.version);
   return jsonb_build_object('status', 'ok', 'tool', v_approval.tool, 'args', v_approval.args, 'task_id', v_approval.task_id,
@@ -562,13 +605,10 @@ begin
   end if;
   select * into v_approval from nestscout_private.kael_approvals a
     where a.id = p_approval_id and a.owner_id = v_actor and a.status = 'consumed' for update;
-  if not found or v_run.id is null then
+  if not found or v_run.id is null or v_approval.effect_run_id is distinct from v_run.id then
     return jsonb_build_object('status', 'invalid');
   end if;
   select * into v_task from public.kael_tasks t where t.id = v_approval.task_id and t.owner_id = v_actor for update;
-  if v_task.conversation_id <> v_run.conversation_id then
-    return jsonb_build_object('status', 'invalid');
-  end if;
   if v_approval.outcome in ('succeeded', 'failed') then
     return jsonb_build_object('status', 'final', 'outcome', v_approval.outcome, 'result', v_approval.result, 'task', nestscout_private.kael_task_json(v_task));
   end if;
@@ -600,10 +640,21 @@ begin
     v_result := jsonb_build_object('reason', case when p_outcome = 'succeeded' then 'unverified_result'
       else left(coalesce(p_result ->> 'reason', 'unverified_result'), 80) end);
   end if;
-  if v_from <> 'running' or not nestscout_private.kael_task_transition_allowed(v_from, v_status) then
+  if v_task.version <> v_approval.effect_task_version or v_from not in ('running', 'cancelled', 'failed')
+    or (v_from = 'running' and not nestscout_private.kael_task_transition_allowed(v_from, v_status)) then
     v_result := jsonb_build_object('reason', 'task_changed');
     update nestscout_private.kael_approvals set outcome = 'uncertain', result = v_result where id = v_approval.id;
     return jsonb_build_object('status', 'conflict', 'outcome', 'uncertain', 'result', v_result, 'task', nestscout_private.kael_task_json(v_task));
+  end if;
+  if v_from <> 'running' then
+    update nestscout_private.kael_approvals set outcome = v_outcome, result = v_result where id = v_approval.id;
+    if v_outcome = 'succeeded' then
+      update public.kael_tasks set artifact = v_artifact, version = version + 1, updated_at = clock_timestamp()
+        where id = v_task.id returning * into v_task;
+      insert into public.kael_task_events (task_id, owner_id, run_id, event, from_status, to_status, version)
+        values (v_task.id, v_actor, v_run.id, 'effect_succeeded', v_from, v_task.status, v_task.version);
+    end if;
+    return jsonb_build_object('status', 'ok', 'outcome', v_outcome, 'result', v_result, 'task', nestscout_private.kael_task_json(v_task));
   end if;
   update nestscout_private.kael_approvals set outcome = v_outcome, result = v_result where id = v_approval.id;
   update public.kael_tasks set status = v_status, summary = v_summary, artifact = v_artifact, version = version + 1, updated_at = clock_timestamp()
@@ -668,14 +719,31 @@ declare
   v_actor uuid := nestscout_private.kael_actor();
   v_conversation uuid;
   v_busy boolean;
+  v_approvals jsonb;
 begin
   if p_mode is null or p_mode not in ('client', 'worker') then
     raise exception using errcode = '22023', message = 'invalid mode';
   end if;
   select c.id into v_conversation from public.kael_conversations c
     where c.owner_id = v_actor and c.mode = p_mode order by c.updated_at desc limit 1;
+  select coalesce(jsonb_agg(x.item order by x.created_at), '[]'::jsonb) into v_approvals from (
+    select a.created_at, jsonb_build_object('id', a.id, 'task_id', a.task_id, 'tool', a.tool, 'summary', a.summary, 'details', a.details,
+      'fingerprint', a.fingerprint, 'kind', case when a.status = 'pending' then 'confirm' else 'reconcile' end,
+      'expires_at', case when a.status = 'pending' then a.expires_at end) as item
+    from nestscout_private.kael_approvals a
+    join public.kael_tasks t on t.id = a.task_id and t.owner_id = v_actor
+    join public.kael_conversations c on c.id = t.conversation_id and c.owner_id = v_actor
+    where a.owner_id = v_actor and c.mode = p_mode
+      and ((a.status = 'pending' and t.conversation_id = v_conversation and a.expires_at > clock_timestamp()
+          and t.status = 'waiting_for_approval' and t.version = a.task_version)
+        or (a.status = 'consumed' and (a.outcome is null or a.outcome = 'uncertain')
+          and not nestscout_private.kael_effect_in_flight(a.effect_run_id, null)
+          and t.status in ('running', 'paused', 'waiting_for_input', 'cancelled', 'failed')))
+    order by (a.status = 'consumed') desc, a.created_at
+    limit 12
+  ) x;
   if v_conversation is null then
-    return jsonb_build_object('conversation_id', null, 'busy', false, 'messages', '[]'::jsonb, 'tasks', '[]'::jsonb, 'approvals', '[]'::jsonb);
+    return jsonb_build_object('conversation_id', null, 'busy', false, 'messages', '[]'::jsonb, 'tasks', '[]'::jsonb, 'approvals', v_approvals);
   end if;
   v_busy := exists (select 1 from public.kael_runs r where r.conversation_id = v_conversation and r.status = 'running'
     and r.started_at > clock_timestamp() - interval '3 minutes');
@@ -687,14 +755,7 @@ begin
     'tasks', (select coalesce(jsonb_agg(jsonb_build_object('id', t.id, 'title', t.title, 'kind', t.kind, 'status', t.status, 'version', t.version, 'summary', t.summary)
       order by t.updated_at), '[]'::jsonb)
       from (select * from public.kael_tasks x where x.conversation_id = v_conversation and x.owner_id = v_actor order by x.updated_at desc limit 12) t),
-    'approvals', (select coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'task_id', a.task_id, 'tool', a.tool, 'summary', a.summary, 'details', a.details,
-      'fingerprint', a.fingerprint, 'kind', case when a.status = 'pending' then 'confirm' else 'reconcile' end,
-      'expires_at', case when a.status = 'pending' then a.expires_at end) order by a.created_at), '[]'::jsonb)
-      from nestscout_private.kael_approvals a join public.kael_tasks t on t.id = a.task_id
-      where a.owner_id = v_actor and t.conversation_id = v_conversation
-        and ((a.status = 'pending' and a.expires_at > clock_timestamp() and t.status = 'waiting_for_approval' and t.version = a.task_version)
-          or (a.status = 'consumed' and (a.outcome = 'uncertain' or (a.outcome is null and not v_busy))
-            and t.status in ('running', 'paused', 'waiting_for_input'))))
+    'approvals', v_approvals
   );
 end;
 $$;

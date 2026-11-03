@@ -100,7 +100,7 @@ export type ApprovalIntent = 'approve' | 'reconcile';
 export type ApprovalConsume =
   | { status: 'ok' | 'reconcile'; tool: string; args: Record<string, unknown>; task_id: string; summary: string; details: Record<string, string> }
   | { status: 'consumed'; outcome: string; result: Record<string, unknown> | null; task_id: string }
-  | { status: 'expired' | 'mismatch' | 'invalid' | 'stale' | 'rejected' | 'unavailable' | 'unconfirmed' };
+  | { status: 'expired' | 'mismatch' | 'invalid' | 'stale' | 'rejected' | 'unavailable' | 'unconfirmed' | 'unresolved' | 'busy' };
 
 export type ApprovalCompletion =
   | { status: 'ok' | 'final' | 'conflict'; outcome: 'succeeded' | 'failed' | 'uncertain'; result: Record<string, unknown> | null; task: TaskRecord }

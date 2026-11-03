@@ -23,10 +23,13 @@ const interruptedNotice = 'Kết nối bị gián đoạn trước khi Kael tr�
 const restoreFailedNotice = 'Chưa tải lại được cuộc trò chuyện trước đó. Bạn vẫn có thể tiếp tục trò chuyện với Kael.';
 const stillRunningNotice = 'Kael vẫn đang xử lý tin nhắn trước trong cuộc trò chuyện này. Vui lòng mở lại sau ít phút.';
 const busyLabel = 'Kael đang xử lý';
-const reconcilableStatuses: readonly KaelTaskStatus[] = ['running', 'paused', 'waiting_for_input'];
 
 function stillOpen(approval: KaelApproval, status: KaelTaskStatus): boolean {
-  return approval.kind === 'confirm' ? status === 'waiting_for_approval' : reconcilableStatuses.includes(status);
+  return approval.kind === 'reconcile' || status === 'waiting_for_approval';
+}
+
+function accountChecks(approvals: readonly KaelApproval[]): KaelApproval[] {
+  return approvals.filter(approval => approval.kind === 'reconcile');
 }
 
 function unexpired(approval: KaelApproval): boolean {
@@ -174,7 +177,7 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     controllerRef.current?.abort();
     controllerRef.current = null;
     runningRef.current = false;
-    setState(idleState);
+    setState(current => ({ ...idleState, approvals: accountChecks(current.approvals) }));
   }, []);
 
   const run = useCallback(async (action: KaelTurnAction, userText: string, decided: KaelApproval | null = null) => {

@@ -60,25 +60,33 @@ the account id the gateway verified.
   a SHA-256 fingerprint and an expiry. Only a later `approve` action carrying that
   fingerprint can consume it once; the effect uses the approval id as the submission
   key, so reconciliation after an uncertain outcome cannot duplicate the request.
-  Consuming the approval also requires the same conversation and that the owner gate
-  and the account's capability still allow the operation, checked in the same
-  transaction, reconciliation included. Rejecting requires the same run,
-  conversation, fingerprint and a pending approval. `kael_complete_approval` locks
-  the approval and task, requires the same conversation, verifies that the created
-  request belongs to the account and carries the approval's submission key, and
-  completes the task in the same transaction; a concurrently changed task leaves
+  Consuming the approval also requires the same conversation (for a check, the same
+  mode) and that the owner gate and the account's capability still allow the
+  operation, checked in the same transaction, reconciliation included. Rejecting
+  requires the same run, conversation, fingerprint and a pending approval.
+  `kael_complete_approval` locks the approval and task, accepts only the run that
+  consumed or is checking the approval, verifies that the created request belongs
+  to the account and carries the approval's submission key, and completes the task
+  in the same transaction; a concurrently changed task leaves
   the outcome uncertain. The runtime reports success and failure only from that
   persisted result; a conflict, an unrecorded outcome or an HTTP refusal the
   database did not record is reported as uncertain. Agreement typed in chat is
   never consent.
 - An uncertain outcome is offered as a reconciliation of the original approval, not
   a new confirmation: a `reconcile` action with the same approval id and fingerprint
-  reruns the effect with the same submission key, and is refused for any approval
-  that was never consumed. A new confirmation for that task is refused until the
-  outcome is resolved.
+  reruns the effect with the same submission key, so it either reports the request
+  that landed or completes that same submission, never a second one; it is refused
+  for any approval that was never consumed and while another run is executing it.
+  The approval, not the Kael task, is the reconciliation record: closing or replacing
+  the task or switching conversation leaves it checkable from any Customer-mode
+  conversation of the account, and closing a task never cancels a submitted
+  request. While any confirmed submission of the account is unresolved, new
+  confirmations are refused and earlier pending ones cannot be used, without
+  comparing request text.
 - The mobile app restores the latest conversation per mode after a restart through
   `kael_conversation_state`, a read-only RPC on the user's token that exposes only
-  view fields, pending unexpired confirmations and uncertain submissions to check.
+  view fields, pending unexpired confirmations of that conversation and the
+  account's uncertain submissions to check from any conversation of that mode.
 - Execution classes, resources and the BPMN mapping are documented in
   `docs/service-workflow.md` (Kael capability boundary); a denied operation is
   reported to the model as that operation only, so conversation continues.
@@ -101,8 +109,9 @@ the account id the gateway verified.
 ```
 
 Approvals use `{ "type": "approve" | "reject" | "reconcile", "approval_id": "uuid", "fingerprint": "hex" }`
-with the conversation id; `reconcile` only checks an approval that was already
-consumed and whose outcome is uncertain. Refusals before a run starts return JSON
+with the conversation id, which `reconcile` may leave null to check from a new
+conversation; `reconcile` only checks an approval that was already consumed and
+whose outcome is uncertain. Refusals before a run starts return JSON
 `{ "error": { "code", "message", "retryable" } }` with HTTP 400, 401, 409, 413, 429
 or 503. A started run returns `application/x-ndjson`, one event per line, each with
 `v: 1`, `run_id` and a gap-free `seq`:

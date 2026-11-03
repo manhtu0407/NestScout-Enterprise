@@ -29,7 +29,9 @@ test('an uncertain confirmed submission is offered as a check of that same reque
   await render(<KaelApprovalCard approval={reconcile} disabled={false} onDecide={onDecide}/>);
   expect(screen.getByLabelText('Cần kiểm tra lại: Gửi yêu cầu dịch vụ')).toBeTruthy();
   expect(screen.getByText('Máy lạnh rò nước')).toBeTruthy();
-  expect(screen.getByText(/không tạo yêu cầu mới/)).toBeTruthy();
+  expect(screen.getByText(/Không tạo yêu cầu mới và không cần xác nhận lại/)).toBeTruthy();
+  expect(screen.getByText(/cùng nội dung và mã gửi/)).toBeTruthy();
+  expect(screen.getByText(/nếu hệ thống đã nhận, Kael chỉ báo lại kết quả; nếu chưa, chính lần gửi đó được hoàn tất/)).toBeTruthy();
   expect(screen.queryByText('Trượt để xác nhận')).toBeNull();
   expect(screen.queryByLabelText('Không thực hiện')).toBeNull();
   expect(screen.queryByText('Chưa có gì được gửi cho đến khi bạn xác nhận.')).toBeNull();

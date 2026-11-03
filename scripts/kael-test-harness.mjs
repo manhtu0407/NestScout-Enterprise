@@ -20,28 +20,33 @@ const now = () => new Date().toISOString();
 const clone = value => structuredClone(value);
 const taskJson = task => clone({ id: task.id, conversation_id: task.conversation_id, title: task.title, kind: task.kind, status: task.status, version: task.version, summary: task.summary, artifact: task.artifact, updated_at: task.updated_at });
 
-const reconcilableStatuses = ['running', 'paused', 'waiting_for_input'];
+const reconcilableStatuses = ['running', 'paused', 'waiting_for_input', 'cancelled', 'failed'];
+const unresolved = approval => approval.status === 'consumed' && (approval.outcome === null || approval.outcome === 'uncertain');
+const inFlight = (db, runId, except = null) => runId !== except && db.runs.get(runId)?.status === 'running';
+const effectUnresolved = (db, owner, tool, except = null) => [...db.approvals.values()].some(item => item.owner === owner && item.tool === tool && item.id !== except && unresolved(item));
 
 export function conversationState(db, owner, mode) {
-  const conversation = [...db.conversations.values()].filter(item => item.owner === owner && item.mode === mode).at(-1);
-  if (!conversation) return { conversation_id: null, busy: false, messages: [], tasks: [], approvals: [] };
-  const busy = [...db.runs.values()].some(run => run.conversation_id === conversation.id && run.status === 'running');
-  const tasks = [...db.tasks.values()].filter(task => task.owner === owner && task.conversation_id === conversation.id);
+  const conversation = [...db.conversations.values()].filter(item => item.owner === owner && item.mode === mode).at(-1) ?? null;
   const approvals = [...db.approvals.values()].filter(approval => {
     const task = db.tasks.get(approval.task_id);
-    if (approval.owner !== owner || task.conversation_id !== conversation.id) return false;
-    if (approval.status === 'pending') return Date.parse(approval.expires_at) > Date.now() && task.status === 'waiting_for_approval' && task.version === approval.task_version;
-    return approval.status === 'consumed' && (approval.outcome === 'uncertain' || (approval.outcome === null && !busy)) && reconcilableStatuses.includes(task.status);
-  });
+    if (approval.owner !== owner || task.owner !== owner || db.conversations.get(task.conversation_id)?.mode !== mode) return false;
+    if (approval.status === 'pending') {
+      return task.conversation_id === conversation?.id && Date.parse(approval.expires_at) > Date.now() && task.status === 'waiting_for_approval' && task.version === approval.task_version;
+    }
+    return unresolved(approval) && !inFlight(db, approval.effect_run_id) && reconcilableStatuses.includes(task.status);
+  }).sort((a, b) => Number(b.status === 'consumed') - Number(a.status === 'consumed')).slice(0, 12).map(approval => ({
+    id: approval.id, task_id: approval.task_id, tool: approval.tool, summary: approval.summary, details: clone(approval.details), fingerprint: approval.fingerprint,
+    kind: approval.status === 'pending' ? 'confirm' : 'reconcile', expires_at: approval.status === 'pending' ? approval.expires_at : null,
+  }));
+  if (!conversation) return { conversation_id: null, busy: false, messages: [], tasks: [], approvals };
+  const busy = [...db.runs.values()].some(run => run.conversation_id === conversation.id && run.status === 'running');
+  const tasks = [...db.tasks.values()].filter(task => task.owner === owner && task.conversation_id === conversation.id);
   return {
     conversation_id: conversation.id,
     busy,
     messages: db.messages.filter(m => m.conversation_id === conversation.id && m.owner === owner).map(m => ({ id: m.id, role: m.role, content: m.content, status: m.status })),
     tasks: tasks.map(task => ({ id: task.id, title: task.title, kind: task.kind, status: task.status, version: task.version, summary: task.summary })),
-    approvals: approvals.map(approval => ({
-      id: approval.id, task_id: approval.task_id, tool: approval.tool, summary: approval.summary, details: clone(approval.details), fingerprint: approval.fingerprint,
-      kind: approval.status === 'pending' ? 'confirm' : 'reconcile', expires_at: approval.status === 'pending' ? approval.expires_at : null,
-    })),
+    approvals,
   };
 }
 
@@ -130,15 +135,16 @@ export function memoryStore(db, owner) {
       if (!db.tools.some(row => row.runId === input.runId && row.callId === input.callId)) db.tools.push({ ...input, owner });
     },
     async requestApproval(input) {
+      if (!runningRun(input.runId)) return { status: 'invalid' };
+      if (effectUnresolved(db, owner, input.tool)) return { status: 'unresolved' };
       const task = ownTask(input.taskId);
-      if (task && [...db.approvals.values()].some(item => item.task_id === task.id && item.status === 'consumed' && (item.outcome === null || item.outcome === 'uncertain'))) return { status: 'unresolved' };
-      if (!runningRun(input.runId) || !task || task.kind !== 'service_request' || !['running', 'waiting_for_input'].includes(task.status)) return { status: 'invalid' };
+      if (!task || task.kind !== 'service_request' || !['running', 'waiting_for_input'].includes(task.status)) return { status: 'invalid' };
       if (task.version !== input.expectedVersion) return { status: 'stale' };
       const draft = task.artifact.draft;
       if (!draft || draft.missing.length > 0 || input.args.description !== draft.description || input.args.location !== draft.location || input.args.preferred_time !== draft.preferred_time) return { status: 'invalid' };
       for (const approval of db.approvals.values()) if (approval.task_id === task.id && approval.status === 'pending') approval.status = 'superseded';
       touch(task, 'waiting_for_approval', 'Đang chờ bạn xác nhận gửi yêu cầu');
-      const approval = { id: randomUUID(), owner, task_id: task.id, tool: input.tool, args: clone(input.args), fingerprint: input.fingerprint, summary: input.summary, details: clone(input.details), task_version: task.version, status: 'pending', outcome: null, result: null, expires_at: new Date(Date.now() + input.ttlSeconds * 1000).toISOString() };
+      const approval = { id: randomUUID(), owner, task_id: task.id, tool: input.tool, args: clone(input.args), fingerprint: input.fingerprint, summary: input.summary, details: clone(input.details), task_version: task.version, status: 'pending', outcome: null, result: null, effect_run_id: null, effect_task_version: null, expires_at: new Date(Date.now() + input.ttlSeconds * 1000).toISOString() };
       db.approvals.set(approval.id, approval);
       return { status: 'ok', approval_id: approval.id, expires_at: approval.expires_at, task: taskJson(task) };
     },
@@ -147,15 +153,18 @@ export function memoryStore(db, owner) {
       const run = runningRun(runId);
       if (!approval || approval.owner !== owner || !run || !['approve', 'reconcile'].includes(intent)) return { status: 'invalid' };
       const task = db.tasks.get(approval.task_id);
-      if (task.conversation_id !== run.conversation_id) return { status: 'invalid' };
+      if ((intent === 'approve' && task.conversation_id !== run.conversation_id)
+        || db.conversations.get(task.conversation_id)?.mode !== db.conversations.get(run.conversation_id)?.mode) return { status: 'invalid' };
       if (approval.fingerprint !== fingerprint) return { status: 'mismatch' };
       if (intent === 'reconcile' && approval.status !== 'consumed') return { status: 'unconfirmed' };
       if (!allowedTools.includes(approval.tool)) return { status: 'unavailable' };
       const view = { tool: approval.tool, args: clone(approval.args), task_id: task.id, summary: approval.summary, details: clone(approval.details) };
       if (approval.status === 'consumed') {
         if (approval.outcome === null || approval.outcome === 'uncertain') {
+          if (inFlight(db, approval.effect_run_id, run.id)) return { status: 'busy' };
           if (!reconcilableStatuses.includes(task.status)) return { status: 'stale' };
-          if (task.status !== 'running') touch(task, 'running', 'Đang kiểm tra lại yêu cầu đã được xác nhận');
+          if (task.status === 'paused' || task.status === 'waiting_for_input') touch(task, 'running', 'Đang kiểm tra lại yêu cầu đã được xác nhận');
+          Object.assign(approval, { effect_run_id: run.id, effect_task_version: task.version });
           return { status: 'reconcile', ...view };
         }
         return { status: 'consumed', outcome: approval.outcome, result: clone(approval.result), task_id: task.id };
@@ -164,28 +173,36 @@ export function memoryStore(db, owner) {
       if (approval.status !== 'pending') return { status: approval.status === 'expired' ? 'expired' : 'stale' };
       if (Date.parse(approval.expires_at) <= Date.now()) { approval.status = 'expired'; return { status: 'expired' }; }
       if (task.version !== approval.task_version || task.status !== 'waiting_for_approval') { approval.status = 'superseded'; return { status: 'stale' }; }
-      approval.status = 'consumed';
+      if (effectUnresolved(db, owner, approval.tool, approval.id)) return { status: 'unresolved' };
       touch(task, 'running', 'Đang gửi yêu cầu đã được xác nhận');
+      Object.assign(approval, { status: 'consumed', effect_run_id: run.id, effect_task_version: task.version });
       return { status: 'ok', ...view };
     },
     async completeApproval(runId, id, outcome, result) {
       const approval = db.approvals.get(id);
       const run = runningRun(runId);
-      if (!approval || approval.owner !== owner || approval.status !== 'consumed' || !run) return { status: 'invalid' };
+      if (!approval || approval.owner !== owner || approval.status !== 'consumed' || !run || approval.effect_run_id !== run.id) return { status: 'invalid' };
       const task = db.tasks.get(approval.task_id);
-      if (task.conversation_id !== run.conversation_id) return { status: 'invalid' };
       if (approval.outcome === 'succeeded' || approval.outcome === 'failed') return { status: 'final', outcome: approval.outcome, result: clone(approval.result), task: taskJson(task) };
       let verified = outcome;
       const created = db.requests.get(result.resource_id);
       if (outcome === 'succeeded' && (created?.owner !== owner || created?.key !== id)) verified = 'uncertain';
       const target = verified === 'succeeded' ? 'completed' : verified === 'failed' ? 'waiting_for_input' : 'paused';
-      if (task.status !== 'running' || !canTransition(task.status, target)) {
+      const closed = task.status === 'cancelled' || task.status === 'failed';
+      if (task.version !== approval.effect_task_version || !(closed || task.status === 'running') || (!closed && !canTransition(task.status, target))) {
         approval.outcome = 'uncertain';
         approval.result = { reason: 'task_changed' };
         return { status: 'conflict', outcome: 'uncertain', result: clone(approval.result), task: taskJson(task) };
       }
       approval.outcome = verified;
       approval.result = verified === 'succeeded' ? { resource_kind: 'service_request', resource_id: result.resource_id } : { reason: outcome === 'succeeded' ? 'unverified_result' : result.reason ?? 'unverified_result' };
+      if (closed) {
+        if (verified === 'succeeded') {
+          task.artifact.effect_result = { status: 'succeeded', resource_kind: 'service_request', resource_id: result.resource_id };
+          touch(task, task.status);
+        }
+        return { status: 'ok', outcome: verified, result: clone(approval.result), task: taskJson(task) };
+      }
       if (verified === 'succeeded') {
         task.artifact.effect_result = { status: 'succeeded', resource_kind: 'service_request', resource_id: result.resource_id };
         touch(task, 'completed', 'Đã gửi yêu cầu dịch vụ; chưa có thợ hay lịch hẹn được xác nhận');

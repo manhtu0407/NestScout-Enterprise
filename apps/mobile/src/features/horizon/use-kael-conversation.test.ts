@@ -245,3 +245,73 @@ test('when the server cannot be reached after a refused decision, the same card 
   await act(async () => { await Promise.resolve(); });
   expect(result.current.approvals).toEqual([approval]);
 });
+
+const freshConversation = '99999999-9999-4999-8999-999999999999';
+
+test('a check survives cancelling its Kael task and starting a new conversation, and runs from the fresh screen', async () => {
+  const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>()
+    .mockResolvedValueOnce(uncertainSnapshot)
+    .mockResolvedValue({ ...empty, conversationId: freshConversation });
+  const { streamer, requests } = scriptedStreamer([
+    { events: [started, task('cancelled'), { type: 'run_completed', text: 'Đã dừng theo dõi việc này.' }] },
+    { events: [{ ...started, conversation_id: freshConversation }, { type: 'run_completed', text: 'Yêu cầu đã được hệ thống ghi nhận.' }] },
+  ]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { result.current.send('Thôi, hủy việc này'); });
+  expect(result.current.tasks[0]?.status).toBe('cancelled');
+  expect(result.current.approvals).toEqual([reconciliation]);
+
+  await act(async () => { result.current.reset(); });
+  expect(result.current.messages).toHaveLength(0);
+  expect(result.current.tasks).toHaveLength(0);
+  expect(result.current.conversationId).toBeNull();
+  expect(result.current.approvals).toEqual([reconciliation]);
+
+  await act(async () => { result.current.decide(result.current.approvals[0]!, true); });
+  expect(requests[1]).toEqual(expect.objectContaining({ conversationId: null, action: { type: 'reconcile', approval_id: approvalId, fingerprint: 'a'.repeat(64) } }));
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.conversationId).toBe(freshConversation);
+  expect(result.current.approvals).toHaveLength(0);
+});
+
+test('a new conversation keeps only checks; pending confirmations stay with their own conversation', async () => {
+  const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>()
+    .mockResolvedValue({ ...storedSnapshot, approvals: [reconciliation, { ...approval, id: '77777777-7777-4777-8777-777777777771', task_id: '77777777-7777-4777-8777-777777777772' }] });
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', scriptedStreamer([]).streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.approvals).toHaveLength(2);
+  await act(async () => { result.current.reset(); });
+  expect(result.current.approvals).toEqual([reconciliation]);
+});
+
+test('after a restart a check from an earlier conversation is offered in the newest one without its task', async () => {
+  const newest = { ...empty, conversationId: freshConversation, messages: [{ id: '88888888-8888-4888-8888-888888888883', role: 'user' as const, text: 'Chào Kael', incomplete: false }], approvals: [reconciliation] };
+  const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValueOnce(newest).mockResolvedValue({ ...newest, approvals: [] });
+  const { streamer, requests } = scriptedStreamer([{ events: [{ ...started, conversation_id: freshConversation }, { type: 'run_completed', text: 'Đã gửi yêu cầu dịch vụ.' }] }]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.conversationId).toBe(freshConversation);
+  expect(result.current.tasks).toHaveLength(0);
+  expect(result.current.approvals).toEqual([reconciliation]);
+  await act(async () => { result.current.decide(reconciliation, true); });
+  expect(requests[0]).toEqual(expect.objectContaining({ conversationId: freshConversation, action: { type: 'reconcile', approval_id: approvalId, fingerprint: 'a'.repeat(64) } }));
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.approvals).toHaveLength(0);
+});
+
+test('switching account never carries a kept check over to the next account', async () => {
+  const loader = jest.fn((userId: string) => Promise.resolve(userId === 'customer-a' ? uncertainSnapshot : empty));
+  const { result, rerender } = await renderHook(({ userId }: { userId: string }) => useKaelConversation(userId, 'client', scriptedStreamer([]).streamer, loader), { initialProps: { userId: 'customer-a' } });
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.approvals).toEqual([reconciliation]);
+  await act(async () => { result.current.reset(); });
+  expect(result.current.approvals).toEqual([reconciliation]);
+  await rerender({ userId: 'customer-b' });
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.approvals).toHaveLength(0);
+  expect(result.current.conversationId).toBeNull();
+  await act(async () => { result.current.reset(); });
+  expect(result.current.approvals).toHaveLength(0);
+  expect(loader.mock.calls.map(call => call[0])).toEqual(['customer-a', 'customer-b']);
+});

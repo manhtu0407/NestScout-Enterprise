@@ -438,9 +438,9 @@ negative tests, not by this table.
 | Kael capability | Execution class | Resource | Required verified permission | Business command | BPMN activity | Exception path |
 | --- | --- | --- | --- | --- | --- | --- |
 | `task_create` | internal_prepare | kael_task | Signed-in non-anonymous account | None; agent work state only | Any phase: coordination | Limit or invalid status is reported; no business record changes |
-| `task_update` | internal_prepare | kael_task | Same account; current task version | None; agent work state only | Any phase: pause, resume, switch | Completion without an observed effect is refused; a business record is never cancelled |
+| `task_update` | internal_prepare | kael_task | Same account; current task version | None; agent work state only | Any phase: pause, resume, switch | Completion without an observed effect is refused; a business record is never cancelled; closing a task keeps any unresolved submission checkable |
 | `service_request_draft` | internal_prepare | kael_task | Customer capability; client mode | None; the draft stays in the task | B intake: prepare request | Missing essentials keep the task waiting for input (B01) |
-| `service_request_submit` | explicit_confirmation | service_request | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `submit_service_request` with the approval id as submission key | B intake: submitRequest | Rejected keeps the draft; approving or rejecting from another conversation, with another fingerprint, after expiry or a second time changes nothing; an unverified, contradictory or concurrently changed result is reported as uncertain, pauses or keeps the task and is offered as a "Kiểm tra lại" check that reconciles the original approval with the same key, also after a restart; no second confirmation can be opened for that task meanwhile; disabled gate is unavailable |
+| `service_request_submit` | explicit_confirmation | service_request | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `submit_service_request` with the approval id as submission key | B intake: submitRequest | Rejected keeps the draft; approving or rejecting from another conversation, with another fingerprint, after expiry or a second time changes nothing; an unverified, contradictory or concurrently changed result is reported as uncertain, pauses or keeps the task and is offered as a "Kiểm tra lại" check that reconciles the original approval with the same key, from any conversation of the account, also after a restart or after the Kael task was closed; no confirmation can be opened or used for the account meanwhile; disabled gate is unavailable |
 | `customer_requests` | authorized_read | service_request | Customer capability; client mode; row-level security | Reads of `service_requests`, `service_quotes` and `service_jobs` | B–E: own request, quote and job stage | Backend error is reported; other accounts' rows are never returned |
 | `worker_jobs` | authorized_read | worker_job | Worker capability (grant and eligibility); worker mode | `worker_job_cards` | C–D: Worker offers and assigned jobs | Empty for an account without Worker access |
 | `worker_earnings` | authorized_read | worker_earnings | Worker capability; worker mode | `worker_earnings` | F: recorded earnings, not settlement | Empty for an account without Worker access |
@@ -467,11 +467,12 @@ approval, including on reconciliation. Rejecting is bound the same way: the
 verified account, the running turn's conversation, the fingerprint and a pending,
 unexpired approval, so a reject from elsewhere or a replayed reject changes
 nothing. The effect calls the same business command a Customer uses manually, with
-the Customer's own token. `kael_complete_approval` then locks the approval and the
-task together, requires the same conversation, and records success only when the
-created request belongs to the account and carries the approval's submission key
-and the task can move from running to completed; if the task changed meanwhile it
-records an uncertain outcome and leaves the task as it is. A verified outcome is
+the Customer's own token. Consuming records which run executes the effect and the
+task version it left. `kael_complete_approval` then locks the approval and the
+task together, accepts only that run, and records success only when the created
+request belongs to the account and carries the approval's submission key and the
+task can move from running to completed; if the task changed meanwhile it records
+an uncertain outcome and leaves the task as it is. A verified outcome is
 never overwritten by a retry. The user and the event stream hear "sent" only from
 that persisted, verified result (task completed, outcome succeeded, the same
 request id), and "not received" only when the business command refused the
@@ -484,30 +485,57 @@ An uncertain outcome is reconciled, never retried as a new operation. The app
 shows it as a separate "Kiểm tra lại" card with no slide-to-confirm and no
 decline, and sends a `reconcile` action carrying the original approval id and
 fingerprint. `kael_consume_approval` with the `reconcile` intent accepts only an
-approval that was already consumed and whose outcome is unknown, for a task that
-is still running, paused or waiting for input; a pending confirmation is refused
-as `unconfirmed` and left untouched, so a check can never stand in for consent.
-The effect then reruns with the original approval id as its submission key, so a
-request that already landed is returned instead of duplicated. While such an
-outcome is unresolved, `kael_request_approval` refuses a new confirmation for the
-task (`unresolved`), so neither the model nor the user can create a second
-submission key for the same effect.
+approval that was already consumed and whose outcome is unknown; a pending
+confirmation is refused as `unconfirmed` and left untouched, so a check can never
+stand in for consent. The check reruns the effect with the original approval id as
+its submission key: a request that already landed is returned instead of
+duplicated, and one that never landed is completed as that same submission. It
+needs no new confirmation and no phase-level approval, because it can only finish
+the one operation the user already confirmed. A check is refused as `busy` while
+another run is still executing the same approval, and only the run that is
+checking it can record its outcome.
+
+The reconciliation record is the approval, not the Kael task. Cancelling, failing
+or replacing a Kael task, or starting a new conversation, stops agent work only:
+it never changes the approval, its outcome or its submission key, and Kael has no
+operation that cancels or withdraws a submitted service request. A check of a
+cancelled or failed task records the real outcome on the approval and, when the
+request exists, links it in the task's artifact while the task keeps its closed
+status; the user is told the request exists and that closing the Kael task did not
+cancel it. A check may run from any conversation of the same account in Customer
+mode, including a new one; confirming and declining stay bound to the conversation
+that showed the card.
+
+While any confirmed submission of the account has an unknown outcome,
+`kael_request_approval` refuses a new confirmation (`unresolved`) in every task and
+conversation, and `kael_consume_approval` refuses to use a confirmation that was
+opened earlier, which stays pending. Neither the model nor the user can therefore
+create a second submission key while the first may already exist. No request text
+is compared: an independent request waits only until the earlier one is checked,
+then it is confirmed normally. Both paths take the same per-account lock, so two
+concurrent confirmations cannot slip past each other. If a check stays uncertain
+(for example while the backend is unreachable), Kael confirmations stay paused for
+that account and the manual Requests screen remains the fallback.
 
 After a restart, the app reads `kael_conversation_state(mode)` with the user's own
-token. It returns only the account's latest conversation in that mode: ordered
-messages, task view fields, whether a turn is still running, confirmations
-(`kind: confirm`) that are pending, unexpired and still match their task version,
-and checks (`kind: reconcile`, no expiry) for consumed approvals whose outcome is
-uncertain, or unknown with no turn still running, while the task can still be
-reconciled. Each carries display fields and the fingerprint but not the executable
-arguments. A late result from a previous account or mode is discarded, a stream
-that breaks is treated as interrupted and reconciled from this read, and an
+token. It returns the account's latest conversation in that mode (ordered messages,
+task view fields, whether a turn is still running), confirmations (`kind:
+confirm`) of that conversation that are pending, unexpired and still match their
+task version, and checks (`kind: reconcile`, no expiry) for every consumed approval
+of the account in that mode whose outcome is uncertain, or unknown with no run
+still executing it, whichever conversation it came from and whether or not its
+task was closed. Each carries display fields and the fingerprint but not the
+executable arguments; a check from another conversation brings no other part of
+that conversation. A late result from a previous account or mode is discarded, a
+stream that breaks is treated as interrupted and reconciled from this read, and an
 expired confirmation leaves the screen. After every decision the app rereads the
 pending confirmations and checks, so a decision the server refused without
-consuming the confirmation (busy, mismatched, unavailable) brings the card back;
-if the read itself fails, the card is restored locally unless the turn completed. "Trò chuyện mới" starts a new conversation locally; stored history is not
-deleted, so the menu offers no delete action until a retention and deletion policy
-exists.
+consuming the confirmation (busy, mismatched, unavailable, unresolved) brings the
+card back; if the read itself fails, the card is restored locally unless the turn
+completed. "Trò chuyện mới" starts a new conversation locally and keeps only the
+account's checks on screen; switching account or mode clears them. Stored history
+is not deleted, so the menu offers no delete action until a retention and deletion
+policy exists.
 
 Kael-internal state (runs, messages, tasks, tool audit and approvals) is written
 only by the gateway. It verifies the account with Supabase Auth and then calls

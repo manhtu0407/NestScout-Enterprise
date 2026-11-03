@@ -60,7 +60,7 @@ export function parseTurnRequest(raw: string, maxInputChars: number): TurnReques
     if (text.length === 0 || text.length > maxInputChars) return null;
     return { ...base, action: { type: 'message', text } };
   }
-  if ((action.type === 'approve' || action.type === 'reject' || action.type === 'reconcile') && base.conversation_id !== null
+  if ((action.type === 'approve' || action.type === 'reject' || action.type === 'reconcile') && (base.conversation_id !== null || action.type === 'reconcile')
     && typeof action.approval_id === 'string' && uuidPattern.test(action.approval_id)
     && typeof action.fingerprint === 'string' && /^[0-9a-f]{64}$/.test(action.fingerprint)) {
     return { ...base, action: { type: action.type, approval_id: action.approval_id.toLowerCase(), fingerprint: action.fingerprint } };
