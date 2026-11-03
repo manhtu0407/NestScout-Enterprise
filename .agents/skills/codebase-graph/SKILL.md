@@ -59,7 +59,13 @@ and whether the `graphify` executable is on PATH (`graphify --help` exit code).
 
 - Empty or tiny graph, shrink-guard refusal, or a health warning: report it
   exactly; do not force past a guard (`--force`) or hide the warning.
-- Output belongs in `graphify-out/`, which this repository does not ignore;
+- Coverage gaps are measured, not hypothetical: without the `sql` extra
+  SQL files add nothing to the graph, and Expo Router screen files can yield no
+  symbols. A graph missing a node says nothing about the code; fall back to `rg`.
+  Broad queries return hundreds of nodes and truncate at the budget, so narrow
+  with specific identifiers, and retry `path` with `--undirected` when no
+  directed path is found.
+- Output belongs in `graphify-out/`, which this repository ignores;
   do not stage, commit or delete it unless the task says so.
 - Do not run `graphify hook install`, `graphify claude install` or any
   command that writes `CLAUDE.md`, `AGENTS.md`, git hooks or user-level
