@@ -49,13 +49,14 @@
   },
   "jest": {
     "preset": "jest-expo",
+    "passWithNoTests": false,
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1",
       "^lucide-react-native$": "<rootDir>/../../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js"
     },
     "testMatch": [
-      "<rootDir>/src/**/*.test.ts",
-      "<rootDir>/src/**/*.test.tsx"
+      "**/src/**/*.test.ts",
+      "**/src/**/*.test.tsx"
     ]
   }
 }
