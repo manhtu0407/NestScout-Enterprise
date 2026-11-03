@@ -22,12 +22,14 @@ not a name prefix, native routing field or replacement for the plugin namespace.
 | Codex | `.agents/skills/<name>/SKILL.md` | `skill-lifecycle` |
 | Cursor | `.agents/skills/<name>/SKILL.md` (native) | Same canonical source |
 | Claude Code | `.claude/skills/<name>/SKILL.md` | None; do not create an empty root |
+| Claude project plugin | `.claude-plugin/marketplace.json`, installed once per clone | Same source read in place, namespaced `nestscout-skills:skill-lifecycle` |
 | Claude session plugin | `claude --plugin-dir ./.agents` | Same source, namespaced `.agents:skill-lifecycle` |
 
 The V1 column records the original foundation. NESL extends that source in one
 batch; no Claude-native copies or runtime settings are added. For example, Codex
-explicit invocation is `$be-auth-rls`; the Claude session plugin command is
-`/.agents:be-auth-rls`. Default Claude discovery of this directory is not claimed.
+explicit invocation is `$be-auth-rls`; the Claude project plugin command is
+`/nestscout-skills:be-auth-rls`. Claude discovers this directory only after the one-time
+installation below; cloning alone installs nothing.
 
 ## NESL specialist inventory
 
@@ -101,8 +103,24 @@ Use one native location per justified package. Codex reads the project skill roo
 Claude can read that same source through its native session plugin flag. Claude's
 manifestless plugin layout scans `skills/` under the supplied directory, so `.agents`
 is the plugin root. No manifest, loader, copy, symlink or saved setting is needed.
-Review that root as a skills-only bundle before loading it. This is explicit session
-loading; default shared automatic discovery is still not established.
+Review that root as a skills-only bundle before loading it. The flag is explicit session
+loading. Claude Code 2.1.310 was observed on 2026-11-03 on Windows: without the
+installation or the flag, none of the project skills; after the installation below, a
+normal session lists all 17 as `nestscout-skills:<name>`, invokes them and reads their
+`references/` files from `.agents/skills`; it loads the root `AGENTS.md` without any
+`CLAUDE.md`. Re-observe after upgrading either runtime.
+
+One-time Claude Code installation per clone, run from the repository root. The local scope
+records the machine-specific path in the ignored `.claude/settings.local.json`, and the
+plugin reads `.agents` in place, so skill edits need no reinstall:
+
+```bash
+claude plugin marketplace add ./ --scope local
+claude plugin install nestscout-skills@nestscout --scope local
+```
+
+Committing the marketplace to `.claude/settings.json` was observed not to load in a
+noninteractive session, and the project scope writes an absolute path there, so it is not used.
 
 From the repository root, start an already authorized Claude session with
 `claude --plugin-dir ./.agents`, then invoke `/.agents:skill-lifecycle` with the

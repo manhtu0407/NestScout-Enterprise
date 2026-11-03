@@ -93,7 +93,8 @@ npm run verify:negative
 These Node/npm commands set up repository tooling and the mobile workspace. There is
 no application server, native build or release. `npm run check` includes the mobile
 typecheck, lint and unit tests (`check:mobile`); tooling unit tests, database artifact
-typechecking and disposable local SQL checks also exist. Use the commands in `package.json`. Tool downloads
+typechecking and disposable local SQL checks also exist. `npm run check:languages` enforces the language ownership map in
+`scripts/language-policy.json`. Use the commands in `package.json`. Tool downloads
 are version-pinned and SHA-256 checked; dependency installation uses the lockfile.
 
 Optional local hooks (affect only this checkout):

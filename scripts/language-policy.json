@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "conditionalLanguages": ["python", "rust"],
+  "languages": {
+    "typescript": [".ts", ".tsx", ".mts", ".cts"],
+    "javascript": [".js", ".jsx", ".mjs", ".cjs"],
+    "sql": [".sql"],
+    "shell": [".sh", ".bash", ".zsh"],
+    "powershell": [".ps1", ".psm1"],
+    "python": [".py", ".pyi", ".pyw", ".ipynb"],
+    "rust": [".rs"],
+    "go": [".go"],
+    "java": [".java"],
+    "kotlin": [".kt", ".kts"],
+    "swift": [".swift"],
+    "objectivec": [".m", ".mm"],
+    "c": [".c", ".h"],
+    "cpp": [".cc", ".cpp", ".cxx", ".hpp"],
+    "csharp": [".cs", ".csproj", ".sln"],
+    "ruby": [".rb"],
+    "php": [".php"],
+    "dart": [".dart"],
+    "lua": [".lua"],
+    "perl": [".pl", ".pm"]
+  },
+  "interpreters": {
+    "node": "javascript",
+    "deno": "javascript",
+    "bun": "javascript",
+    "sh": "shell",
+    "dash": "shell",
+    "bash": "shell",
+    "zsh": "shell",
+    "pwsh": "powershell",
+    "powershell": "powershell",
+    "python": "python",
+    "ruby": "ruby",
+    "perl": "perl",
+    "php": "php",
+    "lua": "lua"
+  },
+  "manifests": {
+    "requirements.txt": "python",
+    "pyproject.toml": "python",
+    "Pipfile": "python",
+    "poetry.lock": "python",
+    "uv.lock": "python",
+    ".python-version": "python",
+    "Cargo.toml": "rust",
+    "Cargo.lock": "rust",
+    "rust-toolchain": "rust",
+    "rust-toolchain.toml": "rust",
+    "go.mod": "go",
+    "go.sum": "go",
+    "pom.xml": "java",
+    "build.gradle": "java",
+    "build.gradle.kts": "java",
+    "settings.gradle": "java",
+    "Gemfile": "ruby",
+    ".ruby-version": "ruby",
+    "composer.json": "php",
+    "Package.swift": "swift",
+    "Podfile": "swift",
+    "pubspec.yaml": "dart"
+  },
+  "setupActions": {
+    "actions/setup-python": "python",
+    "astral-sh/setup-uv": "python",
+    "dtolnay/rust-toolchain": "rust",
+    "actions-rust-lang/": "rust",
+    "actions-rs/": "rust",
+    "actions/setup-go": "go",
+    "actions/setup-java": "java",
+    "actions/setup-dotnet": "csharp",
+    "ruby/setup-ruby": "ruby",
+    "shivammathur/setup-php": "php",
+    "subosito/flutter-action": "dart",
+    "swift-actions/setup-swift": "swift"
+  },
+  "modules": [
+    {
+      "path": "apps/mobile/",
+      "domain": "Mobile and frontend",
+      "languages": ["typescript"]
+    },
+    {
+      "path": "services/",
+      "domain": "Backend, API and Kael agent core",
+      "languages": ["typescript"]
+    },
+    {
+      "path": "supabase/",
+      "domain": "Database, migrations and row-level security",
+      "languages": ["sql", "typescript"]
+    },
+    {
+      "path": "scripts/",
+      "domain": "Repository tooling",
+      "languages": ["javascript"]
+    },
+    {
+      "path": ".githooks/",
+      "domain": "Optional local Git hooks",
+      "languages": ["shell"]
+    }
+  ],
+  "exceptions": [
+    {
+      "path": "apps/mobile/eslint.config.mjs",
+      "language": "javascript",
+      "justification": "ESLint flat configuration is loaded by the Node ESLint runtime and is part of the approved Application Foundation V2 mobile tooling.",
+      "approval": "Pre-existing owner-approved mobile workspace tooling, preserved unchanged"
+    }
+  ]
+}
