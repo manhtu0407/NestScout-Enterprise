@@ -198,7 +198,9 @@ notice, security control or asset provenance record is never deleted to satisfy 
 rule. Move provenance into documentation instead. The checker, its tests and the
 workflow are part of any proposed change, so changes to them need the owner's review.
 A new source language needs a comment inspector in `scripts/check-hygiene.mjs` in the
-same change as its naming rule.
+same change as its naming rule. It also needs a justified, architecture-approved exception in
+`scripts/language-policy.json`; `npm run check:languages` rejects unlisted source languages,
+language manifests and runtime setup actions, and exceptions that nothing uses.
 
 The gate inspects JavaScript, TypeScript, SQL, YAML (including shell inside `run:` block
 scalars), TOML, JSONC, the `.githooks/` scripts, and the line-comment forms of

@@ -102,7 +102,9 @@ Claude can read that same source through its native session plugin flag. Claude'
 manifestless plugin layout scans `skills/` under the supplied directory, so `.agents`
 is the plugin root. No manifest, loader, copy, symlink or saved setting is needed.
 Review that root as a skills-only bundle before loading it. This is explicit session
-loading; default shared automatic discovery is still not established.
+loading; default shared automatic discovery is still not established. Claude Code 2.1.310 was observed on 2026-11-03: with the flag it lists the
+`.agents:` skills; without it, none of the project skills; it loads the root
+`AGENTS.md` without any `CLAUDE.md`. Re-observe after upgrading either runtime.
 
 From the repository root, start an already authorized Claude session with
 `claude --plugin-dir ./.agents`, then invoke `/.agents:skill-lifecycle` with the

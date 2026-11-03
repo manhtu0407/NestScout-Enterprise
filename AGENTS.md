@@ -71,6 +71,7 @@ or conventions from another repository.
 | Index and working-file inspection | `scripts/repository-files.mjs` |
 | Secret scanning, including staged blobs | `scripts/check-tools.mjs`, `scripts/scan-staged.mjs` |
 | YAML validation and invalid-fixture verification | `scripts/check-yaml.mjs`, `scripts/verify-negative.mjs` |
+| Language ownership and runtime admission | `scripts/language-policy.json`, `scripts/check-languages.mjs` |
 | Hosted checks and optional hooks | `.github/workflows/ci.yml`, `.githooks/` |
 
 1. Establish scope, acceptance criteria, baseline, and ownership. Read relevant
@@ -104,6 +105,32 @@ and recovery analysis. Stateful/financial operations need concurrency, duplicate
 retry, ordering, and reconciliation checks where applicable. Runtime agents need
 per-role tool access, approvals, audit, behavior tests, and limits. These are
 conditional requirements, not claims that such modules exist.
+
+### Language ownership
+
+TypeScript is the default for application, API and Kael agent code. `scripts/language-policy.json`
+maps these domains to actual repository paths and `npm run check:languages` enforces
+them against the index and the working tree.
+
+| Domain | Path | Language | Status |
+| --- | --- | --- | --- |
+| Mobile and frontend | `apps/mobile/` | TypeScript | Enforced |
+| Backend, API and Kael agent core | `services/` | TypeScript | Enforced; no runtime exists yet |
+| Database, migrations and RLS | `supabase/` | PostgreSQL SQL; generated types and Edge code in TypeScript | Enforced |
+| Repository tooling | `scripts/` | Node ESM JavaScript | Existing-first |
+| Optional Git hooks | `.githooks/` | POSIX shell | Existing-first |
+| Kael ML and training | none approved | Python | Conditional |
+| Profiled performance-critical components | none approved | Rust | Conditional |
+
+- Any other source language, language manifest or runtime setup action in a workflow
+  fails the check. A conditional or new language needs an `exceptions` entry with a
+  technical justification (measured workload, rejected TypeScript alternative) and
+  an architecture approval reference. Agents never grant their own exception.
+- An exception also needs the matching `check-hygiene.mjs` naming rule and comment
+  inspector in the same change. Stale exceptions fail. Do not create placeholder
+  Python or Rust modules, services or manifests to satisfy or test the policy.
+- Codex and Claude Code follow this policy and these checks identically; the
+  checker, not agent self-report, is the evidence.
 
 ### Implementation Quality Contract
 
@@ -142,7 +169,7 @@ checksum-verified tools. Native tooling currently supports Windows/Linux x64.
 Setup is not a read-only check or a choice of application stack.
 
 Run `npm run check` and `npm run verify:negative` before delivery. The aggregate
-checks reserved files, hygiene, source comments, formatting, metadata, Markdown,
+checks reserved files, hygiene, source comments, formatting, language ownership, metadata, Markdown,
 YAML, workflows, secrets, local Supabase contracts/types and the mobile typecheck, lint
 and unit tests (`check:mobile`). Existing negative
 fixtures use isolated temporary repositories/files. Report exact failures;
