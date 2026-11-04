@@ -103,6 +103,26 @@ export function parseKaelEvent(line: string): KaelEvent | null {
   return payload ? { ...payload, v: 1, run_id: value.run_id, seq: value.seq as number } : null;
 }
 
+export type KaelSequenceVerdict = 'accept' | 'duplicate' | 'broken';
+
+export function createKaelSequence(): (event: Pick<KaelEvent, 'run_id' | 'seq'>) => KaelSequenceVerdict {
+  let runId: string | null = null;
+  let last = 0;
+  return event => {
+    if (runId === null) {
+      if (event.seq !== 1) return 'broken';
+      runId = event.run_id;
+      last = 1;
+      return 'accept';
+    }
+    if (event.run_id !== runId) return 'broken';
+    if (event.seq <= last) return 'duplicate';
+    if (event.seq !== last + 1) return 'broken';
+    last = event.seq;
+    return 'accept';
+  };
+}
+
 export type KaelStoredMessage = { id: string; role: 'user' | 'assistant'; text: string; incomplete: boolean };
 
 export type KaelConversationSnapshot = {

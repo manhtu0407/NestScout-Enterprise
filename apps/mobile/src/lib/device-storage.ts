@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 import { createChunkedStorage, type KeyValueStore } from './chunked-storage';
 
@@ -12,4 +13,14 @@ const keychain: KeyValueStore = {
   deleteItemAsync: (key) => SecureStore.deleteItemAsync(key, options),
 };
 
-export const deviceStorage = createChunkedStorage(keychain);
+const browserStorage: KeyValueStore = {
+  getItemAsync: async (key) => window.localStorage.getItem(key),
+  setItemAsync: async (key, value) => {
+    window.localStorage.setItem(key, value);
+  },
+  deleteItemAsync: async (key) => {
+    window.localStorage.removeItem(key);
+  },
+};
+
+export const deviceStorage = createChunkedStorage(Platform.OS === 'web' ? browserStorage : keychain);

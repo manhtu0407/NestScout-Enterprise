@@ -13,16 +13,22 @@ export type KaelConversationState = {
   notice: string | null;
   running: boolean;
   conversationId: string | null;
+  processingTaskId: string | null;
+  receipt: string | null;
 };
 
 type Streamer = typeof streamKaelTurn;
 type Loader = (userId: string, mode: KaelMode, signal: AbortSignal) => Promise<KaelConversationSnapshot>;
 
-const idleState: KaelConversationState = { messages: [], activity: null, tasks: [], approvals: [], notice: null, running: false, conversationId: null };
+const idleState: KaelConversationState = { messages: [], activity: null, tasks: [], approvals: [], notice: null, running: false, conversationId: null, processingTaskId: null, receipt: null };
 const interruptedNotice = 'Kết nối bị gián đoạn trước khi Kael trả lời xong. Nội dung phía trên có thể chưa đầy đủ.';
+const unverifiedNotice = 'Kết nối bị gián đoạn và chưa tải lại được cuộc trò chuyện để xác minh. Nội dung phía trên có thể chưa đầy đủ.';
+const unconfirmedNotice = 'Đã tải lại cuộc trò chuyện nhưng chưa xác nhận được Kael đã trả lời xong tin nhắn bị gián đoạn. Nội dung phía trên có thể chưa đầy đủ.';
 const restoreFailedNotice = 'Chưa tải lại được cuộc trò chuyện trước đó. Bạn vẫn có thể tiếp tục trò chuyện với Kael.';
 const stillRunningNotice = 'Kael vẫn đang xử lý tin nhắn trước trong cuộc trò chuyện này. Vui lòng mở lại sau ít phút.';
 const busyLabel = 'Kael đang xử lý';
+
+type Interrupted = { afterMessageId: string | null; userOrdinal: number; text: string | null };
 
 function stillOpen(approval: KaelApproval, status: KaelTaskStatus): boolean {
   return approval.kind === 'reconcile' || status === 'waiting_for_approval';
@@ -50,7 +56,7 @@ function applyEvent(state: KaelConversationState, event: KaelEvent, assistantId:
     case 'tool_started':
       return { ...state, activity: event.label };
     case 'tool_completed':
-      return { ...state, activity: busyLabel };
+      return { ...state, activity: busyLabel, receipt: event.tool === 'service_request_submit' && event.outcome === 'succeeded' ? event.call_id : state.receipt };
     case 'task_updated': {
       const others = state.tasks.filter(task => task.id !== event.task.id);
       return { ...state, tasks: [...others, event.task], approvals: state.approvals.filter(item => item.task_id !== event.task.id || stillOpen(item, event.task.status)) };
@@ -62,14 +68,15 @@ function applyEvent(state: KaelConversationState, event: KaelEvent, assistantId:
       const messages = existing
         ? state.messages.map(message => (message.id === assistantId ? { ...message, text: event.text, incomplete: false } : message))
         : event.text ? [...state.messages, { id: assistantId, role: 'assistant' as const, text: event.text }] : state.messages;
-      return { ...state, messages, activity: null, running: false };
+      return { ...state, messages, activity: null, running: false, processingTaskId: null };
     }
     case 'run_failed':
       return {
         ...state,
-        messages: state.messages.map(message => (message.id === assistantId ? { ...message, incomplete: true } : message)),
+        messages: event.code === 'approval_invalid' ? state.messages : state.messages.map(message => (message.id === assistantId ? { ...message, incomplete: true } : message)),
         activity: null,
         running: false,
+        processingTaskId: null,
         notice: event.message,
       };
   }
@@ -77,20 +84,43 @@ function applyEvent(state: KaelConversationState, event: KaelEvent, assistantId:
 
 function settle(state: KaelConversationState, outcome: KaelTurnOutcome, assistantId: string): KaelConversationState {
   if (outcome.kind === 'terminal') return state;
-  const base = { ...state, activity: null, running: false };
+  const base = { ...state, activity: null, running: false, processingTaskId: null };
   if (outcome.kind === 'refused') return { ...base, notice: outcome.message };
   if (outcome.kind === 'cancelled') return base;
   return { ...base, notice: interruptedNotice, messages: state.messages.map(message => (message.id === assistantId ? { ...message, incomplete: true } : message)) };
 }
 
-function restored(state: KaelConversationState, snapshot: KaelConversationSnapshot): KaelConversationState {
+const interruptionNotices: readonly (string | null)[] = [interruptedNotice, unverifiedNotice, unconfirmedNotice, stillRunningNotice];
+
+function replyTo(snapshot: KaelConversationSnapshot, interrupted: Interrupted): 'complete' | 'partial' | 'missing' | 'unmatched' {
+  const anchor = interrupted.afterMessageId === null ? -1 : snapshot.messages.findIndex(message => message.id === interrupted.afterMessageId);
+  if (interrupted.afterMessageId !== null && anchor < 0) return 'unmatched';
+  let seen = -1;
+  const index = snapshot.messages.findIndex((message, position) => position > anchor && message.role === 'user' && ++seen === interrupted.userOrdinal);
+  if (index < 0) return 'unmatched';
+  if (interrupted.text !== null && snapshot.messages[index]!.text !== interrupted.text) return 'unmatched';
+  const reply = snapshot.messages[index + 1];
+  if (!reply || reply.role !== 'assistant') return 'missing';
+  return reply.incomplete ? 'partial' : 'complete';
+}
+
+function restoredNotice(state: KaelConversationState, snapshot: KaelConversationSnapshot, interrupted: Interrupted | null): string | null {
+  if (snapshot.busy) return stillRunningNotice;
+  if (!interruptionNotices.includes(state.notice)) return state.notice;
+  if (interrupted === null) return unconfirmedNotice;
+  const verdict = replyTo(snapshot, interrupted);
+  if (verdict === 'complete') return null;
+  return verdict === 'unmatched' ? unconfirmedNotice : interruptedNotice;
+}
+
+function restored(state: KaelConversationState, snapshot: KaelConversationSnapshot, interrupted: Interrupted | null): KaelConversationState {
   return {
     ...state,
     conversationId: snapshot.conversationId,
     messages: snapshot.messages.map(message => ({ id: `stored-${message.id}`, role: message.role, text: message.text, incomplete: message.incomplete })),
     tasks: snapshot.tasks,
     approvals: snapshot.approvals,
-    notice: snapshot.busy ? stillRunningNotice : state.notice,
+    notice: restoredNotice(state, snapshot, interrupted),
   };
 }
 
@@ -101,13 +131,17 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
   const controllerRef = useRef<AbortController | null>(null);
   const restoreRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
+  const usersAfterAnchorRef = useRef(0);
+  const restoredTailRef = useRef<string | null>(null);
+  const interruptedRef = useRef<Interrupted | null>(null);
+  const ordinalUnknownRef = useRef(true);
 
   if (seenScope !== scope) {
     setSeenScope(scope);
     setState(idleState);
   }
 
-  const rehydrate = useCallback(async (expected: string | null) => {
+  const rehydrate = useCallback(async (expected: string | null, firstTurn = false) => {
     if (userId === null) return;
     restoreRef.current?.abort();
     const controller = new AbortController();
@@ -123,15 +157,33 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     restoreRef.current = null;
     setState(current => {
       if (current.running || current.conversationId !== expected) return current;
-      if (failed || !snapshot) return { ...current, notice: restoreFailedNotice };
-      if (expected === null ? current.messages.length > 0 : snapshot.conversationId !== expected) return current;
-      return restored(current, snapshot);
+      if (failed || !snapshot) {
+        ordinalUnknownRef.current = true;
+        return { ...current, notice: current.notice === interruptedNotice ? unverifiedNotice : restoreFailedNotice };
+      }
+      if (firstTurn) {
+        const evidence = interruptedRef.current;
+        if (snapshot.conversationId === null || evidence === null || replyTo(snapshot, evidence) === 'unmatched') {
+          ordinalUnknownRef.current = true;
+          return { ...current, notice: snapshot.busy ? stillRunningNotice : interruptionNotices.includes(current.notice) ? unconfirmedNotice : current.notice };
+        }
+      } else if (expected === null ? current.messages.length > 0 : snapshot.conversationId !== expected) return current;
+      usersAfterAnchorRef.current = 0;
+      restoredTailRef.current = snapshot.messages.at(-1)?.id ?? null;
+      ordinalUnknownRef.current = false;
+      const next = restored(current, snapshot, interruptedRef.current);
+      if (next.notice === null || !interruptionNotices.includes(next.notice)) interruptedRef.current = null;
+      return next;
     });
   }, [loader, mode, userId]);
 
   useEffect(() => {
+    ordinalUnknownRef.current = true;
     void rehydrate(null);
     return () => {
+      usersAfterAnchorRef.current = 0;
+      restoredTailRef.current = null;
+      interruptedRef.current = null;
       restoreRef.current?.abort();
       restoreRef.current = null;
       controllerRef.current?.abort();
@@ -177,6 +229,9 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     controllerRef.current?.abort();
     controllerRef.current = null;
     runningRef.current = false;
+    usersAfterAnchorRef.current = 0;
+    restoredTailRef.current = null;
+    interruptedRef.current = null;
     setState(current => ({ ...idleState, approvals: accountChecks(current.approvals) }));
   }, []);
 
@@ -185,17 +240,21 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     runningRef.current = true;
     restoreRef.current?.abort();
     restoreRef.current = null;
+    interruptedRef.current = { afterMessageId: restoredTailRef.current, userOrdinal: ordinalUnknownRef.current ? -1 : usersAfterAnchorRef.current, text: action.type === 'message' ? userText : null };
     const requestId = Crypto.randomUUID();
     const assistantId = `assistant-${requestId}`;
     const controller = new AbortController();
     controllerRef.current = controller;
     let conversationId = state.conversationId;
     let replayed = false;
+    let started = false;
     setState(current => ({
       ...current,
       notice: null,
       running: true,
       activity: busyLabel,
+      processingTaskId: decided !== null && action.type !== 'reject' ? decided.task_id : null,
+      receipt: null,
       messages: [...current.messages, { id: `user-${requestId}`, role: 'user', text: userText }],
       approvals: action.type === 'message' ? current.approvals : current.approvals.filter(item => item.id !== action.approval_id),
     }));
@@ -204,6 +263,9 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
       if (event.type === 'run_started') {
         conversationId = event.conversation_id;
         replayed = event.replayed;
+        started = true;
+        if (event.replayed) interruptedRef.current = null;
+        else usersAfterAnchorRef.current += 1;
       }
       setState(current => applyEvent(current, event, assistantId));
     }, controller.signal);
@@ -211,7 +273,12 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     controllerRef.current = null;
     runningRef.current = false;
     setState(current => settle(current, outcome, assistantId));
-    if (conversationId === null) return;
+    if (outcome.kind === 'terminal' || outcome.kind === 'refused') interruptedRef.current = null;
+    if (outcome.kind === 'interrupted' && !started) ordinalUnknownRef.current = true;
+    if (conversationId === null) {
+      if (outcome.kind === 'interrupted') void rehydrate(null, true);
+      return;
+    }
     if (outcome.kind === 'interrupted' || replayed) void rehydrate(conversationId);
     else if (decided) void verifyDecision(conversationId, decided, outcome.kind === 'terminal' && outcome.event.type === 'run_completed');
   }, [mode, rehydrate, state.conversationId, streamer, userId, verifyDecision]);
@@ -234,7 +301,9 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     );
   }, [run]);
 
+  const refresh = useCallback(() => { void rehydrate(state.conversationId, state.conversationId === null && interruptedRef.current !== null); }, [rehydrate, state.conversationId]);
+
   const dismissNotice = useCallback(() => setState(current => ({ ...current, notice: null })), []);
 
-  return { ...state, available: userId !== null, send, decide, reset, dismissNotice };
+  return { ...state, available: userId !== null, send, decide, reset, dismissNotice, refresh };
 }

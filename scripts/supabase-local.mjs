@@ -20,6 +20,27 @@ export function safeDiagnostic(error) {
   return `Local operation failed (${code}${status}); credential-bearing subprocess/upstream detail withheld.`;
 }
 
+export function databaseTestDiagnostic(error, tests) {
+  const output = (String(error?.stdout ?? '') + '\n' + String(error?.stderr ?? ''))
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
+  const descriptions = new Set(tests.flatMap(test => [...test.content.matchAll(/'((?:''|[^'])*)'/g)]
+    .map(match => match[1].replaceAll("''", "'"))));
+  const failures = [...output.matchAll(/not ok\s+(\d+)\s*-\s*([^\r\n]+)/g)].map(match => ({
+    assertion: Number(match[1]),
+    description: descriptions.has(match[2].trim()) ? match[2].trim() : 'Description withheld; not a static repository test label.',
+  }));
+  const files = tests.filter(test => output.includes(test.file)).map(test => test.file);
+  const categories = [
+    ['connection_refused', /connection refused|ECONNREFUSED/i],
+    ['timeout', /timed? out|timeout|deadline exceeded/i],
+    ['artifact_resolution', /pull access denied|failed to pull|failed to download|failed to fetch|TLS handshake|HTTP 429/i],
+    ['missing_dependency', /not found|No such file|does not exist|not installed/i],
+    ['permission_denied', /permission denied|access denied/i],
+    ['sql_assertion', /not ok\s+\d|Failed\s+\d+.*(?:test|subtest)|Result: FAIL/i],
+  ].filter(([, pattern]) => pattern.test(output)).map(([name]) => name);
+  return { exit: Number.isInteger(error?.status) ? error.status : null, failures, files, categories };
+}
+
 export function isMissingStack(error) {
   if (error?.status !== 1) return false;
   try {
@@ -178,9 +199,15 @@ export async function withLocalLock(operation, directory = root) {
 }
 
 async function main(action) {
-  const actions = ['start', 'status', 'reset', 'test', 'types', 'check-types', 'lint', 'drift', 'history', 'stop'];
+  const actions = ['start', 'status', 'reset', 'test', 'types', 'check-types', 'lint', 'drift', 'history', 'stop', 'serve-kael'];
   requireLocal(actions.includes(action), `Use one of: ${actions.join(', ')}`);
   const runtime = localRuntime();
+  if (action === 'serve-kael') {
+    runtime.verify();
+    console.log('Serving the existing Edge Functions on the verified worktree/branch stack; no target overrides.');
+    runtime.cli(['functions', 'serve', 'kael']);
+    return;
+  }
   await withLocalLock(() => {
     if (action === 'start') {
       const before = runtime.status(true);
@@ -221,7 +248,18 @@ async function main(action) {
         drift: ['db', 'diff', '--local', '--schema', 'public', '--use-pg-delta', '--strict-coverage'],
         history: ['migration', 'list', '--local'],
       }[action];
-      const result = runtime.cli(args);
+      let result;
+      try {
+        result = runtime.cli(args);
+      } catch (error) {
+        if (action === 'test') {
+          const directory = path.join(root, 'supabase/tests/database');
+          const tests = readdirSync(directory).filter(file => /^[a-z0-9-]+\.test\.sql$/.test(file))
+            .map(file => ({ file, content: readFileSync(path.join(directory, file), 'utf8') }));
+          console.error(JSON.stringify(databaseTestDiagnostic(error, tests)));
+        }
+        throw error;
+      }
       console.log(redactDiagnostic(result.trim()));
       if (action === 'drift') requireLocal(result.trim() === '', 'Local schema drift detected.');
       console.log(`PASS: local ${action}.`);

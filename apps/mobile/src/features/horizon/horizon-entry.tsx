@@ -1,5 +1,5 @@
 import { horizonLayout } from '@/theme/layout';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -13,6 +13,9 @@ import type { ComposerImage } from './composer-media';
 import { KaelHomeLoading } from './skeleton-layouts';
 import { Presence, useRetained } from './motion-presence';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
+import { deriveKaelAttention } from './kael-attention';
+import type { KaelAttention } from './kael-attention';
+import { KaelAttentionCard } from './kael-attention-card';
 import { countActionableQuotes, countUnreadNotifications, toRecentSessions } from './request-views';
 import { useCustomerData } from './use-customer-data';
 import { useWorkerData } from './use-worker-data';
@@ -43,6 +46,15 @@ export function HorizonEntry() {
   const worker = useWorkerData(workerUserId);
   const kaelUserId = (access.phase === 'client' || access.phase === 'worker') && access.identity === 'verified' ? access.userId : null;
   const kael = useKaelConversation(kaelUserId, access.phase === 'worker' ? 'worker' : 'client');
+  const [clock, setClock] = useState(() => Date.now());
+  const [dismissedReceipt, setDismissedReceipt] = useState<string | null>(null);
+  const [attentionHeight, setAttentionHeight] = useState(0);
+  const counting = kael.approvals.some(approval => approval.kind === 'confirm' && approval.expires_at !== null);
+  useEffect(() => {
+    if (!counting) return;
+    const timer = setInterval(() => setClock(Date.now()), horizonLayout.kaelAttention.countdownTick);
+    return () => clearInterval(timer);
+  }, [counting]);
   const recentSessions = useMemo(() => toRecentSessions({ requests: data.requests, quotes: data.quotes, activity: data.activity }, data.pinnedIds, now), [data, now]);
   const badges = useMemo(() => ({
     quotes: countActionableQuotes(data.requests, data.quotes, now),
@@ -145,6 +157,9 @@ export function HorizonEntry() {
     : 'Chưa thể xác minh quyền Thợ. Bạn có thể thử lại.';
   const noticeMessage = useRetained(accessMessage ?? dataNotice);
   const dismissNotice = () => { access.dismissNotice(); setDataNotice(null); };
+  const accountNoticeVisible = access.notice !== null || dataNotice !== null;
+  const attention = accountNoticeVisible ? null : deriveKaelAttention({ approvals: kael.approvals, tasks: kael.tasks, running: kael.running, notice: kael.notice, receipt: kael.receipt, dismissedReceipt, now: clock });
+  const onAttentionAction = (item: KaelAttention) => { if (item.kind === 'receipt') setDismissedReceipt(item.receiptId); };
 
   if (access.phase === 'bootstrapping' || access.phase === 'resolving') return <EntryRedirect pending={renderPending}/>;
 
@@ -158,7 +173,8 @@ export function HorizonEntry() {
             <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo" onPress={dismissNotice} style={styles.noticeAction}><Icon name="close" size={18}/></Pressable>
           </View>
         </Presence>
-        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={openMenu} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} onDecide={kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
+        <KaelAttentionCard attention={attention} onAction={onAttentionAction} onHeight={setAttentionHeight}/>
+        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={openMenu} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
     <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {

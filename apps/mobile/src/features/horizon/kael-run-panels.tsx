@@ -26,8 +26,8 @@ export const kaelTaskStatusLabels: Readonly<Record<KaelTaskStatus, string>> = {
 const dotColors: Readonly<Record<KaelTaskStatus, string>> = {
   pending: colors.dotStopped,
   running: colors.dotActive,
-  waiting_for_input: colors.dotWaiting,
-  waiting_for_approval: colors.dotWaiting,
+  waiting_for_input: colors.dotStopped,
+  waiting_for_approval: colors.dotStopped,
   paused: colors.dotStopped,
   completed: colors.dotDone,
   failed: colors.dotStopped,
@@ -41,14 +41,20 @@ export function KaelRunActivity({ label }: { label: string }) {
   </View>;
 }
 
-export function KaelTaskList({ tasks }: { tasks: readonly KaelTask[] }) {
+type TaskListProps = { tasks: readonly KaelTask[]; processingTaskId?: string | null; processingLabel?: string | null };
+
+export function KaelTaskList({ tasks, processingTaskId = null, processingLabel = null }: TaskListProps) {
   if (tasks.length === 0) return null;
   return <View accessibilityLabel="Việc Kael đang theo dõi" style={styles.tasks}>
-    {tasks.map(task => <View key={task.id} accessible accessibilityLabel={`${task.title}: ${kaelTaskStatusLabels[task.status]}`} style={styles.taskRow}>
-      <View style={[styles.taskDot, { backgroundColor: dotColors[task.status] }]}/>
-      <Text style={styles.taskTitle} numberOfLines={1}>{task.title}</Text>
-      <Text style={styles.taskStatus}>{kaelTaskStatusLabels[task.status]}</Text>
-    </View>)}
+    {tasks.map(task => {
+      const transient = task.id === processingTaskId && processingLabel !== null;
+      const label = transient ? processingLabel : kaelTaskStatusLabels[task.status];
+      return <View key={task.id} accessible accessibilityLabel={`${task.title}: ${label}`} style={styles.taskRow}>
+        <View style={[styles.taskDot, { backgroundColor: transient ? colors.dotActive : dotColors[task.status] }]}/>
+        <Text style={styles.taskTitle} numberOfLines={1}>{task.title}</Text>
+        <Text style={styles.taskStatus}>{label}</Text>
+      </View>;
+    })}
   </View>;
 }
 
@@ -76,7 +82,7 @@ export function KaelApprovalCard({ approval, disabled, onDecide }: ApprovalProps
   }
   return <View accessibilityLabel={`Cần xác nhận: ${approval.summary}`} style={styles.card}>
     <ApprovalDetails approval={approval}/>
-    <Text style={styles.detailLabel}>Chưa có gì được gửi cho đến khi bạn xác nhận.</Text>
+    <Text style={styles.detailLabel}>Yêu cầu này chưa được gửi cho đến khi bạn xác nhận.</Text>
     <SlideToConfirm label="Trượt để xác nhận" accessibilityLabel={`Xác nhận ${approval.summary}`} disabled={disabled} onConfirm={() => onDecide(approval, true)}/>
     <Pressable accessibilityRole="button" accessibilityLabel="Không thực hiện" disabled={disabled} onPress={() => onDecide(approval, false)} style={styles.decline}>
       <Text style={styles.declineText}>Không thực hiện</Text>
@@ -92,7 +98,7 @@ const styles = StyleSheet.create({
   activity: { flexDirection: 'row', alignItems: 'center', gap: motion.thinkingGap, paddingVertical: motion.thinkingPaddingVertical },
   activityOrb: { height: motion.statusLineHeight, justifyContent: 'center' },
   tasks: { gap: metrics.taskGap },
-  taskRow: { flexDirection: 'row', alignItems: 'center', gap: metrics.taskRowGap },
+  taskRow: { flexDirection: 'row', alignItems: 'center', gap: metrics.taskRowGap, paddingVertical: metrics.taskPaddingVertical, paddingHorizontal: metrics.taskPaddingHorizontal, borderRadius: metrics.taskRadius, backgroundColor: colors.taskSurface },
   taskDot: { width: metrics.taskDot, height: metrics.taskDot, borderRadius: metrics.taskDotRadius },
   taskTitle: { flex: 1, color: colors.taskTitle, fontSize: metrics.taskTitleSize, lineHeight: metrics.taskTitleLineHeight },
   taskStatus: { color: colors.taskStatus, fontSize: metrics.taskStatusSize, lineHeight: metrics.taskStatusLineHeight },

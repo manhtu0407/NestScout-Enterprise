@@ -1,6 +1,6 @@
 import { authenticatedFunctionRequest, authenticatedRequest, type FunctionFetch } from '@/lib/authenticated-rest';
 
-import { kaelFailureCodes, parseKaelConversationSnapshot, parseKaelEvent, type KaelConversationSnapshot, type KaelEvent, type KaelFailureCode } from './kael-events';
+import { createKaelSequence, kaelFailureCodes, parseKaelConversationSnapshot, parseKaelEvent, type KaelConversationSnapshot, type KaelEvent, type KaelFailureCode } from './kael-events';
 
 export type KaelMode = 'client' | 'worker';
 
@@ -56,11 +56,15 @@ export async function streamKaelTurn(
   }
   if (!response.ok || !response.body) return refusalFrom(response);
 
-  const reader = response.body.getReader();
+  return readKaelStream(response.body.getReader(), onEvent, signal);
+}
+
+export type KaelStreamReader = { read: () => Promise<{ value?: Uint8Array; done: boolean }>; cancel: () => Promise<void> };
+
+export async function readKaelStream(reader: KaelStreamReader, onEvent: (event: KaelEvent) => void, signal: AbortSignal): Promise<KaelTurnOutcome> {
   const decoder = new TextDecoder();
   let buffer = '';
-  let runId: string | null = null;
-  let lastSeq = 0;
+  const sequence = createKaelSequence();
   try {
     while (true) {
       const { value, done } = await reader.read();
@@ -73,13 +77,12 @@ export async function streamKaelTurn(
         newline = buffer.indexOf('\n');
         if (!line) continue;
         const event = parseKaelEvent(line);
-        if (!event || (runId !== null && event.run_id !== runId)) {
+        const verdict = event ? sequence(event) : 'broken';
+        if (!event || verdict === 'broken') {
           await reader.cancel();
           return { kind: 'interrupted' };
         }
-        runId = event.run_id;
-        if (event.seq <= lastSeq) continue;
-        lastSeq = event.seq;
+        if (verdict === 'duplicate') continue;
         onEvent(event);
         if (event.type === 'run_completed' || event.type === 'run_failed') {
           await reader.cancel();

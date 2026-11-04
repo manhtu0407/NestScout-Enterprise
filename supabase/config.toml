@@ -45,7 +45,7 @@ file_size_limit = "5MiB"
 enabled = false
 
 [edge_runtime]
-enabled = false
+enabled = true
 
 [analytics]
 enabled = false

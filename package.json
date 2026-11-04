@@ -42,6 +42,7 @@
     "db:drift": "node scripts/supabase-local.mjs drift",
     "db:history": "node scripts/supabase-local.mjs history",
     "db:stop": "node scripts/supabase-local.mjs stop",
+    "kael:serve": "node scripts/supabase-local.mjs serve-kael",
     "kael:knowledge:validate": "node scripts/kael-knowledge.mjs validate",
     "kael:knowledge:seed": "node scripts/kael-knowledge.mjs seed",
     "kael:knowledge:benchmark": "node scripts/kael-knowledge.mjs benchmark",
