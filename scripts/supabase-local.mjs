@@ -178,9 +178,15 @@ export async function withLocalLock(operation, directory = root) {
 }
 
 async function main(action) {
-  const actions = ['start', 'status', 'reset', 'test', 'types', 'check-types', 'lint', 'drift', 'history', 'stop'];
+  const actions = ['start', 'status', 'reset', 'test', 'types', 'check-types', 'lint', 'drift', 'history', 'stop', 'serve-kael'];
   requireLocal(actions.includes(action), `Use one of: ${actions.join(', ')}`);
   const runtime = localRuntime();
+  if (action === 'serve-kael') {
+    runtime.verify();
+    console.log('Serving the existing Edge Functions on the verified worktree/branch stack; no target overrides.');
+    runtime.cli(['functions', 'serve', 'kael']);
+    return;
+  }
   await withLocalLock(() => {
     if (action === 'start') {
       const before = runtime.status(true);

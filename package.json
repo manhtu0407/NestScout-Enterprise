@@ -42,6 +42,7 @@
     "db:drift": "node scripts/supabase-local.mjs drift",
     "db:history": "node scripts/supabase-local.mjs history",
     "db:stop": "node scripts/supabase-local.mjs stop",
+    "kael:serve": "node scripts/supabase-local.mjs serve-kael",
     "verify:supabase": "node scripts/run-tests.mjs scripts/supabase-local.test.mjs",
     "typecheck:db": "tsc --noEmit --strict --skipLibCheck supabase/database.types.ts",
     "typecheck:kael": "tsc --noEmit --strict --skipLibCheck --noUncheckedIndexedAccess --target es2024 --module esnext --moduleResolution bundler --allowImportingTsExtensions --verbatimModuleSyntax --erasableSyntaxOnly --lib es2024,dom,dom.iterable,dom.asynciterable supabase/functions/kael/index.ts",

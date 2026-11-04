@@ -155,6 +155,37 @@ unavailable and the user sees an honest unavailable state. Fallback to the next
 provider happens only when a call fails before producing output; a stream that
 already produced text fails the run instead of silently replaying it.
 
+## Local integration verification
+
+Run `npm run db:start`, then `npm run kael:serve` in another terminal in the
+same worktree and branch. The latter uses the existing local ownership guard
+before calling the pinned CLI's `functions serve kael`; the CLI serves all
+existing functions. No JWT-verification override is used. `db:start` still
+excludes Functions, so a database-only session does not start them. Serving
+Functions activates them on that same managed stack. Obtain the assigned
+loopback API URL from `npm run db:status`; never reuse another worktree's ports.
+The mobile app's ignored `.env` needs that URL, target `local`, and the stack's
+publishable key. Server and provider keys must stay out of the mobile environment.
+
+`npm run db:test` runs SQL security and workflow tests. With Functions served,
+`npm run db:mcp:test` also runs the Kael integration scenarios in
+`scripts/supabase-mcp.integration.test.mjs`. They provision disposable local
+accounts through Auth Admin, sign in through the supported password grant,
+and validate Auth-signed JWTs against Auth and RLS. This is a gateway harness,
+not phone OTP or application login E2E. No SMS is sent and authentication
+configuration is unchanged.
+
+The actual Edge Function is tested without provider credentials and must report
+`provider_unavailable`. Successful deterministic scenarios inject the existing
+scripted provider into the gateway in the test process, using the real Auth,
+REST, PostgreSQL, policy and persistence implementations. No scripted provider
+is installed in the Edge Function or mobile path. Synthetic-only approval tests
+enable the effect only in that test handler. Lost-response injection happens
+after the real local submission commits, and reconciliation checks the original
+submission key. Test identities and their records are removed after the run.
+Live AI inference requires separately supplied authorized provider configuration
+and is not established by these tests.
+
 ## Not implemented
 
 Image understanding, voice, background workers, proactive notifications, knowledge

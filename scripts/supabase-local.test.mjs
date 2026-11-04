@@ -34,12 +34,20 @@ test('only the pinned CLI missing-stack response permits cold start or absent-st
 });
 
 test('reject target overrides before Docker operations', () => {
-  for (const [script, args] of [['supabase-local.mjs', ['reset', '--linked']], ['supabase-mcp.mjs', ['--url=https://example.invalid']]]) {
+  for (const [script, args] of [['supabase-local.mjs', ['reset', '--linked']], ['supabase-local.mjs', ['serve-kael', '--linked']], ['supabase-mcp.mjs', ['--url=https://example.invalid']]]) {
     const result = spawnSync(process.execPath,
       [fileURLToPath(new URL(script, import.meta.url)), ...args], { encoding: 'utf8' });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /overrides are forbidden/);
   }
+});
+
+test('Kael can serve on the isolated local stack without changing phone authentication or enabling providers', () => {
+  assert.equal(config.edge_runtime.enabled, true);
+  assert.equal(config.auth.enable_signup, false);
+  assert.equal(config.auth.enable_anonymous_sign_ins, false);
+  assert.equal(config.auth.sms, undefined);
+  assert.equal(config.functions, undefined);
 });
 
 test('accept isolated config and reject linked, legacy, static-port and declarative targets', () => {
