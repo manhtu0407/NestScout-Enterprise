@@ -651,7 +651,7 @@ Only the authorized provenance source and its registry may differ in that scope.
 The independent 198-source identity/content comparison still uses the original
 PR #93 corpus at `2d700c1695e04feea4e7fe3396b70fe16977d700`.
 The merged README and Agentic UI/tests are upstream integration, not Evaluation
-implementation changes. No scenario, replay, grading or source revision changes
+implementation changes. No scenario, replay or source revision changes
 are needed for this compatibility correction.
 
 Hosted SQL verification exposed an existing Worker-profile fixture dependency on
@@ -661,3 +661,10 @@ certificate by title, deliberately places the verification target first, and
 asserts the intended deletion. Both additional assertions run in the existing
 rolled-back synthetic transaction; the SQL suite now contains 1000 assertions.
 Production Worker code, authorization, schema and business behavior are unchanged.
+
+PR review identified a separate citation-integrity gap in the Evaluation grader:
+a valid reference could mask malformed references in the same answer. Every
+Kael citation marker is now accounted for independently of valid matches.
+Regression cases cover hashless, empty-hash and bare markers before and after
+valid repeated citations; clean repeated retrieved references remain valid.
+No scenario, label, scripted reply or retrieval behavior changes for this fix.

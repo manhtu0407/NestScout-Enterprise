@@ -1076,6 +1076,23 @@ test('intelligence graders reject blanket refusal, missing intent, context loss,
   assert.ok(gradeScenario(intelligenceScenarios[0], o, 'knowledge_on').failures.some(f => f.category === 'wrong_tool_arguments'));
 });
 
+for (const malformed of ['kael:product.privacy@999', 'kael:product.privacy@1#', 'kael:']) test(`intelligence citation integrity rejects mixed valid and malformed references: ${malformed}`, () => {
+  const ref = `kael:product.identity@1#${'a'.repeat(64)}`;
+  const observation = validObservation();
+  observation.sources = [{ source_id: 'product.identity', citation_ref: ref, visibility: 'public', owner_id: null }];
+  observation.answers[0] += ` ${ref} ${ref}`;
+  const valid = gradeScenario(intelligenceScenarios[0], observation, 'knowledge_on');
+  assert.equal(valid.passed, true);
+  assert.equal(valid.hard_passed, true);
+  assert.equal(valid.signals.retrieval_alignment.cited, 2);
+  for (const answer of [`${observation.answers[0]} ${malformed}`, `${malformed} ${observation.answers[0]}`]) {
+    const grade = gradeScenario(intelligenceScenarios[0], { ...observation, answers: [answer] }, 'knowledge_on');
+    assert.equal(grade.passed, false);
+    assert.equal(grade.hard_passed, false);
+    assert.ok(grade.failures.some(f => f.category === 'citation_not_retrieved' && f.hard && f.evidence === 'Malformed citation'));
+  }
+});
+
 test('intelligence grounding checks citation revision/hash membership and required evidence without penalizing optional RAG omission', () => {
   const s = intelligenceScenarios.find(s => s.ground_truth.knowledge_expected === 'required');
   const o = validObservation(s);
