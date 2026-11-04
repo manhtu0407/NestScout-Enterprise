@@ -45,6 +45,7 @@
     "kael:knowledge:validate": "node scripts/kael-knowledge.mjs validate",
     "kael:knowledge:seed": "node scripts/kael-knowledge.mjs seed",
     "kael:knowledge:benchmark": "node scripts/kael-knowledge.mjs benchmark",
+    "kael:intelligence:evaluate": "node scripts/kael-intelligence-evaluation.mjs",
     "verify:supabase": "node scripts/run-tests.mjs scripts/supabase-local.test.mjs",
     "typecheck:db": "tsc --noEmit --strict --skipLibCheck supabase/database.types.ts",
     "typecheck:kael": "tsc --noEmit --strict --skipLibCheck --noUncheckedIndexedAccess --target es2024 --module esnext --moduleResolution bundler --allowImportingTsExtensions --verbatimModuleSyntax --erasableSyntaxOnly --lib es2024,dom,dom.iterable,dom.asynciterable supabase/functions/kael/index.ts services/kael-core/src/knowledge-sources.ts",

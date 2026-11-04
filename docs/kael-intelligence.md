@@ -1,5 +1,130 @@
 # Kael Intelligence Foundation
 
+## Intelligence Evaluation V1
+
+The evaluation task starts from PR #93 merge
+`2d700c1695e04feea4e7fe3396b70fe16977d700`. The owner-supplied
+`Kael_Intelligence_Evaluation_Input.md` is its dataset, safety and acceptance
+contract. It adds evaluation tooling and tests around the existing runtime;
+business commands, approval/reconciliation, BPMN, the 180 service cases and the
+72 original retrieval probes retain their original ownership and content.
+
+Run these commands from the repository root with the locked Node 24 dependencies:
+
+```sh
+npm run kael:intelligence:evaluate
+npm run db:start
+npm run kael:knowledge:seed
+npm run kael:intelligence:evaluate -- --local-sql
+```
+
+The first command is deterministic offline replay without provider network calls.
+SQL mode uses the existing worktree/branch-owned, loopback-only Supabase stack
+and authenticated PostgreSQL knowledge RPC with synthetic identities, rolled
+back per query. It runs the same runtime with in-memory task/trace persistence;
+it does not claim real REST or persistent-runtime integration. Existing
+`db:mcp:test` supplies the separate Auth/REST and transaction regressions.
+Do not target a hosted database or seed an unrelated stack. `db:stop` stops only
+this branch's owned stack when finished.
+
+Reports are generated in `.cache/kael-intelligence-offline.json` and
+`.cache/kael-intelligence-local-sql.json`, with corresponding Markdown summaries.
+They are disposable evidence outside committed source. Each report binds its
+Git SHA and dirty state, canonical dataset/replay hashes, source manifest hashes,
+conditions, per-category numerators/denominators, actual runtime tool attempts,
+source ID/revision/hash references, response hashes and stable failure IDs.
+Hashes use the existing SHA-256 canonical-JSON fingerprint convention; file
+hashes fingerprint UTF-8 source strings. Timestamps and observed latency vary;
+fixed inputs, source ordering, grades and content hashes are reproducible.
+Reports omit full messages, response bodies, tool arguments and credentials.
+The runner never asserts external test commands passed: attach their actual
+exit evidence separately using the same delivered source manifest.
+
+The versioned `scripts/kael-intelligence-scenarios.json` contains exactly 120
+scenarios and 133 conversational turns, with the required ten category counts.
+Forty scenarios carry informal/no-accent labels; eighty require no knowledge
+tool. These are agent-authored, unreviewed labels, not a Vietnamese population
+sample. Twenty stable anchor IDs in `kael-intelligence-registry.json` are proposed
+for manual review and remain pending. `kael-intelligence-replays.json` separately
+holds scripted responses and tool choices; the grader never uses those choices
+as an exact required trajectory. The schema permits empty tools/sources and all
+four knowledge-expectation values. It rejects exact copies of source titles or
+aliases and original retrieval probes; five-word overlap is reported, while
+semantic overlap and intent diversity still require human review. Revision
+fingerprints prevent silently changing labels under the same committed registry.
+
+Outcome regex assertions are narrow observable signals. Tool grading checks
+allowed/forbidden calls, actual runtime argument validation, required authorized
+business reads and required evidence. Optional retrieval can be omitted without
+failure. With required knowledge disabled, the grader checks abstention rather
+than demanding unavailable facts. Citation membership requires the actual
+retrieved ID, revision and hash. Explicit forbidden business/price/provenance,
+credential and hazardous-instruction signatures are hard failures, as are
+wrong-role/source access and changed protected state. These code checks do not
+understand every paraphrase: subjective intent coverage, safety comprehension,
+grounding and conversational quality remain unreviewed or NOT_RUN.
+
+`KAEL_ENABLED_EFFECTS` is explicitly empty and numeric preview is disabled in
+every scoring run. A separate evaluation transport boundary permits only the
+existing read endpoints, denying submissions, other mutations and external
+provider destinations even if an executor is called directly. Real local SQL
+runs compare counts and sorted-row fingerprints for all non-Kael business and
+permission tables in `public` and `nestscout_private` before/after the entire
+run. The new pgTAP regression also checks actual owner/Worker/internal-source
+boundaries and unchanged protected tables after untrusted-document retrieval.
+Existing approval, reconciliation, pricing, Auth/REST and retrieval regressions
+remain mandatory; the new suite does not replace them.
+
+Matched RAG conditions use identical scenario messages, synthetic actor, fixtures,
+scripted provider/model and prompt source. Only knowledge availability and
+resulting tool availability differ. Record retrieval coverage, retrieval
+decisions and evidence use separately from answer quality; additional RAG calls
+never imply better answers. Per-scenario wall time, SQL transport time and
+SQL function time are separate. The process is warm; database cache state is
+uncontrolled, with no cold-cache or live-model latency claim. Scripted token
+counts are labeled SCRIPTED_ONLY and monetary costs are null.
+
+Initial local evidence: all 240 offline condition runs pass their scripted
+signals. Real SQL mode passes 237/240, with zero hard violations and unchanged
+protected tables. Grounded knowledge RAG-on passes 13/16; other categories pass
+their full denominators in both conditions. `grounded_knowledge.006` and `.007`
+miss `product.provenance`; `.015` misses `product.general`. The scripted runtime
+abstains, failing both the expected-response regex and source-coverage signal.
+These six reported signals on three scenarios require retrieval/label review,
+not a claim of model failure or permission to change retrieval in this task.
+All 144 original SQL retrieval outcomes retain exact source order/status.
+Live RAG answer-quality deltas and human/model judging are NOT_RUN.
+
+No live evaluation command is implemented. API keys and chat consent cannot
+enable it; `--live` and budget flags fail closed. Future work requires fresh
+owner authorization, a provider/model allowlist without implicit fallback,
+scenario/request/token/wall-time limits and a monetary ceiling calculated from
+an explicit price table and actual usage. Review the anchors and calibrate the
+subjective rubric before setting live quality thresholds. Keep isolated
+synthetic data, denied effects and disabled numeric preview for those runs too.
+
+Validation commands include `npm run check`, `npm run verify:negative`,
+`npm run db:test`, `npm run db:mcp:test`, `npm run db:types:check`,
+`npm run db:lint`, `npm run db:drift`, and `npm run kael:knowledge:benchmark`.
+The corpus, hard-grader counterexamples, runtime denial controls and replay
+determinism tests extend `scripts/kael-evaluation.test.mjs`, already selected by
+the Foundation suite. Scoring commands are separate from `check`; no live mode
+is reachable through local tests or hosted CI. Pushing this feature branch
+without an open PR does not match the inspected `main`-only push trigger.
+
+The supplied research informs the separation of final outcomes from trajectories
+([Anthropic](https://www.anthropic.com/research/demystifying-evals-for-ai-agents),
+[Google Cloud](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/evaluation-agents)),
+task-specific datasets and calibration
+([OpenAI evaluation practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices)),
+workflow trace evidence
+([OpenAI agent evaluations](https://developers.openai.com/api/docs/guides/agent-evals)),
+and reuse of the existing runtime
+([Building effective agents](https://www.anthropic.com/research/building-effective-agents)).
+These references establish design rationale, not measured Kael intelligence.
+
+## Foundation implementation history
+
 Implemented on the feature branch based on `main` commit
 `45860b2f42e875a114b5e7dc3cebf0816a8bd817` (merged PR #90), on 2026-11-04.
 This is a local foundation, not a deployed service or a reviewed commercial policy.
