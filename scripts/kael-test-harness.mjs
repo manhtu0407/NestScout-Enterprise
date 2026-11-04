@@ -292,12 +292,12 @@ export function call(name, input, id = `call_${randomUUID().slice(0, 8)}`) {
   return { id, name, input };
 }
 
-export function harness({ env = {}, providers = () => [], fixtures = {}, db = createDb(), wrapStore = store => store } = {}) {
+export function harness({ env = {}, providers = () => [], fixtures = {}, db = createDb(), wrapStore = store => store, wrapFetcher = fetcher => fetcher } = {}) {
   const service = backend(db, fixtures);
   const logs = [];
   const handle = createKaelHandler({
     env: { ...baseEnv, ...env },
-    fetcher: service.fetcher,
+    fetcher: wrapFetcher(service.fetcher),
     now: () => new Date('2026-11-03T03:00:00Z'),
     log: event => logs.push(event),
     providers,
