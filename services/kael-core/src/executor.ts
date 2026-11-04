@@ -248,13 +248,10 @@ export async function executeApprovedEffect(approvalId: string, approval: Extrac
   } catch {
     return { status: 'uncertain', reason: 'backend_unreachable' };
   }
-  if (response.status >= 500) {
-    await response.body?.cancel();
-    return { status: 'uncertain', reason: `backend_http_${response.status}` };
-  }
   if (!response.ok) {
     await response.body?.cancel();
-    return { status: 'failed', reason: `backend_http_${response.status}` };
+    const rejected = response.status === 400 || response.status === 422;
+    return { status: rejected ? 'failed' : 'uncertain', reason: `backend_http_${response.status}` };
   }
   try {
     const id = await response.json();

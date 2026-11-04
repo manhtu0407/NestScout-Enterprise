@@ -768,6 +768,29 @@ async function uncertainSubmission(h) {
 const checksFor = (db, owner = users.customer.id) => conversationState(db, owner, 'client').approvals.filter(card => card.kind === 'reconcile');
 const submissionKeys = h => h.service.calls.filter(entry => entry.path.endsWith('submit_service_request')).map(entry => entry.body.p_submission_key);
 
+test('a non-definitive refusal while checking an uncertain submission is not recorded as a final failure', async () => {
+  for (const refusal of [401, 403, 404, 408, 429]) {
+    const primary = scriptedProvider('anthropic', submitFlow());
+    const h = harness({ env: effects, providers: () => [primary] });
+    ledger.push(h.db);
+    const { conversation, approval } = await uncertainSubmission(h);
+    h.service.fixtures.submitFailure = () => {
+      h.service.fixtures.submitFailure = null;
+      return new Response('{}', { status: refusal });
+    };
+    const checked = await h.reconcile(users.customer, conversation, approval);
+    assert.deepEqual(toolOutcomes(checked), ['service_request_submit:uncertain'], `HTTP ${refusal}`);
+    assert.equal(h.db.approvals.get(approval.id).outcome, 'uncertain', `HTTP ${refusal}: the record stays checkable`);
+    assert.doesNotMatch(streamedText(checked), /Hệ thống chưa nhận yêu cầu/, `HTTP ${refusal}`);
+    assert.equal(checksFor(h.db).length, 1, `HTTP ${refusal}: the check is still offered`);
+    assert.equal(effectsCount(h.db), 1, `HTTP ${refusal}: no second request`);
+    const retried = await h.reconcile(users.customer, conversation, approval);
+    assert.deepEqual(toolOutcomes(retried), ['service_request_submit:succeeded'], `HTTP ${refusal}: a later check completes with the same key`);
+    assert.deepEqual([...new Set(submissionKeys(h))], [approval.id]);
+    assert.equal(effectsCount(h.db), 1);
+  }
+});
+
 test('cancelling the Kael task after an uncertain submission keeps the check and never cancels the business request', async () => {
   const primary = scriptedProvider('anthropic', [
     ...submitFlow(),
