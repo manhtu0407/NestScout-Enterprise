@@ -118,6 +118,11 @@ export const horizonColors = {
     noteText: '#4A5260',
     spinnerTrack: '#E4E7EC', spinnerArc: '#141820', spinnerDone: '#141820', spinnerCheck: '#FFFFFF',
   },
+  kaelRuntime: {
+    cardSurface: '#F2F4F7', cardBorder: 'rgba(60,60,67,0.10)', title: '#11161C', detailLabel: '#5B6672', detailValue: '#11161C',
+    decline: '#5B6672', taskTitle: '#11161C', taskStatus: '#5B6672', incomplete: '#6B7683',
+    dotActive: '#0E9E8E', dotWaiting: '#B26B00', dotDone: '#176B43', dotStopped: '#9AA3AF',
+  },
   appMotion: {
     heartIdle: '#9AA3AF', labBadge: '#0E9E8E', labBadgeText: '#FFFFFF', labNotice: '#141820', labNoticeText: '#FFFFFF',
   },

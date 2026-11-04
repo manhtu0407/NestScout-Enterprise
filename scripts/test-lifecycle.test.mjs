@@ -26,7 +26,7 @@ function fixture(operation) {
   const manifest = (value = scripts) => write('package.json', JSON.stringify({ scripts: value }) + '\n');
   try {
     run(['init', '--quiet']);
-    for (const file of ['.gitignore', '.codex/config.toml', '.claude/settings.json']) {
+    for (const file of ['.gitignore', '.codex/config.toml', '.claude/settings.json', 'apps/mobile/package.json']) {
       write(file, readFileSync(path.join(root, file)));
     }
     manifest();

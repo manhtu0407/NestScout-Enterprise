@@ -20,10 +20,9 @@ import { workerBadgesFor } from './worker-jobs';
 import { formatMoney } from './content';
 import { earningsTodayMinor } from './worker-earnings';
 import { nextJobLabel, toWorkerJobs, toWorkerProfileView } from './worker-views';
+import { useKaelConversation } from './use-kael-conversation';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
-
-type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
 
 export function HorizonEntry() {
   const router = useRouter();
@@ -33,7 +32,6 @@ export function HorizonEntry() {
   const [draftImages, setDraftImages] = useState<readonly ComposerImage[]>(() => access.horizonDraft?.images ?? []);
   const inputRef = useRef(input);
   const imagesRef = useRef(draftImages);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationKey, setConversationKey] = useState(0);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [dataNotice, setDataNotice] = useState<string | null>(null);
@@ -43,6 +41,8 @@ export function HorizonEntry() {
   const { data } = customer;
   const workerUserId = access.phase === 'worker' && access.identity === 'verified' ? access.userId : null;
   const worker = useWorkerData(workerUserId);
+  const kaelUserId = (access.phase === 'client' || access.phase === 'worker') && access.identity === 'verified' ? access.userId : null;
+  const kael = useKaelConversation(kaelUserId, access.phase === 'worker' ? 'worker' : 'client');
   const recentSessions = useMemo(() => toRecentSessions({ requests: data.requests, quotes: data.quotes, activity: data.activity }, data.pinnedIds, now), [data, now]);
   const badges = useMemo(() => ({
     quotes: countActionableQuotes(data.requests, data.quotes, now),
@@ -89,8 +89,9 @@ export function HorizonEntry() {
     customer.togglePin(id).catch(() => setDataNotice('Chưa ghim được yêu cầu. Vui lòng thử lại.'));
   }, [customer]);
 
+  const resetKael = kael.reset;
   const newConversation = useCallback(() => {
-    setMessages([]);
+    resetKael();
     setInput('');
     inputRef.current = '';
     imagesRef.current = [];
@@ -99,13 +100,31 @@ export function HorizonEntry() {
     setConversationKey(key => key + 1);
     setComposerError(null);
     setDrawerOpen(false);
-  }, [access]);
+  }, [access, resetKael]);
 
+  const sendToKael = kael.send;
+  const kaelAvailable = kael.available;
+  const kaelRunning = kael.running;
   const sendMessage = useCallback((images: readonly ComposerImage[]) => {
-    setComposerError(images.length > 0
-      ? 'Ảnh chưa được gửi vì chức năng phân tích ảnh chưa được kết nối.'
-      : 'Kael chưa được kết nối. Tin nhắn của bạn chưa được gửi.');
-  }, []);
+    if (images.length > 0) {
+      setComposerError('Ảnh chưa được gửi vì chức năng phân tích ảnh chưa được kết nối.');
+      return;
+    }
+    if (!kaelAvailable) {
+      setComposerError('Đăng nhập để trò chuyện với Kael. Tin nhắn của bạn chưa được gửi.');
+      return;
+    }
+    if (kaelRunning) {
+      setComposerError('Kael đang trả lời tin nhắn trước. Vui lòng đợi trong giây lát.');
+      return;
+    }
+    const text = inputRef.current.trim();
+    if (!text) return;
+    sendToKael(text);
+    setInput('');
+    inputRef.current = '';
+    access.clearHorizonDraft(access.userId);
+  }, [access, kaelAvailable, kaelRunning, sendToKael]);
 
   const navigate = useCallback((id: string) => {
     setDrawerOpen(false);
@@ -139,7 +158,7 @@ export function HorizonEntry() {
             <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo" onPress={dismissNotice} style={styles.noticeAction}><Icon name="close" size={18}/></Pressable>
           </View>
         </Presence>
-        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={openMenu} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
+        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={openMenu} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} onDecide={kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
     <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {

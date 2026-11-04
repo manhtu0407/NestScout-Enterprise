@@ -170,6 +170,7 @@ function selectionFixture(operation) {
     const scripts = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts;
     const tests = readdirSync(path.join(root, 'scripts')).filter(file => file.endsWith('.test.mjs'));
     write('package.json', JSON.stringify({ scripts }) + '\n');
+    write('apps/mobile/package.json', readFileSync(path.join(root, 'apps/mobile/package.json'), 'utf8'));
     for (const file of ['run-tests', 'test-integrity-reporter']) write(`scripts/${file}.mjs`, 'export default async function* () {}\n');
     for (const testFile of tests) write('scripts/' + testFile, 'import { test } from "node:test"; test("fixture", () => {});\n');
     run(['add', '.']);
@@ -356,6 +357,31 @@ test('safe workflow variants remain accepted', () => fixture(({ repository, writ
     write('.github/workflows/ci.yml', variant);
     assert.doesNotThrow(() => checkWorkflowPolicy(repository));
   }
+}));
+
+test('mobile Jest must discover tests independently of the checkout path and fail on an empty selection', () => selectionFixture(({ repository, write, run }) => {
+  const original = readFileSync(path.join(root, 'apps/mobile/package.json'), 'utf8');
+  const mutate = (change, expected) => {
+    const candidate = JSON.parse(original);
+    change(candidate);
+    write('apps/mobile/package.json', JSON.stringify(candidate) + '\n');
+    assert.throws(() => checkTestSelection(repository), expected);
+    run(['add', '--', 'apps/mobile/package.json']);
+    assert.throws(() => checkTestSelection(repository), expected);
+    write('apps/mobile/package.json', original);
+    run(['add', '--', 'apps/mobile/package.json']);
+    assert.doesNotThrow(() => checkTestSelection(repository));
+  };
+  assert.doesNotThrow(() => checkTestSelection(repository));
+  mutate(value => { delete value.jest.passWithNoTests; }, /fail when it finds no tests/);
+  mutate(value => { value.jest.passWithNoTests = true; }, /fail when it finds no tests/);
+  mutate(value => { value.scripts.test = 'jest --ci --passWithNoTests'; }, /exactly jest --ci/);
+  mutate(value => { value.jest.testMatch = ['<rootDir>/src/**/*.test.ts']; }, /rootDir-independent/);
+  mutate(value => { value.jest.testMatch = []; }, /rootDir-independent/);
+  mutate(value => { value.jest.testMatch = ['**/*.spec.ts']; }, /rootDir-independent/);
+  mutate(value => { value.jest.testRegex = '.*'; }, /rootDir-independent/);
+  mutate(value => { value.jest.testMatch = ['**/*.test.ts']; }, /rootDir-independent/);
+  mutate(value => { value.jest.roots = ['<rootDir>/src']; }, /roots must stay unset/);
 }));
 
 test('every persistent test runner uses the integrity runner script in each Git state', () => selectionFixture(({ repository, write, run, scripts }) => {

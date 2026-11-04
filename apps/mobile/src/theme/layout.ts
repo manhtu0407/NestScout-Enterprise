@@ -343,6 +343,12 @@ export const horizonLayout = {
       spinnerSize: 28, spinnerRadius: 14, spinnerStroke: 2.5, spinnerSpinDuration: 900, spinnerArc: 0.28, spinnerCheckDuration: 320, spinnerCheckStroke: 1.8, spinnerCheckDelay: 80,
       markerPopFrom: 0.5, markerPopDuration: 260, markerPopStagger: 40, markerCheckSize: 14,
     },
+    kaelRuntime: {
+      panelGap: 10, cardRadius: 18, cardPadding: 14, cardGap: 10, titleSize: 15, titleLineHeight: 20, titleWeight: '600',
+      detailGap: 6, detailLabelSize: 12, detailLabelLineHeight: 16, detailValueSize: 14, detailValueLineHeight: 20,
+      taskGap: 6, taskRowGap: 8, taskDot: 8, taskDotRadius: 4, taskTitleSize: 13, taskTitleLineHeight: 18, taskStatusSize: 12, taskStatusLineHeight: 16,
+      declineHeight: 44, declineSize: 14, declineWeight: '500', incompleteSize: 12, incompleteLineHeight: 16,
+    },
     appMotion: {
       presenceEnterDuration: 220, presenceExitDuration: 160, presenceReducedDuration: 120, presenceOffset: 8,
       rollDuration: 200, rollDistance: 8, rollGap: 40,

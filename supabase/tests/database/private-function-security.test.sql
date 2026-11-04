@@ -20,8 +20,16 @@ select is_empty($$
       'worker_offers','worker_jobs','accept_service_invitation','decline_service_invitation',
       'advance_service_job','submit_service_work','decide_service_submission','open_service_aftercare',
       'kael_read_context','propose_service_scope','decide_service_scope','report_service_job',
-      'pause_service_job','request_service_resume','consent_service_resume','save_worker','saved_workers','account_phone','job_worker_cards','review_job_worker','request_photo_upload_count','worker_job_cards','save_worker_profile','save_worker_coverage','set_worker_accepting','add_worker_certificate','remove_worker_certificate','my_worker_profile','worker_earnings')
+      'pause_service_job','request_service_resume','consent_service_resume','save_worker','saved_workers','account_phone','job_worker_cards','review_job_worker','request_photo_upload_count','worker_job_cards','save_worker_profile','save_worker_coverage','set_worker_accepting','add_worker_certificate','remove_worker_certificate','my_worker_profile','worker_earnings',
+      'kael_actor_capabilities','kael_context_tasks','kael_conversation_state')
 $$, 'Only reviewed private operations are callable by authenticated users');
+
+select is_empty($$
+  select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='nestscout_private' and has_function_privilege('service_role',p.oid,'execute')
+    and p.proname not in ('kael_start_run','kael_finish_run','kael_save_task','kael_record_tool',
+      'kael_request_approval','kael_consume_approval','kael_complete_approval','kael_reject_approval')
+$$, 'The trusted server role reaches only the reviewed Kael-internal operations in the private schema');
 
 select ok(not has_schema_privilege('anon','nestscout_private','usage'), 'Anonymous users cannot use the private schema');
 select ok(not has_function_privilege('authenticated','nestscout_private.lock_current_worker()','execute'),

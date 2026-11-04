@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Image, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
+import type { KaelApproval, KaelTask } from '@/features/shared';
 import { ChatComposer } from './chat-composer';
 import type { ComposerImage } from './composer-media';
 import { ConversationMenu } from './conversation-menu';
@@ -14,6 +15,7 @@ import { expressionForPhase } from './kael-phase';
 import type { KaelPhase, KaelPhaseIssue } from './kael-phase';
 import { useKaelMotion, useReduceMotion } from './kael-motion';
 import { KaelProgressSheet } from './kael-progress-sheet';
+import { KaelApprovalCard, KaelIncompleteNote, KaelRunActivity, KaelTaskList } from './kael-run-panels';
 import { KaelStreamingText } from './kael-streaming-text';
 import { isKaelThinking, KaelThinkingRow } from './kael-thinking-row';
 import { KaelStage } from './kael-stage';
@@ -37,12 +39,20 @@ type Props = {
   kaelPhaseIssue?: KaelPhaseIssue | null;
   onMenu: () => void;
   onNew: () => void;
-  messages: { id: string; role: 'user' | 'assistant'; text: string }[];
+  messages: { id: string; role: 'user' | 'assistant'; text: string; incomplete?: boolean }[];
+  activity?: string | null;
+  tasks?: readonly KaelTask[];
+  approvals?: readonly KaelApproval[];
+  busy?: boolean;
+  onDecide?: (approval: KaelApproval, approve: boolean) => void;
 };
+
+const noTasks: readonly KaelTask[] = [];
+const noApprovals: readonly KaelApproval[] = [];
 
 type Footer = { top: number; height: number };
 
-export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messages, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, draftImages, onDraftImagesChange, draftLocked }: Props) {
+export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messages, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, draftImages, onDraftImagesChange, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide }: Props) {
   const reduceMotion = useReduceMotion();
   const hasConversation = messages.length > 0;
   const [chatActive, setChatActive] = useState(() => hasConversation || kaelIntroSession.hasPlayed());
@@ -96,7 +106,6 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messag
     { id: 'find', label: 'Tìm trong cuộc trò chuyện', icon: 'search', onPress: () => notify('Tìm trong cuộc trò chuyện chưa được kết nối.') },
     { id: 'archive', label: 'Lưu trữ', icon: 'archive', onPress: () => notify('Lưu trữ cuộc trò chuyện chưa được kết nối.') },
     { id: 'timeline', label: 'Tiến độ', icon: 'clock', onPress: () => setTimelineOpen(true) },
-    { id: 'delete', label: 'Xóa', icon: 'trash', destructive: true, onPress: () => { if (hasConversation) startNew(); else notify('Chưa có cuộc trò chuyện để xóa.'); } },
   ];
   const firstUserMessage = messages.find(m => m.role === 'user');
   const chatOpacity = progress.interpolate({ inputRange: [0, metrics.chatFadeStart, 1], outputRange: [0, 0, 1] });
@@ -109,11 +118,16 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messag
           {m.role === 'assistant' && <View style={styles.miniBadge}>
             <Image source={kaelPlushImage} accessibilityIgnoresInvertColors style={styles.miniBadgeImage} resizeMode="cover"/>
           </View>}
-          {m.role === 'assistant' && !initialMessageIds.has(m.id)
-            ? <KaelStreamingText text={m.text} style={styles.bubbleText}/>
-            : <Text style={styles.bubbleText}>{m.text}</Text>}
+          <View style={styles.bubbleBody}>
+            {m.role === 'assistant' && !initialMessageIds.has(m.id)
+              ? <KaelStreamingText text={m.text} style={styles.bubbleText}/>
+              : <Text style={styles.bubbleText}>{m.text}</Text>}
+            {m.incomplete && <KaelIncompleteNote/>}
+          </View>
         </View>)}
-        {isKaelThinking(kaelPhase) && <KaelThinkingRow phase={kaelPhase} issue={kaelPhaseIssue}/>}
+        <KaelTaskList tasks={tasks}/>
+        {onDecide && approvals.map(approval => <KaelApprovalCard key={approval.id} approval={approval} disabled={busy} onDecide={onDecide}/>)}
+        {isKaelThinking(kaelPhase) ? <KaelThinkingRow phase={kaelPhase} issue={kaelPhaseIssue}/> : activity !== null && <KaelRunActivity label={activity}/>}
       </ScrollView>
     </Animated.View>
     <KaelIntro progress={progress} footerHeight={footerHeight} interactive={!chatActive}/>
@@ -136,6 +150,7 @@ const styles = StyleSheet.create({
   bubble: { maxWidth: bubbles.bubbleMaxWidth, borderRadius: bubbles.bubbleBorderRadius, padding: bubbles.bubblePadding, flexDirection: 'row', gap: bubbles.bubbleGap, alignItems: 'flex-start' },
   userBubble: { alignSelf: 'flex-end', backgroundColor: bubbleColors.userBubbleBackgroundColor },
   assistantBubble: { alignSelf: 'flex-start', backgroundColor: bubbleColors.assistantBubbleBackgroundColor },
+  bubbleBody: { flexShrink: 1, gap: horizonLayout.kaelRuntime.detailGap },
   bubbleText: { color: colors.text, fontSize: bubbles.bubbleTextFontSize, lineHeight: bubbles.bubbleTextLineHeight, flexShrink: 1 },
   miniBadge: { width: metrics.miniBadgeSize, height: metrics.miniBadgeSize, borderRadius: metrics.miniBadgeRadius, backgroundColor: companionColors.welcomeSurface, overflow: 'hidden' },
   miniBadgeImage: { position: 'absolute', width: metrics.miniBadgeImageWidth, height: metrics.miniBadgeImageWidth * metrics.plushAspectRatio, top: metrics.miniBadgeImageTop, left: metrics.miniBadgeImageLeft },

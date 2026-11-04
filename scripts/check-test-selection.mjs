@@ -13,6 +13,27 @@ const requiredChecks = [
 const testName = /\.(?:test|spec)\.mjs$/i;
 const reporterPath = 'scripts/test-integrity-reporter.mjs';
 const runnerPath = 'scripts/run-tests.mjs';
+const mobileManifestPath = 'apps/mobile/package.json';
+const mobileTestGlob = /^\*\*\/src\/\*\*\/\*\.test\.tsx?$/;
+
+function checkMobileTestDiscovery(current, state) {
+  const manifest = current.find(item => item.file === mobileManifestPath);
+  if (!manifest) throw new Error(state + ': ' + mobileManifestPath + ' missing');
+  let mobile;
+  try {
+    mobile = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifest.content));
+  } catch {
+    throw new Error(state + ': invalid ' + mobileManifestPath);
+  }
+  if (mobile?.scripts?.test !== 'jest --ci') throw new Error(state + ': mobile test command must be exactly jest --ci');
+  const jest = mobile?.jest;
+  if (jest?.passWithNoTests !== false) throw new Error(state + ': mobile Jest must fail when it finds no tests');
+  if (jest.roots !== undefined) throw new Error(state + ': mobile Jest roots must stay unset so diff review can evaluate test selection');
+  if (jest.testRegex !== undefined || !Array.isArray(jest.testMatch) || jest.testMatch.length === 0
+    || jest.testMatch.some(pattern => typeof pattern !== 'string' || !mobileTestGlob.test(pattern))) {
+    throw new Error(state + ': mobile Jest testMatch must use rootDir-independent **/src/**/*.test.ts(x) globs');
+  }
+}
 
 function selectedTests(scripts, state) {
   const selected = new Set();
@@ -80,6 +101,7 @@ export function checkTestSelection(repository = root) {
     for (const [file, label] of [[runnerPath, 'test runner script'], [reporterPath, 'test integrity reporter']]) {
       if (!current.some(item => item.file === file)) throw new Error(state + ': missing ' + label);
     }
+    checkMobileTestDiscovery(current, state);
   }
 }
 
