@@ -104,8 +104,13 @@ select lives_ok($$select public.add_worker_certificate('Chứng nhận ' || n) f
 select throws_ok($$select public.add_worker_certificate('Chứng nhận 10')$$, '22023', 'certificate limit', 'An eleventh certificate is rejected');
 select is(public.add_worker_certificate('Chứng nhận 1'), (select (c ->> 'id')::uuid from public.my_worker_profile() p, jsonb_array_elements(p.certificates) c where c ->> 'title' = 'Chứng nhận 1'), 'An existing title still succeeds at the limit');
 
-select lives_ok($$select public.remove_worker_certificate((select (certificates -> 0 ->> 'id')::uuid from public.my_worker_profile()))$$, 'A worker removes a certificate');
+reset role;
+update public.worker_certificates set id = '00000000-0000-4000-8000-000000000001' where worker_id = '00000000-0000-4000-8000-0000000000b2' and title = 'Chứng nhận 2';
+set local role authenticated;
+select is((select certificates -> 0 ->> 'title' from public.my_worker_profile()), 'Chứng nhận 2', 'Removal fixture puts the later verification target first');
+select lives_ok($$select public.remove_worker_certificate((select (c ->> 'id')::uuid from public.my_worker_profile() p, jsonb_array_elements(p.certificates) c where c ->> 'title' = 'Chứng chỉ an toàn điện'))$$, 'A worker removes a certificate');
 select is((select jsonb_array_length(certificates) from public.my_worker_profile()), 9, 'The certificate is gone');
+select is_empty($$select c from public.my_worker_profile() p, jsonb_array_elements(p.certificates) c where c ->> 'title' = 'Chứng chỉ an toàn điện'$$, 'The intended certificate is removed regardless of display order');
 select throws_ok($$select public.remove_worker_certificate(null)$$, '22023', 'invalid request', 'A missing certificate id is rejected');
 select throws_ok($$select * from public.worker_certificates$$, '42501', 'permission denied for table worker_certificates', 'A worker cannot read the certificate table directly');
 select throws_ok($$update public.worker_public_profiles set listed = true$$, '42501', 'permission denied for table worker_public_profiles', 'A worker cannot list their own profile');
