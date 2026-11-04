@@ -245,6 +245,7 @@ export function backend(db, options = {}) {
     if (url.pathname === '/rest/v1/rpc/worker_job_cards') return json(200, worker ? fixtures.workerCards : []);
     if (url.pathname === '/rest/v1/rpc/worker_earnings') return json(200, worker ? fixtures.earnings : []);
     if (url.pathname === '/rest/v1/rpc/kael_read_context') return json(200, worker ? { status: 'ok', state: 'assigned' } : { status: 'unavailable' });
+    if (url.pathname === '/rest/v1/rpc/kael_knowledge_search') return fixtures.knowledge ? fixtures.knowledge(JSON.parse(init.body), user, init) : json(404, {});
     if (url.pathname === '/rest/v1/rpc/submit_service_request') {
       if (fixtures.submitFailure) return fixtures.submitFailure();
       const body = JSON.parse(init.body);

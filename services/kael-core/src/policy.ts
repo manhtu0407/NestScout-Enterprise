@@ -13,6 +13,7 @@ export type Decision =
   | { kind: 'deny'; reason: DenialReason; tool: ToolContract | null };
 
 function permitted(tool: ToolContract, actor: Actor, config: KaelConfig): DenialReason | null {
+  if (tool.resource === 'knowledge' && !config.knowledgeEnabled) return 'not_offered';
   if (!tool.modes.includes(actor.mode)) return 'not_offered';
   if (tool.requires !== null && !actor.capabilities.has(tool.requires)) return 'forbidden';
   if (tool.needsWebSearch && config.perplexity === null) return 'not_offered';

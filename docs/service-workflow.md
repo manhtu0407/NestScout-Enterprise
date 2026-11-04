@@ -446,6 +446,8 @@ negative tests, not by this table.
 | `worker_earnings` | authorized_read | worker_earnings | Worker capability; worker mode | `worker_earnings` | F: recorded earnings, not settlement | Empty for an account without Worker access |
 | `worker_job_status` | authorized_read | worker_job | Worker capability; worker mode; assigned job | `kael_read_context` | D: kaelReadContext | Unavailable or rate limited; no other Worker's job |
 | `web_search` | authorized_read | public_web | Owner enabled `KAEL_WEB_SEARCH` with a key | Perplexity Search API, query only | Any phase: research | Unavailable; Kael says the answer may be outdated |
+| `knowledge_search` | authorized_read | knowledge | Customer capability; signed-in account; knowledge enabled; publication and RLS | `kael_knowledge_search` | Read-only explanatory side path | Current permitted product facts and synthetic cases; no business transition |
+| `price_estimate_preview` | authorized_read | knowledge | Customer capability; signed-in account; knowledge enabled; numeric preview requires explicit loopback configuration | `kael_knowledge_search` | Read-only estimate side path | Disabled by default; synthetic prior never writes a quote or changes a job |
 
 Conversation needs no operation. Explanations, advice, writing, translation,
 planning and research questions are answered without a task, an approval or a

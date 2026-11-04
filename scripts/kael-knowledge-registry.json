@@ -1,0 +1,1414 @@
+{
+  "corpus_version": "kael-vi-2026-11-04-v1",
+  "source_count": 199,
+  "synthetic_cases": 180,
+  "family_counts": {
+    "electrical": 30,
+    "plumbing": 30,
+    "air_conditioning": 35,
+    "cleaning": 30,
+    "upholstery": 25,
+    "minor_repairs": 30
+  },
+  "exemplars": 18,
+  "product_facts": 10,
+  "unpublished_slots": 9,
+  "numeric_priors": 18,
+  "review": "agent_authored_and_agent_validated_not_human_reviewed",
+  "content_hash": "64209006e86dea921c33fa7454f3eab687e177b27246c66f521819debd38cc1a",
+  "sources": [
+    {
+      "source_id": "air_conditioning.burning",
+      "revision": 1,
+      "content_hash": "d8539edd98be692774452b0cf6474be52439ec854dc40b7ab49a9214d7bb285c",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.ceiling-cassette",
+      "revision": 1,
+      "content_hash": "07de2459807979bb127eef4cc8f4ebdce4293f2c4529b497cd3283bd5dc08ff0",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.condensation-pipe",
+      "revision": 1,
+      "content_hash": "fb430a06249373970c8f1a5cad38db091ef8fd5ee6159450809671f832762ed6",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.cycling",
+      "revision": 1,
+      "content_hash": "1567fb04bf82794ffa505ff0b398b19a2f5b62d5fca8626ac217efb717b53a6c",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.deep-clean",
+      "revision": 1,
+      "content_hash": "055fde670c3af86ec2c9856dcb445411527ceeee5f24fc4a8ab2fdce3905793c",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.drain-smell",
+      "revision": 1,
+      "content_hash": "6a28ad5d4ee748ff24398ea39c6c51f91b033276d5bfd1521a5cd3083e17e19a",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.error-display",
+      "revision": 1,
+      "content_hash": "f8809dc8c577eb0e81ec5c8b8bd047f4cea7a34d57d7db9fcc2ea4b43b196aa2",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.filter-clean",
+      "revision": 1,
+      "content_hash": "5013a4d718f55d31ced226f08d213110e8c3c7d26a51b06171663c86ec5da3ca",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.gas-claim",
+      "revision": 1,
+      "content_hash": "c6faead59a6c825c7efbc64452155ef456cf5410ac8a4e4cc3bbf99e46b6d1c3",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.heat-mode",
+      "revision": 1,
+      "content_hash": "5c2bf9ac0cb193378676854f0c9b8206a0ae2569688a0b9a4fa2edacbff0116e",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.high-bill",
+      "revision": 1,
+      "content_hash": "bce55b1bfa44586a53e65d1dcb2283c4d5993e4312e5e10012697c1db5180e9c",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.hissing",
+      "revision": 1,
+      "content_hash": "817e7ee6cebb97aae73c493ceaf5711da4d7a0735872f54953aaa45d4127d847",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.ice-coil",
+      "revision": 1,
+      "content_hash": "018634017c1330b3db76ac65fa1e6cd0ef1bf37c2463b9b64a8707d5d3a70533",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.indoor-noise",
+      "revision": 1,
+      "content_hash": "b19fe48ed063f8b62ad7a2ff5fb6662b8bca2c82b11df252a4f4158d0ed1d048",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.indoor-water",
+      "revision": 1,
+      "content_hash": "174a436f9ab34e85328e4fa345d84aae848be112b1a2972655cd9f6cff49a1f4",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.louver-stuck",
+      "revision": 1,
+      "content_hash": "0405a1dafdcb84174d0672380ae807c964e8c2ca75e5d03bf86e1c1f6a19c944",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.musty-smell",
+      "revision": 1,
+      "content_hash": "8e92ff816ff7b91e45de236c5bc3abfebc787225c93fcd878c942bc8370d95fc",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.new-install",
+      "revision": 1,
+      "content_hash": "47723026c4d827fe870fc9112db155c2a1031ba3b55369e91d88fb7568729551",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.not-start",
+      "revision": 1,
+      "content_hash": "c2c0ea3e189186a99503985acedccbc24a0ec6b11d6f5a5b4851d32e3dc59a39",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.outdoor-access",
+      "revision": 1,
+      "content_hash": "4f8c7acb47936ecc251a9e0f7e5bf8266d6285cfa5d9332dc391850168f38777",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.outdoor-noise",
+      "revision": 1,
+      "content_hash": "d311a900174455811a9145c94f922ce89584c98751c448050798c6ba212ec0ef",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.poor-airflow",
+      "revision": 1,
+      "content_hash": "825c927035c9ff85e344eb9aaf645bb69bcc448b2577786332e3e6fd31f6e196",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.portable-water",
+      "revision": 1,
+      "content_hash": "2f1df775d4dc2b476c526a2137f0c6337d4e10d934e279d6163bfc98d1ee0ec7",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.relocate",
+      "revision": 1,
+      "content_hash": "449a164837a7730674fb0c1dc27fff6bf7d975f54321bb6b90337a045a7387ff",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.remote-no-response",
+      "revision": 1,
+      "content_hash": "5a93b012714c3d4858c8a2626e761f903fdbf3c140d8010d3d8b8e831bc7f605",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.sensor-temp",
+      "revision": 1,
+      "content_hash": "b1af68f22b46c01302b551810f48aac631812d188f508e32d07381d2e491ffec",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.short-circuit",
+      "revision": 1,
+      "content_hash": "dd9e3df9f38a6e667405b8d796df04953801b7378e735a4ca1e3ff271b06b3a1",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.stale-air",
+      "revision": 1,
+      "content_hash": "bdbc2d97a7fd2c075af373fd92a9575975e6d27a827ed3a2e7a65c88242b2070",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.timer-unexpected",
+      "revision": 1,
+      "content_hash": "92581f40fb84bd11af44332daa73272f8a1a5cfbaad76c72b7abb7a2792c95ce",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.vent-dust",
+      "revision": 1,
+      "content_hash": "0697e0f042b95f581a61585720ca2ff6c98cf307fdc91b17715a28d0da06c5eb",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.vibration-pipe",
+      "revision": 1,
+      "content_hash": "952adef9a8420287964b1af58b7926f05487972167eab7559507bc5bd351a586",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.wall-damp",
+      "revision": 1,
+      "content_hash": "9859d6cd1f19f4c37e8018c734e5507b15aaa9237d808c994aead707ac90b3fb",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.water-pump",
+      "revision": 1,
+      "content_hash": "7a03b9b02c3d6134d1d428dba5871c8d7e005e2ed3b552d08f1610dbbccc4cae",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.weak-cooling",
+      "revision": 1,
+      "content_hash": "664ee5dacfaef67fc20f9bfd1dc4bfbdb44edfca8b979eb9474dc128724605aa",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "air_conditioning.window-noise",
+      "revision": 1,
+      "content_hash": "f4bd49ea89e5d6c0cc69ce2911a316e097d853de08da0a03029b808b4dfc2f6d",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.after-renovation",
+      "revision": 1,
+      "content_hash": "e99519ff3b97ba7c5d78ffbaeb7ecdf3fd2f0c7921a3c44dcc9124480b8eff7f",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.allergy-dust",
+      "revision": 1,
+      "content_hash": "d5506d60d8ff0c6ba6c07fa99ebcb9c50098a26c3e5e480d88d12f45a1afdaf5",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.balcony-floor",
+      "revision": 1,
+      "content_hash": "95a41ecbe4860f4db139dd454e5a29dd3b5d53ec227d33c70c4a3c27a8ac3069",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.bathroom-scale",
+      "revision": 1,
+      "content_hash": "61be548206da7e98b5105a9f9c1c223b5d89f8b9485ffe802555b753c274335a",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.cabinet-empty",
+      "revision": 1,
+      "content_hash": "9d35c1b23560c956acb6596fd080ab2a7c24a2de8a44dae7625cbd5c8c10488b",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.chemical-mix",
+      "revision": 1,
+      "content_hash": "b83ff613497f9a414413c41b12cb825c84069c2072f23d244748470dcbc6aa87",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.child-area",
+      "revision": 1,
+      "content_hash": "eed8a10c26f595fecec20cf9e3524255390d9c1fe6183ce450cf83c1e421a9b7",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.desk-surface",
+      "revision": 1,
+      "content_hash": "effae6f46a988dc75fc38701144ad86bc73ab8d2a37f5c536522ad696fa54cc5",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.door-surface",
+      "revision": 1,
+      "content_hash": "25c83447a72aa46a3f9238c0298441de4ed08274b272cf3b2f4ca4c5104519a7",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.flood-clean",
+      "revision": 1,
+      "content_hash": "b5aa5270f975171465fd5a9ae7a82e54cf3ed0c5dad38a4238c83bd665cce1e1",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.fridge-inside",
+      "revision": 1,
+      "content_hash": "210755d37fcc2af6de813111afbe139387995fae6c600b829446fe575ac0cadf",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.grout-dirty",
+      "revision": 1,
+      "content_hash": "f2eed0a1dd65bbd8460e1d2b77095094f209ec38a93951246f3cf3575f186c34",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.high-ceiling",
+      "revision": 1,
+      "content_hash": "e2f4d4e04e5b3de773e04712df5dcc77afa30791b187adb3169161f460c5a9e5",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.hood-filter",
+      "revision": 1,
+      "content_hash": "4526edc0491935111637d77cc45f85b0ce8faefc13e69d97f3e6f1baecb43f20",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.kitchen-grease",
+      "revision": 1,
+      "content_hash": "3e0396a0c5d5dc164e9474e702514c08e3ec4adda4e43f13f09fab8f9de773b9",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.marble-stain",
+      "revision": 1,
+      "content_hash": "a3834c5d2cf157579e1d499aa99f4c943b411f217ef1ace0a38718f93b3d3fff",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.mirror",
+      "revision": 1,
+      "content_hash": "c27ff1cd0355d56b854e11c1b53dd3f28418b3601ee752ae2a2b5aa4a5b9e6b4",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.move-in",
+      "revision": 1,
+      "content_hash": "2acc5258a2e7068c383916c31cec5dcc4a172c9e53f5c66b57ff1841f8899baf",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.move-out",
+      "revision": 1,
+      "content_hash": "52a4a572a80a6e6d36e019e4ac4d70df2632f682ca28c506be7e3dc80597fddc",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.oven-inside",
+      "revision": 1,
+      "content_hash": "625d4c2e40bdb6323447bd0306ef37f681dcedf234a7895c988aa5a8fc92f138",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.pet-floor",
+      "revision": 1,
+      "content_hash": "809b95a90a2169032e7332f03fcdb63948d673535b64efaf7154e0fbe8a54ddf",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.shower-glass",
+      "revision": 1,
+      "content_hash": "bf89e6b6908a3e86c6174e6cf82b9da9bfd3c7592550c7656e405e8c1a8557ff",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.trash-odor",
+      "revision": 1,
+      "content_hash": "3466f1a0dbddac57faa5fd46c1a6718906a27330b0f1216b9764cbcfaa98801c",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.unknown-powder",
+      "revision": 1,
+      "content_hash": "a9a478aa5457a127a9d0d715840f5cdc667eeb61b2a0dce75c6a40ef60e3c819",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.wall-mold",
+      "revision": 1,
+      "content_hash": "9f16d3136612020baa8f592be75e32c9af8759e3bc6474e8eadfd32b685f18c8",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.wardrobe-empty",
+      "revision": 1,
+      "content_hash": "789943be01a79c9f074fab5c3d7f205fb556e7ad14c40421d27908d9175ea8ce",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.weekly-floor",
+      "revision": 1,
+      "content_hash": "9c672da83cd852cf0e97ab0d8461b7c8348bd542b862de002149b19f74a003ad",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.window-inside",
+      "revision": 1,
+      "content_hash": "679af0a4362b80f022ac13d5e2a8097281cacbdaf35cae699b4671823597d292",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.window-outside",
+      "revision": 1,
+      "content_hash": "6f6e1dea9cd632dd50408460955b8b0835571439f9a419721662bf7bd2b6ee1c",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "cleaning.wood-floor",
+      "revision": 1,
+      "content_hash": "a708b31ec84e8c1a213d7c33d6f11b9895dfad879555f38d0146a54a62e805d2",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.bathroom-light",
+      "revision": 1,
+      "content_hash": "7ce3ebc9ae9aae44f3df183f9c7d0860c7720ea664ede78d27c2e7019f265778",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.breaker-buzz",
+      "revision": 1,
+      "content_hash": "7bc2ec5c42701f89088d082db5a2f76b986080cfdcdf00de5d76eedff2b45997",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.breaker-trip",
+      "revision": 1,
+      "content_hash": "d0f1dc5b763b134e5c19872534e17611e24db9ad18b19f67d370fc836c8a8a31",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.broken-switch",
+      "revision": 1,
+      "content_hash": "63f9078e49032e8e81d5c322cbde754c53f2b55dba078007025dc0de06f19787",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.bulb-break",
+      "revision": 1,
+      "content_hash": "d390d6e820f929c9f3d24303120c167f74ab3e27f445ed6bd395567160d44dd7",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.burn-smell",
+      "revision": 1,
+      "content_hash": "9b5e754c8eafabd7af9d5cae75700987ca5531d5b280a6577fca9ad1ac246872",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.dim-whole-room",
+      "revision": 1,
+      "content_hash": "788dcb17fc8daf9d3f7413dcfecee5785f5d5fd87191bb510dad1eb203430be9",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.dimmer-fault",
+      "revision": 1,
+      "content_hash": "c8922e091c5f190298574273012e80851f790a962e554afded87cc0fc71ff17f",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.doorbell",
+      "revision": 1,
+      "content_hash": "096e4c706e6f86487615643b9f68442f1fbcdbab1841be8637c5d9c52d03a8b7",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.earthing-check",
+      "revision": 1,
+      "content_hash": "d303b71e03388055267b0e5e51f2b0c6a2fdf3bbe37b0923b9e6b8c747a92eb8",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.exhaust-dead",
+      "revision": 1,
+      "content_hash": "3d21ec1d9f250b224536f57dc1faf0a0fe6a92a32adf1df471a9b9a712e61b5c",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.extension-hot",
+      "revision": 1,
+      "content_hash": "773ff2db7c18b99ac3b64eca23d4d9a8f88bbc4fced6b7830c64df976f228964",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.fan-no-start",
+      "revision": 1,
+      "content_hash": "f3ee1a762678e8099a65f0d83ad4bf521ab1976397ef74ee92dee23c6fb31dca",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.fan-wobble",
+      "revision": 1,
+      "content_hash": "2fff30526bcd268cd44f35ff8fb7bb52c3615daa2a5f625ad4e8c7f85bc2c1b9",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.lamp-dead",
+      "revision": 1,
+      "content_hash": "b33fc2185fec00cedd4eb92857dba5ca2d04d22f45fd494fc6dbe60be3628ade",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.led-strip",
+      "revision": 1,
+      "content_hash": "b13da96e7f7de1f7cb1a5b6bf43331529ea5503abcd6f378a8b0b3c33d221e5b",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.light-flicker",
+      "revision": 1,
+      "content_hash": "13914db46d5659e5ad5c1334ab26b85073e581d6e2193a0e9e9157de0ac24512",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.light-hum",
+      "revision": 1,
+      "content_hash": "aa7248130dbdfdfaa070a300ca324479b8ef414eb4f720e7ccdb4f005771bff2",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.light-install",
+      "revision": 1,
+      "content_hash": "0783caa21bf4661d66b95afe5ced7f96d5be60b8616ac3e80d3d16ed9dba88da",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.loose-outlet",
+      "revision": 1,
+      "content_hash": "d56f17cfd7da5379eb39ce24484f2ad9323dca5ee4fdb942922333c840f13120",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.motion-sensor",
+      "revision": 1,
+      "content_hash": "6ee305ea4dfa0faef2f40fc0559057c95e98e12a97fffdba4002ed42566004a7",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.outdoor-light",
+      "revision": 1,
+      "content_hash": "6648662cd75f4471b00005203a9bc7e40974e257153eda2c277dcc84bd840a1a",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.outlet-dead",
+      "revision": 1,
+      "content_hash": "403c32cb6ebeade34b9cd76e46341a612eb6c4df430d0aace58b0e0da1dd4c37",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.power-after-drill",
+      "revision": 1,
+      "content_hash": "bf4eb03a7b2f09235dd130797b90278b12b62379acc3002878d854a407ad9ac1",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.remote-fan",
+      "revision": 1,
+      "content_hash": "ad0464c94b25cb5057d3121bd618d64ca0db9eb75766b9f4fb42cacdf6df1d83",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.shock-appliance",
+      "revision": 1,
+      "content_hash": "a5484a923c0ebf811f5edf0fb434e6fb855410540a429131e3bda224bc3e5575",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.socket-crackle",
+      "revision": 1,
+      "content_hash": "c7ca293cc2eddcfab857c318dfde993351055b80958702bfa719b1dfbea2b84b",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.switch-hot",
+      "revision": 1,
+      "content_hash": "8872668eb8e44f3638615be5f4179378ea437f53d6a625584e1d3ed144c4690a",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.timer-fault",
+      "revision": 1,
+      "content_hash": "1845ef2f90eee314b5fc3974a2bd05fa5d3deb3e2a13c07dfe3a7468c851486a",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "electrical.water-socket",
+      "revision": 1,
+      "content_hash": "393e317e36475a2306fa439744c4337b98719affdfc7a387c053ec7634f142f9",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.bed-squeak",
+      "revision": 1,
+      "content_hash": "f6d96cfdf59f8d52be6f17b8d47eb24481291402ec667a658dedaa46624040c0",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.cabinet-hinge",
+      "revision": 1,
+      "content_hash": "e23d3cb7e84e675b7873f4f22e8e870216ab8f1b7304538d7d0db0c892a1e342",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.cabinet-knob",
+      "revision": 1,
+      "content_hash": "6be0400d36f6c8f13fb3d65cf16a5979fa17eea5ddb44806df0a9d5019b80fe2",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.cabinet-shelf",
+      "revision": 1,
+      "content_hash": "1b7cc9d79a2b1678e9b08bf1b87fb9a4635a513692a4af670791264ecabf51a6",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.ceiling-panel",
+      "revision": 1,
+      "content_hash": "fbd6ea51fda3cbb75062dcd6b220d0c0329806506463444311f95834de392595",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.chair-loose",
+      "revision": 1,
+      "content_hash": "2f9c118210a1b100de97d67f00376f299e9c1892f968a6edb9bf7d97dbe7407e",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.curtain-rod",
+      "revision": 1,
+      "content_hash": "4728df07e62d97a793a9e401ac476621c3587be15b9ca39d5ba0306cbeba7520",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.door-handle",
+      "revision": 1,
+      "content_hash": "3b9e5b3d125d90dd2186e61af7cd83beaf7b9664abf5b722cf6db3d7107ca9c9",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.door-squeak",
+      "revision": 1,
+      "content_hash": "6f216cef35bb267ec113e439b3575afa8c96eca29b37ad856e09f6a35c9e90ed",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.door-stop",
+      "revision": 1,
+      "content_hash": "f731abb2d6e10ec1fea3a015f63c21de02d27972dc8b5022fab6b23478569ed1",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.drawer-rail",
+      "revision": 1,
+      "content_hash": "b787b11b0f93f41f3e7027d76566c77ca6dab42f2bc92b341bc999cc748e8077",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.floor-trim",
+      "revision": 1,
+      "content_hash": "199067f80090c4cf88763c32cc36ff03e7e4044ac57b92a373bec2b056cd140c",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.furniture-assemble",
+      "revision": 1,
+      "content_hash": "48b3b1ce634eab967a6889bd09ac26f25dc718759f811805309aa5bbb83c4cea",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.gas-hose",
+      "revision": 1,
+      "content_hash": "a11631b872e1df9418833bd790f3009e4e3175705af4420e55115ed636be2919",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.glass-crack",
+      "revision": 1,
+      "content_hash": "f611ede65b07c3eb6b9d5fd7aee8a16f2ad50512b2f0a2287c16d56c29b6f4ea",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.lock-stuck",
+      "revision": 1,
+      "content_hash": "0a3b3c64bdbea8ca7074077a84ce94706e9c30b9fa2281904613bd22d066f8b1",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.mirror-loose",
+      "revision": 1,
+      "content_hash": "00a067289d3328772c60c35e2f0a37731b563d3bf6d43e24d07a736cd98d980a",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.paint-peel",
+      "revision": 1,
+      "content_hash": "e5ff87fac5f81cbfcc579540a850028fca6c0638c575302523f9dd0cfa6b2332",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.picture-hang",
+      "revision": 1,
+      "content_hash": "f07b6236c1ac58e42e6623b04a4b55e49ec08c3a339b6d860ac12ab23ebd80ad",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.pressure-valve",
+      "revision": 1,
+      "content_hash": "4b9c72d224f528d427d221bf45b2f35f1d27578b79b14380911b0376e99f28c2",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.screen-mesh",
+      "revision": 1,
+      "content_hash": "da17ff3b1144bdaecb06cab908baf45386bbc7d5e9097c95563e481f879fca15",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.seal-door",
+      "revision": 1,
+      "content_hash": "4d4fa6d4e733c210c46e0f5ca17515f4b5df3491400024e73caf62ba61ba3545",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.shelf-mount",
+      "revision": 1,
+      "content_hash": "367b2632a2770a06ceb14e171db36a7071b59d2053c7674cf3095091b8d42570",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.silicone-edge",
+      "revision": 1,
+      "content_hash": "96890974a8075865ade62a26faaff8cda5e2f33bda39bd61602a2f242429127d",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.sliding-track",
+      "revision": 1,
+      "content_hash": "954b2fea5415bfaaf1ce33801210c039978849fb8643184a484ca175ac446738",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.table-wobble",
+      "revision": 1,
+      "content_hash": "8763be6df79a713b5bcb220e823348e9d47fe3774e99e966038f19aff5993a41",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.tile-loose",
+      "revision": 1,
+      "content_hash": "43cb1af7b9ccc96d823e62eea4decae7f5620990e5e4a67fa6e282df11301434",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.towel-rack",
+      "revision": 1,
+      "content_hash": "021b311b68f11e7ed7d751ee157b1d64bebab26feea3b3131b9ab26f82159df3",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.tv-bracket",
+      "revision": 1,
+      "content_hash": "65a4834c73f7a749b8d11d4192743e4dd4bd770dd629bced0282adfd0809c3be",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "minor_repairs.wall-crack",
+      "revision": 1,
+      "content_hash": "5a50bb2a64fac0986f9fc6dd0474155205406d3be0ea92460ed2e013197a85ab",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.balcony-drain",
+      "revision": 1,
+      "content_hash": "1b106ff3745ed0194d5ac6f8ea5964c01c515c5840094a47cbeac6bdcbd271e1",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.basin-crack",
+      "revision": 1,
+      "content_hash": "bbcbca967d669cae5fbe37d765e102d36c19bed6cedc6ffcbff597c358df2f03",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.bidet-leak",
+      "revision": 1,
+      "content_hash": "41ce57e7cb212baa7b9e6fe04809276473ab70784b02abb6b1e367460a189f73",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.ceiling-leak",
+      "revision": 1,
+      "content_hash": "a1831bb96ed93759d054e77b5573df4be950b9df07fc7aa06606bb3a25559eae",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.drain-gurgle",
+      "revision": 1,
+      "content_hash": "f776cd3707a23a5cf408579c59b2bef3ceff610b38e5cc7faf956ce2f12adf2d",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.drain-insects",
+      "revision": 1,
+      "content_hash": "1aec3479355c8bdfc151fbf58166a007ed7d15f38cbc7729df81c0930a84375a",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.filter-leak",
+      "revision": 1,
+      "content_hash": "2fb877e8d838736025663be3c5ae18bdb113483ae3460ad403b9ebaf9a527392",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.floor-drain-smell",
+      "revision": 1,
+      "content_hash": "4f93394355118bda73fb4d930fb6cd6d71189b0be270fd3c4333f461289e837c",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.heater-leak",
+      "revision": 1,
+      "content_hash": "ad7b5859d4826298e6660b14815343de620ee8ffb1803aeec380fdf5bb10c484",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.hidden-drain",
+      "revision": 1,
+      "content_hash": "6bfdcdf5879d4ec76b3d17ea25a0edd5b064c3b1c3b3ee885b6097a9acd60ac8",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.hose-burst",
+      "revision": 1,
+      "content_hash": "dec638ea7df70e246a5ae2891e37267569f1797e7555376c478d9a6cd494a60a",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.meter-moving",
+      "revision": 1,
+      "content_hash": "2ea8c18c079496f2ad10e392fdba324054334df2faa3225574caddfaba769bc9",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.no-water",
+      "revision": 1,
+      "content_hash": "26717ede0a821d71c34946ce3da476760bbed64519540ec1f7c7be1f3f4a00b9",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.odor-basin",
+      "revision": 1,
+      "content_hash": "36b0d242b2895473fc3b42472f8b8ac02781dab9fec1d6d9864dacb8df90126d",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.pipe-hammer",
+      "revision": 1,
+      "content_hash": "a99241a3743becb91c7aa3b4fc4e6fb446d0901ba1c37dff4c41d597b6dd4098",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.pipe-wall",
+      "revision": 1,
+      "content_hash": "4ae7e5344be254da6d950a5b4774e23e7b43e36d146a567e22d2e628d3f8d2dc",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.shower-temp",
+      "revision": 1,
+      "content_hash": "3a0c4af92902f14e4e2f5125999057343985e82633070ce211d252577f299191",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.shower-weak",
+      "revision": 1,
+      "content_hash": "a5f8f1d5d103791ac1baad14c8bbfac3511c59f1cefb03feff62bfefae32befd",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.sink-seal",
+      "revision": 1,
+      "content_hash": "a8144a11db65098f9d67477543875af44ba933da1c5aa06856bc965f005aa074",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.sink-slow",
+      "revision": 1,
+      "content_hash": "b3e5c556219eb2af9821c04b1ac86c88ccaf01d8e5a2726034ed8cf9b197714c",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.tap-drip",
+      "revision": 1,
+      "content_hash": "d732b4af01a885d957d5a40aa631441b32fa75c6567bc38cbe694674c39f300b",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.tap-loose",
+      "revision": 1,
+      "content_hash": "e8cafed4f4b487b3667c5e22ed85ebd01f3f0598f7e10ba95c2124835789a064",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.tap-replace",
+      "revision": 1,
+      "content_hash": "c4e70a9b4de5e300e5d8e65f3d0c93870f036eb25eb06ae60ea1441a39b801f0",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.toilet-base",
+      "revision": 1,
+      "content_hash": "ffa979c5d050057f974392e23791bef7bc401d615a90d3ef299bf1ef266944f0",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.toilet-block",
+      "revision": 1,
+      "content_hash": "ebbd4fc1cff3d95714ccb268e761f3878144754b60cff8c01e34a4cb4d878c39",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.toilet-running",
+      "revision": 1,
+      "content_hash": "d648282d0a3733f824b7c93bfca5cca4b8c9df660aa3d05d742ce9f251183b19",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.under-sink-leak",
+      "revision": 1,
+      "content_hash": "00b0310dc01e8af6fd70392be4360cd352429f5173cff544398feb9182503dcc",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.valve-stuck",
+      "revision": 1,
+      "content_hash": "ce292f5521579a36d37e69a6da47c923adc415056f825e8da7c1c4a5f66199ec",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.washer-drain",
+      "revision": 1,
+      "content_hash": "95934ae57efb48ed904e7257ea411a4628474e17131ef9ec69eb5ca6dff68bb7",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "plumbing.water-brown",
+      "revision": 1,
+      "content_hash": "8826c3958b907e9a3bbfb85254d01640f87c721be47c6bfb0a57d29e28e83319",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "policy.fees",
+      "revision": 1,
+      "content_hash": "6b2db640856d8db1198c96b22ab8921efed55d8a6eac4a172fe54ae26d1f53d2",
+      "publication": "draft_unapproved",
+      "provenance": "agent_draft"
+    },
+    {
+      "source_id": "policy.intake",
+      "revision": 1,
+      "content_hash": "0dea6a4c9e4415124f382a75cea74957c11773c6ce4869ef9a405f1855e71a26",
+      "publication": "draft_unapproved",
+      "provenance": "agent_draft"
+    },
+    {
+      "source_id": "policy.payment",
+      "revision": 1,
+      "content_hash": "eaa74bd8025175d5eeaa4c2f57b0990e2536234228fd39852a2c0c78011325af",
+      "publication": "draft_unapproved",
+      "provenance": "agent_draft"
+    },
+    {
+      "source_id": "policy.refund",
+      "revision": 1,
+      "content_hash": "7987fdba49aef3815d0a9338e452a5a50b400e02ddc316287d450a15331463ae",
+      "publication": "draft_unapproved",
+      "provenance": "agent_draft"
+    },
+    {
+      "source_id": "policy.report-errors",
+      "revision": 1,
+      "content_hash": "0cbd0abf49d958a9da91551c00b249498637c500338db1e3197f84d3d8851dcf",
+      "publication": "draft_unapproved",
+      "provenance": "agent_draft"
+    },
+    {
+      "source_id": "policy.service-availability",
+      "revision": 1,
+      "content_hash": "1155498097e8e625b379a3b88cafc8f0aac596c2b53279356cc296d03d6651f0",
+      "publication": "draft_unapproved",
+      "provenance": "agent_draft"
+    },
+    {
+      "source_id": "policy.sla",
+      "revision": 1,
+      "content_hash": "14b2bdb9a3ab84291d88d2cc3d0a17ab609312c231595bd3fccc3c879745a2a1",
+      "publication": "draft_unapproved",
+      "provenance": "agent_draft"
+    },
+    {
+      "source_id": "policy.warranty",
+      "revision": 1,
+      "content_hash": "1f0e852b1b664b96a38bea6c6224688337c0b1e2a6d13252c1435a66f39edc37",
+      "publication": "draft_unapproved",
+      "provenance": "agent_draft"
+    },
+    {
+      "source_id": "policy.worker-adjustment",
+      "revision": 1,
+      "content_hash": "d7c654e9d0dcc003768d71073e55771fa167260473d73e7fac9a6de1e52f037f",
+      "publication": "draft_unapproved",
+      "provenance": "agent_draft"
+    },
+    {
+      "source_id": "product.capabilities",
+      "revision": 1,
+      "content_hash": "ff709a3355e6c60ab9af8b743c7c0feeed778609b4dc376b2d6ba31f51de8a6f",
+      "publication": "published",
+      "provenance": "repository_contract"
+    },
+    {
+      "source_id": "product.general",
+      "revision": 1,
+      "content_hash": "6b56a66be83dd7e494fd9aa67cf6b19267c1119fb67798e1355b3cdb5d4ef1e4",
+      "publication": "published",
+      "provenance": "repository_contract"
+    },
+    {
+      "source_id": "product.identity",
+      "revision": 1,
+      "content_hash": "a2381b2757e9d5cc70f644c0b397346083b337ae22f9806ac41c6c8b49cc372a",
+      "publication": "published",
+      "provenance": "repository_contract"
+    },
+    {
+      "source_id": "product.lifecycle",
+      "revision": 1,
+      "content_hash": "defa6c3eb8c519ba4f1c877a0455ba987715ae6e32b673698d61221bbf57c76b",
+      "publication": "published",
+      "provenance": "repository_contract"
+    },
+    {
+      "source_id": "product.limits",
+      "revision": 1,
+      "content_hash": "cfc233b6fd3b2c45644f4a15901d46cac039dc3acde4a644f67dad9967176ca7",
+      "publication": "published",
+      "provenance": "repository_contract"
+    },
+    {
+      "source_id": "product.permissions",
+      "revision": 1,
+      "content_hash": "dad2fdf5d44b8c241a477fe26ff0c99ce00c3a763e61430892ffa608d9bd4646",
+      "publication": "published",
+      "provenance": "repository_contract"
+    },
+    {
+      "source_id": "product.privacy",
+      "revision": 1,
+      "content_hash": "f615f65de9811bac4cf050e21db97dd7008a20660ca673d1f4ef31043f6d48a1",
+      "publication": "published",
+      "provenance": "repository_contract"
+    },
+    {
+      "source_id": "product.provenance",
+      "revision": 1,
+      "content_hash": "6e3c847e488b2884d7727e5100f5d54425981de4c743f4b2c8544ffd80dfb1ab",
+      "publication": "published",
+      "provenance": "repository_contract"
+    },
+    {
+      "source_id": "product.safety",
+      "revision": 1,
+      "content_hash": "378c06908ba233ac12ddbf532547f72c4482d152101c11c72351bb304565d90f",
+      "publication": "published",
+      "provenance": "repository_contract"
+    },
+    {
+      "source_id": "product.transparency",
+      "revision": 1,
+      "content_hash": "866347296bb463b2927b460f9ea4986a00091bd6170427e93e1cec7ebb413e1b",
+      "publication": "published",
+      "provenance": "repository_contract"
+    },
+    {
+      "source_id": "upholstery.carpet-dust",
+      "revision": 1,
+      "content_hash": "bf6fa932f07e2fb90bd14a4f63ae546ca4cebe215e7d07454a9119d21d512301",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.carpet-wine",
+      "revision": 1,
+      "content_hash": "da3c88eef8c803144fad5d87446561fdb2df6f3ef97ff412096e85661696b2f2",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.chair-seat",
+      "revision": 1,
+      "content_hash": "175ff2b9652b630233b3172d08b720da2830a4b60b00117a6b732f2e7ec15a41",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.curtain-dust",
+      "revision": 1,
+      "content_hash": "5a639034fcaadaf62b882a3db98d53b8f4b3bec16dfdb59b034a3164f33ab6ca",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.curtain-shrink",
+      "revision": 1,
+      "content_hash": "cef53d5452a2ab4b0491d905c636d16c47df12a4836dd1be0ebe43e635ae7cae",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.cushion-cover",
+      "revision": 1,
+      "content_hash": "e5e77c5014db248b00b805ee2162c5c2e7b4edaac3e2fa4e2019ed0eab8eeba7",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.fabric-color",
+      "revision": 1,
+      "content_hash": "16f23c8575b7a340aa448b81221b9077df37b2ef5131a7cc096c1646daf7bd18",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.headboard",
+      "revision": 1,
+      "content_hash": "2379ea6d23c91184275bf923c1ca68c6142f2912cf6b1ca059c45de24c221511",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.mattress-blood",
+      "revision": 1,
+      "content_hash": "0c31b14aeec39e6a2205e12191cb34ca2a07ced8f8dd631a34977fc79de9854b",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.mattress-dust",
+      "revision": 1,
+      "content_hash": "3363db44176b0f47624759c07124d4cbcdffd898b4c4a0496d9bd3451b22037d",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.mattress-mold",
+      "revision": 1,
+      "content_hash": "22283fa957cf98964684a6af71785807c7c604c251d9973336d210663dc61bdb",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.mattress-urine",
+      "revision": 1,
+      "content_hash": "ac8e642635a73794df7374c28476a164852561678dbd91365308365e74f26f45",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.office-chair",
+      "revision": 1,
+      "content_hash": "c137690ebaaa3811b06ad127b8da8a1a8350026ab51cedc8b99beb93b078fc13",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.pet-hair",
+      "revision": 1,
+      "content_hash": "4bb6509e88885996a9305b662613416fee09c28dcc3c1e3eff16601724cb0163",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.silk-fabric",
+      "revision": 1,
+      "content_hash": "948960206aa04c49dde87334cad57d8ec665c38c29739241dc2145c3179726c4",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.sofa-coffee",
+      "revision": 1,
+      "content_hash": "fd0517dd2915571b2b5fe6409bf418719dfb4325992af0490b66da0583aa72d1",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.sofa-dust",
+      "revision": 1,
+      "content_hash": "a5f43476412a149e969ee337fc60eaa3b6de04d422ddc71299d1664efec4c5c6",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.sofa-leather",
+      "revision": 1,
+      "content_hash": "6db5a9122706e5788c8c45837aa86776e1dcf792474a66c6b67a0ad40097595c",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.sofa-musty",
+      "revision": 1,
+      "content_hash": "d6cc6c82258e3b1514e7acf2874c4715460f740666bf197de25c99fc902ef500",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.sofa-peeling",
+      "revision": 1,
+      "content_hash": "1377dd78a24e08e9032df4302c0201c82c6415b2be28dcecf46ee26de262fb30",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.sofa-pet",
+      "revision": 1,
+      "content_hash": "2c994881c5094eb1c14f43d6d7c07117e4aa6dda7b8d03271fa405f887dd2f3f",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.sofa-smoke",
+      "revision": 1,
+      "content_hash": "d0541cc76c3e3ff2904c8fb426c4d8c4849659c8cb12d5db6b7a14464d7f8ad7",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.surface-adhesive",
+      "revision": 1,
+      "content_hash": "1edd7c146845c6c13804adf79d0749068579c3d4220a85159f76c199fe9d402f",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.surface-scratch",
+      "revision": 1,
+      "content_hash": "3145500e0f4a3ec0c66fc310b42ec821ac30a132a3bd7a97a61181b6d6464fa5",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    },
+    {
+      "source_id": "upholstery.velvet-sofa",
+      "revision": 1,
+      "content_hash": "205ce87febc1b76fd7686dac3accbdccebb8590425226848658a8c579bc3410b",
+      "publication": "published",
+      "provenance": "synthetic_seed"
+    }
+  ]
+}
