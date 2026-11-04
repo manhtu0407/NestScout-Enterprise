@@ -262,11 +262,11 @@ const config = (overrides = {}) => ({ ...readKaelConfig(baseEnv), ...overrides }
 test('capability selection depends on mode, verified capability and owner-enabled effects, never on the model', () => {
   const customer = { userId: users.customer.id, capabilities: new Set(['customer']), mode: 'client' };
   const names = (actor, cfg = config()) => selectTools(actor, cfg).map(tool => tool.id);
-  assert.deepEqual(names(customer), ['task_create', 'task_update', 'service_request_draft', 'customer_requests']);
+  assert.deepEqual(names(customer), ['task_create', 'task_update', 'service_request_draft', 'customer_requests', 'knowledge_search', 'price_estimate_preview']);
   assert.ok(names(customer, config({ enabledEffects: new Set(['service_request_submit']) })).includes('service_request_submit'));
   assert.ok(names(customer, config({ perplexity: { apiKey: 'k', maxResults: 5, timeoutMs: 1 } })).includes('web_search'));
-  assert.deepEqual(names({ ...customer, mode: 'worker' }), ['task_create', 'task_update'], 'worker mode without worker capability exposes no worker data');
-  assert.deepEqual(names({ ...customer, mode: 'worker', capabilities: new Set(['customer', 'worker']) }), ['task_create', 'task_update', 'worker_jobs', 'worker_earnings', 'worker_job_status']);
+  assert.deepEqual(names({ ...customer, mode: 'worker' }), ['task_create', 'task_update', 'knowledge_search', 'price_estimate_preview'], 'worker mode without worker capability exposes no worker data');
+  assert.deepEqual(names({ ...customer, mode: 'worker', capabilities: new Set(['customer', 'worker']) }), ['task_create', 'task_update', 'worker_jobs', 'worker_earnings', 'worker_job_status', 'knowledge_search', 'price_estimate_preview']);
 
   const offered = selectTools(customer, config());
   const deny = (name, input, cfg = config()) => evaluateCall({ id: 'c', name, input }, offered, customer, cfg, 0);
@@ -365,6 +365,8 @@ const validInputs = {
   worker_earnings: {},
   worker_job_status: { job_id: users.customer.id },
   web_search: { query: 'giá điện sinh hoạt' },
+  knowledge_search: { query: 'Máy lạnh chảy nước' },
+  price_estimate_preview: { case_id: 'cleaning.desk-surface', scope_confirmed: true, area_m2: 1, units: 1, material: 'coated_wood', floor_access: true, clear_surface: true, no_visible_damage: true },
 };
 
 test('each operation has one execution class and only explicit confirmation turns a call into an approval', () => {
@@ -389,7 +391,7 @@ test('each operation has one execution class and only explicit confirmation turn
 
 test('the workflow reference maps every Kael capability exactly as the registry and executor define it', () => {
   const doc = readFileSync(new URL('../docs/service-workflow.md', import.meta.url), 'utf8');
-  const executor = readFileSync(new URL('../services/kael-core/src/executor.ts', import.meta.url), 'utf8');
+  const executor = ['executor.ts', 'intelligence.ts'].map(file => readFileSync(new URL(`../services/kael-core/src/${file}`, import.meta.url), 'utf8')).join('\n');
   const section = doc.split('\n## Kael capability boundary\n')[1].split('\n## ')[0];
   const rows = [...section.matchAll(/^\| `([a-z_]+)` \| ([a-z_]+) \| ([a-z_]+) \| ([^|]+) \| ([^|]+) \|/gm)]
     .map(match => ({ id: match[1], executionClass: match[2], resource: match[3], permission: match[4], command: match[5] }));

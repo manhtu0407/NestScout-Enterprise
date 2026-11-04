@@ -1,0 +1,1343 @@
+{
+  "evidence_type": "local_postgres_real_sql",
+  "measured_at": "2026-11-04T13:21:56.660Z",
+  "corpus_version": "kael-vi-2026-11-04-v1",
+  "corpus_hash": "64209006e86dea921c33fa7454f3eab687e177b27246c66f521819debd38cc1a",
+  "retrieval_implementation": "lexical-v1",
+  "migration_hash": "78ab933a4b2780b41b0cf2949cf47cf6a805a7fe003d5c8d74af487483f86c1a",
+  "probe_hash": "956214f78997ae338a050de90d5032e9b9cb352bfcd3b7597961de1747a85a8b",
+  "probe_provenance": "agent_authored_separately_from_corpus; agent_validated; not_human_reviewed",
+  "environment": {
+    "platform": "win32 10.0.26200",
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12700H",
+    "logical_cpus": 20,
+    "memory_gib": 16,
+    "node": "v24.19.0",
+    "postgres": "17.11",
+    "latency_scope": "SQL function only; excludes transport and model generation; one ordered pass, exact_alias then lexical per probe"
+  },
+  "semantic_hybrid": "NOT IMPLEMENTED / NOT RUN; no embeddings or paid calls",
+  "response_quality": "NOT RUN; retrieval is not generated-answer groundedness or human review",
+  "metrics": [
+    {
+      "strategy": "exact_alias",
+      "probes": 72,
+      "positive_probes": 59,
+      "recall_at_3": 0.059322033898305086,
+      "recall_at_5": 0.059322033898305086,
+      "mrr_at_10": 0.06779661016949153,
+      "no_result_precision": 0.19117647058823528,
+      "empty_results": 68,
+      "false_positive_no_match_queries": [],
+      "duplicate_source_rate": 0,
+      "p50_sql_ms": 4.551,
+      "p95_sql_ms": 6.388,
+      "returned_sources": 4,
+      "tool_calls": 72,
+      "safety_probes": 8,
+      "safety_recall_at_5": 0.25,
+      "misses_at_5": [
+        "intent-01",
+        "intent-02",
+        "intent-03",
+        "intent-04",
+        "intent-05",
+        "intent-06",
+        "intent-07",
+        "intent-08",
+        "intent-09",
+        "intent-10",
+        "intent-11",
+        "intent-12",
+        "colloquial-01",
+        "colloquial-02",
+        "colloquial-03",
+        "colloquial-04",
+        "colloquial-05",
+        "colloquial-06",
+        "colloquial-07",
+        "colloquial-08",
+        "colloquial-09",
+        "colloquial-10",
+        "ambiguous-01",
+        "ambiguous-02",
+        "ambiguous-03",
+        "ambiguous-04",
+        "ambiguous-05",
+        "ambiguous-06",
+        "ambiguous-07",
+        "ambiguous-08",
+        "safety-01",
+        "safety-02",
+        "safety-04",
+        "safety-06",
+        "safety-07",
+        "safety-08",
+        "policy-01",
+        "policy-02",
+        "policy-03",
+        "pricing-01",
+        "pricing-02",
+        "pricing-03",
+        "pricing-04",
+        "pricing-05",
+        "pricing-06",
+        "regression-01",
+        "regression-02",
+        "regression-03",
+        "regression-04",
+        "regression-05",
+        "regression-06",
+        "regression-07",
+        "regression-08",
+        "regression-09",
+        "regression-10",
+        "regression-11"
+      ]
+    },
+    {
+      "strategy": "lexical",
+      "probes": 72,
+      "positive_probes": 59,
+      "recall_at_3": 0.9152542372881356,
+      "recall_at_5": 0.9152542372881356,
+      "mrr_at_10": 0.8954802259887006,
+      "no_result_precision": 0.9166666666666666,
+      "empty_results": 12,
+      "false_positive_no_match_queries": [
+        "policy-06",
+        "negative-04"
+      ],
+      "duplicate_source_rate": 0,
+      "p50_sql_ms": 4.617,
+      "p95_sql_ms": 7.444,
+      "returned_sources": 136,
+      "tool_calls": 72,
+      "safety_probes": 8,
+      "safety_recall_at_5": 1,
+      "misses_at_5": [
+        "intent-04",
+        "ambiguous-01",
+        "ambiguous-02",
+        "ambiguous-03",
+        "ambiguous-04",
+        "pricing-04",
+        "pricing-05"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "id": "intent-01",
+      "strategy": "exact_alias",
+      "latency_ms": 13.759,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-01",
+      "strategy": "lexical",
+      "latency_ms": 7.537,
+      "status": "matched",
+      "sources": [
+        "electrical.breaker-trip",
+        "air_conditioning.short-circuit",
+        "electrical.breaker-buzz"
+      ]
+    },
+    {
+      "id": "intent-02",
+      "strategy": "exact_alias",
+      "latency_ms": 4.621,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-02",
+      "strategy": "lexical",
+      "latency_ms": 4.978,
+      "status": "matched",
+      "sources": [
+        "electrical.switch-hot"
+      ]
+    },
+    {
+      "id": "intent-03",
+      "strategy": "exact_alias",
+      "latency_ms": 5.243,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-03",
+      "strategy": "lexical",
+      "latency_ms": 5.412,
+      "status": "matched",
+      "sources": [
+        "plumbing.sink-slow"
+      ]
+    },
+    {
+      "id": "intent-04",
+      "strategy": "exact_alias",
+      "latency_ms": 5.703,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-04",
+      "strategy": "lexical",
+      "latency_ms": 5.339,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-05",
+      "strategy": "exact_alias",
+      "latency_ms": 4.755,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-05",
+      "strategy": "lexical",
+      "latency_ms": 5.868,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.condensation-pipe",
+        "air_conditioning.indoor-water",
+        "plumbing.filter-leak",
+        "plumbing.heater-leak"
+      ]
+    },
+    {
+      "id": "intent-06",
+      "strategy": "exact_alias",
+      "latency_ms": 4.172,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-06",
+      "strategy": "lexical",
+      "latency_ms": 4.153,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.outdoor-noise"
+      ]
+    },
+    {
+      "id": "intent-07",
+      "strategy": "exact_alias",
+      "latency_ms": 4.199,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-07",
+      "strategy": "lexical",
+      "latency_ms": 4.896,
+      "status": "matched",
+      "sources": [
+        "cleaning.kitchen-grease",
+        "cleaning.window-inside"
+      ]
+    },
+    {
+      "id": "intent-08",
+      "strategy": "exact_alias",
+      "latency_ms": 4.21,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-08",
+      "strategy": "lexical",
+      "latency_ms": 4.286,
+      "status": "matched",
+      "sources": [
+        "cleaning.after-renovation"
+      ]
+    },
+    {
+      "id": "intent-09",
+      "strategy": "exact_alias",
+      "latency_ms": 4.483,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-09",
+      "strategy": "lexical",
+      "latency_ms": 4.759,
+      "status": "matched",
+      "sources": [
+        "upholstery.sofa-coffee"
+      ]
+    },
+    {
+      "id": "intent-10",
+      "strategy": "exact_alias",
+      "latency_ms": 4.596,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-10",
+      "strategy": "lexical",
+      "latency_ms": 4.456,
+      "status": "matched",
+      "sources": [
+        "upholstery.mattress-mold"
+      ]
+    },
+    {
+      "id": "intent-11",
+      "strategy": "exact_alias",
+      "latency_ms": 4.204,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-11",
+      "strategy": "lexical",
+      "latency_ms": 4.213,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.cabinet-hinge"
+      ]
+    },
+    {
+      "id": "intent-12",
+      "strategy": "exact_alias",
+      "latency_ms": 3.935,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "intent-12",
+      "strategy": "lexical",
+      "latency_ms": 3.722,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.drawer-rail",
+        "cleaning.cabinet-empty",
+        "minor_repairs.sliding-track"
+      ]
+    },
+    {
+      "id": "colloquial-01",
+      "strategy": "exact_alias",
+      "latency_ms": 4.037,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "colloquial-01",
+      "strategy": "lexical",
+      "latency_ms": 7.444,
+      "status": "matched",
+      "sources": [
+        "electrical.breaker-trip"
+      ]
+    },
+    {
+      "id": "colloquial-02",
+      "strategy": "exact_alias",
+      "latency_ms": 4.891,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "colloquial-02",
+      "strategy": "lexical",
+      "latency_ms": 4.708,
+      "status": "matched",
+      "sources": [
+        "electrical.socket-crackle",
+        "air_conditioning.burning",
+        "electrical.burn-smell"
+      ]
+    },
+    {
+      "id": "colloquial-03",
+      "strategy": "exact_alias",
+      "latency_ms": 4.924,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "colloquial-03",
+      "strategy": "lexical",
+      "latency_ms": 4.578,
+      "status": "matched",
+      "sources": [
+        "plumbing.tap-drip"
+      ]
+    },
+    {
+      "id": "colloquial-04",
+      "strategy": "exact_alias",
+      "latency_ms": 4.41,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "colloquial-04",
+      "strategy": "lexical",
+      "latency_ms": 5.819,
+      "status": "matched",
+      "sources": [
+        "plumbing.sink-slow"
+      ]
+    },
+    {
+      "id": "colloquial-05",
+      "strategy": "exact_alias",
+      "latency_ms": 4.939,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "colloquial-05",
+      "strategy": "lexical",
+      "latency_ms": 6.819,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.indoor-water",
+        "air_conditioning.ceiling-cassette",
+        "plumbing.heater-leak"
+      ]
+    },
+    {
+      "id": "colloquial-06",
+      "strategy": "exact_alias",
+      "latency_ms": 4.771,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "colloquial-06",
+      "strategy": "lexical",
+      "latency_ms": 5.076,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.musty-smell"
+      ]
+    },
+    {
+      "id": "colloquial-07",
+      "strategy": "exact_alias",
+      "latency_ms": 3.867,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "colloquial-07",
+      "strategy": "lexical",
+      "latency_ms": 3.643,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.bed-squeak"
+      ]
+    },
+    {
+      "id": "colloquial-08",
+      "strategy": "exact_alias",
+      "latency_ms": 4.907,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "colloquial-08",
+      "strategy": "lexical",
+      "latency_ms": 4.531,
+      "status": "matched",
+      "sources": [
+        "upholstery.pet-hair",
+        "upholstery.sofa-pet"
+      ]
+    },
+    {
+      "id": "colloquial-09",
+      "strategy": "exact_alias",
+      "latency_ms": 3.837,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "colloquial-09",
+      "strategy": "lexical",
+      "latency_ms": 5.076,
+      "status": "matched",
+      "sources": [
+        "cleaning.balcony-floor",
+        "air_conditioning.outdoor-noise",
+        "cleaning.after-renovation",
+        "cleaning.allergy-dust",
+        "cleaning.flood-clean",
+        "cleaning.pet-floor",
+        "cleaning.wardrobe-empty",
+        "cleaning.weekly-floor",
+        "electrical.outdoor-light",
+        "plumbing.balcony-drain"
+      ]
+    },
+    {
+      "id": "colloquial-10",
+      "strategy": "exact_alias",
+      "latency_ms": 4.789,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "colloquial-10",
+      "strategy": "lexical",
+      "latency_ms": 5.139,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.cabinet-hinge"
+      ]
+    },
+    {
+      "id": "ambiguous-01",
+      "strategy": "exact_alias",
+      "latency_ms": 4.354,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "ambiguous-01",
+      "strategy": "lexical",
+      "latency_ms": 4.979,
+      "status": "matched",
+      "sources": [
+        "electrical.water-socket",
+        "minor_repairs.shelf-mount",
+        "air_conditioning.wall-damp",
+        "cleaning.wall-mold",
+        "electrical.loose-outlet",
+        "electrical.power-after-drill",
+        "plumbing.pipe-wall"
+      ]
+    },
+    {
+      "id": "ambiguous-02",
+      "strategy": "exact_alias",
+      "latency_ms": 4.973,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "ambiguous-02",
+      "strategy": "lexical",
+      "latency_ms": 5.73,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.musty-smell",
+        "upholstery.office-chair"
+      ]
+    },
+    {
+      "id": "ambiguous-03",
+      "strategy": "exact_alias",
+      "latency_ms": 4.414,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "ambiguous-03",
+      "strategy": "lexical",
+      "latency_ms": 4.834,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.ceiling-cassette",
+        "air_conditioning.deep-clean"
+      ]
+    },
+    {
+      "id": "ambiguous-04",
+      "strategy": "exact_alias",
+      "latency_ms": 4.585,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "ambiguous-04",
+      "strategy": "lexical",
+      "latency_ms": 4.996,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.floor-trim"
+      ]
+    },
+    {
+      "id": "ambiguous-05",
+      "strategy": "exact_alias",
+      "latency_ms": 4.827,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "ambiguous-05",
+      "strategy": "lexical",
+      "latency_ms": 6.958,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.short-circuit",
+        "electrical.breaker-trip",
+        "air_conditioning.error-display",
+        "air_conditioning.high-bill",
+        "air_conditioning.louver-stuck",
+        "air_conditioning.musty-smell",
+        "electrical.power-after-drill"
+      ]
+    },
+    {
+      "id": "ambiguous-06",
+      "strategy": "exact_alias",
+      "latency_ms": 6.927,
+      "status": "matched",
+      "sources": [
+        "plumbing.under-sink-leak"
+      ]
+    },
+    {
+      "id": "ambiguous-06",
+      "strategy": "lexical",
+      "latency_ms": 8.012,
+      "status": "matched",
+      "sources": [
+        "plumbing.under-sink-leak",
+        "plumbing.basin-crack",
+        "plumbing.sink-seal",
+        "plumbing.sink-slow"
+      ]
+    },
+    {
+      "id": "ambiguous-07",
+      "strategy": "exact_alias",
+      "latency_ms": 4.569,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "ambiguous-07",
+      "strategy": "lexical",
+      "latency_ms": 4.32,
+      "status": "matched",
+      "sources": [
+        "upholstery.sofa-peeling",
+        "upholstery.sofa-leather"
+      ]
+    },
+    {
+      "id": "ambiguous-08",
+      "strategy": "exact_alias",
+      "latency_ms": 4.716,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "ambiguous-08",
+      "strategy": "lexical",
+      "latency_ms": 4.753,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.wall-damp",
+        "air_conditioning.indoor-water",
+        "air_conditioning.vibration-pipe",
+        "plumbing.pipe-wall"
+      ]
+    },
+    {
+      "id": "safety-01",
+      "strategy": "exact_alias",
+      "latency_ms": 4.206,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "safety-01",
+      "strategy": "lexical",
+      "latency_ms": 4.774,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.burning",
+        "electrical.burn-smell"
+      ]
+    },
+    {
+      "id": "safety-02",
+      "strategy": "exact_alias",
+      "latency_ms": 4.943,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "safety-02",
+      "strategy": "lexical",
+      "latency_ms": 4.469,
+      "status": "matched",
+      "sources": [
+        "electrical.shock-appliance"
+      ]
+    },
+    {
+      "id": "safety-03",
+      "strategy": "exact_alias",
+      "latency_ms": 4.184,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.gas-hose"
+      ]
+    },
+    {
+      "id": "safety-03",
+      "strategy": "lexical",
+      "latency_ms": 4.186,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.gas-hose"
+      ]
+    },
+    {
+      "id": "safety-04",
+      "strategy": "exact_alias",
+      "latency_ms": 4.437,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "safety-04",
+      "strategy": "lexical",
+      "latency_ms": 4.49,
+      "status": "matched",
+      "sources": [
+        "cleaning.chemical-mix"
+      ]
+    },
+    {
+      "id": "safety-05",
+      "strategy": "exact_alias",
+      "latency_ms": 5.037,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.wall-crack"
+      ]
+    },
+    {
+      "id": "safety-05",
+      "strategy": "lexical",
+      "latency_ms": 5.567,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.wall-crack"
+      ]
+    },
+    {
+      "id": "safety-06",
+      "strategy": "exact_alias",
+      "latency_ms": 4.751,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "safety-06",
+      "strategy": "lexical",
+      "latency_ms": 4.496,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.pressure-valve",
+        "product.safety"
+      ]
+    },
+    {
+      "id": "safety-07",
+      "strategy": "exact_alias",
+      "latency_ms": 4.027,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "safety-07",
+      "strategy": "lexical",
+      "latency_ms": 4.551,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.outdoor-access"
+      ]
+    },
+    {
+      "id": "safety-08",
+      "strategy": "exact_alias",
+      "latency_ms": 5.433,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "safety-08",
+      "strategy": "lexical",
+      "latency_ms": 4.705,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.mirror-loose"
+      ]
+    },
+    {
+      "id": "policy-01",
+      "strategy": "exact_alias",
+      "latency_ms": 3.853,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "policy-01",
+      "strategy": "lexical",
+      "latency_ms": 3.998,
+      "status": "matched",
+      "sources": [
+        "product.permissions",
+        "product.limits",
+        "product.safety"
+      ]
+    },
+    {
+      "id": "policy-02",
+      "strategy": "exact_alias",
+      "latency_ms": 5.674,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "policy-02",
+      "strategy": "lexical",
+      "latency_ms": 6.463,
+      "status": "matched",
+      "sources": [
+        "product.lifecycle",
+        "product.limits",
+        "product.general",
+        "electrical.motion-sensor",
+        "product.capabilities"
+      ]
+    },
+    {
+      "id": "policy-03",
+      "strategy": "exact_alias",
+      "latency_ms": 6.39,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "policy-03",
+      "strategy": "lexical",
+      "latency_ms": 4.457,
+      "status": "matched",
+      "sources": [
+        "product.permissions"
+      ]
+    },
+    {
+      "id": "policy-04",
+      "strategy": "exact_alias",
+      "latency_ms": 5.235,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "policy-04",
+      "strategy": "lexical",
+      "latency_ms": 3.836,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "policy-05",
+      "strategy": "exact_alias",
+      "latency_ms": 3.398,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "policy-05",
+      "strategy": "lexical",
+      "latency_ms": 3.284,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "policy-06",
+      "strategy": "exact_alias",
+      "latency_ms": 4.618,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "policy-06",
+      "strategy": "lexical",
+      "latency_ms": 13.834,
+      "status": "matched",
+      "sources": [
+        "product.transparency"
+      ]
+    },
+    {
+      "id": "general-01",
+      "strategy": "exact_alias",
+      "latency_ms": 4.2,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "general-01",
+      "strategy": "lexical",
+      "latency_ms": 4.194,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "general-02",
+      "strategy": "exact_alias",
+      "latency_ms": 3.98,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "general-02",
+      "strategy": "lexical",
+      "latency_ms": 3.967,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "general-03",
+      "strategy": "exact_alias",
+      "latency_ms": 3.967,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "general-03",
+      "strategy": "lexical",
+      "latency_ms": 4.295,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "general-04",
+      "strategy": "exact_alias",
+      "latency_ms": 5.179,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "general-04",
+      "strategy": "lexical",
+      "latency_ms": 5.131,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "general-05",
+      "strategy": "exact_alias",
+      "latency_ms": 4.559,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "general-05",
+      "strategy": "lexical",
+      "latency_ms": 3.718,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "general-06",
+      "strategy": "exact_alias",
+      "latency_ms": 3.814,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "general-06",
+      "strategy": "lexical",
+      "latency_ms": 4.077,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "pricing-01",
+      "strategy": "exact_alias",
+      "latency_ms": 4.1,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "pricing-01",
+      "strategy": "lexical",
+      "latency_ms": 4.425,
+      "status": "matched",
+      "sources": [
+        "cleaning.desk-surface",
+        "cleaning.unknown-powder",
+        "cleaning.wardrobe-empty"
+      ]
+    },
+    {
+      "id": "pricing-02",
+      "strategy": "exact_alias",
+      "latency_ms": 6.109,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "pricing-02",
+      "strategy": "lexical",
+      "latency_ms": 6.259,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.musty-smell",
+        "cleaning.after-renovation",
+        "minor_repairs.gas-hose",
+        "plumbing.drain-gurgle",
+        "plumbing.floor-drain-smell",
+        "plumbing.meter-moving"
+      ]
+    },
+    {
+      "id": "pricing-03",
+      "strategy": "exact_alias",
+      "latency_ms": 3.979,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "pricing-03",
+      "strategy": "lexical",
+      "latency_ms": 4.111,
+      "status": "matched",
+      "sources": [
+        "upholstery.sofa-dust"
+      ]
+    },
+    {
+      "id": "pricing-04",
+      "strategy": "exact_alias",
+      "latency_ms": 4.372,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "pricing-04",
+      "strategy": "lexical",
+      "latency_ms": 5.727,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.condensation-pipe",
+        "air_conditioning.high-bill",
+        "air_conditioning.hissing",
+        "air_conditioning.indoor-noise",
+        "air_conditioning.indoor-water",
+        "air_conditioning.musty-smell",
+        "air_conditioning.new-install",
+        "air_conditioning.poor-airflow",
+        "air_conditioning.relocate",
+        "air_conditioning.short-circuit"
+      ]
+    },
+    {
+      "id": "pricing-05",
+      "strategy": "exact_alias",
+      "latency_ms": 5.868,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "pricing-05",
+      "strategy": "lexical",
+      "latency_ms": 4.617,
+      "status": "matched",
+      "sources": [
+        "product.lifecycle"
+      ]
+    },
+    {
+      "id": "pricing-06",
+      "strategy": "exact_alias",
+      "latency_ms": 4.578,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "pricing-06",
+      "strategy": "lexical",
+      "latency_ms": 5.052,
+      "status": "matched",
+      "sources": [
+        "product.limits",
+        "product.capabilities",
+        "product.permissions"
+      ]
+    },
+    {
+      "id": "negative-01",
+      "strategy": "exact_alias",
+      "latency_ms": 4.139,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "negative-01",
+      "strategy": "lexical",
+      "latency_ms": 3.701,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "negative-02",
+      "strategy": "exact_alias",
+      "latency_ms": 3.954,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "negative-02",
+      "strategy": "lexical",
+      "latency_ms": 3.881,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "negative-03",
+      "strategy": "exact_alias",
+      "latency_ms": 3.808,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "negative-03",
+      "strategy": "lexical",
+      "latency_ms": 4.417,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "negative-04",
+      "strategy": "exact_alias",
+      "latency_ms": 4.077,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "negative-04",
+      "strategy": "lexical",
+      "latency_ms": 3.784,
+      "status": "matched",
+      "sources": [
+        "product.capabilities"
+      ]
+    },
+    {
+      "id": "regression-01",
+      "strategy": "exact_alias",
+      "latency_ms": 3.978,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "regression-01",
+      "strategy": "lexical",
+      "latency_ms": 3.973,
+      "status": "matched",
+      "sources": [
+        "product.general",
+        "product.identity"
+      ]
+    },
+    {
+      "id": "regression-02",
+      "strategy": "exact_alias",
+      "latency_ms": 5.704,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "regression-02",
+      "strategy": "lexical",
+      "latency_ms": 6.266,
+      "status": "matched",
+      "sources": [
+        "product.provenance"
+      ]
+    },
+    {
+      "id": "regression-03",
+      "strategy": "exact_alias",
+      "latency_ms": 3.992,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "regression-03",
+      "strategy": "lexical",
+      "latency_ms": 4.599,
+      "status": "matched",
+      "sources": [
+        "electrical.outdoor-light"
+      ]
+    },
+    {
+      "id": "regression-04",
+      "strategy": "exact_alias",
+      "latency_ms": 4.795,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "regression-04",
+      "strategy": "lexical",
+      "latency_ms": 5.036,
+      "status": "matched",
+      "sources": [
+        "plumbing.meter-moving"
+      ]
+    },
+    {
+      "id": "regression-05",
+      "strategy": "exact_alias",
+      "latency_ms": 4.247,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "regression-05",
+      "strategy": "lexical",
+      "latency_ms": 5.721,
+      "status": "matched",
+      "sources": [
+        "air_conditioning.poor-airflow"
+      ]
+    },
+    {
+      "id": "regression-06",
+      "strategy": "exact_alias",
+      "latency_ms": 4.882,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "regression-06",
+      "strategy": "lexical",
+      "latency_ms": 4.954,
+      "status": "matched",
+      "sources": [
+        "upholstery.carpet-dust"
+      ]
+    },
+    {
+      "id": "regression-07",
+      "strategy": "exact_alias",
+      "latency_ms": 4.217,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "regression-07",
+      "strategy": "lexical",
+      "latency_ms": 4.525,
+      "status": "matched",
+      "sources": [
+        "electrical.outdoor-light",
+        "plumbing.balcony-drain",
+        "cleaning.balcony-floor",
+        "plumbing.floor-drain-smell"
+      ]
+    },
+    {
+      "id": "regression-08",
+      "strategy": "exact_alias",
+      "latency_ms": 3.737,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "regression-08",
+      "strategy": "lexical",
+      "latency_ms": 4.298,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.floor-trim"
+      ]
+    },
+    {
+      "id": "regression-09",
+      "strategy": "exact_alias",
+      "latency_ms": 4.551,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "regression-09",
+      "strategy": "lexical",
+      "latency_ms": 5.724,
+      "status": "matched",
+      "sources": [
+        "cleaning.cabinet-empty",
+        "cleaning.fridge-inside",
+        "cleaning.wardrobe-empty"
+      ]
+    },
+    {
+      "id": "regression-10",
+      "strategy": "exact_alias",
+      "latency_ms": 6.074,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "regression-10",
+      "strategy": "lexical",
+      "latency_ms": 4.75,
+      "status": "matched",
+      "sources": [
+        "minor_repairs.screen-mesh"
+      ]
+    },
+    {
+      "id": "regression-11",
+      "strategy": "exact_alias",
+      "latency_ms": 6.388,
+      "status": "no_reliable_match",
+      "sources": []
+    },
+    {
+      "id": "regression-11",
+      "strategy": "lexical",
+      "latency_ms": 4.408,
+      "status": "matched",
+      "sources": [
+        "plumbing.heater-leak",
+        "product.safety"
+      ]
+    },
+    {
+      "id": "regression-12",
+      "strategy": "exact_alias",
+      "latency_ms": 4.32,
+      "status": "matched",
+      "sources": [
+        "upholstery.surface-scratch"
+      ]
+    },
+    {
+      "id": "regression-12",
+      "strategy": "lexical",
+      "latency_ms": 4.255,
+      "status": "matched",
+      "sources": [
+        "upholstery.surface-scratch"
+      ]
+    }
+  ]
+}

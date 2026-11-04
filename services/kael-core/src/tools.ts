@@ -1,12 +1,13 @@
 import type { ConsequentialEffect } from './config.ts';
 import type { JsonSchema, ToolDefinition } from './model.ts';
+import { scopeMaterials } from './knowledge-contract.ts';
 import { modelSettableStatuses, taskKinds } from './tasks.ts';
 
 export type SideEffect = 'internal' | 'read' | 'external_read' | 'prepare' | 'consequential';
 export type Capability = 'customer' | 'worker';
 export type KaelMode = 'client' | 'worker';
 export type ExecutionClass = 'internal_prepare' | 'authorized_read' | 'explicit_confirmation';
-export type ResourceKind = 'kael_task' | 'service_request' | 'worker_job' | 'worker_earnings' | 'public_web';
+export type ResourceKind = 'kael_task' | 'service_request' | 'worker_job' | 'worker_earnings' | 'public_web' | 'knowledge';
 
 export type ToolContract = {
   id: string;
@@ -102,6 +103,22 @@ export const toolRegistry: readonly ToolContract[] = [
     inputSchema: schema({ query: { type: 'string', minLength: 2, maxLength: 300 } }),
     sideEffect: 'external_read', executionClass: 'authorized_read', resource: 'public_web', requires: null, modes: ['client', 'worker'], needsWebSearch: true, timeoutMs: 15000, label: 'Đang tra cứu trên web',
   }),
+  contract({
+    id: 'knowledge_search',
+    description: 'Optionally retrieve current permitted Vietnamese product facts and provisional synthetic service cases. Not needed for ordinary conversation. Does not read live business state. Unapproved policies have no official answer; cite returned evidence and label synthetic hypotheses.',
+    inputSchema: schema({ query: { type: 'string', minLength: 2, maxLength: 300 } }),
+    sideEffect: 'read', executionClass: 'authorized_read', resource: 'knowledge', requires: 'customer', modes: ['client', 'worker'], label: 'Đang tìm nguồn kiến thức',
+  }),
+  contract({
+    id: 'price_estimate_preview',
+    description: 'Read-only experimental estimate from one retrieved synthetic case ID. Numeric display is disabled except explicitly configured loopback evaluation. scope_confirmed means user supplied bounded scope, never authorization. No quote, worker correction, payment or workflow mutation.',
+    inputSchema: schema({ case_id: { type: 'string', pattern: '^[a-z_]+\\.[a-z0-9-]+$', maxLength: 120 }, scope_confirmed: { type: 'boolean' },
+      area_m2: { type: 'integer', minimum: 0, maximum: 1000, description: 'User-supplied surface area, rounded up; 0 if unknown.' },
+      units: { type: 'integer', minimum: 0, maximum: 100, description: 'User-supplied count; 0 if unknown.' },
+      material: { type: 'string', enum: ['unknown', ...scopeMaterials] },
+      floor_access: { type: 'boolean' }, clear_surface: { type: 'boolean' }, no_visible_damage: { type: 'boolean' } }),
+    sideEffect: 'read', executionClass: 'authorized_read', resource: 'knowledge', requires: 'customer', modes: ['client', 'worker'], label: 'Đang xem giả định ước tính',
+  }),
 ];
 
 export function findTool(id: string): ToolContract | undefined {
@@ -113,6 +130,7 @@ export function toDefinition(tool: ToolContract): ToolDefinition {
 }
 
 function validField(spec: Record<string, unknown>, value: unknown): boolean {
+  if (spec.type === 'boolean') return typeof value === 'boolean';
   if (spec.type === 'string') {
     if (typeof value !== 'string') return false;
     if (typeof spec.minLength === 'number' && value.trim().length < spec.minLength) return false;

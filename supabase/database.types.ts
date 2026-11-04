@@ -67,6 +67,20 @@ isOneToOne: false
                   Relationships: [
 
                   ]
+                },"kael_knowledge_sources": {
+                  Row: {
+                    "content_hash": string,"corpus_version": string,"effective_at": string | null,"expires_at": string | null,"ingested_at": string,"is_current": boolean,"locale": string,"normalized_aliases": (string)[],"normalized_text": string,"owner_id": string | null,"provenance": string,"publication": string,"region": string,"review_state": string,"revision": number,"search_vector": unknown,"source": NonNullable<Json>,"source_id": string,"source_kind": string,"visibility": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "content_hash": string,"corpus_version": string,"effective_at"?: string | null,"expires_at"?: string | null,"ingested_at"?: string,"is_current"?: boolean,"locale": string,"normalized_aliases": (string)[],"normalized_text": string,"owner_id"?: string | null,"provenance": string,"publication": string,"region": string,"review_state": string,"revision": number,"search_vector"?: never,"source": NonNullable<Json>,"source_id": string,"source_kind": string,"visibility": string
+                  }
+                  Update: {
+                    "content_hash"?: string,"corpus_version"?: string,"effective_at"?: string | null,"expires_at"?: string | null,"ingested_at"?: string,"is_current"?: boolean,"locale"?: string,"normalized_aliases"?: (string)[],"normalized_text"?: string,"owner_id"?: string | null,"provenance"?: string,"publication"?: string,"region"?: string,"review_state"?: string,"revision"?: number,"search_vector"?: never,"source"?: NonNullable<Json>,"source_id"?: string,"source_kind"?: string,"visibility"?: string
+                  }
+                  Relationships: [
+
+                  ]
                 },"kael_messages": {
                   Row: {
                     "content": string,"conversation_id": string,"created_at": string,"id": string,"owner_id": string,"role": string,"run_id": string,"seq": number,"status": string
@@ -582,6 +596,9 @@ isOneToOne: false
                            },
 "kael_finish_run":
 { Args: { "p_actor": string,"p_complete": boolean,"p_error": string,"p_input_tokens": number,"p_model": string,"p_output_tokens": number,"p_provider": string,"p_run_id": string,"p_status": string,"p_steps": number,"p_text": string }; Returns: boolean
+                           },
+"kael_knowledge_search":
+{ Args: { "p_limit"?: number,"p_query": string,"p_source_id"?: string,"p_strategy"?: string }; Returns: Json
                            },
 "kael_read_context":
 { Args: { "p_kind": string,"p_resource_id": string }; Returns: Json

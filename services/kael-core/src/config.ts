@@ -29,6 +29,8 @@ export type KaelConfig = {
   route: ProviderId[];
   perplexity: PerplexityConfig | null;
   enabledEffects: ReadonlySet<ConsequentialEffect>;
+  knowledgeEnabled: boolean;
+  localEstimatePreview: boolean;
   limits: KaelLimits;
 };
 
@@ -89,7 +91,10 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   const enabledEffects = new Set(list(env, 'KAEL_ENABLED_EFFECTS')
     .filter((id): id is ConsequentialEffect => (consequentialEffects as readonly string[]).includes(id)));
 
-  return { supabaseUrl: supabaseUrl.replace(/\/+$/, ''), supabaseAnonKey, supabaseServiceKey, anthropic, deepseek, route, perplexity, enabledEffects, limits: defaultLimits };
+  const loopback = /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\/?$/.test(supabaseUrl);
+  const knowledgeEnabled = value(env, 'KAEL_KNOWLEDGE') !== 'disabled';
+  const localEstimatePreview = knowledgeEnabled && loopback && value(env, 'KAEL_ESTIMATE_PREVIEW') === 'local_only';
+  return { supabaseUrl: supabaseUrl.replace(/\/+$/, ''), supabaseAnonKey, supabaseServiceKey, anthropic, deepseek, route, perplexity, enabledEffects, knowledgeEnabled, localEstimatePreview, limits: defaultLimits };
 }
 
 export function configurationReport(env: Environment): Record<string, string> {
@@ -100,5 +105,7 @@ export function configurationReport(env: Environment): Record<string, string> {
     deepseek: config?.deepseek ? 'configured' : 'requires DEEPSEEK_API_KEY and KAEL_DEEPSEEK_MODEL',
     web_search: config?.perplexity ? 'configured' : 'requires PERPLEXITY_API_KEY and KAEL_WEB_SEARCH=enabled',
     effects: config && config.enabledEffects.size > 0 ? [...config.enabledEffects].join(',') : 'none',
+    knowledge: config?.knowledgeEnabled ? 'lexical' : 'disabled',
+    estimate_preview: config?.localEstimatePreview ? 'local_synthetic_preview' : 'disabled',
   };
 }

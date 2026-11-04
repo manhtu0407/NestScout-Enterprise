@@ -24,6 +24,7 @@ export type RunInput = {
   emit: KaelEmitter;
   signal: AbortSignal;
   today: string;
+  log?: (event: Record<string, string | number | null>) => void;
 };
 
 export type RunOutcome = {
@@ -136,6 +137,7 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
       transcript.push({ role: 'assistant', text: turn.text, toolCalls: turn.toolCalls, providerState: turn.providerState });
       const results: ToolResult[] = [];
       for (const call of turn.toolCalls) {
+        const toolStarted = performance.now();
         const decision = evaluateCall(call, offered, actor, config, toolCallsUsed);
         const tool = decision.tool ?? findTool(call.name) ?? null;
         const label = tool?.label ?? 'Đang kiểm tra yêu cầu';
@@ -145,7 +147,7 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
         if (decision.kind === 'deny') {
           execution = { outcome: 'denied', content: { error: decision.reason, operation: call.name.slice(0, 64), notice: deniedNotice }, taskId: null };
         } else {
-          const previous = executed.get(key);
+          const previous = tool?.resource === 'knowledge' ? undefined : executed.get(key);
           if (previous) {
             execution = { ...previous, content: { ...previous.content, duplicate_call: true } };
           } else {
@@ -159,6 +161,14 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
           sideEffect: tool?.sideEffect ?? 'unknown', outcome: execution.outcome, fingerprint: key,
           error: typeof execution.content.error === 'string' ? execution.content.error.slice(0, 120) : null,
         });
+        if (tool?.resource === 'knowledge') {
+          const items = Array.isArray(execution.content.items) ? execution.content.items as Record<string, unknown>[] : [];
+          const refs = items.map(item => String(item.citation_ref));
+          const evidenceRefs = Array.isArray(execution.content.evidence_refs) ? execution.content.evidence_refs as string[] : [];
+          input.log?.({ event: 'kael_knowledge', run_id: input.runId, tool: tool.id, source_refs: JSON.stringify([...refs, ...evidenceRefs]),
+            method: execution.content.kind === 'disabled' ? 'not_run' : 'lexical-v1', latency_ms: Math.round((performance.now() - toolStarted) * 1000) / 1000,
+            outcome: execution.outcome, validation_status: String(execution.content.status ?? execution.content.kind ?? execution.content.error ?? 'unknown') });
+        }
         emit({ type: 'tool_completed', call_id: call.id, tool: call.name.slice(0, 64), outcome: execution.outcome, label });
         results.push(resultFor(call.id, execution));
       }

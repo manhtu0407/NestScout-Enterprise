@@ -187,7 +187,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         result = turn.action.type === 'message'
           ? await runAgentTurn({
             actor, config: config as KaelConfig, store, rest, providers: (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config as KaelConfig),
-            fetcher, runId, conversationId, emit, signal: controller.signal, today: todayIn(now()),
+            fetcher, runId, conversationId, emit, signal: controller.signal, today: todayIn(now()), log,
           })
           : await resolveApproval({
             approvalId: turn.action.approval_id, fingerprint: turn.action.fingerprint, decision: turn.action.type,
