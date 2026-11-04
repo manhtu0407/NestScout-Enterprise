@@ -1155,8 +1155,10 @@ test('intelligence command rejects live opt-in and budget flags even when provid
   assert.ok(!result.stderr.includes('synthetic-no-live-key'));
 });
 
-test('intelligence remediation changes only the versioned provenance corpus in the original runtime scope', () => {
-  const changed = execFileSync('git', ['diff', '2d700c1695e04feea4e7fe3396b70fe16977d700', '--name-only', '--', 'services', 'supabase/migrations', 'scripts/kael-retrieval-probes.json', 'scripts/kael-knowledge-registry.json', 'docs/service-workflow.md', 'docs/processes', 'AGENTS.md', 'README.md'], { encoding: 'utf8', windowsHide: true });
+test('evaluation preserves reviewed upstream runtime boundaries and original corpus identities', () => {
+  const reviewedUpstream = '4135b97d6e1f3db752ddb8fd7eefe9441d534aa8';
+  execFileSync('git', ['merge-base', '--is-ancestor', reviewedUpstream, 'HEAD'], { encoding: 'utf8', windowsHide: true });
+  const changed = execFileSync('git', ['diff', reviewedUpstream, '--name-only', '--', 'services', 'supabase/functions/kael', 'supabase/migrations', 'scripts/kael-retrieval-probes.json', 'scripts/kael-retrieval-benchmark.json', 'scripts/kael-knowledge-registry.json', 'docs/service-workflow.md', 'docs/processes', 'AGENTS.md', 'README.md'], { encoding: 'utf8', windowsHide: true });
   assert.deepEqual(changed.trim().split(/\r?\n/).sort(), ['scripts/kael-knowledge-registry.json', 'services/kael-core/src/knowledge-sources.ts']);
   const original = JSON.parse(execFileSync('git', ['show', '2d700c1695e04feea4e7fe3396b70fe16977d700:scripts/kael-knowledge-registry.json'], { encoding: 'utf8', windowsHide: true }));
   const current = loadFixture('kael-knowledge-registry');

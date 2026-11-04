@@ -638,3 +638,18 @@ SQL evaluation preserves all 22 protected table snapshots. The focused suite
 passes 112 tests; local database verification passes 998 SQL assertions across
 30 files and 13 Auth/REST/ingestion integration tests. Migration history, lint,
 drift and generated types pass. Live AI quality remains NOT VERIFIED.
+
+## Agentic Integration compatibility
+
+Evaluation V1 incorporates reviewed main PR #94 at
+`4135b97d6e1f3db752ddb8fd7eefe9441d534aa8` through a normal merge.
+The protected implementation scope is compared with that reviewed upstream
+revision, which must be an ancestor of the evaluated HEAD. This preserves the
+approved gateway and runtime, business migrations, approval/authorization and
+pricing isolation contracts, BPMN and original retrieval probes/benchmark.
+Only the authorized provenance source and its registry may differ in that scope.
+The independent 198-source identity/content comparison still uses the original
+PR #93 corpus at `2d700c1695e04feea4e7fe3396b70fe16977d700`.
+The merged README and Agentic UI/tests are upstream integration, not Evaluation
+implementation changes. No scenario, replay, grading or source revision changes
+are needed for this compatibility correction.
