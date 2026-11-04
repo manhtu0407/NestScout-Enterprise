@@ -1,6 +1,6 @@
 {
   "version": "kael-intelligence-evaluation-v1",
-  "dataset_hash": "0a7604ce7403665b53d318c68a4c6f40c13a27a5dd62f3a41e6fbd50a3c36e85",
+  "dataset_hash": "04e4d52554ce33a0b5f16843c84d0759cdf4dc0d2a827c720dad537ecab55ffd",
   "replay_hash": "49a6ee604380de207cd7d48ca97981da48e17e04c9cf15b66e0993cf9c47b0c4",
   "scenario_hashes": {
     "general_conversation.001": "75f389185f99c6f062aec4e8fa3caa4f716d16a1e9cd616c04b0dd5e1e1b489b",
@@ -53,7 +53,7 @@
     "grounded_knowledge.012": "d04797758cbfa4008c4a3af39660690a1a966a225ed261262f9e2d0682b26a7b",
     "grounded_knowledge.013": "7c5509a66cb1e22b408a3e1c9c9a80ef2ae18759db16bf6105d4c0b8268fd8df",
     "grounded_knowledge.014": "c26fbc6049ae2b9fff79389e590692261cdc42f2bf809ae13002d33d44aedea6",
-    "grounded_knowledge.015": "962f193d7cf458136c4d241fdfa7cc71587d7e99ba17870eb7d862c9c5c0ed12",
+    "grounded_knowledge.015": "cdb5c876caa4f7ead1996584b451eebb97e5766ae89d1af332bb2a0384d701b0",
     "grounded_knowledge.016": "faaddb2d2df1dd754f1200b0e0e8fc9ef0d349e2f59576b0e887a4e639916e34",
     "cross_service_ambiguity.001": "7155a2e58cbbd2b518c0c8d13929a0cc056b6728c7dfec7f7115d10992126698",
     "cross_service_ambiguity.002": "131fd95cfcd5e9c2b2c875c8ca74994b056dbf8bde27580f75e9fe06e58505a5",

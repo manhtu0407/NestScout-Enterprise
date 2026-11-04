@@ -30,6 +30,16 @@ const placeholders = [
 
 const common = { revision: 1, locale: 'vi-VN', region: 'Ho Chi Minh City', visibility: 'public', owner_id: null, source_owner: 'NestScout', reviewed_at: null, expires_at: null, supersedes_revision: null } as const;
 
+const productFacts = facts.map(([id, title, content, aliases, path]): KnowledgeSource => ({
+  ...common, source_id: `product.${id}`, source_kind: 'product_fact', title, content, aliases: aliases.split(';'),
+  publication: 'published', provenance: 'repository_contract', source_uri: `repo:${path}`, review_state: 'repository_verified', effective_at: '2026-11-04T00:00:00Z', case_data: null,
+}));
+
+export const knowledgeSourceHistory: readonly KnowledgeSource[] = productFacts.filter(source => source.source_id === 'product.provenance').flatMap(source => [source, {
+  ...source, revision: 2, supersedes_revision: 1,
+  aliases: [...source.aliases, 'dữ liệu mô phỏng', 'giao dịch thực tế', 'hóa đơn thật', 'điều khoản thương mại', 'chính sách được phê duyệt'],
+}]);
+
 export const knowledgeSources: readonly KnowledgeSource[] = [
   ...serviceCases.map((item): KnowledgeSource => ({
     ...common, source_id: item.case_id, source_kind: 'synthetic_case', title: item.canonical_problem,
@@ -37,25 +47,32 @@ export const knowledgeSources: readonly KnowledgeSource[] = [
     aliases: item.aliases, publication: 'published', provenance: 'synthetic_seed', source_uri: null,
     review_state: 'agent_validated_provisional', effective_at: '2026-11-04T00:00:00Z', case_data: item,
   })),
-  ...facts.map(([id, title, content, aliases, path]): KnowledgeSource => ({
-    ...common, source_id: `product.${id}`, source_kind: 'product_fact', title, content, aliases: aliases.split(';'),
-    publication: 'published', provenance: 'repository_contract', source_uri: `repo:${path}`, review_state: 'repository_verified', effective_at: '2026-11-04T00:00:00Z', case_data: null,
-  })),
+  ...productFacts.map(source => source.source_id === 'product.provenance' ? {
+    ...source, revision: 3, supersedes_revision: 2,
+    aliases: [...source.aliases, 'dữ liệu mô phỏng', 'nguồn agent tạo', 'hóa đơn thật', 'điều khoản thương mại', 'chính sách được phê duyệt'],
+  } : source),
   ...placeholders.map(([id, title]): KnowledgeSource => ({
     ...common, source_id: `policy.${id}`, source_kind: 'policy_placeholder', title, content: 'Chưa có chính sách được chủ sở hữu phê duyệt trong nguồn đã kiểm tra. Không suy diễn thành cam kết.', aliases: [],
     publication: 'draft_unapproved', provenance: 'agent_draft', source_uri: null, review_state: 'unapproved', effective_at: null, case_data: null,
   })),
 ].sort((a, b) => a.source_id.localeCompare(b.source_id, 'en'));
 
-export const corpusVersion = 'kael-vi-2026-11-04-v1';
+const initialCorpusVersion = 'kael-vi-2026-11-04-v1';
+export const corpusVersion = 'kael-vi-2026-11-05-v3';
+const sourceCorpusVersions: Readonly<Record<string, string>> = { 'product.provenance@2': 'kael-vi-2026-11-05-v2', 'product.provenance@3': 'kael-vi-2026-11-05-v3' };
 
 export async function knowledgeSnapshot(sources: readonly KnowledgeSource[] = knowledgeSources) {
   validateCases(serviceCases);
   validateSources(sources);
   return await Promise.all(sources.map(async source => {
     const searchText = [source.title, ...source.aliases, ...(source.case_data ? [...source.case_data.user_phrases, ...source.case_data.hypotheses, source.case_data.questions[0] ?? ''] : [source.content])].join(' ');
-    return { ...source, corpus_version: corpusVersion, content_hash: await fingerprint(source), normalized_text: knowledgeTerms(searchText).join(' '), normalized_aliases: [...new Set([source.title, ...source.aliases].map(normalizeKnowledge))] };
+    return { ...source, corpus_version: sourceCorpusVersions[`${source.source_id}@${source.revision}`] ?? initialCorpusVersion, content_hash: await fingerprint(source), normalized_text: knowledgeTerms(searchText).join(' '), normalized_aliases: [...new Set([source.title, ...source.aliases].map(normalizeKnowledge))] };
   }));
+}
+
+export async function knowledgeSeedSnapshot() {
+  const history = (await Promise.all(knowledgeSourceHistory.map(source => knowledgeSnapshot([source])))).flat();
+  return [...history, ...await knowledgeSnapshot()];
 }
 
 export async function sourceRegistry() {

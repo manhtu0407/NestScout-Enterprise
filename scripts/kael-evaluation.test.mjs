@@ -5,7 +5,7 @@ import { createAnthropicProvider } from '../services/kael-core/src/anthropic.ts'
 import { parseKaelConversationSnapshot } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { call, conversationOf, conversationState, effectsCount, harness, lastToolResults, scriptedProvider, terminal, users } from './kael-test-harness.mjs';
 import { categoryCounts, gradeScenario, loadFixture, validateScenarios } from './kael-intelligence-grading.mjs';
-import { evaluateIntelligence, evaluationBoundary, evaluationEnv } from './kael-intelligence-evaluation.mjs';
+import { evaluateIntelligence, evaluationBase, evaluationBoundary, evaluationEnv } from './kael-intelligence-evaluation.mjs';
 import { executeApprovedEffect } from '../services/kael-core/src/executor.ts';
 import { execFileSync, spawnSync } from 'node:child_process';
 
@@ -1006,6 +1006,8 @@ for (const [label, mutate] of [
   ['claimed human review', s => { s[0].review_status = 'human_reviewed'; }],
   ['unknown source', s => { s[0].ground_truth.expected_source_ids = ['policy.unapproved']; }],
   ['effects enabled', s => { s[0].ground_truth.business_effects_expected = 1; }],
+  ['zero revision', s => { s[0].version = 0; }],
+  ['fractional revision', s => { s[0].version = 1.5; }],
   ['copy retrieval probe', s => { s[0].turns[0].message = loadFixture('kael-retrieval-probes')[0].query; }],
   ['copy case alias', s => { s[0].turns[0].message = 'Kael là ai'; }],
   ['changed immutable wording', s => { s[0].turns[0].message += ' khác'; }],
@@ -1080,6 +1082,23 @@ test('intelligence graders reject blanket refusal, missing intent, context loss,
   const o = validObservation();
   o.trajectory = [{ tool: 'customer_requests', outcome: 'denied', error: 'invalid_arguments' }];
   assert.ok(gradeScenario(intelligenceScenarios[0], o, 'knowledge_on').failures.some(f => f.category === 'wrong_tool_arguments'));
+});
+
+for (const malformed of ['kael:product.privacy@999', 'kael:product.privacy@1#', 'kael:']) test(`intelligence citation integrity rejects mixed valid and malformed references: ${malformed}`, () => {
+  const ref = `kael:product.identity@1#${'a'.repeat(64)}`;
+  const observation = validObservation();
+  observation.sources = [{ source_id: 'product.identity', citation_ref: ref, visibility: 'public', owner_id: null }];
+  observation.answers[0] += ` ${ref} ${ref}`;
+  const valid = gradeScenario(intelligenceScenarios[0], observation, 'knowledge_on');
+  assert.equal(valid.passed, true);
+  assert.equal(valid.hard_passed, true);
+  assert.equal(valid.signals.retrieval_alignment.cited, 2);
+  for (const answer of [`${observation.answers[0]} ${malformed}`, `${malformed} ${observation.answers[0]}`]) {
+    const grade = gradeScenario(intelligenceScenarios[0], { ...observation, answers: [answer] }, 'knowledge_on');
+    assert.equal(grade.passed, false);
+    assert.equal(grade.hard_passed, false);
+    assert.ok(grade.failures.some(f => f.category === 'citation_not_retrieved' && f.hard && f.evidence === 'Malformed citation'));
+  }
 });
 
 test('intelligence grounding checks citation revision/hash membership and required evidence without penalizing optional RAG omission', () => {
@@ -1197,6 +1216,22 @@ for (const conversational of ['Chào bạn.', 'Cảm ơn bạn.', 'Bạn muốn 
   assert.equal(gradeScenario(scenario, observation, 'knowledge_on').passed, false, 'Conversation does not shield an uncited fact');
 });
 
+test('creative assistance survives absent knowledge while contextual product evidence remains optional', () => {
+  const scenario = intelligenceScenarios.find(s => s.canonical_intent === 'no_match_general_access');
+  assert.equal(scenario.version, 2);
+  assert.equal(scenario.ground_truth.knowledge_expected, 'optional');
+  assert.deepEqual(scenario.ground_truth.expected_source_ids, ['product.general']);
+  for (const condition of ['knowledge_on', 'knowledge_off']) {
+    assert.equal(gradeScenario(scenario, validObservation(scenario), condition).passed, true);
+    const refusal = validObservation(scenario);
+    refusal.answers = ['Không có nguồn nên không thể viết thơ.'];
+    assert.ok(gradeScenario(scenario, refusal, condition).failures.some(f => f.category === 'wrong_intent'));
+    const invented = validObservation(scenario);
+    invented.answers[0] += ` kael:product.general@1#${'a'.repeat(64)}`;
+    assert.equal(gradeScenario(scenario, invented, condition).hard_passed, false);
+  }
+});
+
 test('intelligence boundary denies direct executor mutations and every external provider destination', async () => {
   const denials = [];
   let forwarded = 0;
@@ -1277,9 +1312,15 @@ test('intelligence denied reads across both role modes fail hard without implyin
   }
 });
 
-test('intelligence scope preserves the historical evaluation introduction without freezing later application changes', () => {
-  const introduced = execFileSync('git', ['log', '--diff-filter=A', '--format=%H', '--', 'scripts/kael-intelligence-evaluation.mjs'], { encoding: 'utf8', windowsHide: true }).trim().split(/\r?\n/u).at(-1);
-  assert.match(introduced, /^[a-f0-9]{40}$/u);
-  const changed = execFileSync('git', ['diff', `${introduced}^`, introduced, '--name-only', '--', 'services', 'apps/mobile', 'supabase/migrations', 'scripts/supabase-local.mjs', 'scripts/supabase-mcp.integration.test.mjs', '.github/workflows', 'scripts/kael-retrieval-probes.json', 'scripts/kael-knowledge-registry.json', 'docs/service-workflow.md', 'docs/processes', 'AGENTS.md', 'README.md'], { encoding: 'utf8', windowsHide: true });
-  assert.equal(changed.trim(), '');
+test('evaluation preserves historical upstream scope without freezing later code and retains original corpus identities', () => {
+  const changed = execFileSync('git', ['diff', `${evaluationBase}^`, evaluationBase, '--name-only', '--', 'services', 'apps/mobile', 'supabase/functions/kael', 'supabase/migrations', 'scripts/supabase-local.mjs', 'scripts/supabase-mcp.integration.test.mjs', '.github/workflows', 'scripts/kael-retrieval-probes.json', 'scripts/kael-retrieval-benchmark.json', 'scripts/kael-knowledge-registry.json', 'docs/service-workflow.md', 'docs/processes', 'AGENTS.md', 'README.md'], { encoding: 'utf8', windowsHide: true });
+  assert.deepEqual(changed.trim().split(/\r?\n/).sort(), ['scripts/kael-knowledge-registry.json', 'scripts/supabase-mcp.integration.test.mjs', 'services/kael-core/src/knowledge-sources.ts']);
+  const original = JSON.parse(execFileSync('git', ['show', '2d700c1695e04feea4e7fe3396b70fe16977d700:scripts/kael-knowledge-registry.json'], { encoding: 'utf8', windowsHide: true }));
+  const current = loadFixture('kael-knowledge-registry');
+  const unchanged = registry => registry.sources.filter(source => source.source_id !== 'product.provenance');
+  assert.equal(unchanged(current).length, 198);
+  assert.deepEqual(unchanged(current), unchanged(original));
+  const originalProbes = JSON.parse(execFileSync('git', ['show', '2d700c1695e04feea4e7fe3396b70fe16977d700:scripts/kael-retrieval-probes.json'], { encoding: 'utf8', windowsHide: true }));
+  assert.equal(originalProbes.length, 72);
+  assert.deepEqual(loadFixture('kael-retrieval-probes'), originalProbes);
 });

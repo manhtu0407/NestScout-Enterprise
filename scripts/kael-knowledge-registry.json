@@ -1,5 +1,5 @@
 {
-  "corpus_version": "kael-vi-2026-11-04-v1",
+  "corpus_version": "kael-vi-2026-11-05-v3",
   "source_count": 199,
   "synthetic_cases": 180,
   "family_counts": {
@@ -15,7 +15,7 @@
   "unpublished_slots": 9,
   "numeric_priors": 18,
   "review": "agent_authored_and_agent_validated_not_human_reviewed",
-  "content_hash": "64209006e86dea921c33fa7454f3eab687e177b27246c66f521819debd38cc1a",
+  "content_hash": "781bb2e41439a4c8a21cfdc2bbc0c24a6c7441a8963bf687d5dfb6a80421f3cd",
   "sources": [
     {
       "source_id": "air_conditioning.burning",
@@ -1216,8 +1216,8 @@
     },
     {
       "source_id": "product.provenance",
-      "revision": 1,
-      "content_hash": "6e3c847e488b2884d7727e5100f5d54425981de4c743f4b2c8544ffd80dfb1ab",
+      "revision": 3,
+      "content_hash": "3c3a528c6875cc008a89918dd55b19f47515689c1f89d8a137106b26332f004c",
       "publication": "published",
       "provenance": "repository_contract"
     },

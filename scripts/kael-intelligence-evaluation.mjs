@@ -12,7 +12,7 @@ import { benchmarkKnowledge, localKnowledgeDatabase, sqlLiteral } from './kael-k
 import { safeDiagnostic, withLocalLock } from './supabase-local.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-export const evaluationBase = '4135b97d6e1f3db752ddb8fd7eefe9441d534aa8';
+export const evaluationBase = 'cf93f11aae0c161c11557ab0feaa82a5e0d30011';
 export const evaluationEnv = Object.freeze({ KAEL_ENABLED_EFFECTS: '', KAEL_ESTIMATE_PREVIEW: 'disabled', KAEL_WEB_SEARCH: 'disabled' });
 const json = data => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
 const sourceSnapshot = await knowledgeSnapshot();
@@ -175,7 +175,7 @@ export async function evaluateIntelligence({ database = null } = {}) {
   const unchanged = canonicalJson(before) === canonicalJson(after);
   const failures = results.flatMap(r => r.grade.failures.map(f => ({ ...f, condition: r.condition })));
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
-  const files = ['package.json', 'apps/mobile/src/features/shared/kael-events.ts', 'scripts/supabase-local.mjs', 'scripts/supabase-mcp.integration.test.mjs', 'scripts/kael-intelligence-scenarios.json', 'scripts/kael-intelligence-replays.json', 'scripts/kael-intelligence-registry.json', 'scripts/kael-intelligence-evaluation.mjs', 'scripts/kael-intelligence-grading.mjs', 'scripts/kael-test-harness.mjs', 'scripts/kael-evaluation.test.mjs', 'supabase/tests/database/kael-intelligence-evaluation.test.sql', ...['runtime', 'policy', 'executor', 'config', 'context', 'tools', 'knowledge-sources', 'knowledge-cases', 'intelligence', 'gateway', 'store'].map(s => `services/kael-core/src/${s}.ts`)];
+  const files = ['package.json', 'apps/mobile/src/features/shared/kael-events.ts', 'scripts/supabase-local.mjs', 'scripts/supabase-mcp.integration.test.mjs', 'scripts/kael-knowledge.mjs', 'scripts/kael-knowledge-registry.json', 'scripts/kael-retrieval-probes.json', 'scripts/kael-retrieval-benchmark.json', 'scripts/kael-intelligence-scenarios.json', 'scripts/kael-intelligence-replays.json', 'scripts/kael-intelligence-registry.json', 'scripts/kael-intelligence-evaluation.mjs', 'scripts/kael-intelligence-grading.mjs', 'scripts/kael-test-harness.mjs', 'scripts/kael-evaluation.test.mjs', 'supabase/tests/database/kael-intelligence-evaluation.test.sql', ...['runtime', 'policy', 'executor', 'config', 'context', 'tools', 'knowledge-contract', 'knowledge-sources', 'knowledge-cases', 'intelligence', 'gateway', 'store'].map(s => `services/kael-core/src/${s}.ts`)];
   const manifest = Object.fromEntries(await Promise.all(files.map(async file => [file, await fingerprint(readFileSync(path.join(root, file), 'utf8'))])));
   return {
     schema_version: 1, mode: database ? 'offline_local_sql' : 'offline', measured_at: new Date().toISOString(),

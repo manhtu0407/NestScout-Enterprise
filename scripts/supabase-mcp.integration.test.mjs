@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createKaelSequence, parseKaelConversationSnapshot, parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { createKaelHandler } from '../services/kael-core/src/gateway.ts';
 import { call, lastToolResults, scriptedProvider } from './kael-test-harness.mjs';
-import { knowledgeSources, knowledgeSnapshot } from '../services/kael-core/src/knowledge-sources.ts';
+import { knowledgeSeedSnapshot, knowledgeSources, knowledgeSnapshot } from '../services/kael-core/src/knowledge-sources.ts';
 import { knowledgeSeedSql, localKnowledgeDatabase, sqlLiteral } from './kael-knowledge.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
@@ -947,6 +947,41 @@ test('real Auth JWT and PostgREST enforce source ownership, publication and writ
         database.query(`delete from auth.users where id = ${sqlLiteral(account.id)}::uuid;`);
       }
     }
+  });
+});
+
+test('provenance revisions bootstrap fresh SQL sources and improve paraphrases without exposing unapproved policies', { timeout: 120000 }, async () => {
+  await withLocalLock(async () => {
+    const database = localKnowledgeDatabase();
+    const id = `fixture.provenance-${randomUUID()}`;
+    const actor = randomUUID();
+    const revisions = (await knowledgeSeedSnapshot()).filter(source => source.source_id === 'product.provenance').map(source => ({ ...source, source_id: id }));
+    const seed = knowledgeSeedSql(revisions);
+    const queries = ['Dữ liệu mô phỏng có tương đương chứng từ giao dịch không?', 'Nguồn agent tạo có phải hồ sơ giao dịch thật không?', 'Thông tin từ mã nguồn đã được phê duyệt kinh doanh chưa?', 'Biểu phí giao dịch mã ZR4821'];
+    const output = database.query(`begin;
+insert into auth.users (id, aud, role) values (${sqlLiteral(actor)}, 'authenticated', 'authenticated');
+${seed}
+${seed}
+${knowledgeSeedSql(revisions.slice(0, -1))}
+select jsonb_build_object('versions', (select jsonb_agg(jsonb_build_object('revision', revision, 'current', is_current) order by revision) from public.kael_knowledge_sources where source_id = ${sqlLiteral(id)}));
+set local role authenticated;
+select set_config('request.jwt.claims', ${sqlLiteral(JSON.stringify({ sub: actor, role: 'authenticated', is_anonymous: false }))}, true) is not null;
+select jsonb_build_object('queries', (select jsonb_agg(public.kael_knowledge_search(value, 5, null)) from jsonb_array_elements_text(${sqlLiteral(JSON.stringify(queries))}::jsonb)));
+rollback;`);
+    const measured = output.trim().split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
+    assert.deepEqual(measured[0].versions, [{ revision: 1, current: false }, { revision: 2, current: false }, { revision: 3, current: true }]);
+    for (const result of measured[1].queries.slice(0, -1)) {
+      assert.equal(result.status, 'matched');
+      const item = result.items.find(item => item.source_id === id);
+      assert.ok(item);
+      assert.equal(item.source_revision, 3);
+      assert.equal(item.provenance, 'repository_contract');
+      assert.equal(item.corpus_version, 'kael-vi-2026-11-05-v3');
+      assert.equal(item.citation_ref, `kael:${id}@3#${item.content_hash}`);
+      assert.ok(result.items.every(item => !item.source_id.startsWith('policy.')));
+    }
+    assert.equal(measured[1].queries.at(-1).status, 'no_reliable_match');
+    assert.deepEqual(measured[1].queries.at(-1).items, []);
   });
 });
 
