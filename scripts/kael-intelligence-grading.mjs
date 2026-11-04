@@ -31,7 +31,7 @@ export async function validateScenarios(scenarios, registry, replays) {
   for (const s of scenarios) {
     assert.ok(Object.hasOwn(categoryCounts, s.category));
     assert.match(s.id, new RegExp(`^${s.category}\\.[0-9]{3}$`));
-    assert.equal(s.version, 1);
+    assert.ok(Number.isSafeInteger(s.version) && s.version >= 1, `${s.id}: positive scenario revision required`);
     assert.equal(s.locale, 'vi-VN');
     assert.ok(['customer', 'worker'].includes(s.role));
     assert.match(s.canonical_intent, /^[a-z][a-z_]+$/);

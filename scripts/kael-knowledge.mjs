@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
-import { knowledgeSnapshot, sourceRegistry } from '../services/kael-core/src/knowledge-sources.ts';
+import { knowledgeSeedSnapshot, knowledgeSnapshot, sourceRegistry } from '../services/kael-core/src/knowledge-sources.ts';
 import { canonicalJson, fingerprint } from '../services/kael-core/src/policy.ts';
 import { databaseContainer } from './postgresql-clients.mjs';
 import { localRuntime, localEnvironment, requireLocal, safeDiagnostic, withLocalLock } from './supabase-local.mjs';
@@ -155,9 +155,10 @@ async function main(action) {
   await withLocalLock(async () => {
     const database = localKnowledgeDatabase();
     if (action === 'seed') {
-      const snapshot = await knowledgeSnapshot();
+      const snapshot = await knowledgeSeedSnapshot();
       database.query(`begin;\n${knowledgeSeedSql(snapshot)}\ncommit;`);
-      console.log(JSON.stringify({ status: 'PASS', source_count: snapshot.length, registry: await sourceRegistry() }, null, 2));
+      const registry = await sourceRegistry();
+      console.log(JSON.stringify({ status: 'PASS', source_count: registry.source_count, seeded_revisions: snapshot.length, registry }, null, 2));
     } else console.log(JSON.stringify(await benchmarkKnowledge(database), null, 2));
   });
 }

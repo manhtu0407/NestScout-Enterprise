@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import test from 'node:test';
 import { serviceCases } from '../services/kael-core/src/knowledge-cases.ts';
 import { familyCounts, normalizeKnowledge, knowledgeTerms, validateCases, validateSources } from '../services/kael-core/src/knowledge-contract.ts';
-import { knowledgeSnapshot, knowledgeSources, sourceRegistry } from '../services/kael-core/src/knowledge-sources.ts';
+import { knowledgeSeedSnapshot, knowledgeSnapshot, knowledgeSourceHistory, knowledgeSources, sourceRegistry } from '../services/kael-core/src/knowledge-sources.ts';
 import { knowledgeToolResult, localEstimateEvidence, observeLearning, previewEstimate, retrieveKnowledge } from '../services/kael-core/src/intelligence.ts';
 import { readKaelConfig } from '../services/kael-core/src/config.ts';
 import { selectTools, evaluateCall, confirmableTools } from '../services/kael-core/src/policy.ts';
@@ -78,6 +78,39 @@ test('registry is deterministic, content-bound and committed separately from mut
   }
   assert.equal(knowledgeSources.filter(item => item.publication === 'published').length, 190);
   assert.equal(knowledgeSources.filter(item => item.publication === 'draft_unapproved').length, 9);
+});
+
+test('provenance vocabulary covers Vietnamese paraphrases without changing lexical coverage requirements', () => {
+  const source = snapshot.find(item => item.source_id === 'product.provenance');
+  const terms = new Set(source.normalized_text.split(' '));
+  for (const query of ['Dữ liệu mô phỏng có tương đương chứng từ giao dịch không?', 'Nguồn agent tạo có phải hồ sơ giao dịch thật không?', 'Thông tin từ mã nguồn đã được phê duyệt kinh doanh chưa?']) {
+    const queryTerms = knowledgeTerms(query);
+    const normalized = ` ${normalizeKnowledge(query)} `;
+    const aliasMatch = source.normalized_aliases.some(alias => normalized.includes(` ${alias} `));
+    assert.ok(aliasMatch || queryTerms.filter(term => terms.has(term)).length / queryTerms.length >= 0.45, query);
+  }
+});
+
+test('provenance alias revision retains the immutable original and bootstraps it before the new revision', async () => {
+  const previous = knowledgeSourceHistory[0];
+  assert.equal(knowledgeSourceHistory.length, 2);
+  const original = (await knowledgeSnapshot([previous]))[0];
+  assert.equal(original.content_hash, '6e3c847e488b2884d7727e5100f5d54425981de4c743f4b2c8544ffd80dfb1ab');
+  assert.equal(original.corpus_version, 'kael-vi-2026-11-04-v1');
+  const current = snapshot.find(source => source.source_id === previous.source_id);
+  assert.equal(current.revision, 3);
+  assert.equal(current.supersedes_revision, 2);
+  assert.equal(current.corpus_version, 'kael-vi-2026-11-05-v3');
+  const revised = knowledgeSources.find(source => source.source_id === previous.source_id);
+  assert.deepEqual({ ...revised, revision: previous.revision, supersedes_revision: previous.supersedes_revision, aliases: previous.aliases }, previous);
+  assert.ok(previous.aliases.every(alias => revised.aliases.includes(alias)));
+  const seed = await knowledgeSeedSnapshot();
+  assert.equal(seed.length, snapshot.length + 2);
+  const revisions = seed.filter(source => source.source_id === previous.source_id);
+  assert.deepEqual(revisions.map(source => source.revision), [1, 2, 3]);
+  assert.equal(revisions[1].content_hash, 'a6e99e42ac94736158350b78bd50a167d09954dd36425b0108d281e8bb756159');
+  assert.equal(revisions[1].corpus_version, 'kael-vi-2026-11-05-v2');
+  assert.ok(snapshot.filter(source => source.source_id !== previous.source_id).every(source => source.revision === 1 && source.corpus_version === original.corpus_version));
 });
 
 test('source validator rejects ambiguous scope and fabricated policy approval', () => {

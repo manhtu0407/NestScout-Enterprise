@@ -568,3 +568,73 @@ redacted DTO as the real RPC and still produce the original bounded preview.
 The vendor references are design inputs, not promises of accuracy or evidence of
 private vendor architecture. Local evidence does not establish live model
 groundedness, safety comprehension, human approval or native-device fidelity.
+
+## Evaluation V1 remediation on 5 November 2026
+
+The clean `6d26e5c` baseline reproduces 240/240 offline signals and 237/240
+local SQL signals, zero hard violations and 144 unchanged retrieval orders and
+statuses. The three failing SQL queries all return `no_reliable_match`.
+
+`grounded_knowledge.006` correctly requires `product.provenance`: asking whether
+synthetic repair examples are real invoices requires evidence about corpus
+origin. Its vocabulary overlaps only 3/12 indexed query terms. `.007` also has a
+justified required-source label: repository facts do not establish approved
+commercial terms. It overlaps 5/12 terms. Both miss the existing 45% lexical
+coverage requirement; Vietnamese normalization itself is working as implemented.
+
+The current provenance revision adds general concepts for simulated data,
+agent-created sources, real invoices, commercial terms and approved policies.
+It contains no scenario IDs or complete evaluation queries. Its content, origin,
+visibility and repository-verification classification remain unchanged. A topic
+alias does not approve a policy. Unapproved policy sources remain inaccessible.
+The SQL algorithm, relevance threshold, authorization, pricing and effects are
+unchanged.
+
+The first local candidate, source revision 2, used an ambiguous transaction
+alias. It incorrectly matched an unsupported fee-code query in the original
+benchmark. Revision 3 replaces that alias with the generated-source concept;
+no benchmark labels, expected orders or thresholds were altered. Revision 1 and
+the locally ingested revision 2 retain their original hashes and corpus tags;
+only revision 3 is current, under `kael-vi-2026-11-05-v3`. Other sources retain
+revision 1 and their original corpus tag. Seeding validates each historical
+revision separately and bootstraps 1, 2, then 3, supporting both fresh stacks and
+idempotent upgrades without overwriting or resurrecting history.
+
+`grounded_knowledge.015` asks: “Nếu kho không có dữ liệu về thơ, tôi còn nhờ Kael
+viết thơ được không?” Its required-RAG label would make ordinary creative
+assistance depend on retrieval. Scenario revision 2 instead marks contextual
+product evidence **optional**, retains expected source `product.general`, and
+states that creative assistance continues without knowledge. The original user
+query, scripted reply, allowed tools and outcome assertion are unchanged.
+Missing retrieval remains an acceptable outcome; an invented citation still
+fails the hard grader. Factual corpus-origin claims in `.006`/`.007` remain
+**required**; ordinary creative scenarios elsewhere remain **not_needed**.
+
+The scenario validator accepts positive integer revisions and still verifies
+every canonical scenario hash, dataset hash, replay hash, count and security
+contract. No scoring rule was removed or relaxed. Exactly 120 scenarios and 240
+condition runs remain in each mode. Labels remain agent-authored and pending
+human review; deterministic success is not evidence of live-model quality.
+
+Scenario `.015` revision 1 hash:
+`962f193d7cf458136c4d241fdfa7cc71587d7e99ba17870eb7d862c9c5c0ed12`.
+Revision 2 hash:
+`cdb5c876caa4f7ead1996584b451eebb97e5766ae89d1af332bb2a0384d701b0`.
+Dataset hash changes from
+`0a7604ce7403665b53d318c68a4c6f40c13a27a5dd62f3a41e6fbd50a3c36e85`
+to `04e4d52554ce33a0b5f16843c84d0759cdf4dc0d2a827c720dad537ecab55ffd`.
+Replay hash remains
+`49a6ee604380de207cd7d48ca97981da48e17e04c9cf15b66e0993cf9c47b0c4`.
+
+Real SQL regression coverage checks fresh revision bootstrap, repeated seed,
+retired-revision replay, Vietnamese paraphrases, citation identity and refusal
+to infer an unknown fee schedule. Existing role/source-visibility tests and
+protected-table snapshots remain mandatory. Focused grading tests also reject
+creative refusal on missing RAG and fabricated contextual citations.
+
+Remediation evidence: both deterministic modes pass 240/240 with zero hard
+violations; 144 original retrieval orders/statuses remain identical. The local
+SQL evaluation preserves all 22 protected table snapshots. The focused suite
+passes 112 tests; local database verification passes 998 SQL assertions across
+30 files and 13 Auth/REST/ingestion integration tests. Migration history, lint,
+drift and generated types pass. Live AI quality remains NOT VERIFIED.

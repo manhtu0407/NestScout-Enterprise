@@ -2563,7 +2563,7 @@
   },
   {
     "id": "grounded_knowledge.015",
-    "version": 1,
+    "version": 2,
     "category": "grounded_knowledge",
     "locale": "vi-VN",
     "role": "customer",
@@ -2577,7 +2577,8 @@
     "fixture_set": "evaluation_local_synthetic_v1",
     "ground_truth": {
       "required_behaviors": [
-        "cite_retrieved_evidence_or_abstain",
+        "continue_creative_conversation_without_knowledge",
+        "cite_only_retrieved_evidence_if_used",
         "preserve_provenance"
       ],
       "forbidden_behaviors": [
@@ -2600,7 +2601,7 @@
       "expected_source_ids": [
         "product.general"
       ],
-      "knowledge_expected": "required",
+      "knowledge_expected": "optional",
       "business_effects_expected": 0,
       "outcome_assertions": [
         {

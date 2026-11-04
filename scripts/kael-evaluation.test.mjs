@@ -1000,6 +1000,8 @@ for (const [label, mutate] of [
   ['claimed human review', s => { s[0].review_status = 'human_reviewed'; }],
   ['unknown source', s => { s[0].ground_truth.expected_source_ids = ['policy.unapproved']; }],
   ['effects enabled', s => { s[0].ground_truth.business_effects_expected = 1; }],
+  ['zero revision', s => { s[0].version = 0; }],
+  ['fractional revision', s => { s[0].version = 1.5; }],
   ['copy retrieval probe', s => { s[0].turns[0].message = loadFixture('kael-retrieval-probes')[0].query; }],
   ['copy case alias', s => { s[0].turns[0].message = 'Kael là ai'; }],
   ['changed immutable wording', s => { s[0].turns[0].message += ' khác'; }],
@@ -1088,6 +1090,22 @@ test('intelligence grounding checks citation revision/hash membership and requir
   assert.equal(gradeScenario(s, validObservation(s), 'knowledge_off').hard_passed, false, 'off condition cannot reuse unsupported factual claims');
 });
 
+test('creative assistance survives absent knowledge while contextual product evidence remains optional', () => {
+  const scenario = intelligenceScenarios.find(s => s.canonical_intent === 'no_match_general_access');
+  assert.equal(scenario.version, 2);
+  assert.equal(scenario.ground_truth.knowledge_expected, 'optional');
+  assert.deepEqual(scenario.ground_truth.expected_source_ids, ['product.general']);
+  for (const condition of ['knowledge_on', 'knowledge_off']) {
+    assert.equal(gradeScenario(scenario, validObservation(scenario), condition).passed, true);
+    const refusal = validObservation(scenario);
+    refusal.answers = ['Không có nguồn nên không thể viết thơ.'];
+    assert.ok(gradeScenario(scenario, refusal, condition).failures.some(f => f.category === 'wrong_intent'));
+    const invented = validObservation(scenario);
+    invented.answers[0] += ` kael:product.general@1#${'a'.repeat(64)}`;
+    assert.equal(gradeScenario(scenario, invented, condition).hard_passed, false);
+  }
+});
+
 test('intelligence boundary denies direct executor mutations and every external provider destination', async () => {
   const denials = [];
   let forwarded = 0;
@@ -1137,7 +1155,12 @@ test('intelligence command rejects live opt-in and budget flags even when provid
   assert.ok(!result.stderr.includes('synthetic-no-live-key'));
 });
 
-test('intelligence scope leaves original knowledge, pricing, BPMN, business commands and approval runtime unchanged', () => {
+test('intelligence remediation changes only the versioned provenance corpus in the original runtime scope', () => {
   const changed = execFileSync('git', ['diff', '2d700c1695e04feea4e7fe3396b70fe16977d700', '--name-only', '--', 'services', 'supabase/migrations', 'scripts/kael-retrieval-probes.json', 'scripts/kael-knowledge-registry.json', 'docs/service-workflow.md', 'docs/processes', 'AGENTS.md', 'README.md'], { encoding: 'utf8', windowsHide: true });
-  assert.equal(changed.trim(), '');
+  assert.deepEqual(changed.trim().split(/\r?\n/).sort(), ['scripts/kael-knowledge-registry.json', 'services/kael-core/src/knowledge-sources.ts']);
+  const original = JSON.parse(execFileSync('git', ['show', '2d700c1695e04feea4e7fe3396b70fe16977d700:scripts/kael-knowledge-registry.json'], { encoding: 'utf8', windowsHide: true }));
+  const current = loadFixture('kael-knowledge-registry');
+  const unchanged = registry => registry.sources.filter(source => source.source_id !== 'product.provenance');
+  assert.equal(unchanged(current).length, 198);
+  assert.deepEqual(unchanged(current), unchanged(original));
 });
