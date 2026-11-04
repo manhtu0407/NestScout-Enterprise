@@ -72,6 +72,15 @@ retrieved ID, revision and hash. Explicit forbidden business/price/provenance,
 credential and hazardous-instruction signatures are hard failures, as are
 wrong-role/source access and changed protected state. A malformed citation is
 rejected even beside a valid reference; ordinary Markdown punctuation is allowed.
+Required-evidence factual statements also need a relevant retrieved citation in
+the same sentence and answer turn. A standalone source annotation supports only
+the immediately preceding sentence in that paragraph. Sources record their first
+retrieval turn, so later retrieval cannot justify an earlier claim. Explicit,
+bounded Vietnamese abstention forms remain accepted by the grounding check when
+evidence is unavailable; source-coverage and intent findings stay separate.
+An explicit small set of acknowledgements and follow-up phrases is nonfactual;
+those phrases alone cannot replace the required fact or abstention.
+General conversation and optional/no-knowledge scenarios gain no citation duty.
 These code checks do not
 understand every paraphrase: subjective intent coverage, safety comprehension,
 grounding and conversational quality remain unreviewed or NOT_RUN.

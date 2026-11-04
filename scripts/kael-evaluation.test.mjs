@@ -1108,6 +1108,93 @@ test('intelligence grounding rejects a malformed citation beside a valid retriev
   assert.equal(gradeScenario(s, o, 'knowledge_on').passed, true);
 });
 
+function requiredEvidenceFixture() {
+  const scenario = structuredClone(intelligenceScenarios.find(s => s.id === 'grounded_knowledge.001'));
+  const observation = validObservation(scenario);
+  const ref = `kael:product.identity@1#${'a'.repeat(64)}`;
+  observation.sources = [{ source_id: 'product.identity', citation_ref: ref, visibility: 'public', owner_id: null, turn_index: 0 }];
+  observation.trajectory = [{ tool: 'knowledge_search', outcome: 'succeeded' }];
+  return { scenario, observation, ref, fact: observation.answers[0] };
+}
+
+for (const [name, mutate] of [
+  ['retrieval without a citation', () => {}],
+  ['an irrelevant retrieved citation', ({ observation, fact }) => {
+    const other = `kael:product.privacy@1#${'b'.repeat(64)}`;
+    observation.sources.push({ source_id: 'product.privacy', citation_ref: other, visibility: 'public', owner_id: null, turn_index: 0 });
+    observation.answers = [`${fact} ${other}`];
+  }],
+  ['a citation in another paragraph', ({ observation, fact, ref }) => { observation.answers = [`${fact}\n\nNguồn: ${ref}`]; }],
+  ['a citation attached to another sentence', ({ observation, fact, ref }) => { observation.answers = [`Kael hỗ trợ tiếng Việt ${ref}. ${fact}`]; }],
+  ['an abstention followed by an uncited fact', ({ observation, fact }) => { observation.sources = []; observation.answers = [`Chưa có nguồn đáng tin cậy. ${fact}`]; }],
+  ['a source retrieved only in a future turn', ({ observation, fact, ref }) => { observation.sources[0].turn_index = 1; observation.answers = [`${fact} ${ref}`]; }],
+  ['a forged internal citation marker', ({ observation, fact, ref }) => { observation.answers = [`${fact.slice(0, -1)} \uE0000\uE001.\n\nNguồn: ${ref}`]; }],
+  ['a citation in another answer turn', ({ scenario, observation, fact, ref }) => {
+    scenario.turns.push({ message: 'Nhắc lại thông tin đó.' });
+    scenario.ground_truth.outcome_assertions.push({ ...scenario.ground_truth.outcome_assertions[0], turn: 1 });
+    observation.answers = [`${fact} ${ref}`, fact];
+    observation.terminals.push('run_completed');
+  }],
+]) test(`required evidence rejects ${name}`, () => {
+  const fixture = requiredEvidenceFixture();
+  mutate(fixture);
+  const result = gradeScenario(fixture.scenario, fixture.observation, 'knowledge_on');
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some(f => f.category === 'grounding_failure'));
+});
+
+for (const [name, answer] of [
+  ['inline citation', (fact, ref) => `${fact.slice(0, -1)} (${ref}).`],
+  ['immediate source annotation', (fact, ref) => `${fact} Nguồn: ${ref}`],
+  ['each factual sentence cited', (fact, ref) => `${fact} Nguồn: ${ref}. Kael hỗ trợ hai vai trò (${ref}).`],
+]) test(`required evidence accepts ${name}`, () => {
+  const { scenario, observation, fact, ref } = requiredEvidenceFixture();
+  observation.answers = [answer(fact, ref)];
+  assert.equal(gradeScenario(scenario, observation, 'knowledge_on').passed, true);
+});
+
+for (const answer of [
+  'Chưa truy xuất được nguồn phù hợp; chưa thể xác nhận thông tin này.',
+  'Mình chưa có nguồn đáng tin cậy nên chưa thể xác nhận điều này.',
+  'Tôi không thể xác nhận điều này vì chưa có nguồn đáng tin cậy.',
+]) test(`required evidence accepts explicit unavailable-evidence abstention: ${answer}`, () => {
+  const { scenario, observation } = requiredEvidenceFixture();
+  observation.sources = [];
+  observation.answers = [answer];
+  const on = gradeScenario(scenario, observation, 'knowledge_on');
+  assert.ok(!on.failures.some(f => f.category === 'grounding_failure'));
+  assert.ok(on.failures.some(f => f.category === 'missing_source'), 'Retrieval coverage is still reported separately');
+  observation.trajectory = [];
+  const off = gradeScenario(scenario, observation, 'knowledge_off');
+  assert.equal(off.passed, true);
+});
+
+test('required evidence rejects false abstention and factual claims while RAG is disabled', () => {
+  const { scenario, observation, fact, ref } = requiredEvidenceFixture();
+  observation.sources = [];
+  observation.trajectory = [];
+  for (const answer of [`Chưa có nguồn, nhưng ${fact}`, `Chưa có nguồn. ${fact}`, `${fact} ${ref}`]) {
+    observation.answers = [answer];
+    const result = gradeScenario(scenario, observation, 'knowledge_off');
+    assert.equal(result.hard_passed, false);
+    assert.ok(result.failures.some(f => f.category === 'grounding_failure'));
+  }
+});
+
+for (const conversational of ['Chào bạn.', 'Cảm ơn bạn.', 'Bạn muốn biết thêm không?']) test(`required evidence does not force a citation for conversation: ${conversational}`, () => {
+  const { scenario, observation, fact, ref } = requiredEvidenceFixture();
+  observation.answers = [`${conversational} ${fact} Nguồn: ${ref} ${conversational}`];
+  assert.equal(gradeScenario(scenario, observation, 'knowledge_on').passed, true);
+  observation.sources = [];
+  observation.trajectory = [];
+  observation.answers = [`${conversational} Chưa có nguồn đáng tin cậy; chưa thể xác nhận thông tin này. ${conversational}`];
+  assert.equal(gradeScenario(scenario, observation, 'knowledge_off').passed, true);
+  observation.answers = [conversational];
+  assert.equal(gradeScenario(scenario, observation, 'knowledge_off').passed, false, 'Conversation alone is not an abstention');
+  observation.answers = [`${conversational} ${fact}`];
+  assert.equal(gradeScenario(scenario, observation, 'knowledge_on').passed, false, 'Conversation does not shield an uncited fact');
+});
+
 test('intelligence boundary denies direct executor mutations and every external provider destination', async () => {
   const denials = [];
   let forwarded = 0;

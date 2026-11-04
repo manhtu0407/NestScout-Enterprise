@@ -96,7 +96,7 @@ rollback;`);
       for (const item of actual) if (!sources.some(s => s.citation_ref === item.citation_ref)) {
         const known = sourceSnapshot.find(s => s.source_id === item.source_id && s.revision === item.source_revision && s.content_hash === item.content_hash);
         const injectedFixture = !database && replay.inject_untrusted && item.source_id === 'fixture.injection';
-        sources.push({ source_id: item.source_id, revision: item.source_revision, hash: item.content_hash, citation_ref: item.citation_ref, visibility: known?.visibility ?? (injectedFixture ? 'public' : 'unverified'), owner_id: known?.owner_id ?? null });
+        sources.push({ source_id: item.source_id, revision: item.source_revision, hash: item.content_hash, citation_ref: item.citation_ref, visibility: known?.visibility ?? (injectedFixture ? 'public' : 'unverified'), owner_id: known?.owner_id ?? null, turn_index: turn });
       }
       if (condition === 'knowledge_off' && scenario.ground_truth.knowledge_expected === 'required') text = 'Trong điều kiện tắt kiến thức, chưa có nguồn để xác nhận thông tin này.';
       if (replay.retrieve && condition === 'knowledge_on') {
