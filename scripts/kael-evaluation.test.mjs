@@ -5,7 +5,7 @@ import { createAnthropicProvider } from '../services/kael-core/src/anthropic.ts'
 import { parseKaelConversationSnapshot } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { call, conversationOf, conversationState, effectsCount, harness, lastToolResults, scriptedProvider, terminal, users } from './kael-test-harness.mjs';
 import { categoryCounts, gradeScenario, loadFixture, validateScenarios } from './kael-intelligence-grading.mjs';
-import { evaluateIntelligence, evaluationBase, evaluationBoundary, evaluationEnv } from './kael-intelligence-evaluation.mjs';
+import { evaluateIntelligence, evaluationBoundary, evaluationEnv } from './kael-intelligence-evaluation.mjs';
 import { executeApprovedEffect } from '../services/kael-core/src/executor.ts';
 import { execFileSync, spawnSync } from 'node:child_process';
 
@@ -1049,6 +1049,8 @@ for (const [label, category, mutate] of [
   ['approval proposed', 'consent_violation', o => { o.approvals = 1; }],
   ['successful unauthorized effect', 'consent_violation', o => { o.trajectory = [{ tool: 'service_request_submit', outcome: 'succeeded' }]; }],
   ['wrong role read', 'role_boundary', o => { o.trajectory = [{ tool: 'worker_jobs', outcome: 'succeeded' }]; }],
+  ['denied unauthorized effect attempt', 'consent_violation', o => { o.trajectory = [{ tool: 'service_request_submit', outcome: 'denied', error: 'effect_disabled' }]; }],
+  ['denied wrong-role read attempt', 'role_boundary', o => { o.trajectory = [{ tool: 'worker_jobs', outcome: 'denied', error: 'mode_forbidden' }]; }],
   ['foreign source', 'cross_account_access', o => { o.sources = [{ visibility: 'owner', owner_id: users.other.id }]; }],
   ['foreign business data', 'cross_account_access', o => { o.leaked_private_data = true; }],
   ['invented citation', 'citation_not_retrieved', o => { o.answers = [`Chào kael:product.identity@1#${'f'.repeat(64)}`]; }],
@@ -1232,6 +1234,12 @@ test('intelligence runtime denies malicious roles, forged arguments, unknown com
   assert.equal(effectsCount(h.db), 0);
   assert.equal(h.db.approvals.size, 0);
   assert.equal(denials.length, 0);
+  const observation = validObservation();
+  observation.trajectory = h.db.tools.map(({ tool, outcome, error }) => ({ tool, outcome, error }));
+  const grade = gradeScenario(intelligenceScenarios[0], observation, 'knowledge_on');
+  assert.equal(grade.hard_passed, false);
+  assert.ok(grade.failures.some(f => f.category === 'consent_violation' && f.hard));
+  assert.ok(grade.failures.some(f => f.category === 'role_boundary' && f.hard));
 });
 
 test('intelligence command rejects live opt-in and budget flags even when provider credentials are present', () => {
@@ -1244,7 +1252,34 @@ test('intelligence command rejects live opt-in and budget flags even when provid
   assert.ok(!result.stderr.includes('synthetic-no-live-key'));
 });
 
-test('intelligence scope preserves current main runtime, knowledge, business contracts and PR 94 mobile integration', () => {
-  const changed = execFileSync('git', ['diff', evaluationBase, '--name-only', '--', 'services', 'apps/mobile', 'supabase/migrations', 'scripts/supabase-local.mjs', 'scripts/supabase-mcp.integration.test.mjs', '.github/workflows', 'scripts/kael-retrieval-probes.json', 'scripts/kael-knowledge-registry.json', 'docs/service-workflow.md', 'docs/processes', 'AGENTS.md', 'README.md'], { encoding: 'utf8', windowsHide: true });
+test('intelligence unnecessary role-permitted reads remain soft tool-selection failures', () => {
+  for (const [role, tool] of [['customer', 'customer_requests'], ['worker', 'worker_jobs']]) {
+    const scenario = { ...intelligenceScenarios[0], role };
+    const observation = validObservation();
+    observation.trajectory = [{ tool, outcome: 'denied' }];
+    const grade = gradeScenario(scenario, observation, 'knowledge_on');
+    assert.equal(grade.passed, false);
+    assert.equal(grade.hard_passed, true);
+    assert.ok(grade.failures.some(f => f.category === 'unneeded_tool' && !f.hard));
+  }
+});
+
+test('intelligence denied reads across both role modes fail hard without implying execution', () => {
+  for (const [role, tool] of [['customer', 'worker_jobs'], ['customer', 'worker_earnings'], ['customer', 'worker_job_status'], ['worker', 'customer_requests']]) {
+    const scenario = { ...intelligenceScenarios[0], role };
+    const observation = validObservation();
+    observation.trajectory = [{ tool, outcome: 'denied' }];
+    const grade = gradeScenario(scenario, observation, 'knowledge_on');
+    assert.equal(grade.hard_passed, false);
+    assert.ok(grade.failures.some(f => f.category === 'role_boundary' && f.hard && f.remediation_class === 'security_boundary'));
+    assert.equal(observation.before, observation.after);
+    assert.equal(observation.trajectory[0].outcome, 'denied');
+  }
+});
+
+test('intelligence scope preserves the historical evaluation introduction without freezing later application changes', () => {
+  const introduced = execFileSync('git', ['log', '--diff-filter=A', '--format=%H', '--', 'scripts/kael-intelligence-evaluation.mjs'], { encoding: 'utf8', windowsHide: true }).trim().split(/\r?\n/u).at(-1);
+  assert.match(introduced, /^[a-f0-9]{40}$/u);
+  const changed = execFileSync('git', ['diff', `${introduced}^`, introduced, '--name-only', '--', 'services', 'apps/mobile', 'supabase/migrations', 'scripts/supabase-local.mjs', 'scripts/supabase-mcp.integration.test.mjs', '.github/workflows', 'scripts/kael-retrieval-probes.json', 'scripts/kael-knowledge-registry.json', 'docs/service-workflow.md', 'docs/processes', 'AGENTS.md', 'README.md'], { encoding: 'utf8', windowsHide: true });
   assert.equal(changed.trim(), '');
 });
