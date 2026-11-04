@@ -148,7 +148,7 @@ test('an interrupted turn is reconciled from stored state instead of being treat
   await act(async () => { result.current.send('Gửi yêu cầu sửa máy lạnh'); });
   await act(async () => { await Promise.resolve(); });
   expect(loader).toHaveBeenCalledTimes(2);
-  expect(result.current.notice).toMatch(/gián đoạn/);
+  expect(result.current.notice).toBeNull();
   expect(result.current.approvals).toEqual([approval]);
   expect(result.current.messages.at(-1)).toEqual(expect.objectContaining({ text: 'Bạn xác nhận trong ứng dụng nhé.', incomplete: false }));
 });
@@ -314,4 +314,288 @@ test('switching account never carries a kept check over to the next account', as
   await act(async () => { result.current.reset(); });
   expect(result.current.approvals).toHaveLength(0);
   expect(loader.mock.calls.map(call => call[0])).toEqual(['customer-a', 'customer-b']);
+});
+
+describe('interruption recovery keeps only warnings the server snapshot can justify', () => {
+  const interrupted = [{ events: [started, { type: 'message_delta' as const, text: 'Bạn xác' }] }];
+  const withLast = (last: KaelConversationSnapshot['messages'][number]): KaelConversationSnapshot => ({ ...storedSnapshot, messages: [storedSnapshot.messages[0]!, last] });
+  const assistant = (incomplete: boolean) => ({ id: '88888888-8888-4888-8888-888888888899', role: 'assistant' as const, text: 'Bạn xác nhận trong ứng dụng nhé.', incomplete });
+
+  async function interruptedWith(restore: () => Promise<KaelConversationSnapshot>) {
+    const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValueOnce(empty).mockImplementation(restore);
+    const { streamer } = scriptedStreamer([...interrupted]);
+    const hook = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+    await act(async () => { hook.result.current.send('Gửi yêu cầu sửa máy lạnh'); });
+    await act(async () => { await Promise.resolve(); });
+    return { ...hook, loader };
+  }
+
+  test('a complete restored reply clears the obsolete warning', async () => {
+    const { result } = await interruptedWith(async () => withLast(assistant(false)));
+    expect(result.current.notice).toBeNull();
+    expect(result.current.messages.at(-1)).toEqual(expect.objectContaining({ incomplete: false }));
+  });
+
+  test('an incomplete restored reply keeps the warning and its incomplete mark', async () => {
+    const { result } = await interruptedWith(async () => withLast(assistant(true)));
+    expect(result.current.notice).toMatch(/chưa đầy đủ/);
+    expect(result.current.messages.at(-1)?.incomplete).toBe(true);
+  });
+
+  test('a restored conversation with no stored reply keeps the warning instead of assuming success', async () => {
+    const { result } = await interruptedWith(async () => ({ ...storedSnapshot, messages: [storedSnapshot.messages[0]!] }));
+    expect(result.current.notice).toMatch(/chưa đầy đủ/);
+  });
+
+  test('when restoration is unavailable the uncertainty is preserved and says so', async () => {
+    const { result } = await interruptedWith(async () => { throw new Error('offline'); });
+    expect(result.current.notice).toMatch(/chưa tải lại được/);
+    expect(result.current.notice).toMatch(/chưa đầy đủ/);
+  });
+
+  test('a run still active on the server is reported, and a later complete read clears it', async () => {
+    let busy = true;
+    const { result } = await interruptedWith(async () => ({ ...withLast(assistant(false)), busy }));
+    expect(result.current.notice).toMatch(/vẫn đang xử lý/);
+    busy = false;
+    await act(async () => { result.current.refresh(); await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.notice).toBeNull();
+  });
+});
+
+test('a refused approval is explained without marking its message as an incomplete reply', async () => {
+  const { streamer } = scriptedStreamer([
+    { events: [started, { type: 'message_delta', text: 'Xác nhận đã hết hạn.' }, { type: 'run_failed', code: 'approval_invalid', message: 'Xác nhận này không còn hợp lệ.', retryable: false }] },
+  ]);
+  const loader = jest.fn(async () => storedSnapshot);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { result.current.decide(result.current.approvals[0]!, true); });
+  expect(result.current.messages.at(-1)).toEqual(expect.objectContaining({ text: 'Xác nhận đã hết hạn.' }));
+  expect(result.current.messages.at(-1)?.incomplete).not.toBe(true);
+  expect(result.current.notice).toBe('Xác nhận này không còn hợp lệ.');
+});
+
+test('while an approval executes only the transient task marker is set, and task state is never rewritten by the client', async () => {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const streamer = jest.fn(async (_userId: string, _request: KaelTurnRequest, onEvent: (event: KaelEvent) => void) => {
+    onEvent({ ...started, v: 1, run_id: runId, seq: 1 } as KaelEvent);
+    onEvent({ type: 'tool_started', call_id: `approval:${approvalId}`, tool: 'service_request_submit', label: 'Đang gửi yêu cầu dịch vụ', v: 1, run_id: runId, seq: 2 } as KaelEvent);
+    await gate;
+    const done = { type: 'run_completed', text: 'Đã gửi.', v: 1, run_id: runId, seq: 3 } as KaelEvent;
+    onEvent(done);
+    return { kind: 'terminal', event: done } as KaelTurnOutcome;
+  });
+  const stableLoader = jest.fn(async () => storedSnapshot);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, stableLoader));
+  await act(async () => { await Promise.resolve(); });
+  const before = result.current.tasks[0]!;
+  await act(async () => { result.current.decide(result.current.approvals[0]!, true); await Promise.resolve(); });
+  expect(result.current.processingTaskId).toBe(taskId);
+  expect(result.current.activity).toBe('Đang gửi yêu cầu dịch vụ');
+  expect(result.current.tasks[0]).toEqual(before);
+  await act(async () => { release(); await gate; await Promise.resolve(); await Promise.resolve(); });
+  expect(result.current.processingTaskId).toBeNull();
+  expect(result.current.tasks[0]).toEqual(before);
+});
+
+describe('recovery evidence is tied to the interrupted run, not to an earlier completed reply', () => {
+  const stored = (id: number, role: 'user' | 'assistant', text: string, incomplete = false) => ({ id: `88888888-8888-4888-8888-8888888888${String(id).padStart(2, '0')}`, role, text, incomplete });
+  const earlier = [stored(1, 'user', 'Câu hỏi đầu tiên'), stored(2, 'assistant', 'Trả lời câu đầu tiên.')];
+  const firstSnapshot: KaelConversationSnapshot = { ...empty, conversationId: conversation, messages: earlier };
+  const interruptedRun = [{ events: [started, { type: 'message_delta' as const, text: 'Đang trả' }] }];
+
+  async function secondRun(text: string, restore: () => Promise<KaelConversationSnapshot>, scripts = interruptedRun) {
+    const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValueOnce(firstSnapshot).mockImplementation(restore);
+    const { streamer } = scriptedStreamer([...scripts]);
+    const hook = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { hook.result.current.send(text); });
+    await act(async () => { await Promise.resolve(); });
+    return { ...hook, loader, streamer };
+  }
+
+  const withSecond = (reply: ReturnType<typeof stored> | null, text = 'Câu hỏi thứ hai'): KaelConversationSnapshot => ({
+    ...firstSnapshot,
+    messages: [...earlier, stored(3, 'user', text), ...(reply ? [reply] : [])],
+  });
+
+  test('the earlier completed reply does not clear the warning when the interrupted run was never stored', async () => {
+    const { result, streamer } = await secondRun('Câu hỏi thứ hai', async () => firstSnapshot);
+    expect(result.current.messages.at(-1)?.role).toBe('assistant');
+    expect(result.current.notice).toMatch(/chưa xác nhận được/);
+    expect(streamer).toHaveBeenCalledTimes(1);
+  });
+
+  test('a stored question without its reply keeps the interruption warning', async () => {
+    const { result } = await secondRun('Câu hỏi thứ hai', async () => withSecond(null));
+    expect(result.current.notice).toMatch(/chưa đầy đủ/);
+  });
+
+  test('a genuinely completed interrupted run is restored and the warning is cleared', async () => {
+    const { result } = await secondRun('Câu hỏi thứ hai', async () => withSecond(stored(4, 'assistant', 'Trả lời câu thứ hai.')));
+    expect(result.current.notice).toBeNull();
+    expect(result.current.messages.map(message => message.text)).toEqual(['Câu hỏi đầu tiên', 'Trả lời câu đầu tiên.', 'Câu hỏi thứ hai', 'Trả lời câu thứ hai.']);
+  });
+
+  test('partial content of the interrupted run keeps the warning and the incomplete mark', async () => {
+    const { result } = await secondRun('Câu hỏi thứ hai', async () => withSecond(stored(4, 'assistant', 'Trả lời dở', true)));
+    expect(result.current.notice).toMatch(/chưa đầy đủ/);
+    expect(result.current.messages.at(-1)).toEqual(expect.objectContaining({ text: 'Trả lời dở', incomplete: true }));
+  });
+
+  test('failed restoration keeps the uncertainty even though an earlier reply was complete', async () => {
+    const { result } = await secondRun('Câu hỏi thứ hai', async () => { throw new Error('offline'); });
+    expect(result.current.notice).toMatch(/chưa tải lại được/);
+    expect(result.current.messages.map(message => message.text)).toContain('Câu hỏi đầu tiên');
+  });
+
+  test('a busy backend keeps the still-running notice and later clears only with the run reply', async () => {
+    let snapshot = { ...withSecond(null), busy: true };
+    const { result } = await secondRun('Câu hỏi thứ hai', async () => snapshot);
+    expect(result.current.notice).toMatch(/vẫn đang xử lý/);
+    snapshot = { ...withSecond(stored(4, 'assistant', 'Trả lời câu thứ hai.')), busy: false };
+    await act(async () => { result.current.refresh(); await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.notice).toBeNull();
+  });
+
+  test('a busy backend that later shows only the earlier reply never clears the warning', async () => {
+    let snapshot = { ...firstSnapshot, busy: true };
+    const { result } = await secondRun('Câu hỏi thứ hai', async () => snapshot);
+    snapshot = { ...firstSnapshot, busy: false };
+    await act(async () => { result.current.refresh(); await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.notice).toMatch(/chưa xác nhận được/);
+  });
+
+  test('identical user messages in successive runs are told apart by position', async () => {
+    const same = 'Câu hỏi đầu tiên';
+    const missing = await secondRun(same, async () => firstSnapshot);
+    expect(missing.result.current.notice).toMatch(/chưa xác nhận được/);
+    const stored2 = await secondRun(same, async () => withSecond(stored(4, 'assistant', 'Trả lời lần hai.'), same));
+    expect(stored2.result.current.notice).toBeNull();
+    const partial = await secondRun(same, async () => withSecond(stored(4, 'assistant', 'Dở', true), same));
+    expect(partial.result.current.notice).toMatch(/chưa đầy đủ/);
+  });
+
+  test('an interrupted approval keeps its reconcile card with the original identity and never retries on its own', async () => {
+    const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValueOnce(storedSnapshot).mockResolvedValue({
+      ...storedSnapshot,
+      messages: [...storedSnapshot.messages, stored(3, 'user', 'Đồng ý thực hiện thao tác Kael đề xuất.'), stored(4, 'assistant', 'Chưa rõ kết quả.')],
+      tasks: [{ ...storedSnapshot.tasks[0]!, status: 'paused', version: 5 }],
+      approvals: [reconciliation],
+    });
+    const { streamer, requests } = scriptedStreamer([{ events: [started, { type: 'tool_started', call_id: `approval:${approvalId}`, tool: 'service_request_submit', label: 'Đang gửi yêu cầu dịch vụ' }] }]);
+    const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { result.current.decide(result.current.approvals[0]!, true); });
+    await act(async () => { await Promise.resolve(); });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.action).toEqual({ type: 'approve', approval_id: approvalId, fingerprint: 'a'.repeat(64) });
+    expect(result.current.approvals).toEqual([reconciliation]);
+    expect(result.current.approvals[0]!.id).toBe(approvalId);
+    expect(result.current.tasks[0]!.status).toBe('paused');
+    expect(streamer).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('first turn interrupted before run_started', () => {
+  const stored = (id: number, role: 'user' | 'assistant', text: string, incomplete = false) => ({ id: `99999999-9999-4999-8999-9999999999${String(id).padStart(2, '0')}`, role, text, incomplete });
+  const text = 'Vòi nước bị rò, nhờ Kael tạo yêu cầu';
+  const persisted = (reply: ReturnType<typeof stored> | null): KaelConversationSnapshot => ({ ...empty, conversationId: conversation, messages: [stored(1, 'user', text), ...(reply ? [reply] : [])] });
+  const never = { events: [] as Body[], outcome: { kind: 'interrupted' } as KaelTurnOutcome };
+
+  async function firstTurn(restore: () => Promise<KaelConversationSnapshot>, mount: () => Promise<KaelConversationSnapshot> = async () => empty) {
+    const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockImplementationOnce(mount).mockImplementation(restore);
+    const scripts = [never, { events: [started, { type: 'run_completed' as const, text: 'Xong.' }] }];
+    const { streamer, requests } = scriptedStreamer(scripts);
+    const hook = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { hook.result.current.send(text); });
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    return { ...hook, loader, streamer, requests };
+  }
+
+  const interruptedText = /trước khi Kael trả lời xong/;
+  const unconfirmedText = /chưa xác nhận được/;
+  const unverifiedText = /chưa tải lại được cuộc trò chuyện để xác minh/;
+
+  test('restores a first message that the backend stored and answered, without a retry', async () => {
+    const { result, streamer, loader } = await firstTurn(async () => persisted(stored(2, 'assistant', 'Đã ghi nhận yêu cầu.')));
+    expect(result.current.notice).toBeNull();
+    expect(result.current.conversationId).toBe(conversation);
+    expect(result.current.messages.map(message => [message.role, message.text])).toEqual([['user', text], ['assistant', 'Đã ghi nhận yêu cầu.']]);
+    expect(streamer).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  test('keeps the interruption warning when the first message was stored without its reply', async () => {
+    const { result, streamer } = await firstTurn(async () => persisted(null));
+    expect(result.current.notice).toMatch(interruptedText);
+    expect(result.current.conversationId).toBe(conversation);
+    expect(result.current.messages.map(message => message.text)).toEqual([text]);
+    expect(streamer).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps a partial stored reply marked incomplete with the warning', async () => {
+    const { result } = await firstTurn(async () => persisted(stored(2, 'assistant', 'Đang tr', true)));
+    expect(result.current.notice).toMatch(interruptedText);
+    expect(result.current.messages.at(-1)).toEqual(expect.objectContaining({ text: 'Đang tr', incomplete: true }));
+  });
+
+  test('a busy backend shows the still-running notice and never retries', async () => {
+    const { result, streamer } = await firstTurn(async () => ({ ...persisted(null), busy: true }));
+    expect(result.current.notice).toMatch(/vẫn đang xử lý/);
+    expect(streamer).toHaveBeenCalledTimes(1);
+  });
+
+  test('an unavailable snapshot leaves an explicit unverified state and keeps the local message', async () => {
+    const { result, streamer } = await firstTurn(async () => { throw new Error('offline'); });
+    expect(result.current.notice).toMatch(unverifiedText);
+    expect(result.current.messages.map(message => [message.role, message.text])).toEqual([['user', text]]);
+    expect(result.current.conversationId).toBeNull();
+    expect(streamer).toHaveBeenCalledTimes(1);
+  });
+
+  test('no matching persisted message stays unconfirmed and keeps the local message', async () => {
+    const { result, streamer } = await firstTurn(async () => empty);
+    expect(result.current.notice).toMatch(unconfirmedText);
+    expect(result.current.messages.map(message => message.text)).toEqual([text]);
+    expect(result.current.conversationId).toBeNull();
+    expect(streamer).toHaveBeenCalledTimes(1);
+  });
+
+  test('a stored conversation holding different text does not confirm the interrupted message', async () => {
+    const other: KaelConversationSnapshot = { ...empty, conversationId: conversation, messages: [stored(1, 'user', 'Một câu hỏi khác'), stored(2, 'assistant', 'Trả lời khác.')] };
+    const { result } = await firstTurn(async () => other);
+    expect(result.current.notice).toMatch(unconfirmedText);
+    expect(result.current.messages.map(message => message.text)).toEqual([text]);
+  });
+
+  test('an earlier stored conversation with the same text is not mistaken for the interrupted run when the mount load failed', async () => {
+    const old: KaelConversationSnapshot = { ...empty, conversationId: conversation, messages: [stored(1, 'user', text), stored(2, 'assistant', 'Trả lời cũ.')] };
+    const { result } = await firstTurn(async () => old, async () => { throw new Error('offline'); });
+    expect(result.current.notice).toMatch(unconfirmedText);
+    expect(result.current.messages.map(message => message.text)).toEqual([text]);
+  });
+
+  test('a later verification adopts the stored conversation instead of creating a second one', async () => {
+    let snapshot: KaelConversationSnapshot = empty;
+    const { result, requests, streamer } = await firstTurn(async () => snapshot);
+    expect(result.current.notice).toMatch(unconfirmedText);
+    snapshot = persisted(stored(2, 'assistant', 'Đã ghi nhận yêu cầu.'));
+    await act(async () => { result.current.refresh(); await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.notice).toBeNull();
+    expect(result.current.conversationId).toBe(conversation);
+    expect(result.current.messages.map(message => message.text)).toEqual([text, 'Đã ghi nhận yêu cầu.']);
+    expect(streamer).toHaveBeenCalledTimes(1);
+    expect(requests).toHaveLength(1);
+    await act(async () => { result.current.send('Tiếp tục'); });
+    expect(requests[1]?.conversationId).toBe(conversation);
+  });
 });

@@ -47,3 +47,12 @@ test('task rows name each task and its real status', async () => {
   expect(screen.getByLabelText('Sửa máy lạnh: Cần thêm thông tin')).toBeTruthy();
   expect(screen.getByLabelText('Soạn tin nhắn: Tạm dừng')).toBeTruthy();
 });
+
+test('a task being processed shows the activity instead of its stored status, without changing other rows', async () => {
+  await render(<KaelTaskList processingTaskId="1" processingLabel="Đang gửi yêu cầu dịch vụ" tasks={[
+    { id: '1', title: 'Sửa máy lạnh', kind: 'service_request', status: 'waiting_for_approval', version: 2, summary: '' },
+    { id: '2', title: 'Soạn tin nhắn', kind: 'writing', status: 'paused', version: 1, summary: '' },
+  ]}/>);
+  expect(screen.getByLabelText('Sửa máy lạnh: Đang gửi yêu cầu dịch vụ')).toBeTruthy();
+  expect(screen.getByLabelText('Soạn tin nhắn: Tạm dừng')).toBeTruthy();
+});

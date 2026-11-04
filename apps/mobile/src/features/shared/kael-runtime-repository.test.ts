@@ -102,3 +102,61 @@ test('a changed session or cancelled request never reports success', async () =>
   controller.abort();
   await expect(streamKaelTurn('customer-a', request, () => undefined, controller.signal, fetcher)).resolves.toEqual({ kind: 'cancelled' });
 });
+
+describe('stream sequence integrity', () => {
+  const start = line(1, { type: 'run_started', conversation_id: conversation, request_id: request.requestId, replayed: false });
+  const run = async (chunks: string[]) => {
+    const events: KaelEvent[] = [];
+    const { fetcher, cancel } = streamed(chunks);
+    const outcome = await streamKaelTurn('customer-a', request, event => events.push(event), new AbortController().signal, fetcher);
+    return { outcome, events, cancel };
+  };
+
+  test('accepts a contiguous sequence from 1 to a terminal event', async () => {
+    const { outcome, events } = await run([start + line(2, { type: 'message_delta', text: 'a' }) + line(3, { type: 'run_completed', text: 'a' })]);
+    expect(outcome.kind).toBe('terminal');
+    expect(events.map(event => event.seq)).toEqual([1, 2, 3]);
+  });
+
+  test('a stream that does not start at sequence 1 is interrupted before any event is delivered', async () => {
+    const { outcome, events } = await run([line(2, { type: 'run_started', conversation_id: conversation, request_id: request.requestId, replayed: false }) + line(3, { type: 'run_completed', text: 'a' })]);
+    expect(outcome).toEqual({ kind: 'interrupted' });
+    expect(events).toEqual([]);
+  });
+
+  test('a skipped sequence number is an interruption and never reaches the terminal handler', async () => {
+    const { outcome, events, cancel } = await run([start + line(2, { type: 'message_delta', text: 'a' }) + line(4, { type: 'run_completed', text: 'a' })]);
+    expect(outcome).toEqual({ kind: 'interrupted' });
+    expect(events.map(event => event.seq)).toEqual([1, 2]);
+    expect(events.some(event => event.type === 'run_completed')).toBe(false);
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  test('a skipped approval event is never inferred from the events that follow it', async () => {
+    const { outcome, events } = await run([start + line(3, { type: 'tool_completed', call_id: 'approval:x', tool: 'service_request_submit', outcome: 'succeeded', label: 'x' }) + line(4, { type: 'run_completed', text: 'Đã gửi' })]);
+    expect(outcome).toEqual({ kind: 'interrupted' });
+    expect(events.map(event => event.type)).toEqual(['run_started']);
+  });
+
+  test('legitimate duplicates and replays of old events are ignored while the stream continues', async () => {
+    const { outcome, events } = await run([start + line(2, { type: 'message_delta', text: 'a' }) + line(2, { type: 'message_delta', text: 'a' }) + line(1, { type: 'message_delta', text: 'old' }) + line(3, { type: 'run_completed', text: 'a' })]);
+    expect(outcome.kind).toBe('terminal');
+    expect(events.map(event => event.seq)).toEqual([1, 2, 3]);
+  });
+
+  test('truncated final lines and missing terminal events are interruptions', async () => {
+    const truncated = line(2, { type: 'run_completed', text: 'a' }).trim();
+    expect((await run([start + truncated.slice(0, 20)])).outcome).toEqual({ kind: 'interrupted' });
+    const unterminated = await run([start + truncated]);
+    expect(unterminated.outcome).toEqual({ kind: 'interrupted' });
+    expect(unterminated.events.map(event => event.type)).toEqual(['run_started']);
+    expect((await run([start + line(2, { type: 'message_delta', text: 'a' })])).outcome).toEqual({ kind: 'interrupted' });
+  });
+
+  test('malformed events and a changed run identity stop the stream without a terminal event', async () => {
+    const other = '44444444-4444-4444-8444-444444444444';
+    expect((await run([start + '{"v":1,"seq":2,"run_id":"x"}\n'])).outcome).toEqual({ kind: 'interrupted' });
+    expect((await run([start + line(2, { type: 'run_completed', text: 'a' }, other)])).outcome).toEqual({ kind: 'interrupted' });
+    expect((await run([start + line(0, { type: 'message_delta', text: 'a' })])).outcome).toEqual({ kind: 'interrupted' });
+  });
+});
