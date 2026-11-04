@@ -26,6 +26,15 @@ select nestscout_private.ingest_kael_knowledge(pg_temp.knowledge_fixture('fixtur
 select nestscout_private.ingest_kael_knowledge(pg_temp.knowledge_fixture('fixture.draft', 'public', 'draft_unapproved')::text, 'dienkiem truyxuat', array['dienkiem'], 'isolated-fixture');
 select nestscout_private.ingest_kael_knowledge((pg_temp.knowledge_fixture('fixture.future') || '{"effective_at":"2999-01-01T00:00:00Z"}')::text, 'dienkiem truyxuat', array['dienkiem'], 'isolated-fixture');
 select nestscout_private.ingest_kael_knowledge((pg_temp.knowledge_fixture('fixture.expired') || '{"expires_at":"2026-02-01T00:00:00Z"}')::text, 'dienkiem truyxuat', array['dienkiem'], 'isolated-fixture');
+select nestscout_private.ingest_kael_knowledge((pg_temp.knowledge_fixture('fixture.priced') || jsonb_build_object(
+  'source_kind', 'synthetic_case', 'provenance', 'synthetic_seed', 'review_state', 'agent_validated_provisional', 'source_uri', null,
+  'case_data', jsonb_build_object('case_id', 'fixture.priced', 'revision', 1, 'provenance_type', 'synthetic_seed',
+    'review_state', 'agent_validated_provisional', 'safety_tags', jsonb_build_array('routine_caution'),
+    'questions', jsonb_build_array('Isolated test question'), 'price_prior', jsonb_build_object('evidence_class', 'synthetic_prior', 'min_vnd', 50000, 'max_vnd', 100000))))::text,
+  'priced isolate', array['priced isolate'], 'isolated-fixture');
+select is((select (source #>> '{case_data,price_prior,min_vnd}')::integer from public.kael_knowledge_sources where source_id = 'fixture.priced'), 50000, 'Trusted source history retains the original synthetic prior');
+select ok(not has_column_privilege('authenticated', 'public.kael_knowledge_sources', 'source', 'select'), 'Raw source column has no authenticated read privilege');
+select ok(has_column_privilege('authenticated', 'public.kael_knowledge_sources', 'public_source', 'select'), 'Published knowledge projection remains readable');
 
 select is(nestscout_private.ingest_kael_knowledge(pg_temp.knowledge_fixture('fixture.public')::text, 'dienkiem truyxuat', array['dienkiem'], 'isolated-fixture'),
   (select content_hash from public.kael_knowledge_sources where source_id = 'fixture.public'), 'Replay retains source hash');
@@ -46,6 +55,17 @@ select ok(not (select prosecdef from pg_proc where oid = 'public.kael_knowledge_
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000ab01","role":"authenticated"}', true);
+select throws_ok($$ select source from public.kael_knowledge_sources where source_id = 'fixture.priced' $$, '42501', 'permission denied for table kael_knowledge_sources', 'Direct source JSON cannot bypass pricing gates');
+select throws_ok($$ select source #> '{case_data,price_prior}' from public.kael_knowledge_sources where source_id = 'fixture.priced' $$, '42501', 'permission denied for table kael_knowledge_sources', 'JSON-path projection cannot bypass raw column privilege');
+select throws_ok($$ select to_jsonb(s) from public.kael_knowledge_sources s where source_id = 'fixture.priced' $$, '42501', 'permission denied for table kael_knowledge_sources', 'Whole-row serialization cannot bypass raw column privilege');
+select is((select public_source #>> '{case_data,case_id}' from public.kael_knowledge_sources where source_id = 'fixture.priced'), 'fixture.priced', 'Case knowledge stays readable through safe direct projection');
+select is((select public_source #>> '{case_data,questions,0}' from public.kael_knowledge_sources where source_id = 'fixture.priced'), 'Isolated test question', 'Redaction preserves diagnostic knowledge');
+select is((select public_source #> '{case_data,price_prior}' from public.kael_knowledge_sources where source_id = 'fixture.priced'), 'null'::jsonb, 'Safe column never exposes synthetic priors');
+select ok(not (select jsonb_path_exists(public_source, '$.**.min_vnd') or jsonb_path_exists(public_source, '$.**.max_vnd') from public.kael_knowledge_sources where source_id = 'fixture.priced'), 'No amount keys exist anywhere in safe source JSON');
+select is(public.kael_knowledge_search('', 1, 'fixture.priced') #>> '{items,0,case_data,case_id}', 'fixture.priced', 'Exact-source lookup preserves published case knowledge');
+select is(public.kael_knowledge_search('', 1, 'fixture.priced') #> '{items,0,case_data,price_prior}', 'null'::jsonb, 'Exact-source RPC cannot expose the prior');
+select ok(not jsonb_path_exists(public.kael_knowledge_search('priced isolate'), '$.**.min_vnd'), 'Lexical RPC cannot expose numeric priors');
+select ok(not jsonb_path_exists(public.kael_knowledge_search('priced isolate', 5, null, 'exact_alias'), '$.**.max_vnd'), 'Alias RPC cannot expose numeric priors');
 select is(jsonb_array_length(public.kael_knowledge_search('điệnkiểm truyxuất', 10) -> 'items'), 2, 'Owner sees only public and own scoped fixture');
 select is(public.kael_knowledge_search('', 1, 'fixture.owner') -> 'items' -> 0 ->> 'source_id', 'fixture.owner', 'Owner can read its source');
 select is(public.kael_knowledge_search('', 1, 'fixture.worker') ->> 'status', 'no_reliable_match', 'Customer cannot read Worker source');

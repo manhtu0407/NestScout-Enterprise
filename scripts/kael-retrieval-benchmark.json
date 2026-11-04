@@ -1,10 +1,10 @@
 {
   "evidence_type": "local_postgres_real_sql",
-  "measured_at": "2026-11-04T13:21:56.660Z",
+  "measured_at": "2026-11-04T14:23:06.333Z",
   "corpus_version": "kael-vi-2026-11-04-v1",
   "corpus_hash": "64209006e86dea921c33fa7454f3eab687e177b27246c66f521819debd38cc1a",
   "retrieval_implementation": "lexical-v1",
-  "migration_hash": "78ab933a4b2780b41b0cf2949cf47cf6a805a7fe003d5c8d74af487483f86c1a",
+  "migration_hash": "425965032271a9414d171966d303b63010714687233083c000d014b26ad48138",
   "probe_hash": "956214f78997ae338a050de90d5032e9b9cb352bfcd3b7597961de1747a85a8b",
   "probe_provenance": "agent_authored_separately_from_corpus; agent_validated; not_human_reviewed",
   "environment": {
@@ -30,8 +30,8 @@
       "empty_results": 68,
       "false_positive_no_match_queries": [],
       "duplicate_source_rate": 0,
-      "p50_sql_ms": 4.551,
-      "p95_sql_ms": 6.388,
+      "p50_sql_ms": 4.922,
+      "p95_sql_ms": 10.471,
       "returned_sources": 4,
       "tool_calls": 72,
       "safety_probes": 8,
@@ -109,8 +109,8 @@
         "negative-04"
       ],
       "duplicate_source_rate": 0,
-      "p50_sql_ms": 4.617,
-      "p95_sql_ms": 7.444,
+      "p50_sql_ms": 5.287,
+      "p95_sql_ms": 9.014,
       "returned_sources": 136,
       "tool_calls": 72,
       "safety_probes": 8,
@@ -130,14 +130,14 @@
     {
       "id": "intent-01",
       "strategy": "exact_alias",
-      "latency_ms": 13.759,
+      "latency_ms": 16.202,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-01",
       "strategy": "lexical",
-      "latency_ms": 7.537,
+      "latency_ms": 9.014,
       "status": "matched",
       "sources": [
         "electrical.breaker-trip",
@@ -148,14 +148,14 @@
     {
       "id": "intent-02",
       "strategy": "exact_alias",
-      "latency_ms": 4.621,
+      "latency_ms": 5.054,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-02",
       "strategy": "lexical",
-      "latency_ms": 4.978,
+      "latency_ms": 5.606,
       "status": "matched",
       "sources": [
         "electrical.switch-hot"
@@ -164,14 +164,14 @@
     {
       "id": "intent-03",
       "strategy": "exact_alias",
-      "latency_ms": 5.243,
+      "latency_ms": 8.572,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-03",
       "strategy": "lexical",
-      "latency_ms": 5.412,
+      "latency_ms": 8.924,
       "status": "matched",
       "sources": [
         "plumbing.sink-slow"
@@ -180,28 +180,28 @@
     {
       "id": "intent-04",
       "strategy": "exact_alias",
-      "latency_ms": 5.703,
+      "latency_ms": 8.632,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-04",
       "strategy": "lexical",
-      "latency_ms": 5.339,
+      "latency_ms": 10.567,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-05",
       "strategy": "exact_alias",
-      "latency_ms": 4.755,
+      "latency_ms": 10.471,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-05",
       "strategy": "lexical",
-      "latency_ms": 5.868,
+      "latency_ms": 8.033,
       "status": "matched",
       "sources": [
         "air_conditioning.condensation-pipe",
@@ -213,14 +213,14 @@
     {
       "id": "intent-06",
       "strategy": "exact_alias",
-      "latency_ms": 4.172,
+      "latency_ms": 4.437,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-06",
       "strategy": "lexical",
-      "latency_ms": 4.153,
+      "latency_ms": 4.396,
       "status": "matched",
       "sources": [
         "air_conditioning.outdoor-noise"
@@ -229,14 +229,14 @@
     {
       "id": "intent-07",
       "strategy": "exact_alias",
-      "latency_ms": 4.199,
+      "latency_ms": 5.698,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-07",
       "strategy": "lexical",
-      "latency_ms": 4.896,
+      "latency_ms": 12.476,
       "status": "matched",
       "sources": [
         "cleaning.kitchen-grease",
@@ -246,14 +246,14 @@
     {
       "id": "intent-08",
       "strategy": "exact_alias",
-      "latency_ms": 4.21,
+      "latency_ms": 8.36,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-08",
       "strategy": "lexical",
-      "latency_ms": 4.286,
+      "latency_ms": 7.63,
       "status": "matched",
       "sources": [
         "cleaning.after-renovation"
@@ -262,14 +262,14 @@
     {
       "id": "intent-09",
       "strategy": "exact_alias",
-      "latency_ms": 4.483,
+      "latency_ms": 5.106,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-09",
       "strategy": "lexical",
-      "latency_ms": 4.759,
+      "latency_ms": 5.253,
       "status": "matched",
       "sources": [
         "upholstery.sofa-coffee"
@@ -278,14 +278,14 @@
     {
       "id": "intent-10",
       "strategy": "exact_alias",
-      "latency_ms": 4.596,
+      "latency_ms": 7.575,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-10",
       "strategy": "lexical",
-      "latency_ms": 4.456,
+      "latency_ms": 6.143,
       "status": "matched",
       "sources": [
         "upholstery.mattress-mold"
@@ -294,14 +294,14 @@
     {
       "id": "intent-11",
       "strategy": "exact_alias",
-      "latency_ms": 4.204,
+      "latency_ms": 5.142,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-11",
       "strategy": "lexical",
-      "latency_ms": 4.213,
+      "latency_ms": 7.424,
       "status": "matched",
       "sources": [
         "minor_repairs.cabinet-hinge"
@@ -310,14 +310,14 @@
     {
       "id": "intent-12",
       "strategy": "exact_alias",
-      "latency_ms": 3.935,
+      "latency_ms": 6.649,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "intent-12",
       "strategy": "lexical",
-      "latency_ms": 3.722,
+      "latency_ms": 6.981,
       "status": "matched",
       "sources": [
         "minor_repairs.drawer-rail",
@@ -328,14 +328,14 @@
     {
       "id": "colloquial-01",
       "strategy": "exact_alias",
-      "latency_ms": 4.037,
+      "latency_ms": 5.511,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "colloquial-01",
       "strategy": "lexical",
-      "latency_ms": 7.444,
+      "latency_ms": 5.211,
       "status": "matched",
       "sources": [
         "electrical.breaker-trip"
@@ -344,14 +344,14 @@
     {
       "id": "colloquial-02",
       "strategy": "exact_alias",
-      "latency_ms": 4.891,
+      "latency_ms": 4.069,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "colloquial-02",
       "strategy": "lexical",
-      "latency_ms": 4.708,
+      "latency_ms": 6.533,
       "status": "matched",
       "sources": [
         "electrical.socket-crackle",
@@ -362,14 +362,14 @@
     {
       "id": "colloquial-03",
       "strategy": "exact_alias",
-      "latency_ms": 4.924,
+      "latency_ms": 6.422,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "colloquial-03",
       "strategy": "lexical",
-      "latency_ms": 4.578,
+      "latency_ms": 6.055,
       "status": "matched",
       "sources": [
         "plumbing.tap-drip"
@@ -378,14 +378,14 @@
     {
       "id": "colloquial-04",
       "strategy": "exact_alias",
-      "latency_ms": 4.41,
+      "latency_ms": 4.492,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "colloquial-04",
       "strategy": "lexical",
-      "latency_ms": 5.819,
+      "latency_ms": 6.967,
       "status": "matched",
       "sources": [
         "plumbing.sink-slow"
@@ -394,14 +394,14 @@
     {
       "id": "colloquial-05",
       "strategy": "exact_alias",
-      "latency_ms": 4.939,
+      "latency_ms": 5.236,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "colloquial-05",
       "strategy": "lexical",
-      "latency_ms": 6.819,
+      "latency_ms": 5.27,
       "status": "matched",
       "sources": [
         "air_conditioning.indoor-water",
@@ -412,14 +412,14 @@
     {
       "id": "colloquial-06",
       "strategy": "exact_alias",
-      "latency_ms": 4.771,
+      "latency_ms": 4.653,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "colloquial-06",
       "strategy": "lexical",
-      "latency_ms": 5.076,
+      "latency_ms": 5.829,
       "status": "matched",
       "sources": [
         "air_conditioning.musty-smell"
@@ -428,14 +428,14 @@
     {
       "id": "colloquial-07",
       "strategy": "exact_alias",
-      "latency_ms": 3.867,
+      "latency_ms": 4.166,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "colloquial-07",
       "strategy": "lexical",
-      "latency_ms": 3.643,
+      "latency_ms": 4.572,
       "status": "matched",
       "sources": [
         "minor_repairs.bed-squeak"
@@ -444,14 +444,14 @@
     {
       "id": "colloquial-08",
       "strategy": "exact_alias",
-      "latency_ms": 4.907,
+      "latency_ms": 5.278,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "colloquial-08",
       "strategy": "lexical",
-      "latency_ms": 4.531,
+      "latency_ms": 5.435,
       "status": "matched",
       "sources": [
         "upholstery.pet-hair",
@@ -461,14 +461,14 @@
     {
       "id": "colloquial-09",
       "strategy": "exact_alias",
-      "latency_ms": 3.837,
+      "latency_ms": 4.237,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "colloquial-09",
       "strategy": "lexical",
-      "latency_ms": 5.076,
+      "latency_ms": 6.948,
       "status": "matched",
       "sources": [
         "cleaning.balcony-floor",
@@ -486,14 +486,14 @@
     {
       "id": "colloquial-10",
       "strategy": "exact_alias",
-      "latency_ms": 4.789,
+      "latency_ms": 5.118,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "colloquial-10",
       "strategy": "lexical",
-      "latency_ms": 5.139,
+      "latency_ms": 4.47,
       "status": "matched",
       "sources": [
         "minor_repairs.cabinet-hinge"
@@ -502,14 +502,14 @@
     {
       "id": "ambiguous-01",
       "strategy": "exact_alias",
-      "latency_ms": 4.354,
+      "latency_ms": 7.137,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "ambiguous-01",
       "strategy": "lexical",
-      "latency_ms": 4.979,
+      "latency_ms": 7.084,
       "status": "matched",
       "sources": [
         "electrical.water-socket",
@@ -524,14 +524,14 @@
     {
       "id": "ambiguous-02",
       "strategy": "exact_alias",
-      "latency_ms": 4.973,
+      "latency_ms": 5.237,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "ambiguous-02",
       "strategy": "lexical",
-      "latency_ms": 5.73,
+      "latency_ms": 5.336,
       "status": "matched",
       "sources": [
         "air_conditioning.musty-smell",
@@ -541,14 +541,14 @@
     {
       "id": "ambiguous-03",
       "strategy": "exact_alias",
-      "latency_ms": 4.414,
+      "latency_ms": 4.453,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "ambiguous-03",
       "strategy": "lexical",
-      "latency_ms": 4.834,
+      "latency_ms": 6.552,
       "status": "matched",
       "sources": [
         "air_conditioning.ceiling-cassette",
@@ -558,14 +558,14 @@
     {
       "id": "ambiguous-04",
       "strategy": "exact_alias",
-      "latency_ms": 4.585,
+      "latency_ms": 4.943,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "ambiguous-04",
       "strategy": "lexical",
-      "latency_ms": 4.996,
+      "latency_ms": 5.626,
       "status": "matched",
       "sources": [
         "minor_repairs.floor-trim"
@@ -574,14 +574,14 @@
     {
       "id": "ambiguous-05",
       "strategy": "exact_alias",
-      "latency_ms": 4.827,
+      "latency_ms": 6.219,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "ambiguous-05",
       "strategy": "lexical",
-      "latency_ms": 6.958,
+      "latency_ms": 6.374,
       "status": "matched",
       "sources": [
         "air_conditioning.short-circuit",
@@ -596,7 +596,7 @@
     {
       "id": "ambiguous-06",
       "strategy": "exact_alias",
-      "latency_ms": 6.927,
+      "latency_ms": 8.417,
       "status": "matched",
       "sources": [
         "plumbing.under-sink-leak"
@@ -605,7 +605,7 @@
     {
       "id": "ambiguous-06",
       "strategy": "lexical",
-      "latency_ms": 8.012,
+      "latency_ms": 7.966,
       "status": "matched",
       "sources": [
         "plumbing.under-sink-leak",
@@ -617,14 +617,14 @@
     {
       "id": "ambiguous-07",
       "strategy": "exact_alias",
-      "latency_ms": 4.569,
+      "latency_ms": 4.909,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "ambiguous-07",
       "strategy": "lexical",
-      "latency_ms": 4.32,
+      "latency_ms": 6.088,
       "status": "matched",
       "sources": [
         "upholstery.sofa-peeling",
@@ -634,14 +634,14 @@
     {
       "id": "ambiguous-08",
       "strategy": "exact_alias",
-      "latency_ms": 4.716,
+      "latency_ms": 6.738,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "ambiguous-08",
       "strategy": "lexical",
-      "latency_ms": 4.753,
+      "latency_ms": 5.464,
       "status": "matched",
       "sources": [
         "air_conditioning.wall-damp",
@@ -653,14 +653,14 @@
     {
       "id": "safety-01",
       "strategy": "exact_alias",
-      "latency_ms": 4.206,
+      "latency_ms": 4.922,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "safety-01",
       "strategy": "lexical",
-      "latency_ms": 4.774,
+      "latency_ms": 5.132,
       "status": "matched",
       "sources": [
         "air_conditioning.burning",
@@ -670,14 +670,14 @@
     {
       "id": "safety-02",
       "strategy": "exact_alias",
-      "latency_ms": 4.943,
+      "latency_ms": 4.988,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "safety-02",
       "strategy": "lexical",
-      "latency_ms": 4.469,
+      "latency_ms": 4.954,
       "status": "matched",
       "sources": [
         "electrical.shock-appliance"
@@ -686,7 +686,7 @@
     {
       "id": "safety-03",
       "strategy": "exact_alias",
-      "latency_ms": 4.184,
+      "latency_ms": 4.641,
       "status": "matched",
       "sources": [
         "minor_repairs.gas-hose"
@@ -695,7 +695,7 @@
     {
       "id": "safety-03",
       "strategy": "lexical",
-      "latency_ms": 4.186,
+      "latency_ms": 4.327,
       "status": "matched",
       "sources": [
         "minor_repairs.gas-hose"
@@ -704,14 +704,14 @@
     {
       "id": "safety-04",
       "strategy": "exact_alias",
-      "latency_ms": 4.437,
+      "latency_ms": 4.423,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "safety-04",
       "strategy": "lexical",
-      "latency_ms": 4.49,
+      "latency_ms": 4.698,
       "status": "matched",
       "sources": [
         "cleaning.chemical-mix"
@@ -720,7 +720,7 @@
     {
       "id": "safety-05",
       "strategy": "exact_alias",
-      "latency_ms": 5.037,
+      "latency_ms": 5.172,
       "status": "matched",
       "sources": [
         "minor_repairs.wall-crack"
@@ -729,7 +729,7 @@
     {
       "id": "safety-05",
       "strategy": "lexical",
-      "latency_ms": 5.567,
+      "latency_ms": 5.105,
       "status": "matched",
       "sources": [
         "minor_repairs.wall-crack"
@@ -738,14 +738,14 @@
     {
       "id": "safety-06",
       "strategy": "exact_alias",
-      "latency_ms": 4.751,
+      "latency_ms": 4.278,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "safety-06",
       "strategy": "lexical",
-      "latency_ms": 4.496,
+      "latency_ms": 4.504,
       "status": "matched",
       "sources": [
         "minor_repairs.pressure-valve",
@@ -755,14 +755,14 @@
     {
       "id": "safety-07",
       "strategy": "exact_alias",
-      "latency_ms": 4.027,
+      "latency_ms": 3.974,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "safety-07",
       "strategy": "lexical",
-      "latency_ms": 4.551,
+      "latency_ms": 4.125,
       "status": "matched",
       "sources": [
         "air_conditioning.outdoor-access"
@@ -771,14 +771,14 @@
     {
       "id": "safety-08",
       "strategy": "exact_alias",
-      "latency_ms": 5.433,
+      "latency_ms": 4.156,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "safety-08",
       "strategy": "lexical",
-      "latency_ms": 4.705,
+      "latency_ms": 4.604,
       "status": "matched",
       "sources": [
         "minor_repairs.mirror-loose"
@@ -787,14 +787,14 @@
     {
       "id": "policy-01",
       "strategy": "exact_alias",
-      "latency_ms": 3.853,
+      "latency_ms": 4.133,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "policy-01",
       "strategy": "lexical",
-      "latency_ms": 3.998,
+      "latency_ms": 4.099,
       "status": "matched",
       "sources": [
         "product.permissions",
@@ -805,14 +805,14 @@
     {
       "id": "policy-02",
       "strategy": "exact_alias",
-      "latency_ms": 5.674,
+      "latency_ms": 5.264,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "policy-02",
       "strategy": "lexical",
-      "latency_ms": 6.463,
+      "latency_ms": 5.332,
       "status": "matched",
       "sources": [
         "product.lifecycle",
@@ -825,14 +825,14 @@
     {
       "id": "policy-03",
       "strategy": "exact_alias",
-      "latency_ms": 6.39,
+      "latency_ms": 4.049,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "policy-03",
       "strategy": "lexical",
-      "latency_ms": 4.457,
+      "latency_ms": 3.956,
       "status": "matched",
       "sources": [
         "product.permissions"
@@ -841,42 +841,42 @@
     {
       "id": "policy-04",
       "strategy": "exact_alias",
-      "latency_ms": 5.235,
+      "latency_ms": 3.878,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "policy-04",
       "strategy": "lexical",
-      "latency_ms": 3.836,
+      "latency_ms": 3.839,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "policy-05",
       "strategy": "exact_alias",
-      "latency_ms": 3.398,
+      "latency_ms": 3.492,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "policy-05",
       "strategy": "lexical",
-      "latency_ms": 3.284,
+      "latency_ms": 3.305,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "policy-06",
       "strategy": "exact_alias",
-      "latency_ms": 4.618,
+      "latency_ms": 4.717,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "policy-06",
       "strategy": "lexical",
-      "latency_ms": 13.834,
+      "latency_ms": 5.005,
       "status": "matched",
       "sources": [
         "product.transparency"
@@ -885,98 +885,98 @@
     {
       "id": "general-01",
       "strategy": "exact_alias",
-      "latency_ms": 4.2,
+      "latency_ms": 3.672,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "general-01",
       "strategy": "lexical",
-      "latency_ms": 4.194,
+      "latency_ms": 3.565,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "general-02",
       "strategy": "exact_alias",
-      "latency_ms": 3.98,
+      "latency_ms": 3.76,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "general-02",
       "strategy": "lexical",
-      "latency_ms": 3.967,
+      "latency_ms": 3.671,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "general-03",
       "strategy": "exact_alias",
-      "latency_ms": 3.967,
+      "latency_ms": 3.54,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "general-03",
       "strategy": "lexical",
-      "latency_ms": 4.295,
+      "latency_ms": 3.559,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "general-04",
       "strategy": "exact_alias",
-      "latency_ms": 5.179,
+      "latency_ms": 4.675,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "general-04",
       "strategy": "lexical",
-      "latency_ms": 5.131,
+      "latency_ms": 4.72,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "general-05",
       "strategy": "exact_alias",
-      "latency_ms": 4.559,
+      "latency_ms": 3.587,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "general-05",
       "strategy": "lexical",
-      "latency_ms": 3.718,
+      "latency_ms": 3.518,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "general-06",
       "strategy": "exact_alias",
-      "latency_ms": 3.814,
+      "latency_ms": 3.872,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "general-06",
       "strategy": "lexical",
-      "latency_ms": 4.077,
+      "latency_ms": 3.663,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "pricing-01",
       "strategy": "exact_alias",
-      "latency_ms": 4.1,
+      "latency_ms": 3.824,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "pricing-01",
       "strategy": "lexical",
-      "latency_ms": 4.425,
+      "latency_ms": 4.37,
       "status": "matched",
       "sources": [
         "cleaning.desk-surface",
@@ -987,14 +987,14 @@
     {
       "id": "pricing-02",
       "strategy": "exact_alias",
-      "latency_ms": 6.109,
+      "latency_ms": 5.323,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "pricing-02",
       "strategy": "lexical",
-      "latency_ms": 6.259,
+      "latency_ms": 6.858,
       "status": "matched",
       "sources": [
         "air_conditioning.musty-smell",
@@ -1008,14 +1008,14 @@
     {
       "id": "pricing-03",
       "strategy": "exact_alias",
-      "latency_ms": 3.979,
+      "latency_ms": 4.114,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "pricing-03",
       "strategy": "lexical",
-      "latency_ms": 4.111,
+      "latency_ms": 4.183,
       "status": "matched",
       "sources": [
         "upholstery.sofa-dust"
@@ -1024,14 +1024,14 @@
     {
       "id": "pricing-04",
       "strategy": "exact_alias",
-      "latency_ms": 4.372,
+      "latency_ms": 4.267,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "pricing-04",
       "strategy": "lexical",
-      "latency_ms": 5.727,
+      "latency_ms": 5.408,
       "status": "matched",
       "sources": [
         "air_conditioning.condensation-pipe",
@@ -1049,14 +1049,14 @@
     {
       "id": "pricing-05",
       "strategy": "exact_alias",
-      "latency_ms": 5.868,
+      "latency_ms": 4.388,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "pricing-05",
       "strategy": "lexical",
-      "latency_ms": 4.617,
+      "latency_ms": 4.171,
       "status": "matched",
       "sources": [
         "product.lifecycle"
@@ -1065,14 +1065,14 @@
     {
       "id": "pricing-06",
       "strategy": "exact_alias",
-      "latency_ms": 4.578,
+      "latency_ms": 4.088,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "pricing-06",
       "strategy": "lexical",
-      "latency_ms": 5.052,
+      "latency_ms": 4.561,
       "status": "matched",
       "sources": [
         "product.limits",
@@ -1083,56 +1083,56 @@
     {
       "id": "negative-01",
       "strategy": "exact_alias",
-      "latency_ms": 4.139,
+      "latency_ms": 3.824,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "negative-01",
       "strategy": "lexical",
-      "latency_ms": 3.701,
+      "latency_ms": 3.863,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "negative-02",
       "strategy": "exact_alias",
-      "latency_ms": 3.954,
+      "latency_ms": 4.188,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "negative-02",
       "strategy": "lexical",
-      "latency_ms": 3.881,
+      "latency_ms": 6.211,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "negative-03",
       "strategy": "exact_alias",
-      "latency_ms": 3.808,
+      "latency_ms": 7.649,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "negative-03",
       "strategy": "lexical",
-      "latency_ms": 4.417,
+      "latency_ms": 6.289,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "negative-04",
       "strategy": "exact_alias",
-      "latency_ms": 4.077,
+      "latency_ms": 5.729,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "negative-04",
       "strategy": "lexical",
-      "latency_ms": 3.784,
+      "latency_ms": 4.319,
       "status": "matched",
       "sources": [
         "product.capabilities"
@@ -1141,14 +1141,14 @@
     {
       "id": "regression-01",
       "strategy": "exact_alias",
-      "latency_ms": 3.978,
+      "latency_ms": 8.192,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "regression-01",
       "strategy": "lexical",
-      "latency_ms": 3.973,
+      "latency_ms": 7.62,
       "status": "matched",
       "sources": [
         "product.general",
@@ -1158,14 +1158,14 @@
     {
       "id": "regression-02",
       "strategy": "exact_alias",
-      "latency_ms": 5.704,
+      "latency_ms": 11.881,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "regression-02",
       "strategy": "lexical",
-      "latency_ms": 6.266,
+      "latency_ms": 9.037,
       "status": "matched",
       "sources": [
         "product.provenance"
@@ -1174,14 +1174,14 @@
     {
       "id": "regression-03",
       "strategy": "exact_alias",
-      "latency_ms": 3.992,
+      "latency_ms": 8.484,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "regression-03",
       "strategy": "lexical",
-      "latency_ms": 4.599,
+      "latency_ms": 5.466,
       "status": "matched",
       "sources": [
         "electrical.outdoor-light"
@@ -1190,14 +1190,14 @@
     {
       "id": "regression-04",
       "strategy": "exact_alias",
-      "latency_ms": 4.795,
+      "latency_ms": 11.267,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "regression-04",
       "strategy": "lexical",
-      "latency_ms": 5.036,
+      "latency_ms": 8.06,
       "status": "matched",
       "sources": [
         "plumbing.meter-moving"
@@ -1206,14 +1206,14 @@
     {
       "id": "regression-05",
       "strategy": "exact_alias",
-      "latency_ms": 4.247,
+      "latency_ms": 6.175,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "regression-05",
       "strategy": "lexical",
-      "latency_ms": 5.721,
+      "latency_ms": 5.422,
       "status": "matched",
       "sources": [
         "air_conditioning.poor-airflow"
@@ -1222,14 +1222,14 @@
     {
       "id": "regression-06",
       "strategy": "exact_alias",
-      "latency_ms": 4.882,
+      "latency_ms": 7.679,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "regression-06",
       "strategy": "lexical",
-      "latency_ms": 4.954,
+      "latency_ms": 6.93,
       "status": "matched",
       "sources": [
         "upholstery.carpet-dust"
@@ -1238,14 +1238,14 @@
     {
       "id": "regression-07",
       "strategy": "exact_alias",
-      "latency_ms": 4.217,
+      "latency_ms": 5.047,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "regression-07",
       "strategy": "lexical",
-      "latency_ms": 4.525,
+      "latency_ms": 5.086,
       "status": "matched",
       "sources": [
         "electrical.outdoor-light",
@@ -1257,14 +1257,14 @@
     {
       "id": "regression-08",
       "strategy": "exact_alias",
-      "latency_ms": 3.737,
+      "latency_ms": 4.499,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "regression-08",
       "strategy": "lexical",
-      "latency_ms": 4.298,
+      "latency_ms": 4.493,
       "status": "matched",
       "sources": [
         "minor_repairs.floor-trim"
@@ -1273,14 +1273,14 @@
     {
       "id": "regression-09",
       "strategy": "exact_alias",
-      "latency_ms": 4.551,
+      "latency_ms": 5.218,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "regression-09",
       "strategy": "lexical",
-      "latency_ms": 5.724,
+      "latency_ms": 5.394,
       "status": "matched",
       "sources": [
         "cleaning.cabinet-empty",
@@ -1291,14 +1291,14 @@
     {
       "id": "regression-10",
       "strategy": "exact_alias",
-      "latency_ms": 6.074,
+      "latency_ms": 4.077,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "regression-10",
       "strategy": "lexical",
-      "latency_ms": 4.75,
+      "latency_ms": 4.126,
       "status": "matched",
       "sources": [
         "minor_repairs.screen-mesh"
@@ -1307,14 +1307,14 @@
     {
       "id": "regression-11",
       "strategy": "exact_alias",
-      "latency_ms": 6.388,
+      "latency_ms": 4.64,
       "status": "no_reliable_match",
       "sources": []
     },
     {
       "id": "regression-11",
       "strategy": "lexical",
-      "latency_ms": 4.408,
+      "latency_ms": 5.287,
       "status": "matched",
       "sources": [
         "plumbing.heater-leak",
@@ -1324,7 +1324,7 @@
     {
       "id": "regression-12",
       "strategy": "exact_alias",
-      "latency_ms": 4.32,
+      "latency_ms": 4.734,
       "status": "matched",
       "sources": [
         "upholstery.surface-scratch"
@@ -1333,7 +1333,7 @@
     {
       "id": "regression-12",
       "strategy": "lexical",
-      "latency_ms": 4.255,
+      "latency_ms": 5.251,
       "status": "matched",
       "sources": [
         "upholstery.surface-scratch"

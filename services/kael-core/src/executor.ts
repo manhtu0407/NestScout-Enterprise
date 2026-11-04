@@ -1,7 +1,7 @@
 import type { KaelConfig } from './config.ts';
 import type { KaelApprovalView, KaelEmitter, KaelTaskStatus, KaelToolOutcome } from './events.ts';
 import type { Fetcher } from './model.ts';
-import { knowledgeToolResult, previewEstimate, retrieveKnowledge } from './intelligence.ts';
+import { knowledgeToolResult, localEstimateEvidence, previewEstimate, retrieveKnowledge } from './intelligence.ts';
 import type { ScopeMaterial } from './knowledge-contract.ts';
 import { searchWeb } from './perplexity.ts';
 import { fingerprint } from './policy.ts';
@@ -229,7 +229,8 @@ export async function executeDecision(decision: Extract<Decision, { kind: 'execu
         if (!ctx.config.localEstimatePreview) return ok(previewEstimate(null, false, ctx.config));
         const result = await retrieveKnowledge(ctx.rest, '', ctx.signal, String(args.case_id));
         if (result.status === 'unavailable') return failed(result.reason ?? 'retrieval_unavailable', null, 'unavailable');
-        return ok(previewEstimate(result.items[0] ?? null, args.scope_confirmed === true, ctx.config, {
+        const evidence = await localEstimateEvidence(result.items[0] ?? null, ctx.config);
+        return ok(previewEstimate(evidence, args.scope_confirmed === true, ctx.config, {
           area_m2: Number(args.area_m2), units: Number(args.units), material: args.material as ScopeMaterial | 'unknown',
           floor_access: args.floor_access === true, clear_surface: args.clear_surface === true, no_visible_damage: args.no_visible_damage === true,
         }));

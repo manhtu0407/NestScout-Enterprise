@@ -4,7 +4,7 @@ import test from 'node:test';
 import { serviceCases } from '../services/kael-core/src/knowledge-cases.ts';
 import { familyCounts, normalizeKnowledge, knowledgeTerms, validateCases, validateSources } from '../services/kael-core/src/knowledge-contract.ts';
 import { knowledgeSnapshot, knowledgeSources, sourceRegistry } from '../services/kael-core/src/knowledge-sources.ts';
-import { knowledgeToolResult, observeLearning, previewEstimate, retrieveKnowledge } from '../services/kael-core/src/intelligence.ts';
+import { knowledgeToolResult, localEstimateEvidence, observeLearning, previewEstimate, retrieveKnowledge } from '../services/kael-core/src/intelligence.ts';
 import { readKaelConfig } from '../services/kael-core/src/config.ts';
 import { selectTools, evaluateCall, confirmableTools } from '../services/kael-core/src/policy.ts';
 import { call, harness, lastToolResults, scriptedProvider, terminal, users, baseEnv, effectsCount } from './kael-test-harness.mjs';
@@ -30,6 +30,11 @@ function itemFor(id) {
     citation_ref: `kael:${id}@${source.revision}#${source.content_hash}`, retrieval_method: 'lexical', relevance_score: 1,
     valid_as_of: source.effective_at, case_data: source.case_data,
   };
+}
+
+function publicItemFor(id) {
+  const item = itemFor(id);
+  return { ...item, case_data: item.case_data ? { ...item.case_data, price_prior: null } : null };
 }
 
 test('corpus has exactly the six required distributions, eighteen exemplars and eighteen explicitly synthetic priors', () => {
@@ -131,7 +136,7 @@ test('normalization preserves displayed Vietnamese and uses accent-insensitive s
 });
 
 test('retrieval validates citation integrity, classifications, deduplication and count before model context', async () => {
-  const item = itemFor('cleaning.desk-surface');
+  const item = publicItemFor('cleaning.desk-surface');
   const retrieve = body => retrieveKnowledge(async () => json(body), 'lau bàn', AbortSignal.timeout(1000));
   assert.equal((await retrieve({ status: 'matched', items: [item] })).status, 'matched');
   for (const bad of [
@@ -143,11 +148,26 @@ test('retrieval validates citation integrity, classifications, deduplication and
     { status: 'no_reliable_match', items: [item] },
     { status: 'matched', items: [{ ...item, case_data: { case_id: item.source_id, safety_tags: ['routine_caution'] } }] },
     { status: 'matched', items: [{ ...item, case_data: { ...item.case_data, safe_response: 'x'.repeat(10000) } }] },
+    { status: 'matched', items: [itemFor('cleaning.desk-surface')] },
   ]) assert.equal((await retrieve(bad)).status, 'unavailable');
   for (const status of [401, 403, 500]) assert.equal((await retrieveKnowledge(async () => json({}, status), 'lau bàn', AbortSignal.timeout(1000))).status, 'unavailable');
   const result = knowledgeToolResult({ status: 'matched', items: [item] });
   assert.ok(!JSON.stringify(result).includes('min_vnd'), 'knowledge passages do not expose numeric priors to the model');
   assert.match(result.notice, /untrusted data/);
+});
+
+test('local-only pricing restores a bundled prior only for the current authorized canonical source', async () => {
+  const item = publicItemFor('cleaning.desk-surface');
+  assert.equal(await localEstimateEvidence(item, config()), null);
+  assert.equal(await localEstimateEvidence(item, config({ KAEL_ESTIMATE_PREVIEW: 'local_only' })), null);
+  assert.equal(await localEstimateEvidence(null, local), null);
+  assert.equal(await localEstimateEvidence({ ...item, content_hash: 'a'.repeat(64) }, local), null);
+  assert.equal(await localEstimateEvidence({ ...item, source_revision: 2 }, local), null);
+  assert.equal(await localEstimateEvidence(itemFor('cleaning.desk-surface'), local), null);
+  const evidence = await localEstimateEvidence(item, local);
+  assert.equal(item.case_data.price_prior, null, 'authorized public evidence stays redacted');
+  assert.equal(evidence.case_data.price_prior.min_vnd, 50000);
+  assert.equal(previewEstimate(evidence, true, local, validScope).kind, 'provisional_range');
 });
 
 test('preview rejects unknown, oversized, unsafe-access or incompatible scope instead of extrapolating a band', () => {
@@ -325,7 +345,7 @@ test('local preview re-reads the exact source through caller JWT and creates no 
     request => { assert.equal(lastToolResults(request)[0].kind, 'provisional_range'); return { text: ['Khoảng thử nghiệm giả định, không ràng buộc.'] }; },
   ]);
   const h = harness({ env: { SUPABASE_URL: 'http://127.0.0.1:31412', KAEL_ESTIMATE_PREVIEW: 'local_only' }, providers: () => [provider], fixtures: {
-    knowledge: (args, user) => { assert.equal(user.id, users.customer.id); assert.equal(args.p_source_id, 'cleaning.desk-surface'); assert.equal(args.p_limit, 1); return json({ status: 'matched', items: [itemFor(args.p_source_id)] }); },
+    knowledge: (args, user) => { assert.equal(user.id, users.customer.id); assert.equal(args.p_source_id, 'cleaning.desk-surface'); assert.equal(args.p_limit, 1); return json({ status: 'matched', items: [publicItemFor(args.p_source_id)] }); },
   } });
   assert.equal(terminal(await h.message(users.customer, 'Ước tính thử cho một bàn trống')).type, 'run_completed');
   assert.equal(effectsCount(h.db), 0);

@@ -105,7 +105,11 @@ Append-only migration:
   serializes changes by source, rejects revision conflicts/gaps and replaces the
   searchable current revision atomically while retaining history.
 
-Authenticated users have SELECT only, constrained by RLS. The table and RPC have
+Authenticated users have column-scoped SELECT only, constrained by RLS. The raw
+`source` column is protected; `public_source` is a generated projection with
+`case_data.price_prior` set to null. Direct clients must name permitted columns;
+wildcard and whole-row reads are denied. Search uses that same safe projection.
+The table and RPC have
 no anonymous access or runtime `service_role` bypass. Published/current/effective
 sources only are visible; owner sources require the exact account; Worker sources
 also require the existing active grant and fixture eligibility at query time.
@@ -159,6 +163,13 @@ the experimental calculation only with a loopback `SUPABASE_URL`; hosted URLs,
 misleading loopback hostnames and internal service names cannot enable it.
 `KAEL_KNOWLEDGE=disabled` removes both tools and disables preview. There is no
 hosted numeric opt-in in this implementation.
+
+The public search RPC always returns redacted cases, including exact-source
+lookup. Local preview first performs that same authorized lookup, then loads the
+bundled canonical source only after the loopback opt-in gate and an exact source
+ID, revision and SHA-256 match. A missing, withdrawn, inaccessible, newer or
+hash-mismatched source produces no numeric preview. No privileged pricing RPC,
+client-controlled pricing flag or service-role read bypass is introduced.
 
 The 18 priors are agent-generated coarse VND labor-only ranges for one small task
 with safe floor access and known material. They have no market/transaction source,
@@ -239,7 +250,7 @@ latency and native rendering; a single ordered local pass is not hosted capacity
 
 ### Measured retrieval, 2026-11-04 at 20:21 Asia/Ho_Chi_Minh
 
-Full raw evidence: [kael-retrieval-benchmark.json](../scripts/kael-retrieval-benchmark.json).
+Foundation baseline raw evidence: [3069eab benchmark](https://github.com/manhtu0407/NestScout-Enterprise/blob/3069eab584b67cac80ae8bb078926e6a76f20ca3/scripts/kael-retrieval-benchmark.json).
 The run made 144 real SQL retrieval calls: 72 per strategy, with 59 positive and
 13 no-match labels. Corpus hash:
 `64209006e86dea921c33fa7454f3eab687e177b27246c66f521819debd38cc1a`.
@@ -306,7 +317,7 @@ weakened. This is a local result, not proof that resource-sensitive UI tests can
 flake. The task-owned stack was stopped after the database and benchmark runs;
 no unrelated stack was stopped or removed.
 
-## Exact changed-file inventory
+## Foundation commit 3069eab file inventory
 
 ```text
 docs/kael-intelligence.md
@@ -339,6 +350,83 @@ supabase/migrations/20261104123710_create_kael_knowledge.sql
 supabase/tests/database/kael-knowledge.test.sql
 supabase/tests/database/private-function-security.test.sql
 ```
+
+## Pricing data-exposure hardening
+
+Pricing exposure hardening against `3069eab` adds
+`supabase/migrations/20261104140804_protect_kael_price_priors.sql` without editing
+the original migration, corpus, source registry, evaluation probes or business
+contracts. The raw source remains owner-only engineering data. The generated
+projection uses PostgreSQL's [independent generated-column privileges](https://www.postgresql.org/docs/17/ddl-generated-columns.html)
+and an explicit column allowlist. The search RPC stays invoker-security with the
+original RLS, ranking, limits and exact-source filter. The runtime accepts only
+redacted retrieval results and restores a canonical bundled prior solely for a
+permitted local preview with matching source ID/revision/hash.
+
+The hardening changes these files:
+
+```text
+docs/kael-intelligence.md
+scripts/kael-knowledge.mjs
+scripts/kael-knowledge.test.mjs
+scripts/kael-retrieval-benchmark.json
+scripts/supabase-mcp.integration.test.mjs
+services/kael-core/src/executor.ts
+services/kael-core/src/intelligence.ts
+supabase/database.types.ts
+supabase/migrations/20261104140804_protect_kael_price_priors.sql
+supabase/tests/database/kael-knowledge.test.sql
+```
+
+Standards and specification reviews independently inspected the focused diff and
+reported no actionable findings. These are agent reviews, not human approval.
+Refreshed evidence: 983 pgTAP assertions across 29 files PASS (67 knowledge
+assertions), all 12 real local MCP/Auth/REST/race tests PASS, and 97 combined Kael
+tests PASS. Database reset/replay, history, lint, schema drift and generated-type
+comparison PASS. The task-owned stack was stopped after verification.
+The final `npm run check` PASS includes 11 Supabase contract tests, 245 Foundation
+tests, mobile typecheck/lint and all 812 mobile tests across 68 suites. The final
+`npm run verify:negative` PASS includes all 193 tests and the invalid fixtures.
+The final diff leaves the 180 cases, 72 probes, source registry, original migration,
+tool registry, runtime coordinator and all business contracts byte-identical to
+`3069eab`; only the documented read/preview boundary and its evidence changed.
+
+One unchanged Worker certificate test failed once because its earlier removal
+chooses the first certificate and can remove the later assertion's named target.
+The unchanged full-suite rerun passed. No business implementation or test
+assertion was altered to hide that ordering-sensitive result.
+
+The refreshed [raw benchmark](../scripts/kael-retrieval-benchmark.json), measured
+on 2026-11-04 at 21:23 Asia/Ho_Chi_Minh, has the exact same source order and status
+for all 144 SQL calls as `3069eab`. All retrieval quality metrics, miss lists,
+false positives and duplicate rates are unchanged. Corpus and probe hashes are
+unchanged; the artifact now binds the hardening migration containing the applied
+search/projection definition. No embeddings, providers or paid calls were used.
+
+| Strategy | Recall@3 / @5 | MRR@10 | No-result precision | Before SQL p50 / p95 | After SQL p50 / p95 |
+| --- | ---: | ---: | ---: | --- | --- |
+| Exact / alias | 0.0593 | 0.0678 | 0.1912 | 4.551 / 6.388 ms | 4.922 / 10.471 ms |
+| Lexical | 0.9153 | 0.8955 | 0.9167 | 4.617 / 7.444 ms | 5.287 / 9.014 ms |
+
+These are single ordered local SQL passes, not a statistical performance study.
+Lexical p95 increased by 1.570 ms in this sample; this is reported rather than
+claimed to be an unchanged latency result. Safety-source recall remains 8/8 at
+five, and the two original benign false-positive queries remain visible.
+
+The new migration is applied after the original source migration. It protects
+both existing source revisions and newly ingested revisions without rewriting
+their content hashes or publishing new corpus versions. Column privileges also
+deny JSON-path and whole-row serialization of the raw source; RLS still applies
+to every permitted column. `SELECT *` is intentionally denied, so direct clients
+must request `source_id`, `public_source` and other explicitly permitted metadata.
+The search DTO keeps its existing shape, with `case_data.price_prior = null` in
+every search mode and exact-source lookup, regardless of runtime flags.
+
+New security evidence includes 14 additional pgTAP assertions, a real Auth/REST
+raw-column/wildcard/JSON-path denial and forged RPC-flag test, plus runtime
+rejection of old numeric-bearing responses and disabled/stale/hash-mismatched
+local evidence. Existing local-only preview positive tests now consume the same
+redacted DTO as the real RPC and still produce the original bounded preview.
 
 ## Research-to-code traceability
 

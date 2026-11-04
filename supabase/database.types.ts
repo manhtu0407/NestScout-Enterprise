@@ -69,14 +69,14 @@ isOneToOne: false
                   ]
                 },"kael_knowledge_sources": {
                   Row: {
-                    "content_hash": string,"corpus_version": string,"effective_at": string | null,"expires_at": string | null,"ingested_at": string,"is_current": boolean,"locale": string,"normalized_aliases": (string)[],"normalized_text": string,"owner_id": string | null,"provenance": string,"publication": string,"region": string,"review_state": string,"revision": number,"search_vector": unknown,"source": NonNullable<Json>,"source_id": string,"source_kind": string,"visibility": string
+                    "content_hash": string,"corpus_version": string,"effective_at": string | null,"expires_at": string | null,"ingested_at": string,"is_current": boolean,"locale": string,"normalized_aliases": (string)[],"normalized_text": string,"owner_id": string | null,"provenance": string,"public_source": Json | null,"publication": string,"region": string,"review_state": string,"revision": number,"search_vector": unknown,"source": NonNullable<Json>,"source_id": string,"source_kind": string,"visibility": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "content_hash": string,"corpus_version": string,"effective_at"?: string | null,"expires_at"?: string | null,"ingested_at"?: string,"is_current"?: boolean,"locale": string,"normalized_aliases": (string)[],"normalized_text": string,"owner_id"?: string | null,"provenance": string,"publication": string,"region": string,"review_state": string,"revision": number,"search_vector"?: never,"source": NonNullable<Json>,"source_id": string,"source_kind": string,"visibility": string
+                    "content_hash": string,"corpus_version": string,"effective_at"?: string | null,"expires_at"?: string | null,"ingested_at"?: string,"is_current"?: boolean,"locale": string,"normalized_aliases": (string)[],"normalized_text": string,"owner_id"?: string | null,"provenance": string,"public_source"?: never,"publication": string,"region": string,"review_state": string,"revision": number,"search_vector"?: never,"source": NonNullable<Json>,"source_id": string,"source_kind": string,"visibility": string
                   }
                   Update: {
-                    "content_hash"?: string,"corpus_version"?: string,"effective_at"?: string | null,"expires_at"?: string | null,"ingested_at"?: string,"is_current"?: boolean,"locale"?: string,"normalized_aliases"?: (string)[],"normalized_text"?: string,"owner_id"?: string | null,"provenance"?: string,"publication"?: string,"region"?: string,"review_state"?: string,"revision"?: number,"search_vector"?: never,"source"?: NonNullable<Json>,"source_id"?: string,"source_kind"?: string,"visibility"?: string
+                    "content_hash"?: string,"corpus_version"?: string,"effective_at"?: string | null,"expires_at"?: string | null,"ingested_at"?: string,"is_current"?: boolean,"locale"?: string,"normalized_aliases"?: (string)[],"normalized_text"?: string,"owner_id"?: string | null,"provenance"?: string,"public_source"?: never,"publication"?: string,"region"?: string,"review_state"?: string,"revision"?: number,"search_vector"?: never,"source"?: NonNullable<Json>,"source_id"?: string,"source_kind"?: string,"visibility"?: string
                   }
                   Relationships: [
 

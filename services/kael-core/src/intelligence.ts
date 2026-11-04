@@ -2,6 +2,7 @@ import type { KaelConfig } from './config.ts';
 import { validateCase } from './knowledge-contract.ts';
 import type { EstimateScope, ServiceCase } from './knowledge-contract.ts';
 import type { Rest } from './store.ts';
+import { fingerprint } from './policy.ts';
 
 export type KnowledgeItem = {
   source_id: string;
@@ -41,7 +42,7 @@ function isKnowledgeItem(value: unknown): value is KnowledgeItem {
   if (row.source_kind === 'product_fact') return row.provenance === 'repository_contract' && row.trust_tier === 'repository_verified' && row.case_data === null && typeof row.source_uri === 'string' && row.source_uri.startsWith('repo:');
   if (row.source_kind !== 'synthetic_case' || row.provenance !== 'synthetic_seed' || row.trust_tier !== 'provisional' || row.source_uri !== null) return false;
   try { validateCase(row.case_data); } catch (error) { if (error instanceof Error) return false; throw error; }
-  return row.case_data.case_id === row.source_id && row.case_data.revision === row.source_revision;
+  return row.case_data.case_id === row.source_id && row.case_data.revision === row.source_revision && row.case_data.price_prior === null;
 }
 
 export async function retrieveKnowledge(rest: Rest, query: string, signal: AbortSignal, sourceId: string | null = null): Promise<RetrievalResult> {
@@ -74,6 +75,14 @@ export function knowledgeToolResult(result: RetrievalResult): Record<string, unk
     status: result.status, reason: result.reason ?? null, notice: dataNotice,
     items, context_budget_chars: 10000, context_truncated: items.length < result.items.length,
   };
+}
+
+export async function localEstimateEvidence(item: KnowledgeItem | null, config: KaelConfig): Promise<KnowledgeItem | null> {
+  if (!config.localEstimatePreview || !item || item.source_kind !== 'synthetic_case' || item.case_data?.price_prior !== null) return null;
+  const { knowledgeSources } = await import('./knowledge-sources.ts');
+  const source = knowledgeSources.find(source => source.source_id === item.source_id && source.revision === item.source_revision);
+  if (!source || await fingerprint(source) !== item.content_hash) return null;
+  return { ...item, case_data: source.case_data };
 }
 
 export function previewEstimate(item: KnowledgeItem | null, scopeConfirmed: boolean, config: KaelConfig, scope?: EstimateScope): Record<string, unknown> {

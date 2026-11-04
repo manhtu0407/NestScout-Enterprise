@@ -865,6 +865,7 @@ test('real Auth JWT and PostgREST enforce source ownership, publication and writ
     const origin = verified.endpoints['rest.http'].url.replace(/\/$/, '');
     const accounts = [];
     const sourceId = `fixture.rest-${randomUUID()}`;
+    const pricedSourceId = `cleaning.price-boundary-${randomUUID()}`;
     const rpc = (token, name, body) => fetch(`${origin}/rest/v1/rpc/${name}`, {
       method: 'POST', headers: { apikey: status.env.ANON_KEY, authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000),
     });
@@ -886,7 +887,31 @@ test('real Auth JWT and PostgREST enforce source ownership, publication and writ
         accounts[index].token = (await login.json()).access_token;
       }
       const source = knowledgeFixture(sourceId, { visibility: 'owner', owner_id: accounts[0].id });
-      database.query(`begin; ${knowledgeSeedSql(await knowledgeSnapshot([source]))} commit;`);
+      const originalPricedSource = knowledgeSources.find(item => item.source_id === 'cleaning.desk-surface');
+      const pricedSource = { ...originalPricedSource, source_id: pricedSourceId, case_data: { ...originalPricedSource.case_data, case_id: pricedSourceId } };
+      database.query(`begin; ${knowledgeSeedSql(await knowledgeSnapshot([source, pricedSource]))} commit;`);
+      const sourcePath = `${origin}/rest/v1/kael_knowledge_sources?source_id=eq.${pricedSourceId}`;
+      const userHeaders = { apikey: status.env.ANON_KEY, authorization: `Bearer ${accounts[0].token}` };
+      for (const select of ['source', 'source->case_data->price_prior', '*']) {
+        const denied = await fetch(`${sourcePath}&select=${encodeURIComponent(select)}`, { headers: userHeaders, signal: AbortSignal.timeout(10000) });
+        assert.equal(denied.status, 403, `${select}: ordinary authenticated clients cannot read numeric priors`);
+        await denied.body?.cancel();
+      }
+      const publicRead = await fetch(`${sourcePath}&select=source_id,public_source`, { headers: userHeaders, signal: AbortSignal.timeout(10000) });
+      assert.equal(publicRead.status, 200);
+      const publicRows = await publicRead.json();
+      assert.equal(publicRows[0].public_source.case_data.case_id, pricedSourceId);
+      assert.equal(publicRows[0].public_source.case_data.price_prior, null);
+      assert.ok(!JSON.stringify(publicRows).includes('min_vnd'));
+      const pricedLookup = await rpc(accounts[0].token, 'kael_knowledge_search', { p_query: '', p_limit: 1, p_source_id: pricedSourceId });
+      assert.equal(pricedLookup.status, 200);
+      const pricedResult = await pricedLookup.json();
+      assert.equal(pricedResult.items[0].case_data.case_id, pricedSourceId);
+      assert.equal(pricedResult.items[0].case_data.price_prior, null);
+      assert.ok(!JSON.stringify(pricedResult).includes('min_vnd'));
+      const forgedPricingFlag = await rpc(accounts[0].token, 'kael_knowledge_search', { p_query: '', p_limit: 1, p_source_id: pricedSourceId, p_include_prices: true });
+      assert.notEqual(forgedPricingFlag.status, 200, 'clients cannot enable experimental pricing through RPC arguments');
+      await forgedPricingFlag.body?.cancel();
       const query = { p_query: '', p_limit: 1, p_source_id: sourceId };
       const owner = await rpc(accounts[0].token, 'kael_knowledge_search', query);
       assert.equal(owner.status, 200);
@@ -911,7 +936,7 @@ test('real Auth JWT and PostgREST enforce source ownership, publication and writ
       assert.notEqual(forgedServiceToken.status, 200, 'server token is not a user-query bypass');
       await forgedServiceToken.body?.cancel();
     } finally {
-      database.query(`delete from public.kael_knowledge_sources where source_id = ${sqlLiteral(sourceId)};`);
+      database.query(`delete from public.kael_knowledge_sources where source_id in (${sqlLiteral(sourceId)}, ${sqlLiteral(pricedSourceId)});`);
       for (const account of accounts) {
         assert.match(account.id, /^[a-f0-9-]{36}$/);
         database.query(`delete from auth.users where id = ${sqlLiteral(account.id)}::uuid;`);

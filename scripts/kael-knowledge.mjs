@@ -135,7 +135,7 @@ rollback;`);
   const snapshot = await sourceRegistry();
   return {
     evidence_type: 'local_postgres_real_sql', measured_at: new Date().toISOString(), corpus_version: snapshot.corpus_version, corpus_hash: snapshot.content_hash,
-    retrieval_implementation: 'lexical-v1', migration_hash: await fingerprint(readFileSync(new URL('../supabase/migrations/20261104123710_create_kael_knowledge.sql', import.meta.url), 'utf8')),
+    retrieval_implementation: 'lexical-v1', migration_hash: await fingerprint(readFileSync(new URL('../supabase/migrations/20261104140804_protect_kael_price_priors.sql', import.meta.url), 'utf8')),
     probe_hash: await fingerprint(probes),
     probe_provenance: 'agent_authored_separately_from_corpus; agent_validated; not_human_reviewed',
     environment: { platform: `${os.platform()} ${os.release()}`, cpu: os.cpus()[0]?.model, logical_cpus: os.cpus().length, memory_gib: Math.round(os.totalmem() / 1024 ** 3), node: process.version, postgres: database.query('show server_version;').trim(), latency_scope: 'SQL function only; excludes transport and model generation; one ordered pass, exact_alias then lexical per probe' },
