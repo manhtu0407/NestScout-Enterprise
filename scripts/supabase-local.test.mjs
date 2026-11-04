@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'smol-toml';
-import { validateLocalConfig, validateContainer, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock, validateLocalFiles, localEnvironment, safeDiagnostic, safeEndpoints, isMissingStack } from './supabase-local.mjs';
+import { validateLocalConfig, validateContainer, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock, validateLocalFiles, localEnvironment, safeDiagnostic, safeEndpoints, isMissingStack, databaseTestDiagnostic } from './supabase-local.mjs';
 import { localTools, safeToolResult } from './supabase-mcp.mjs';
 
 const config = parse(readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8'));
@@ -20,6 +20,23 @@ const status = {
   },
 };
 const validate = value => validateLocalStatus(value, 'fixture-root', 'refs/heads/fixture');
+
+test('failed SQL diagnostics expose only assertion numbers and static repository labels, never raw upstream data', () => {
+  const sensitive = 'unrecognized-private-value';
+  const tests = [{ file: 'fixture.test.sql', content: "select ok(false, 'Known fixture label');" }];
+  const result = databaseTestDiagnostic({ status: 1,
+    stdout: `not ok 7 - Known fixture label\nnot ok 8 - ${sensitive}\nfixture.test.sql\n`,
+    stderr: `Bearer ${sensitive}; password=${sensitive}; got=${sensitive}`,
+  }, tests);
+  assert.deepEqual(result, { exit: 1, failures: [
+    { assertion: 7, description: 'Known fixture label' },
+    { assertion: 8, description: 'Description withheld; not a static repository test label.' },
+  ], files: ['fixture.test.sql'], categories: ['sql_assertion'] });
+  assert.ok(!JSON.stringify(result).includes(sensitive));
+  assert.deepEqual(databaseTestDiagnostic(new Error(sensitive), tests), { exit: null, failures: [], files: [], categories: [] });
+  assert.deepEqual(databaseTestDiagnostic({ status: 1, stderr: 'connection refused; failed to pull; permission denied' }, tests).categories,
+    ['connection_refused', 'artifact_resolution', 'permission_denied']);
+});
 
 test('only the pinned CLI missing-stack response permits cold start or absent-stack stop', () => {
   const response = { _tag: 'Error', error: { code: 'ExperimentalStackStatusError', message: 'No managed stack exists for the selected project.' } };
