@@ -18,7 +18,7 @@ test('the approval card shows exactly what will be submitted and lets the user d
   await render(<KaelApprovalCard approval={approval} disabled={false} onDecide={onDecide}/>);
   expect(screen.getByText('Máy lạnh rò nước')).toBeTruthy();
   expect(screen.getByText('Quận 3')).toBeTruthy();
-  expect(screen.getByText('Chưa có gì được gửi cho đến khi bạn xác nhận.')).toBeTruthy();
+  expect(screen.getByText('Yêu cầu này chưa được gửi cho đến khi bạn xác nhận.')).toBeTruthy();
   await fireEvent.press(screen.getByLabelText('Không thực hiện'));
   expect(onDecide).toHaveBeenCalledWith(approval, false);
 });
@@ -34,7 +34,7 @@ test('an uncertain confirmed submission is offered as a check of that same reque
   expect(screen.getByText(/nếu hệ thống đã nhận, Kael chỉ báo lại kết quả; nếu chưa, chính lần gửi đó được hoàn tất/)).toBeTruthy();
   expect(screen.queryByText('Trượt để xác nhận')).toBeNull();
   expect(screen.queryByLabelText('Không thực hiện')).toBeNull();
-  expect(screen.queryByText('Chưa có gì được gửi cho đến khi bạn xác nhận.')).toBeNull();
+  expect(screen.queryByText('Yêu cầu này chưa được gửi cho đến khi bạn xác nhận.')).toBeNull();
   await fireEvent.press(screen.getByLabelText('Kiểm tra lại Gửi yêu cầu dịch vụ'));
   expect(onDecide).toHaveBeenCalledWith(reconcile, true);
 });
@@ -45,5 +45,14 @@ test('task rows name each task and its real status', async () => {
     { id: '2', title: 'Soạn tin nhắn', kind: 'writing', status: 'paused', version: 1, summary: '' },
   ]}/>);
   expect(screen.getByLabelText('Sửa máy lạnh: Cần thêm thông tin')).toBeTruthy();
+  expect(screen.getByLabelText('Soạn tin nhắn: Tạm dừng')).toBeTruthy();
+});
+
+test('a task being processed shows the activity instead of its stored status, without changing other rows', async () => {
+  await render(<KaelTaskList processingTaskId="1" processingLabel="Đang gửi yêu cầu dịch vụ" tasks={[
+    { id: '1', title: 'Sửa máy lạnh', kind: 'service_request', status: 'waiting_for_approval', version: 2, summary: '' },
+    { id: '2', title: 'Soạn tin nhắn', kind: 'writing', status: 'paused', version: 1, summary: '' },
+  ]}/>);
+  expect(screen.getByLabelText('Sửa máy lạnh: Đang gửi yêu cầu dịch vụ')).toBeTruthy();
   expect(screen.getByLabelText('Soạn tin nhắn: Tạm dừng')).toBeTruthy();
 });

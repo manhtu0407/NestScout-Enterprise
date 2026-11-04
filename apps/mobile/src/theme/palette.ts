@@ -80,7 +80,7 @@ export const horizonColors = {
   },
   kaelHomeScreen: {
     userBubbleBackgroundColor: '#D9F2EE',
-    assistantBubbleBackgroundColor: '#F2F4F7',
+    userBubbleText: '#0B3B36',
     disclaimerColor: '#6B7683',
   },
   liquid: {
@@ -120,8 +120,14 @@ export const horizonColors = {
   },
   kaelRuntime: {
     cardSurface: '#F2F4F7', cardBorder: 'rgba(60,60,67,0.10)', title: '#11161C', detailLabel: '#5B6672', detailValue: '#11161C',
-    decline: '#5B6672', taskTitle: '#11161C', taskStatus: '#5B6672', incomplete: '#6B7683',
-    dotActive: '#0E9E8E', dotWaiting: '#B26B00', dotDone: '#176B43', dotStopped: '#9AA3AF',
+    decline: '#5B6672', taskTitle: '#11161C', taskStatus: '#5B6672', incomplete: '#6B7683', taskSurface: '#F5F6F8',
+    dotActive: '#0E9E8E', dotDone: '#176B43', dotStopped: '#9AA3AF',
+  },
+  kaelAttention: {
+    ink: '#11161C', inkMuted: '#5B6672', accent: '#145C57', onAccent: '#FFFFFF', border: 'rgba(60,60,67,0.12)',
+    waitDot: '#9AA3AF', warnDot: '#B26B00', okDot: '#176B43',
+    waitSurface: '#F0F2F5', warnSurface: '#FFF5E2', okSurface: '#E8F5EC',
+    warnBorder: '#B26B0040', okBorder: '#176B4340',
   },
   appMotion: {
     heartIdle: '#9AA3AF', labBadge: '#0E9E8E', labBadgeText: '#FFFFFF', labNotice: '#141820', labNoticeText: '#FFFFFF',
@@ -212,7 +218,6 @@ export const horizonColors = {
     progressScrim: 'rgba(20,24,32,0.32)', progressSurface: '#FFFFFF', progressBorder: '#E4E7EC', progressTitle: '#141820', progressMuted: '#8A909C',
     progressClose: '#F1F2F5', progressCloseGlyph: '#4A5260', progressMarkerIdle: '#D5D9E0', progressMarkerDone: '#141820', progressMarkerCurrent: '#141820', progressMarkerGlyph: '#FFFFFF', progressTextIdle: '#8A909C', progressTextActive: '#141820',
     ambient: '#F3F4F7',
-    welcomeSurface: '#F4F5F7',
     userBubble: '#ECEEF1',
     assistantBubble: '#F7F8FA',
     cardTitle: '#181E27',

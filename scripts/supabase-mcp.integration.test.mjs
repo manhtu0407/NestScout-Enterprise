@@ -1,3 +1,8 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { createKaelSequence, parseKaelConversationSnapshot, parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
+import { createKaelHandler } from '../services/kael-core/src/gateway.ts';
+import { call, lastToolResults, scriptedProvider } from './kael-test-harness.mjs';
 import { knowledgeSeedSnapshot, knowledgeSources, knowledgeSnapshot } from '../services/kael-core/src/knowledge-sources.ts';
 import { knowledgeSeedSql, localKnowledgeDatabase, sqlLiteral } from './kael-knowledge.mjs';
 import assert from 'node:assert/strict';
@@ -1016,6 +1021,336 @@ test('concurrent ingestion serializes identical revisions and never resurrects a
       second?.rollback();
       await Promise.allSettled([first?.done, second?.done].filter(Boolean));
       database.query(`delete from public.kael_knowledge_sources where source_id = ${sqlLiteral(id)};`);
+    }
+  });
+});
+
+const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+const end = result => result.events.at(-1);
+const approvalOf = result => result.events.find(event => event.type === 'approval_required')?.approval;
+const conversationOf = result => result.events[0].conversation_id;
+const outcomes = result => result.events.filter(event => event.type === 'tool_completed').map(event => `${event.tool}:${event.outcome}`);
+
+function draftSteps({ missing = false, submit = true } = {}) {
+  return [
+    { tools: [call('task_create', { title: 'Synthetic local service request', kind: 'service_request', status: 'running', note: '' })] },
+    request => ({ tools: [call('service_request_draft', {
+      task_id: lastToolResults(request)[0].task.id, description: 'Synthetic local repair',
+      location: missing ? '' : 'Synthetic local location', preferred_time: 'Synthetic local time', missing: missing ? ['location'] : [],
+    })] }),
+    ...(submit ? [request => ({ tools: [call('service_request_submit', { task_id: lastToolResults(request)[0].task.id })] })] : []),
+    { text: [missing ? 'Please provide a location.' : 'Prepared, not submitted.'] },
+  ];
+}
+
+test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL; AI is scripted only in tests', { timeout: 300000 }, async t => {
+  await withLocalLock(async () => {
+    const runtime = localRuntime();
+    const stack = runtime.verify();
+    const status = runtime.status();
+    const origin = stack.endpoints['rest.http'].url;
+    const publicKey = status.env.PUBLISHABLE_KEY;
+    const serviceKey = status.env.SERVICE_ROLE_KEY;
+    assert.ok(publicKey?.startsWith('sb_publishable_'));
+    assert.ok(serviceKey?.startsWith('eyJ'));
+    const containers = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/);
+    assert.equal(containers.length, 1);
+    assert.match(containers[0], /^[a-f0-9]{12,64}$/);
+    const query = sql => execFileSync('docker', ['exec', '-i', containers[0], 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], { input: sql, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    const env = { SUPABASE_URL: origin, SUPABASE_ANON_KEY: publicKey, SUPABASE_SERVICE_ROLE_KEY: serviceKey };
+    const accounts = [];
+    const traces = {};
+    const initialUsers = query('select count(*) from auth.users;');
+    const request = (route, token, body, admin = false) => fetch(`${origin}${route}`, {
+      method: body === undefined ? 'GET' : 'POST', signal: AbortSignal.timeout(30000),
+      headers: { apikey: admin ? serviceKey : publicKey, ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const rpc = async (user, name, body = {}) => {
+      const response = await request(`/rest/v1/rpc/${name}`, user.token, body);
+      assert.equal(response.status, 200, `RPC ${name} must succeed`);
+      return response.json();
+    };
+    const newUser = async () => {
+      const email = `${randomUUID()}@example.invalid`;
+      const password = randomUUID();
+      const created = await request('/auth/v1/admin/users', serviceKey, { email, password, email_confirm: true }, true);
+      assert.equal(created.status, 200, 'Supported local admin provisioning must succeed without SMS');
+      const account = await created.json();
+      assert.match(account.id, uuid);
+      const user = { id: account.id, token: null };
+      accounts.push(user);
+      const login = await request('/auth/v1/token?grant_type=password', null, { email, password });
+      assert.equal(login.status, 200, 'Supported local password session must succeed');
+      const session = await login.json();
+      user.token = session.access_token;
+      const claims = JSON.parse(Buffer.from(user.token.split('.')[1], 'base64url').toString());
+      assert.equal(claims.sub, user.id);
+      assert.equal(claims.role, 'authenticated');
+      assert.ok(claims.exp > Date.now() / 1000);
+      const verified = await request('/auth/v1/user', user.token);
+      assert.equal(verified.status, 200, 'Real Auth verifies its own signed JWT');
+      assert.equal((await verified.json()).id, user.id);
+      return user;
+    };
+    const send = async (handle, user, action = { type: 'message', text: 'Synthetic local message' }, conversation = null, mode = 'client', requestId = randomUUID()) => {
+      const body = { request_id: requestId, conversation_id: conversation, mode, action };
+      const response = await handle(new Request(`${origin}/functions/v1/kael`, {
+        method: 'POST', headers: { ...(user ? { authorization: `Bearer ${user.token}` } : {}), apikey: publicKey, 'content-type': 'application/json' }, body: JSON.stringify(body),
+      }));
+      if (!response.headers.get('content-type')?.startsWith('application/x-ndjson')) return { status: response.status, error: await response.json(), events: [] };
+      const raw = await response.text();
+      const events = raw.trim().split('\n').map(line => parseKaelEvent(line));
+      const sequence = createKaelSequence();
+      assert.ok(events.length >= 2);
+      for (const event of events) {
+        assert.ok(event, 'Real gateway events must satisfy the recovered mobile parser');
+        assert.equal(sequence(event), 'accept');
+      }
+      assert.ok(['run_completed', 'run_failed'].includes(events.at(-1).type));
+      assert.ok(events.every(event => event.run_id === events[0].run_id));
+      assert.deepEqual(events.map(event => event.seq), events.map((_, index) => index + 1));
+      return { status: response.status, events, raw, requestId };
+    };
+    const gateway = (steps, { effects = false, fetcher = fetch } = {}) => {
+      const provider = scriptedProvider('anthropic', steps);
+      return { provider, handle: createKaelHandler({ env: { ...env, ...(effects ? { KAEL_ENABLED_EFFECTS: 'service_request_submit' } : {}) }, providers: () => [provider], fetcher, log: () => {} }) };
+    };
+    const decision = (type, approval) => ({ type, approval_id: approval.id, fingerprint: approval.fingerprint });
+    const countEffects = user => Number(query(`select count(*) from public.service_requests where owner_id='${user.id}';`));
+    try {
+      await t.test('real Edge Function rejects guests and invalid JWTs and honestly persists provider unavailability', async () => {
+        const user = await newUser();
+        const edge = req => fetch(req);
+        assert.equal((await send(edge, null)).status, 401);
+        assert.equal((await send(edge, { token: 'invalid-token-aaaaaaaaaaaaaaaaaaaa' })).status, 401);
+        const result = await send(edge, user);
+        assert.equal(result.status, 200);
+        assert.equal(end(result).type, 'run_failed');
+        assert.equal(end(result).code, 'provider_unavailable');
+        assert.equal(query(`select status from public.kael_runs where id='${result.events[0].run_id}';`), 'failed');
+        traces.edgeUnavailable = result.events;
+      });
+      await t.test('real JWT roles, RLS and server-only RPC permissions enforce account boundaries', async () => {
+        const customer = await newUser();
+        const worker = await newUser();
+        assert.deepEqual(await rpc(customer, 'kael_actor_capabilities'), { customer: true, worker: false });
+        query(`insert into public.worker_access_grants(user_id) values ('${worker.id}');`);
+        assert.deepEqual(await rpc(worker, 'kael_actor_capabilities'), { customer: true, worker: false });
+        query(`insert into nestscout_private.worker_dispatch_eligibility(user_id,basis,active) values ('${worker.id}','local_fixture',true);`);
+        assert.deepEqual(await rpc(worker, 'kael_actor_capabilities'), { customer: true, worker: true });
+        const g = gateway([{ text: ['Synthetic ', 'reply.'] }]);
+        const first = await send(g.handle, customer);
+        assert.equal(end(first).type, 'run_completed');
+        const conversation = conversationOf(first);
+        const otherRows = await request(`/rest/v1/kael_messages?select=id&conversation_id=eq.${conversation}`, worker.token);
+        assert.equal(otherRows.status, 200);
+        assert.deepEqual(await otherRows.json(), []);
+        assert.equal((await send(g.handle, worker, undefined, conversation)).status, 400);
+        const forged = await request('/rest/v1/rpc/kael_start_run', customer.token, { p_actor: customer.id, p_request_id: randomUUID(), p_conversation_id: null, p_mode: 'client', p_user_text: 'Forged' });
+        assert.ok([401, 403].includes(forged.status));
+        const snapshot = parseKaelConversationSnapshot(await rpc(customer, 'kael_conversation_state', { p_mode: 'client' }));
+        assert.ok(snapshot);
+        assert.equal(snapshot.conversationId, conversation);
+        assert.equal(snapshot.messages.at(-1).text, 'Synthetic reply.');
+        assert.equal(snapshot.tasks.length, 0);
+        traces.greeting = first.events;
+        traces.restored = snapshot;
+      });
+      await t.test('duplicate request IDs replay the same persisted run without another model call', async () => {
+        const user = await newUser();
+        const g = gateway([{ text: ['Single persisted reply.'] }]);
+        const requestId = randomUUID();
+        const first = await send(g.handle, user, undefined, null, 'client', requestId);
+        const repeated = await send(g.handle, user, undefined, conversationOf(first), 'client', requestId);
+        assert.equal(repeated.events[0].replayed, true);
+        assert.equal(repeated.events[0].run_id, first.events[0].run_id);
+        assert.equal(end(repeated).text, end(first).text);
+        assert.equal(g.provider.requests.length, 1);
+        assert.equal(query(`select count(*) from public.kael_runs where owner_id='${user.id}';`), '1');
+      });
+      await t.test('missing input, legal transitions, tool denials and Worker eligibility use real persistence', async () => {
+        const user = await newUser();
+        const g = gateway(draftSteps({ missing: true, submit: false }));
+        const draft = await send(g.handle, user);
+        assert.equal(end(draft).type, 'run_completed');
+        assert.equal(draft.events.filter(event => event.type === 'task_updated').at(-1).task.status, 'waiting_for_input');
+        assert.equal(approvalOf(draft), undefined);
+        assert.equal(countEffects(user), 0);
+        const task = draft.events.find(event => event.type === 'task_updated').task;
+        const denied = gateway([{ tools: [call('task_update', { task_id: task.id, status: 'completed', note: '' }), call('worker_jobs', {})] }, { text: ['Denied operations did not prevent a reply.'] }]);
+        const refused = await send(denied.handle, user, undefined, conversationOf(draft));
+        assert.deepEqual(outcomes(refused), ['task_update:denied', 'worker_jobs:denied']);
+        const workerGateway = gateway([{ tools: [call('worker_jobs', {})] }, { text: ['No worker data.'] }]);
+        const notEligible = await send(workerGateway.handle, user, undefined, null, 'worker');
+        assert.deepEqual(outcomes(notEligible), ['worker_jobs:denied']);
+        query(`insert into public.worker_access_grants(user_id) values ('${user.id}'); insert into nestscout_private.worker_dispatch_eligibility(user_id,basis,active) values ('${user.id}','local_fixture',true);`);
+        const allowed = gateway([{ tools: [call('worker_jobs', {}), call('worker_job_status', { job_id: randomUUID() })] }, { text: ['Only accessible work is shown.'] }]);
+        const result = await send(allowed.handle, user, undefined, null, 'worker');
+        assert.deepEqual(outcomes(result), ['worker_jobs:succeeded', 'worker_job_status:unavailable']);
+        traces.missingInput = draft.events;
+      });
+      await t.test('explicit approval binds the fingerprint, ordinary text cannot approve, rejection creates no effect', async () => {
+        const user = await newUser();
+        const g = gateway([...draftSteps(), { text: ['Use the explicit confirmation control.'] }], { effects: true });
+        const draft = await send(g.handle, user);
+        const approval = approvalOf(draft);
+        assert.ok(approval);
+        const conversation = conversationOf(draft);
+        assert.equal(countEffects(user), 0);
+        await send(g.handle, user, { type: 'message', text: 'ok đồng ý làm đi' }, conversation);
+        assert.equal(countEffects(user), 0);
+        const mismatch = await send(g.handle, user, { ...decision('approve', approval), fingerprint: 'f'.repeat(64) }, conversation);
+        assert.equal(end(mismatch).code, 'approval_invalid');
+        const rejected = await send(g.handle, user, decision('reject', approval), conversation);
+        assert.equal(end(rejected).type, 'run_completed');
+        assert.equal(countEffects(user), 0);
+        const stale = await send(g.handle, user, decision('approve', approval), conversation);
+        assert.equal(end(stale).code, 'approval_invalid');
+        traces.approval = draft.events;
+        traces.rejected = rejected.events;
+      });
+      await t.test('expired and changed-draft confirmations cannot execute; disabled effects remain refused', async () => {
+        const user = await newUser();
+        const g = gateway([...draftSteps(), ...draftSteps()], { effects: true });
+        const first = await send(g.handle, user);
+        const a = approvalOf(first);
+        query(`update nestscout_private.kael_approvals set expires_at=clock_timestamp()-interval '1 second' where id='${a.id}';`);
+        assert.equal(end(await send(g.handle, user, decision('approve', a), conversationOf(first))).code, 'approval_invalid');
+        const second = await send(g.handle, user);
+        const b = approvalOf(second);
+        const off = gateway([]);
+        assert.equal(end(await send(off.handle, user, decision('approve', b), conversationOf(second))).code, 'approval_invalid');
+        query(`update public.kael_tasks set version=version+1 where id='${b.task_id}';`);
+        assert.equal(end(await send(g.handle, user, decision('approve', b), conversationOf(second))).code, 'approval_invalid');
+        assert.equal(countEffects(user), 0);
+      });
+      await t.test('approved synthetic submission is verified in SQL and duplicate confirmation cannot duplicate its business effect', async () => {
+        const user = await newUser();
+        const g = gateway(draftSteps(), { effects: true });
+        const draft = await send(g.handle, user);
+        const approval = approvalOf(draft);
+        const result = await send(g.handle, user, decision('approve', approval), conversationOf(draft));
+        assert.ok(outcomes(result).includes('service_request_submit:succeeded'));
+        assert.equal(countEffects(user), 1);
+        assert.equal(query(`select count(*) from public.service_requests where owner_id='${user.id}' and submission_key='${approval.id}';`), '1');
+        assert.equal(query(`select status from public.kael_tasks where id='${approval.task_id}';`), 'completed');
+        const duplicate = await send(g.handle, user, decision('approve', approval), conversationOf(draft));
+        assert.equal(countEffects(user), 1);
+        assert.ok(!outcomes(duplicate).includes('service_request_submit:succeeded'));
+        traces.submitted = result.events;
+      });
+      await t.test('lost submission response reconciles the original key and blocks account-wide new submissions', async () => {
+        const user = await newUser();
+        let loseResponse = true;
+        const fetcher = async (url, init) => {
+          const response = await fetch(url, init);
+          if (loseResponse && new URL(url).pathname === '/rest/v1/rpc/submit_service_request') {
+            loseResponse = false;
+            assert.equal(response.status, 200);
+            await response.arrayBuffer();
+            throw new Error('Synthetic loss after the real local transaction committed');
+          }
+          return response;
+        };
+        const g = gateway([...draftSteps(), ...draftSteps()], { effects: true, fetcher });
+        const draft = await send(g.handle, user);
+        const approval = approvalOf(draft);
+        const uncertain = await send(g.handle, user, decision('approve', approval), conversationOf(draft));
+        assert.ok(outcomes(uncertain).includes('service_request_submit:uncertain'));
+        assert.equal(approvalOf(uncertain).kind, 'reconcile');
+        assert.equal(countEffects(user), 1);
+        const blocked = await send(g.handle, user);
+        assert.equal(approvalOf(blocked), undefined);
+        assert.ok(outcomes(blocked).includes('service_request_submit:failed'));
+        const state = parseKaelConversationSnapshot(await rpc(user, 'kael_conversation_state', { p_mode: 'client' }));
+        assert.ok(state.approvals.some(item => item.id === approval.id && item.kind === 'reconcile'));
+        const reconciled = await send(g.handle, user, decision('reconcile', approval));
+        assert.ok(outcomes(reconciled).includes('service_request_submit:succeeded'));
+        assert.equal(countEffects(user), 1);
+        assert.equal(query(`select count(*) from public.service_requests where owner_id='${user.id}' and submission_key='${approval.id}';`), '1');
+        traces.uncertain = uncertain.events;
+        traces.reconciled = reconciled.events;
+      });
+      await t.test('busy and per-account rate limits return actual HTTP refusals without invoking a provider', async () => {
+        const user = await newUser();
+        let release;
+        const waiting = new Promise(resolve => { release = resolve; });
+        const g = gateway([async () => { await waiting; return { text: ['Finished.'] }; }]);
+        const started = await g.handle(new Request(`${origin}/functions/v1/kael`, { method: 'POST', headers: { authorization: `Bearer ${user.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ request_id: randomUUID(), conversation_id: null, mode: 'client', action: { type: 'message', text: 'Wait' } }) }));
+        const reader = started.body.getReader();
+        const first = parseKaelEvent(new TextDecoder().decode((await reader.read()).value).trim());
+        try {
+          assert.equal((await send(g.handle, user, undefined, first.conversation_id)).status, 409);
+        } finally { release(); }
+        while (!(await reader.read()).done) {}
+        for (let index = 0; index < 11; index++) {
+          g.provider.requests.length = 0;
+          const limited = gateway([{ text: ['Rate fixture.'] }]);
+          assert.equal((await send(limited.handle, user)).status, 200);
+        }
+        const limited = gateway([{ text: ['Must not run.'] }]);
+        assert.equal((await send(limited.handle, user)).status, 429);
+        assert.equal(limited.provider.requests.length, 0);
+      });
+      await t.test('consumer interruption aborts and persists an incomplete run instead of business success', async () => {
+        const user = await newUser();
+        let enter;
+        const entered = new Promise(resolve => { enter = resolve; });
+        const provider = {
+          id: 'anthropic', model: 'test-interrupted',
+          async complete(input, onText) {
+            onText('Partial local reply');
+            enter();
+            await new Promise((resolve, reject) => {
+              if (input.signal.aborted) reject(input.signal.reason);
+              else input.signal.addEventListener('abort', () => reject(input.signal.reason), { once: true });
+            });
+          },
+        };
+        const handle = createKaelHandler({ env, providers: () => [provider], log: () => {} });
+        const response = await handle(new Request(`${origin}/functions/v1/kael`, { method: 'POST', headers: { authorization: `Bearer ${user.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ request_id: randomUUID(), conversation_id: null, mode: 'client', action: { type: 'message', text: 'Interrupt' } }) }));
+        const reader = response.body.getReader();
+        await entered;
+        await reader.cancel();
+        const deadline = Date.now() + 5000;
+        let run;
+        do {
+          run = query(`select status from public.kael_runs where owner_id='${user.id}';`);
+          if (run !== 'running') break;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        } while (Date.now() < deadline);
+        assert.equal(run, 'interrupted');
+        assert.equal(query(`select status from public.kael_messages where owner_id='${user.id}' and role='assistant';`), 'incomplete');
+        assert.equal(countEffects(user), 0);
+      });
+      assert.equal(runtime.verify().id, stack.id);
+      mkdirSync(path.join(root, '.cache'), { recursive: true });
+      writeFileSync(path.join(root, '.cache/kael-local-events.json'), JSON.stringify(traces, null, 2) + '\n');
+    } finally {
+      assert.equal(runtime.verify().id, stack.id);
+      for (const user of accounts) {
+        if (user.token) {
+          const logout = await request('/auth/v1/logout?scope=global', user.token, {});
+          assert.ok([200, 204].includes(logout.status));
+        }
+        query(`begin;
+          delete from nestscout_private.kael_approvals where owner_id='${user.id}';
+          delete from nestscout_private.kael_tool_executions where owner_id='${user.id}';
+          delete from public.kael_task_events where owner_id='${user.id}';
+          delete from public.kael_tasks where owner_id='${user.id}';
+          delete from public.kael_messages where owner_id='${user.id}';
+          delete from public.kael_runs where owner_id='${user.id}';
+          delete from public.kael_conversations where owner_id='${user.id}';
+          delete from nestscout_private.kael_tool_audit where actor_id='${user.id}';
+          delete from public.notifications where request_id in (select id from public.service_requests where owner_id='${user.id}');
+          delete from public.service_requests where owner_id='${user.id}';
+          delete from nestscout_private.worker_dispatch_eligibility where user_id='${user.id}';
+          commit;`);
+        const removed = await fetch(`${origin}/auth/v1/admin/users/${user.id}`, { method: 'DELETE', headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` } });
+        assert.equal(removed.status, 200, 'Remove only this test-created identity');
+      }
+      assert.equal(query('select count(*) from auth.users;'), initialUsers);
     }
   });
 });
