@@ -27,6 +27,8 @@ dependency.
 | `src/store.ts` | Persistence port: user-scoped reads, and the eight named server RPCs for Kael-internal writes |
 | `src/events.ts` | Runtime event contract |
 | `src/config.ts`, `src/sse.ts` | Environment configuration and SSE parsing |
+| `src/knowledge-contract.ts`, `src/knowledge-cases.ts`, `src/knowledge-sources.ts` | Validated, versioned Vietnamese source corpus and provenance registry |
+| `src/intelligence.ts` | Caller-scoped retrieval, provisional estimate preview and inactive learning boundary |
 
 Persistence lives in `supabase/migrations/20261103130000_create_kael_runtime.sql`.
 Conversations, messages, runs, tasks and task events are owner-readable through RLS;
@@ -149,6 +151,8 @@ state, not open connections.
 | `KAEL_MODEL_ROUTE` | Provider order, default `anthropic,deepseek`; only approved providers are accepted |
 | `PERPLEXITY_API_KEY` + `KAEL_WEB_SEARCH=enabled` | Enables the `web_search` tool |
 | `KAEL_ENABLED_EFFECTS` | Owner opt-in for consequential effects; only `service_request_submit` exists |
+| `KAEL_KNOWLEDGE=disabled` | Removes both Intelligence tools; general conversation stays available |
+| `KAEL_ESTIMATE_PREVIEW=local_only` | Enables numeric synthetic preview only when the configured Supabase target is loopback; default disabled |
 
 No model id has a default: a key without an explicit model leaves that provider
 unavailable and the user sees an honest unavailable state. Fallback to the next
@@ -188,8 +192,14 @@ and is not established by these tests.
 
 ## Not implemented
 
-Image understanding, voice, background workers, proactive notifications, knowledge
-retrieval, long-term user memory, conversation deletion or retention jobs, quotes,
+Image understanding, voice, background workers, proactive notifications,
+long-term user memory, conversation deletion or retention jobs, quotes,
 matching and booking beyond request submission. These need owner policy before work
 starts. See `scripts/kael-evaluation.test.mjs` for the deterministic scenarios; they
 use scripted providers and do not measure model quality.
+
+The local Intelligence foundation adds real PostgreSQL lexical retrieval with
+180 provisional synthetic service cases. Its two tools are read-only and preserve
+the same Runtime and business authority. See [Intelligence operations and evidence](../../docs/kael-intelligence.md)
+for provenance, default-off pricing, inactive learning, benchmark commands and
+the distinction between actual SQL retrieval and scripted response tests.

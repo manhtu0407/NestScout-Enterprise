@@ -3,6 +3,8 @@ import path from 'node:path';
 import { createKaelSequence, parseKaelConversationSnapshot, parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { createKaelHandler } from '../services/kael-core/src/gateway.ts';
 import { call, lastToolResults, scriptedProvider } from './kael-test-harness.mjs';
+import { knowledgeSources, knowledgeSnapshot } from '../services/kael-core/src/knowledge-sources.ts';
+import { knowledgeSeedSql, localKnowledgeDatabase, sqlLiteral } from './kael-knowledge.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -850,6 +852,140 @@ test('resume consent, safety escalation and duplicate consent serialize at the j
         const jobIds = jobs.map(item => `'${item.job}'`).join(',');
         query(`delete from public.service_job_pauses where job_id in (${jobIds}); delete from public.service_job_events where job_id in (${jobIds}); delete from public.service_jobs where id in (${jobIds}); delete from public.service_invitations where id in (${jobs.map(item => `'${item.invitation}'`).join(',')}); delete from public.service_quotes where id in (${jobs.map(item => `'${item.quote}'`).join(',')}); delete from public.notifications where request_id in (select id from public.service_requests where id in (${jobs.map(item => `'${item.request}'`).join(',')})); delete from public.service_requests where id in (${jobs.map(item => `'${item.request}'`).join(',')}); delete from nestscout_private.worker_dispatch_eligibility where user_id='${worker}'; delete from public.worker_access_grants where user_id='${worker}'; delete from auth.users where id in ('${customer}','${worker}');`);
       }
+    }
+  });
+});
+
+function knowledgeFixture(id, overrides = {}) {
+  return { ...knowledgeSources.find(item => item.source_id === 'product.privacy'), source_id: id, title: 'Isolated synthetic integration fixture', content: 'Chỉ là fixture kiểm thử; không phải chính sách hay dữ liệu nghiệp vụ.', ...overrides };
+}
+
+test('real Auth JWT and PostgREST enforce source ownership, publication and write denial', { timeout: 120000 }, async () => {
+  await withLocalLock(async () => {
+    const runtime = localRuntime();
+    const verified = runtime.verify();
+    const status = runtime.status();
+    assert.equal(status.identity.id, verified.id);
+    const database = localKnowledgeDatabase();
+    const origin = verified.endpoints['rest.http'].url.replace(/\/$/, '');
+    const accounts = [];
+    const sourceId = `fixture.rest-${randomUUID()}`;
+    const pricedSourceId = `cleaning.price-boundary-${randomUUID()}`;
+    const rpc = (token, name, body) => fetch(`${origin}/rest/v1/rpc/${name}`, {
+      method: 'POST', headers: { apikey: status.env.ANON_KEY, authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000),
+    });
+    try {
+      for (let index = 0; index < 2; index++) {
+        const email = `${randomUUID()}@example.invalid`;
+        const password = randomUUID();
+        const created = await fetch(`${origin}/auth/v1/admin/users`, {
+          method: 'POST', headers: { apikey: status.env.SERVICE_ROLE_KEY, authorization: `Bearer ${status.env.SERVICE_ROLE_KEY}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ email, password, email_confirm: true }), signal: AbortSignal.timeout(10000),
+        });
+        assert.equal(created.status, 200);
+        const account = await created.json();
+        accounts.push({ id: account.id, token: null });
+        const login = await fetch(`${origin}/auth/v1/token?grant_type=password`, {
+          method: 'POST', headers: { apikey: status.env.ANON_KEY, 'content-type': 'application/json' }, body: JSON.stringify({ email, password }), signal: AbortSignal.timeout(10000),
+        });
+        assert.equal(login.status, 200);
+        accounts[index].token = (await login.json()).access_token;
+      }
+      const source = knowledgeFixture(sourceId, { visibility: 'owner', owner_id: accounts[0].id });
+      const originalPricedSource = knowledgeSources.find(item => item.source_id === 'cleaning.desk-surface');
+      const pricedSource = { ...originalPricedSource, source_id: pricedSourceId, case_data: { ...originalPricedSource.case_data, case_id: pricedSourceId } };
+      database.query(`begin; ${knowledgeSeedSql(await knowledgeSnapshot([source, pricedSource]))} commit;`);
+      const sourcePath = `${origin}/rest/v1/kael_knowledge_sources?source_id=eq.${pricedSourceId}`;
+      const userHeaders = { apikey: status.env.ANON_KEY, authorization: `Bearer ${accounts[0].token}` };
+      for (const select of ['source', 'source->case_data->price_prior', '*']) {
+        const denied = await fetch(`${sourcePath}&select=${encodeURIComponent(select)}`, { headers: userHeaders, signal: AbortSignal.timeout(10000) });
+        assert.equal(denied.status, 403, `${select}: ordinary authenticated clients cannot read numeric priors`);
+        await denied.body?.cancel();
+      }
+      const publicRead = await fetch(`${sourcePath}&select=source_id,public_source`, { headers: userHeaders, signal: AbortSignal.timeout(10000) });
+      assert.equal(publicRead.status, 200);
+      const publicRows = await publicRead.json();
+      assert.equal(publicRows[0].public_source.case_data.case_id, pricedSourceId);
+      assert.equal(publicRows[0].public_source.case_data.price_prior, null);
+      assert.ok(!JSON.stringify(publicRows).includes('min_vnd'));
+      const pricedLookup = await rpc(accounts[0].token, 'kael_knowledge_search', { p_query: '', p_limit: 1, p_source_id: pricedSourceId });
+      assert.equal(pricedLookup.status, 200);
+      const pricedResult = await pricedLookup.json();
+      assert.equal(pricedResult.items[0].case_data.case_id, pricedSourceId);
+      assert.equal(pricedResult.items[0].case_data.price_prior, null);
+      assert.ok(!JSON.stringify(pricedResult).includes('min_vnd'));
+      const forgedPricingFlag = await rpc(accounts[0].token, 'kael_knowledge_search', { p_query: '', p_limit: 1, p_source_id: pricedSourceId, p_include_prices: true });
+      assert.notEqual(forgedPricingFlag.status, 200, 'clients cannot enable experimental pricing through RPC arguments');
+      await forgedPricingFlag.body?.cancel();
+      const query = { p_query: '', p_limit: 1, p_source_id: sourceId };
+      const owner = await rpc(accounts[0].token, 'kael_knowledge_search', query);
+      assert.equal(owner.status, 200);
+      assert.equal((await owner.json()).items[0].source_id, sourceId);
+      const other = await rpc(accounts[1].token, 'kael_knowledge_search', query);
+      assert.equal(other.status, 200);
+      assert.deepEqual((await other.json()).items, []);
+      const anonymous = await rpc(status.env.ANON_KEY, 'kael_knowledge_search', query);
+      assert.notEqual(anonymous.status, 200);
+      await anonymous.body?.cancel();
+      const write = await fetch(`${origin}/rest/v1/kael_knowledge_sources?source_id=eq.${sourceId}`, {
+        method: 'PATCH', headers: { apikey: status.env.ANON_KEY, authorization: `Bearer ${accounts[0].token}`, 'content-type': 'application/json' }, body: JSON.stringify({ publication: 'published' }), signal: AbortSignal.timeout(10000),
+      });
+      assert.equal(write.status, 403);
+      await write.body?.cancel();
+      const withdrawn = { ...source, revision: 2, supersedes_revision: 1, publication: 'withdrawn' };
+      database.query(`begin; ${knowledgeSeedSql(await knowledgeSnapshot([withdrawn]))} commit;`);
+      const after = await rpc(accounts[0].token, 'kael_knowledge_search', query);
+      assert.equal(after.status, 200);
+      assert.deepEqual((await after.json()).items, []);
+      const forgedServiceToken = await rpc(status.env.SERVICE_ROLE_KEY, 'kael_knowledge_search', query);
+      assert.notEqual(forgedServiceToken.status, 200, 'server token is not a user-query bypass');
+      await forgedServiceToken.body?.cancel();
+    } finally {
+      database.query(`delete from public.kael_knowledge_sources where source_id in (${sqlLiteral(sourceId)}, ${sqlLiteral(pricedSourceId)});`);
+      for (const account of accounts) {
+        assert.match(account.id, /^[a-f0-9-]{36}$/);
+        database.query(`delete from auth.users where id = ${sqlLiteral(account.id)}::uuid;`);
+      }
+    }
+  });
+});
+
+test('concurrent ingestion serializes identical revisions and never resurrects a withdrawn version', { timeout: 120000 }, async () => {
+  await withLocalLock(async () => {
+    const database = localKnowledgeDatabase();
+    const id = `fixture.race-${randomUUID()}`;
+    const source = knowledgeFixture(id);
+    const snapshot = await knowledgeSnapshot([source]);
+    const seed = knowledgeSeedSql(snapshot);
+    const barrier = Number.parseInt(randomUUID().slice(0, 7), 16);
+    let first;
+    let second;
+    try {
+      first = database.concurrentTransaction(`${seed} select pg_advisory_xact_lock(161908, ${barrier});`);
+      const deadline = Date.now() + 15000;
+      let acquired = false;
+      while (Date.now() < deadline) {
+        acquired = database.query(`select pg_try_advisory_lock(161908, ${barrier});`).trim() === 'f';
+        if (acquired) break;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      assert.ok(acquired, 'first writer reached barrier after holding source lock');
+      second = database.concurrentTransaction(seed);
+      assert.ok(Number(database.query(`select count(*) from pg_stat_activity where wait_event = 'advisory' and query like ${sqlLiteral(`%${id}%`)};`).trim()) >= 1, 'competing ingestion actually waits on the first source transaction');
+      first.commit();
+      await first.done;
+      second.commit();
+      await second.done;
+      assert.equal(database.query(`select count(*) from public.kael_knowledge_sources where source_id = ${sqlLiteral(id)};`).trim(), '1');
+      const withdrawn = await knowledgeSnapshot([{ ...source, revision: 2, supersedes_revision: 1, publication: 'withdrawn' }]);
+      database.query(`begin; ${knowledgeSeedSql(withdrawn)} commit;`);
+      database.query(`begin; ${seed} commit;`);
+      assert.equal(database.query(`select publication || ':' || revision from public.kael_knowledge_sources where source_id = ${sqlLiteral(id)} and is_current;`).trim(), 'withdrawn:2');
+    } finally {
+      first?.rollback();
+      second?.rollback();
+      await Promise.allSettled([first?.done, second?.done].filter(Boolean));
+      database.query(`delete from public.kael_knowledge_sources where source_id = ${sqlLiteral(id)};`);
     }
   });
 });
