@@ -502,6 +502,50 @@ describe('recovery evidence is tied to the interrupted run, not to an earlier co
   });
 });
 
+describe('interruption recovery across the persisted 60-message window', () => {
+  const text = 'Câu hỏi lặp lại';
+  const stored = (index: number, role: 'user' | 'assistant', content: string, incomplete = false) => ({ id: `88888888-8888-4888-8888-${String(index).padStart(12, '0')}`, role, text: content, incomplete });
+  const history = Array.from({ length: 60 }, (_, index) => stored(index + 1, index % 2 === 0 ? 'user' : 'assistant', index % 2 === 0 ? text : 'Trả lời trước.'));
+  const initial: KaelConversationSnapshot = { ...empty, conversationId: conversation, messages: history };
+
+  test.each(['complete', 'partial', 'missing'] as const)('a %s interrupted reply is classified after the history window shifts', async status => {
+    const reply = status === 'missing' ? [] : [stored(62, 'assistant', 'Trả lời mới.', status === 'partial')];
+    const snapshot = { ...initial, messages: [...history, stored(61, 'user', text), ...reply].slice(-60) };
+    const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValueOnce(initial).mockResolvedValue(snapshot);
+    const { streamer } = scriptedStreamer([{ events: [started, { type: 'message_delta', text: 'Trả lời' }] }]);
+    const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { result.current.send(text); await Promise.resolve(); });
+    if (status === 'complete') expect(result.current.notice).toBeNull();
+    else expect(result.current.notice).toMatch(/trước khi Kael trả lời xong/);
+    expect(result.current.messages.at(-1)?.id).toBe(`stored-${snapshot.messages.at(-1)!.id}`);
+    expect(streamer).toHaveBeenCalledTimes(1);
+  });
+
+  test('locally completed turns after the restored anchor retain their relative position', async () => {
+    const snapshot = { ...initial, messages: [...history, stored(61, 'user', text), stored(62, 'assistant', 'Trả lời thứ 31.'), stored(63, 'user', text), stored(64, 'assistant', 'Trả lời thứ 32.')].slice(-60) };
+    const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValueOnce(initial).mockResolvedValue(snapshot);
+    const { streamer } = scriptedStreamer([{ events: [started, { type: 'run_completed', text: 'Trả lời thứ 31.' }] }, { events: [started, { type: 'message_delta', text: 'Trả lời' }] }]);
+    const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { result.current.send(text); });
+    await act(async () => { result.current.send(text); await Promise.resolve(); });
+    expect(result.current.notice).toBeNull();
+    expect(result.current.messages.at(-1)?.text).toBe('Trả lời thứ 32.');
+    expect(streamer).toHaveBeenCalledTimes(2);
+  });
+
+  test('an evicted anchor cannot match an unrelated completed reply with identical text', async () => {
+    const snapshot = { ...initial, messages: [stored(100, 'user', text), stored(101, 'assistant', 'Trả lời khác.')] };
+    const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockResolvedValueOnce(initial).mockResolvedValue(snapshot);
+    const { streamer } = scriptedStreamer([{ events: [started] }]);
+    const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { result.current.send(text); await Promise.resolve(); });
+    expect(result.current.notice).toMatch(/chưa xác nhận được/);
+  });
+});
+
 describe('first turn interrupted before run_started', () => {
   const stored = (id: number, role: 'user' | 'assistant', text: string, incomplete = false) => ({ id: `99999999-9999-4999-8999-9999999999${String(id).padStart(2, '0')}`, role, text, incomplete });
   const text = 'Vòi nước bị rò, nhờ Kael tạo yêu cầu';

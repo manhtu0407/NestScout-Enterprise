@@ -21,10 +21,10 @@ test('nothing is shown while a run is processing or when there is no evidence', 
   expect(deriveKaelAttention(input({ receipt: 'call-1', running: true }))).toBeNull();
 });
 
-test('a pending confirmation is gray and promises that nothing was sent', () => {
+test('a pending confirmation is gray and scopes its unsent status to that request', () => {
   const attention = deriveKaelAttention(input({ approvals: [confirm], tasks: [waiting] }));
   expect(attention).toMatchObject({ kind: 'confirm', tone: 'wait', title: 'Chờ bạn xác nhận', actionLabel: null });
-  expect(attention?.body).toContain('Chưa có gì được gửi');
+  expect(attention?.body).toContain('Yêu cầu này chưa được gửi');
   expect(attention?.body).toContain('Còn 1:05');
 });
 
@@ -53,4 +53,12 @@ test('a completed task or a notice alone is never turned into a success banner',
   const completed: KaelTask = { ...waiting, status: 'completed' };
   expect(deriveKaelAttention(input({ tasks: [completed], notice: null }))).toBeNull();
   expect(deriveKaelAttention(input({ tasks: [completed], notice: 'Đã xong' }))).toBeNull();
+});
+
+test.each([{ approvals: [confirm] }, { approvals: [] }])('a different pending task cannot hide a verified receipt', ({ approvals }) => {
+  const attention = deriveKaelAttention(input({ approvals, tasks: [waiting], receipt: 'verified-other-task' }));
+  expect(attention).toMatchObject({ kind: 'receipt', receiptId: 'verified-other-task' });
+  const remaining = deriveKaelAttention(input({ approvals, tasks: [waiting], receipt: 'verified-other-task', dismissedReceipt: 'verified-other-task' }));
+  expect(remaining?.body).toContain('Yêu cầu');
+  expect(remaining?.body).not.toContain('Chưa có gì được gửi');
 });

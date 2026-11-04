@@ -28,7 +28,7 @@ const restoreFailedNotice = 'Chưa tải lại được cuộc trò chuyện tr�
 const stillRunningNotice = 'Kael vẫn đang xử lý tin nhắn trước trong cuộc trò chuyện này. Vui lòng mở lại sau ít phút.';
 const busyLabel = 'Kael đang xử lý';
 
-type Interrupted = { userOrdinal: number; text: string | null };
+type Interrupted = { afterMessageId: string | null; userOrdinal: number; text: string | null };
 
 function stillOpen(approval: KaelApproval, status: KaelTaskStatus): boolean {
   return approval.kind === 'reconcile' || status === 'waiting_for_approval';
@@ -92,13 +92,11 @@ function settle(state: KaelConversationState, outcome: KaelTurnOutcome, assistan
 
 const interruptionNotices: readonly (string | null)[] = [interruptedNotice, unverifiedNotice, unconfirmedNotice, stillRunningNotice];
 
-function userMessageCount(snapshot: KaelConversationSnapshot): number {
-  return snapshot.messages.filter(message => message.role === 'user').length;
-}
-
 function replyTo(snapshot: KaelConversationSnapshot, interrupted: Interrupted): 'complete' | 'partial' | 'missing' | 'unmatched' {
+  const anchor = interrupted.afterMessageId === null ? -1 : snapshot.messages.findIndex(message => message.id === interrupted.afterMessageId);
+  if (interrupted.afterMessageId !== null && anchor < 0) return 'unmatched';
   let seen = -1;
-  const index = snapshot.messages.findIndex(message => message.role === 'user' && ++seen === interrupted.userOrdinal);
+  const index = snapshot.messages.findIndex((message, position) => position > anchor && message.role === 'user' && ++seen === interrupted.userOrdinal);
   if (index < 0) return 'unmatched';
   if (interrupted.text !== null && snapshot.messages[index]!.text !== interrupted.text) return 'unmatched';
   const reply = snapshot.messages[index + 1];
@@ -133,7 +131,8 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
   const controllerRef = useRef<AbortController | null>(null);
   const restoreRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
-  const storedUsersRef = useRef(0);
+  const usersAfterAnchorRef = useRef(0);
+  const restoredTailRef = useRef<string | null>(null);
   const interruptedRef = useRef<Interrupted | null>(null);
   const ordinalUnknownRef = useRef(true);
 
@@ -169,7 +168,8 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
           return { ...current, notice: snapshot.busy ? stillRunningNotice : interruptionNotices.includes(current.notice) ? unconfirmedNotice : current.notice };
         }
       } else if (expected === null ? current.messages.length > 0 : snapshot.conversationId !== expected) return current;
-      storedUsersRef.current = userMessageCount(snapshot);
+      usersAfterAnchorRef.current = 0;
+      restoredTailRef.current = snapshot.messages.at(-1)?.id ?? null;
       ordinalUnknownRef.current = false;
       const next = restored(current, snapshot, interruptedRef.current);
       if (next.notice === null || !interruptionNotices.includes(next.notice)) interruptedRef.current = null;
@@ -181,7 +181,8 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     ordinalUnknownRef.current = true;
     void rehydrate(null);
     return () => {
-      storedUsersRef.current = 0;
+      usersAfterAnchorRef.current = 0;
+      restoredTailRef.current = null;
       interruptedRef.current = null;
       restoreRef.current?.abort();
       restoreRef.current = null;
@@ -228,7 +229,8 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     controllerRef.current?.abort();
     controllerRef.current = null;
     runningRef.current = false;
-    storedUsersRef.current = 0;
+    usersAfterAnchorRef.current = 0;
+    restoredTailRef.current = null;
     interruptedRef.current = null;
     setState(current => ({ ...idleState, approvals: accountChecks(current.approvals) }));
   }, []);
@@ -238,7 +240,7 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     runningRef.current = true;
     restoreRef.current?.abort();
     restoreRef.current = null;
-    interruptedRef.current = { userOrdinal: ordinalUnknownRef.current ? -1 : storedUsersRef.current, text: action.type === 'message' ? userText : null };
+    interruptedRef.current = { afterMessageId: restoredTailRef.current, userOrdinal: ordinalUnknownRef.current ? -1 : usersAfterAnchorRef.current, text: action.type === 'message' ? userText : null };
     const requestId = Crypto.randomUUID();
     const assistantId = `assistant-${requestId}`;
     const controller = new AbortController();
@@ -263,7 +265,7 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
         replayed = event.replayed;
         started = true;
         if (event.replayed) interruptedRef.current = null;
-        else storedUsersRef.current += 1;
+        else usersAfterAnchorRef.current += 1;
       }
       setState(current => applyEvent(current, event, assistantId));
     }, controller.signal);

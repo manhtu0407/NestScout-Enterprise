@@ -83,7 +83,7 @@ test('a pending confirmation shows the gray attention banner with the approval c
   script([started, task('waiting_for_approval'), approval, completed('Bạn xác nhận nhé.')]);
   await renderEntry();
   await say('Nhờ Kael tạo yêu cầu sửa vòi nước');
-  expect(screen.getByLabelText(/^Chờ bạn xác nhận\. Chưa có gì được gửi cho đến khi bạn trượt để xác nhận/)).toBeTruthy();
+  expect(screen.getByLabelText(/^Chờ bạn xác nhận\. Yêu cầu này chưa được gửi cho đến khi bạn trượt để xác nhận/)).toBeTruthy();
   expect(screen.getByLabelText('Cần xác nhận: Gửi yêu cầu dịch vụ')).toBeTruthy();
   expect(screen.queryByText('Đã gửi yêu cầu')).toBeNull();
 });
@@ -98,6 +98,21 @@ test('a verified submission shows the receipt banner, which can be dismissed, an
   expect(screen.queryByLabelText(/^Chờ bạn xác nhận\./)).toBeNull();
   await act(async () => { fireEvent.press(screen.getByLabelText('Đóng')); });
   await waitFor(() => expect(screen.queryByText('Đã gửi yêu cầu')).toBeNull());
+});
+
+test('a verified receipt stays visible while another task still awaits confirmation', async () => {
+  const otherTask: Body = { type: 'task_updated', task: { ...(task('waiting_for_approval').task as object), id: '55555555-5555-4555-8555-555555555556', title: 'Sửa ổ điện' } };
+  const otherApproval: Body = { type: 'approval_required', approval: { ...(approval.approval as object), id: '66666666-6666-4666-8666-666666666667', task_id: '55555555-5555-4555-8555-555555555556', summary: 'Gửi yêu cầu điện' } };
+  script([started, task('waiting_for_approval'), approval, otherTask, otherApproval, completed('Bạn xác nhận từng yêu cầu nhé.')], [started, submitted('succeeded'), task('completed'), completed('Đã gửi yêu cầu vòi nước.')]);
+  await renderEntry();
+  await say('Nhờ Kael chuẩn bị hai yêu cầu');
+  await act(async () => { fireEvent(screen.getByLabelText('Xác nhận Gửi yêu cầu dịch vụ'), 'accessibilityAction', { nativeEvent: { actionName: 'activate' } }); });
+  expect(await screen.findByText('Đã gửi yêu cầu')).toBeTruthy();
+  expect(screen.getByLabelText('Cần xác nhận: Gửi yêu cầu điện')).toBeTruthy();
+  await act(async () => { fireEvent.press(screen.getByLabelText('Đóng')); });
+  await waitFor(() => expect(screen.getByLabelText(/^Chờ bạn xác nhận\. Yêu cầu này chưa được gửi/)).toBeTruthy());
+  expect(screen.getByLabelText('Cần xác nhận: Gửi yêu cầu điện')).toBeTruthy();
+  expect(screen.queryByText(/Chưa có gì được gửi/)).toBeNull();
 });
 
 test('run_completed without a verified submit event never produces the success banner', async () => {

@@ -82,7 +82,7 @@ export function KaelApprovalCard({ approval, disabled, onDecide }: ApprovalProps
   }
   return <View accessibilityLabel={`Cần xác nhận: ${approval.summary}`} style={styles.card}>
     <ApprovalDetails approval={approval}/>
-    <Text style={styles.detailLabel}>Chưa có gì được gửi cho đến khi bạn xác nhận.</Text>
+    <Text style={styles.detailLabel}>Yêu cầu này chưa được gửi cho đến khi bạn xác nhận.</Text>
     <SlideToConfirm label="Trượt để xác nhận" accessibilityLabel={`Xác nhận ${approval.summary}`} disabled={disabled} onConfirm={() => onDecide(approval, true)}/>
     <Pressable accessibilityRole="button" accessibilityLabel="Không thực hiện" disabled={disabled} onPress={() => onDecide(approval, false)} style={styles.decline}>
       <Text style={styles.declineText}>Không thực hiện</Text>
