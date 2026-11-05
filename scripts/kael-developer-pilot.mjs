@@ -9,8 +9,9 @@ import { localKnowledgeDatabase, sqlLiteral } from './kael-knowledge.mjs';
 import { root } from './tool-path.mjs';
 
 export const pilotDirectory = path.join(os.homedir(), '.codex', 'private', 'kael-behavior-8085');
+const serverDirectory = path.join(os.homedir(), '.codex', 'private', 'kael-server');
 const sessionFile = path.join(pilotDirectory, 'session.json');
-const providerFile = path.join(pilotDirectory, 'providers.env');
+const providerFile = path.join(serverDirectory, 'providers.env');
 const edgeFile = path.join(pilotDirectory, 'edge.env');
 
 export function parsePilotAuthorization(value, now = new Date()) {
@@ -42,12 +43,15 @@ export function parsePilotRenewal(value, pilotId, now = new Date()) {
   return Object.fromEntries(fields.map(field => [field, value[field]]));
 }
 
-function protectDirectory() {
-  mkdirSync(pilotDirectory, { recursive: true, mode: 0o700 });
-  requireLocal(lstatSync(pilotDirectory).isDirectory(), 'The private pilot directory must be a real directory.');
+function protectDirectory(directory = pilotDirectory) {
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  requireLocal(lstatSync(directory).isDirectory(), 'The private configuration directory must be a real directory.');
   if (process.platform === 'win32') {
     const account = execFileSync('whoami', [], { encoding: 'utf8' }).trim();
-    execFileSync('icacls', [pilotDirectory, '/inheritance:r', '/grant:r', `${account}:(OI)(CI)F`], { stdio: 'ignore', windowsHide: true });
+    execFileSync('icacls', [directory, '/inheritance:r', '/grant:r', `${account}:(OI)(CI)F`], { stdio: 'ignore', windowsHide: true });
+  } else {
+    const owner = lstatSync(directory);
+    requireLocal((owner.mode & 0o077) === 0 && owner.uid === process.getuid(), 'The private configuration directory must be owner-only.');
   }
 }
 
@@ -95,7 +99,7 @@ async function prepare(runtime, authorizationFile) {
 }
 
 function providerKey() {
-  requireLocal(existsSync(providerFile), 'CREDENTIAL_MISSING: provision DEEPSEEK_API_KEY in the private local providers.env.');
+  if (!existsSync(providerFile)) return '';
   const file = lstatSync(providerFile);
   requireLocal(file.isFile() && file.nlink === 1 && file.size <= 4096, 'CREDENTIAL_INVALID: expected a small regular private providers.env file.');
   if (process.platform === 'win32') {
@@ -175,17 +179,15 @@ export async function developerPilotCommand(args) {
   }
   if (action === 'status' || action === 'arm') return withLocalLock(async () => {
     const budget = pilotBudget(database, value);
-    const edge = await probeEdge(runtime, value);
     if (action === 'status') {
+      const edge = await probeEdge(runtime, value);
       console.log(JSON.stringify({ pilot_id: value.id, origin: value.origin, credential_source: existsSync(providerFile) ? 'PRESENT' : 'CREDENTIAL_MISSING',
+        credential_file: providerFile,
         authorization: !budget ? 'BUDGET_MISSING' : budget.expired ? 'AUTHORIZATION_EXPIRED' : budget.rates_stale ? 'RATE_CARD_STALE' : 'CURRENT',
         spending: budget?.enabled ? 'ENABLED' : 'BUDGET_DISABLED', budget, edge }));
       return;
     }
     requireBudget(budget);
-    requireLocal(edge.status === 'EDGE_READY', edge.status);
-    requireLocal(edge.credential_loaded && existsSync(providerFile), 'CREDENTIAL_MISSING: the current Edge has no provisioned local credential.');
-    requireLocal(edge.generation === budget.generation, 'EDGE_AUTHORIZATION_MISMATCH: restart Edge for the current approval.');
     const armed = database.query(`select nestscout_private.kael_pilot_arm(${sqlLiteral(value.id)},
       ${sqlLiteral(value.stack_id)}, ${sqlLiteral(budget.generation)}::timestamptz);`).trim();
     requireLocal(armed === 'BUDGET_ENABLED', armed);
@@ -194,28 +196,23 @@ export async function developerPilotCommand(args) {
   });
   if (action === 'close') return withLocalLock(() => {
     database.query(`update nestscout_private.kael_pilot_budgets set enabled=false where id=${sqlLiteral(value.id)};`);
-    requireLocal(!existsSync(edgeFile),
-      'BUDGET_DISABLED: stop the Edge launcher before deleting local credentials.');
-    for (const file of [edgeFile, providerFile]) if (existsSync(file)) unlinkSync(file);
-    console.log('BUDGET_DISABLED: local provider files removed.');
+    console.log('BUDGET_DISABLED');
   });
   if (action === 'edge') {
     protectDirectory();
+    protectDirectory(serverDirectory);
     requireLocal(!existsSync(path.join(root, 'supabase/functions/.env')), 'Remove the local functions dotenv override before using the private pilot source.');
     const budget = pilotBudget(database, value);
     const key = option === '--offline' ? '' : providerKey();
-    if (key) requireBudget(budget);
     await withLocalLock(() => {
       requireLocal(!existsSync(edgeFile), 'EDGE_ALREADY_STARTED: stop the existing launcher before starting another.');
-      database.query(`update nestscout_private.kael_pilot_budgets set enabled=false where id=${sqlLiteral(value.id)};`);
       writeFileSync(edgeFile, `KAEL_DEVELOPER_PILOT=local_8085\nKAEL_DEVELOPER_PILOT_ID=${value.id}\nKAEL_PILOT_GENERATION=${budget?.generation ?? ''}\nDEEPSEEK_API_KEY=${key}\n`, { flag: 'wx', mode: 0o600 });
     });
     try {
-      console.log(key ? 'EDGE_STARTING: use status, then arm once the authorized worker is ready.' : 'EDGE_STARTING_OFFLINE: spending disabled.');
+      console.log(key ? 'EDGE_STARTING: server credential configured; spending follows the existing budget.' : 'EDGE_STARTING_OFFLINE: provider credential not loaded.');
       runtime.cli(['functions', 'serve', 'kael', '--env-file', edgeFile]);
     } finally {
-      try { database.query(`update nestscout_private.kael_pilot_budgets set enabled=false where id=${sqlLiteral(value.id)};`); }
-      finally { unlinkSync(edgeFile); }
+      unlinkSync(edgeFile);
     }
     return;
   }

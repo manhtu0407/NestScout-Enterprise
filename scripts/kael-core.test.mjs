@@ -508,13 +508,15 @@ test('the TypeScript task state machine matches the authoritative SQL transition
   assert.deepEqual(checkModelTransition({ ...task, artifact: { effect_required: true, effect_result: { status: 'succeeded', resource_kind: 'service_request', resource_id: 'r' } } }, 'completed'), { ok: true });
 });
 
-test('configuration never invents models, keeps spending opt-in and reports only setting names', () => {
+test('server configuration defaults to Flash and keeps other routes and effects explicit', () => {
   assert.equal(readKaelConfig({}), null);
   const keysOnly = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', DEEPSEEK_API_KEY: 'secret-d', PERPLEXITY_API_KEY: 'secret-p' });
   assert.equal(keysOnly.anthropic, null, 'a key without an explicitly configured model is not a usable provider');
-  assert.equal(keysOnly.deepseek, null);
+  assert.equal(keysOnly.deepseek.model, 'deepseek-flash');
   assert.equal(keysOnly.perplexity, null, 'web search needs explicit enablement');
-  assert.deepEqual(keysOnly.route, []);
+  assert.deepEqual(keysOnly.route, ['deepseek']);
+  assert.deepEqual(readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, [],
+    'Anthropic is not an implicit fallback when Flash is unavailable');
   const full = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-flash', KAEL_MODEL_ROUTE: 'deepseek,anthropic,openai', KAEL_ENABLED_EFFECTS: 'service_request_submit,mark_paid' });
   assert.deepEqual(full.route, ['deepseek', 'anthropic'], 'only approved providers are routable');
   assert.deepEqual([...full.enabledEffects], ['service_request_submit']);
@@ -523,6 +525,27 @@ test('configuration never invents models, keeps spending opt-in and reports only
   const withoutServer = { ...baseEnv, SUPABASE_SERVICE_ROLE_KEY: '' };
   assert.equal(readKaelConfig(withoutServer), null, 'the gateway does not run without its server credential');
   assert.match(configurationReport(withoutServer).gateway, /SUPABASE_SERVICE_ROLE_KEY/);
+});
+
+test('the normal authenticated Edge route reuses a server credential across conversations without a pilot budget', async () => {
+  let calls = 0;
+  const { message, db } = harness({ providers: null, env: { DEEPSEEK_API_KEY: 'test-server-credential' },
+    wrapFetcher: next => async (url, init) => {
+      assert.ok(!url.endsWith('/kael_pilot_charge'), 'Hosted inference has no dependency on the local pilot ledger');
+      if (url !== deepseekEndpoint) return next(url, init);
+      assert.equal(init.headers.authorization, 'Bearer test-server-credential');
+      assert.equal(JSON.parse(init.body).model, 'deepseek-flash');
+      calls++;
+      return pilotResponse(streamOf([pilotStream()]));
+    } });
+  for (const prompt of ['Chào Kael', 'Tôi nên bắt đầu từ đâu?']) {
+    const result = await message(users.customer, prompt);
+    assert.equal(result.events.at(-1).type, 'run_completed');
+    assert.equal(result.events.at(-1).text, 'Chào bạn');
+  }
+  assert.equal(calls, 2);
+  assert.equal(db.conversations.size, 2);
+  assert.equal(db.messages.filter(message => message.role === 'assistant' && message.content === 'Chào bạn').length, 2);
 });
 
 test('the gateway rejects unauthenticated, malformed and misconfigured requests without starting runs', async () => {

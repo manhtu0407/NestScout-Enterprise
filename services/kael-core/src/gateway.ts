@@ -1,5 +1,5 @@
 import { createAnthropicProvider } from './anthropic.ts';
-import { configurationReport, readKaelConfig } from './config.ts';
+import { configurationReport, deepseekFlashModel, readKaelConfig } from './config.ts';
 import type { Environment, KaelConfig } from './config.ts';
 import { createDeepSeekProvider } from './deepseek.ts';
 import { developerPilotProviders } from './developer-pilot.ts';
@@ -121,7 +121,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         pilot_id: config.developerPilotId,
         generation: pilotGeneration ?? null,
         credential_loaded: config.deepseek !== null,
-        model: 'deepseek-flash',
+        model: deepseekFlashModel,
       }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
     }
     if (request.method !== 'POST') return json(405, { error: { code: 'invalid_request', message: 'Method not allowed.' } });

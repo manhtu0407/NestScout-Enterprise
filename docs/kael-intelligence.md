@@ -863,6 +863,40 @@ and [DeepSeek completion contract](https://api-docs.deepseek.com/api/create-chat
 Models, rates and endpoint support must be reverified from official sources at
 the separately authorized pilot, not assumed from this preparation's date.
 
+## Server configuration and staging readiness
+
+Kael reads provider credentials from the Edge worker environment at startup.
+The authenticated request carries a user access token for identity and RLS.
+The server supplies `DEEPSEEK_API_KEY` for model traffic. One server credential
+serves the authorized conversations handled by that worker.
+
+The default normal route requests `deepseek-flash`. Operators can supply an
+explicit `KAEL_DEEPSEEK_MODEL` and use `KAEL_MODEL_ROUTE` to opt into other
+configured routes. The normal route uses the existing authenticated Runtime
+and per-run limits. The local pilot ledger and its temporary approval apply
+only to the local developer profile.
+
+Hosted staging requires an owner-identified Supabase project and an approved
+app target. The current app accepts the local target. Before any approved
+staging rollout, compare applied migration history against the Kael context,
+Runtime, Knowledge Foundation and price-prior migrations in
+`supabase/migrations/`. Keep the developer profile and its budget data local.
+Deploy `supabase/functions/kael` with its shared Runtime imports and configure
+`DEEPSEEK_API_KEY` in that project's Edge Secrets. Set
+`KAEL_DEEPSEEK_MODEL=deepseek-flash` and `KAEL_MODEL_ROUTE=deepseek` for an
+explicit Flash-only staging profile. Leave consequential effects disabled for
+the smoke test.
+
+Verify the staging JWT configuration with a real authenticated user. The
+gateway verifies the caller with Supabase Auth and uses
+`SUPABASE_SERVICE_ROLE_KEY` with the existing legacy service-role JWT contract
+for trusted RPCs. Keep that credential and provider Secrets server-side.
+After approval, verify cross-account denial and a persisted assistant reply
+restored by the approved staging app. Repository checks cover compatibility
+with the local schema and Runtime. Hosted deployment, applied migration
+history and Secret configuration require verification against the specific
+staging project.
+
 ## Behavior-first local developer pilot on 8085
 
 This interactive developer profile reuses the authenticated Horizon route,
@@ -955,20 +989,26 @@ window, accounts, conversations, calls and spend records in place. The
 cumulative money and request limits cannot increase, and unresolved accounting
 or a halt blocks renewal. Renewal leaves spending disabled.
 
-Place the locally provisioned key in the private `providers.env` as a single
-`DEEPSEEK_API_KEY=...` assignment. Hosted and local secrets are separate.
-Stop the offline Edge launcher, then run `edge` to load the key while spending
-is disabled. In another terminal, run `status` and then `arm` to enable
-spending after the local worker proves it loaded a credential for the current
-approval. The status command distinguishes a missing file, an expired
-authorization, a disabled budget and an unavailable Edge route. Actual
-provider failures appear as `kael_pilot_provider_failure` in the local Edge container log,
-with a run ID and classified failure kind.
+Provision the local server key once in
+`~/.codex/private/kael-server/providers.env` as a single
+`DEEPSEEK_API_KEY=...` assignment. Keep the file owner-only. The local
+launcher reuses it on worker restarts. The hosted project manages its own
+Edge Secrets.
 
-Stop the launcher and run `close` to disable spending and remove task-owned
-provider files. After an abnormal exit, verify that the owned launcher and
-worker have stopped before removing a stale private `edge.env` file. Keep all
-budget and call records for reconciliation.
+Run `edge` to load the server configuration. With no key configured the
+worker still starts and persists messages with provider-unavailable status.
+Use `edge --offline` for an explicitly credential-free run. Startup and
+shutdown leave the budget state alone. After a fresh approved window, restart
+Edge to bind that approval to the worker and use `status` to check the
+credential and worker generation. Run `arm` to enable the current local
+spending policy independently of credential provisioning. PostgreSQL enforces
+the same cumulative ceiling on every reservation. Actual provider failures
+appear as `kael_pilot_provider_failure` in the local Edge container log.
+
+Run `close` to disable spending. It preserves the server key and the
+accounting ledger. The launcher removes its temporary `edge.env` copy when
+it exits normally. After an abnormal exit, verify that the owned launcher
+and worker have stopped before removing a stale temporary file.
 The session file contains disposable Auth passwords, not provider keys: protect
 it while needed and remove only these test accounts/credentials when retiring
 the preview.

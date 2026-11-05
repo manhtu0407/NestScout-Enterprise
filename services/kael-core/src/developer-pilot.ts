@@ -1,9 +1,10 @@
 import type { KaelConfig } from './config.ts';
+import { deepseekFlashModel } from './config.ts';
 import { createDeepSeekProvider, deepseekEndpoint, deepseekRequestBody } from './deepseek.ts';
 import { ProviderError } from './model.ts';
 import type { Fetcher, ModelProvider } from './model.ts';
 
-export const pilotServedModels = ['deepseek-flash', 'DeepSeek-V4.1-Flash-1017'] as const;
+export const pilotServedModels = [deepseekFlashModel, 'DeepSeek-V4.1-Flash-1017'] as const;
 
 export function pilotRoute(text: string): { thinking: boolean; reason: string } {
   const thinking = /suy nghĩ kỹ|phân tích kỹ|so sánh.*(?:rủi ro|phương án)|think carefully|reason carefully/iu.test(text);
@@ -14,7 +15,7 @@ export function developerPilotProviders(config: KaelConfig, actorId: string, run
   onProviderFailure: (kind: string) => void = () => {}, generation?: string): ModelProvider[] {
   if (!config.developerPilotId || !config.deepseek) return [];
   const route = pilotRoute(text);
-  const providerConfig = { ...config.deepseek, model: 'deepseek-flash', thinking: route.thinking, verifiedModels: pilotServedModels };
+  const providerConfig = { ...config.deepseek, thinking: route.thinking, verifiedModels: pilotServedModels };
   const provider = createDeepSeekProvider(providerConfig, async (url, init) => {
     if (url !== deepseekEndpoint || init.method !== 'POST' || init.redirect !== 'error') {
       throw new ProviderError('deepseek', 'unavailable', 'The pilot transport was denied.');

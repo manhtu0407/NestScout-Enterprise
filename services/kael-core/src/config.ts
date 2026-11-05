@@ -5,6 +5,8 @@ import type { PerplexityConfig } from './perplexity.ts';
 
 export type Environment = Record<string, string | undefined>;
 
+export const deepseekFlashModel = 'deepseek-flash';
+
 export const consequentialEffects = ['service_request_submit'] as const;
 
 export type ConsequentialEffect = typeof consequentialEffects[number];
@@ -79,13 +81,13 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   const pilotId = value(env, 'KAEL_DEVELOPER_PILOT_ID');
   if (pilotFlag && (pilotFlag !== 'local_8085' || !pilotId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pilotId)
     || !/^http:\/\/(?:127\.0\.0\.1|localhost|host\.docker\.internal|host\.supabase\.internal)(?::\d+)?\/?$/.test(supabaseUrl))) return null;
-  const deepseekModel = pilotFlag ? 'deepseek-flash' : value(env, 'KAEL_DEEPSEEK_MODEL');
-  const deepseek = deepseekKey && deepseekModel ? {
+  const deepseekModel = pilotFlag ? deepseekFlashModel : value(env, 'KAEL_DEEPSEEK_MODEL') ?? deepseekFlashModel;
+  const deepseek = deepseekKey ? {
     apiKey: deepseekKey, model: deepseekModel, thinking: value(env, 'KAEL_DEEPSEEK_THINKING') === 'enabled', timeoutMs: modelTimeoutMs,
   } : null;
 
   const requested = list(env, 'KAEL_MODEL_ROUTE');
-  const order = (requested.length > 0 ? requested : providerIds).filter((id): id is ProviderId => providerIds.includes(id as ProviderId));
+  const order = (requested.length > 0 ? requested : ['deepseek']).filter((id): id is ProviderId => providerIds.includes(id as ProviderId));
   const route = [...new Set(order)].filter(id => (id === 'anthropic' ? anthropic : deepseek) !== null);
 
   const perplexityKey = value(env, 'PERPLEXITY_API_KEY');
@@ -114,7 +116,7 @@ export function configurationReport(env: Environment): Record<string, string> {
   return {
     gateway: config ? 'configured' : 'requires SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY holding the legacy service-role JWT; sb_secret_ keys are not supported yet',
     anthropic: config?.anthropic ? 'configured' : 'requires ANTHROPIC_API_KEY and KAEL_ANTHROPIC_MODEL',
-    deepseek: config?.deepseek ? 'configured' : 'requires DEEPSEEK_API_KEY and KAEL_DEEPSEEK_MODEL',
+    deepseek: config?.deepseek ? 'configured' : 'requires DEEPSEEK_API_KEY',
     web_search: config?.perplexity ? 'configured' : 'requires PERPLEXITY_API_KEY and KAEL_WEB_SEARCH=enabled',
     effects: config && config.enabledEffects.size > 0 ? [...config.enabledEffects].join(',') : 'none',
     knowledge: config?.knowledgeEnabled ? 'lexical' : 'disabled',
