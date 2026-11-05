@@ -1,18 +1,18 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { localRuntime, requireLocal, safeDiagnostic, withLocalLock } from './supabase-local.mjs';
+import { discoverLocalProviders } from './kael-local-providers.mjs';
 import { localKnowledgeDatabase, sqlLiteral } from './kael-knowledge.mjs';
 import { root } from './tool-path.mjs';
 
 export const pilotDirectory = path.join(os.homedir(), '.codex', 'private', 'kael-behavior-8085');
-const serverDirectory = path.join(os.homedir(), '.codex', 'private', 'kael-server');
 const sessionFile = path.join(pilotDirectory, 'session.json');
-const providerFile = path.join(serverDirectory, 'providers.env');
-const edgeFile = path.join(pilotDirectory, 'edge.env');
+const edgeFile = path.join(pilotDirectory, 'edge.json');
+const legacyEdgeFile = path.join(pilotDirectory, 'edge.env');
 
 export function parsePilotAuthorization(value, now = new Date()) {
   requireLocal(value?.purpose === 'kael_developer_8085' && value.model === 'deepseek-flash'
@@ -43,7 +43,8 @@ export function parsePilotRenewal(value, pilotId, now = new Date()) {
   return Object.fromEntries(fields.map(field => [field, value[field]]));
 }
 
-function protectDirectory(directory = pilotDirectory) {
+function protectDirectory() {
+  const directory = pilotDirectory;
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   requireLocal(lstatSync(directory).isDirectory(), 'The private configuration directory must be a real directory.');
   if (process.platform === 'win32') {
@@ -124,19 +125,16 @@ async function prepare(runtime, authorizationFile) {
     budget: 'DISABLED', live_provider_status: 'LIVE_PROVIDER_NOT_RUN' }));
 }
 
-function providerKey(protect = false) {
-  if (!existsSync(providerFile)) return '';
-  const file = lstatSync(providerFile);
-  requireLocal(file.isFile() && file.nlink === 1 && file.size <= 4096, 'CREDENTIAL_INVALID: expected a small regular private providers.env file.');
-  if (process.platform === 'win32') {
-    if (protect) execFileSync('icacls', [providerFile, '/reset'], { stdio: 'ignore', windowsHide: true });
-  } else {
-    requireLocal((file.mode & 0o077) === 0 && file.uid === process.getuid(), 'CREDENTIAL_INVALID: providers.env must be owner-only.');
-  }
-  const text = readFileSync(providerFile, 'utf8');
-  const key = /^DEEPSEEK_API_KEY=(sk-(?!ant-)[A-Za-z0-9_-]{16,})\r?\n?$/.exec(text)?.[1];
-  requireLocal(key, 'CREDENTIAL_INVALID: providers.env must contain exactly one DeepSeek API key assignment.');
+function providerKey() {
+  const { status, env } = discoverLocalProviders();
+  requireLocal(status === 'source_loaded' || status === 'credential_missing', 'CREDENTIAL_INVALID: check the private provider source.');
+  const key = env.DEEPSEEK_API_KEY ?? '';
+  requireLocal(!key || /^sk-(?!ant-)[A-Za-z0-9_-]{16,}$/.test(key), 'CREDENTIAL_INVALID: the pilot requires a DeepSeek API key.');
   return key;
+}
+
+function credentialFingerprint(key) {
+  return key ? createHash('sha256').update(key).digest('hex') : null;
 }
 
 function pilotBudget(database, value) {
@@ -181,15 +179,13 @@ async function probeEdge(runtime, value, budget) {
     if (result?.pilot_id !== value.id || result.model !== 'deepseek-flash' || typeof result.credential_loaded !== 'boolean') {
       return { status: 'EDGE_SESSION_MISMATCH' };
     }
-    const launch = existsSync(edgeFile) ? readFileSync(edgeFile, 'utf8') : '';
-    const worker = /^KAEL_PILOT_WORKER_ID=([0-9a-f-]{36})$/m.exec(launch)?.[1];
-    const loaded = /^DEEPSEEK_API_KEY=.+$/m.test(launch);
+    const launch = existsSync(edgeFile) ? JSON.parse(readFileSync(edgeFile, 'utf8')) : null;
     let key;
-    try { key = launch.includes('KAEL_PILOT_OFFLINE=1\n') ? '' : providerKey(); }
+    try { key = launch?.offline ? '' : providerKey(); }
     catch { return { status: 'EDGE_INVALID_CONFIG' }; }
-    if (!worker || worker !== result.worker_id || loaded !== result.credential_loaded
+    if (!launch || !uuid.test(launch.worker) || launch.worker !== result.worker_id || Boolean(key) !== result.credential_loaded
       || (budget?.generation ?? null) !== result.generation
-      || !launch.split('\n').includes(`DEEPSEEK_API_KEY=${key}`)) {
+      || launch.fingerprint !== credentialFingerprint(key)) {
       return { status: 'EDGE_STALE', credential_loaded: result.credential_loaded };
     }
     return { status: 'EDGE_READY', credential_loaded: result.credential_loaded, generation: result.generation };
@@ -203,7 +199,7 @@ export async function developerPilotCommand(args) {
   requireLocal(args.length <= 2 && (action === 'prepare' || (action === 'reauthorize' && path.isAbsolute(option ?? ''))
     || (action === 'edge' && (!option || option === '--offline')) || (['preview', 'close', 'status', 'arm'].includes(action) && args.length === 1)),
   'Use prepare [authorization.json], reauthorize ABSOLUTE_APPROVAL_PATH, edge [--offline], status, arm, preview or close.');
-  const runtime = localRuntime({ isolatePilotProviders: true });
+  const runtime = localRuntime();
   runtime.verify();
   if (action === 'prepare') return withLocalLock(() => prepare(runtime, option));
   const value = session(runtime);
@@ -219,7 +215,6 @@ export async function developerPilotCommand(args) {
       catch { credentialSource = 'CREDENTIAL_INVALID'; }
       const edge = await probeEdge(runtime, value, budget);
       console.log(JSON.stringify({ pilot_id: value.id, origin: value.origin, credential_source: credentialSource,
-        credential_file: providerFile,
         authorization: !budget ? 'BUDGET_MISSING' : budget.expired ? 'AUTHORIZATION_EXPIRED' : budget.rates_stale ? 'RATE_CARD_STALE' : 'CURRENT',
         spending: budget?.enabled ? 'ENABLED' : 'BUDGET_DISABLED', budget, edge }));
       return;
@@ -240,17 +235,19 @@ export async function developerPilotCommand(args) {
   });
   if (action === 'edge') {
     protectDirectory();
-    protectDirectory(serverDirectory);
-    requireLocal(!existsSync(path.join(root, 'supabase/functions/.env')), 'Remove the local functions dotenv override before using the private pilot source.');
     const budget = pilotBudget(database, value);
-    const key = option === '--offline' ? '' : providerKey(true);
+    const offline = option === '--offline';
+    const key = offline ? '' : providerKey();
+    const worker = randomUUID();
     await withLocalLock(() => {
-      requireLocal(!existsSync(edgeFile), 'EDGE_ALREADY_STARTED: stop the existing launcher before starting another.');
-      writeFileSync(edgeFile, `KAEL_DEVELOPER_PILOT=local_8085\nKAEL_DEVELOPER_PILOT_ID=${value.id}\nKAEL_PILOT_GENERATION=${budget?.generation ?? ''}\nKAEL_PILOT_WORKER_ID=${randomUUID()}\nKAEL_PILOT_OFFLINE=${option === '--offline' ? 1 : 0}\nKAEL_DEEPSEEK_MODEL=deepseek-flash\nDEEPSEEK_API_KEY=${key}\n`, { flag: 'wx', mode: 0o600 });
+      requireLocal(!existsSync(legacyEdgeFile) && !existsSync(edgeFile), 'EDGE_ALREADY_STARTED: stop the existing launcher before starting another.');
+      writeFileSync(edgeFile, JSON.stringify({ worker, offline, fingerprint: credentialFingerprint(key) }), { flag: 'wx', mode: 0o600 });
     });
     try {
-      console.log(key ? 'EDGE_STARTING: server credential configured; spending follows the existing budget.' : 'EDGE_STARTING_OFFLINE: provider credential not loaded.');
-      runtime.cli(['functions', 'serve', 'kael', '--env-file', edgeFile]);
+      runtime.serveKael({
+        KAEL_DEVELOPER_PILOT: 'local_8085', KAEL_DEVELOPER_PILOT_ID: value.id,
+        KAEL_PILOT_GENERATION: budget?.generation ?? '', KAEL_PILOT_WORKER_ID: worker, DEEPSEEK_API_KEY: key,
+      }, () => console.log(key ? 'EDGE_STARTING: server credential configured; spending follows the existing budget.' : 'EDGE_STARTING_OFFLINE: provider credential not loaded.'));
     } finally {
       unlinkSync(edgeFile);
     }

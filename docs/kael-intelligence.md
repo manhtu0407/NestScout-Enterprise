@@ -993,11 +993,9 @@ cumulative money limit cannot increase. A fresh approval may set a different
 positive `max_calls`. Prior calls still count and unresolved accounting or a
 halt blocks renewal. Renewal leaves spending disabled.
 
-Provision the local server key once in
-`~/.codex/private/kael-server/providers.env` as a single
-`DEEPSEEK_API_KEY=...` assignment. Keep the file owner-only. The local
-launcher reuses it on worker restarts. The hosted project manages its own
-Edge Secrets.
+The developer pilot reads DeepSeek from the same private provider source as
+normal local chat. It passes only DeepSeek to its Kael worker. See the
+[local provider provisioning and hosted secret boundaries](../services/kael-core/README.md#local-integration-verification).
 
 Run `edge` to load the server configuration. With no key configured the
 worker still starts and persists messages with provider-unavailable status.
@@ -1013,9 +1011,11 @@ invalid or incomplete streams under `kael_pilot_provider_failure`. Persistence
 failures appear as `kael_setup_failed` or `kael_finish_failed`.
 
 Run `close` to disable spending. It preserves the server key and the
-accounting ledger. The launcher removes its temporary `edge.env` copy when
-it exits normally. After an abnormal exit, verify that the owned launcher
-and worker have stopped before removing a stale temporary file.
+accounting ledger. The launcher removes its private `edge.json` launch record
+when it exits normally. It contains worker metadata and a credential fingerprint.
+After an abnormal exit, verify that the owned launcher and worker have stopped
+before removing a stale launch record. Earlier versions used a private
+`edge.env` file that could hold a provider key.
 The session file contains disposable Auth passwords, not provider keys: protect
 it while needed and remove only these test accounts/credentials when retiring
 the preview.

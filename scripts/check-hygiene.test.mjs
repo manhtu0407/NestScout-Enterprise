@@ -8,11 +8,14 @@ import { after, test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { root } from './tool-path.mjs';
 import { gitEnvironment } from './git-environment.mjs';
+import { verifySuiteGitIsolation } from './git-isolation-fixture.mjs';
 import { git, repositoryFiles, blobByteLimit } from './repository-files.mjs';
 import { checkPath, checkAttribution, checkHygiene, sourceComments } from './check-hygiene.mjs';
 import { inspectArtifact, artifactLimits } from './inspect-artifact.mjs';
 import { scanStaged } from './scan-staged.mjs';
 import { checkBranch, checkMessage, checkMetadata, checkPullRequest, checkCommitRange, checkPush, checkRemote, metadataRange } from './check-metadata.mjs';
+
+verifySuiteGitIsolation();
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-hygiene-'));
 after(() => {

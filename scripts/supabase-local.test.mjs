@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'smol-toml';
-import { validateLocalConfig, validateContainer, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock, validateLocalFiles, localEnvironment, safeDiagnostic, safeEndpoints, isMissingStack, databaseTestDiagnostic } from './supabase-local.mjs';
+import { validateLocalConfig, scopedKaelEnvironment, validateContainer, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock, validateLocalFiles, localEnvironment, safeDiagnostic, safeEndpoints, isMissingStack, databaseTestDiagnostic } from './supabase-local.mjs';
 import { localTools, safeToolResult } from './supabase-mcp.mjs';
 
 const config = parse(readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8'));
@@ -64,7 +64,13 @@ test('Kael can serve on the isolated local stack without changing phone authenti
   assert.equal(config.auth.enable_signup, false);
   assert.equal(config.auth.enable_anonymous_sign_ins, false);
   assert.equal(config.auth.sms, undefined);
-  assert.equal(config.functions, undefined);
+  assert.deepEqual(Object.keys(config.functions), ['kael']);
+  assert.deepEqual(Object.keys(config.functions.kael), ['env']);
+  assert.deepEqual({ ...config.functions.kael.env }, Object.fromEntries([
+    'DEEPSEEK_API_KEY', 'ANTHROPIC_API_KEY', 'KAEL_ANTHROPIC_MODEL', 'KAEL_MODEL_ROUTE',
+    'KAEL_DEVELOPER_PILOT', 'KAEL_DEVELOPER_PILOT_ID', 'KAEL_PILOT_GENERATION', 'KAEL_PILOT_WORKER_ID',
+  ].map(name => [name, `env(NESTSCOUT_LOCAL_${name})`])));
+  assert.equal(config.edge_runtime.secrets, undefined);
 });
 
 test('accept isolated config and reject linked, legacy, static-port and declarative targets', () => {
@@ -75,6 +81,15 @@ test('accept isolated config and reject linked, legacy, static-port and declarat
   assert.throws(() => validateLocalConfig({ ...config, experimental: { stack: false } }, false));
   assert.throws(() => validateLocalConfig({ ...config, db: { ...config.db, migrations: { enabled: true, schema_paths: ['schemas/*.sql'] } } }, false));
   assert.throws(() => validateLocalConfig({ ...config, api: { ...config.api, schemas: [...config.api.schemas, 'unreviewed'] } }, false));
+});
+
+test('provider injection rejects shared bindings, sibling bindings and a redirected Kael entry point', () => {
+  const settings = { DEEPSEEK_API_KEY: 'fixture-only', KAEL_ENABLED_EFFECTS: 'unapproved' };
+  assert.deepEqual(scopedKaelEnvironment(config, settings), { NESTSCOUT_LOCAL_DEEPSEEK_API_KEY: 'fixture-only' });
+  const binding = { VALUE: 'env(nestscout_local_deepseek_api_key)' };
+  assert.throws(() => scopedKaelEnvironment({ ...config, edge_runtime: { ...config.edge_runtime, secrets: binding } }, settings), /shared or other/);
+  assert.throws(() => scopedKaelEnvironment({ ...config, functions: { ...config.functions, sibling: { env: binding } } }, settings), /shared or other/);
+  assert.throws(() => scopedKaelEnvironment({ ...config, functions: { kael: { ...config.functions.kael, entrypoint: './sibling.ts' } } }, settings), /default Kael function/);
 });
 
 test('reject wrong container identity, stopped services and public Docker bindings', () => {
@@ -151,6 +166,8 @@ test('reject every dotenv/link override and scrub case-insensitive ambient targe
       unlinkSync(file);
     }
     assert.deepEqual(localEnvironment({ PATH: 'fixture', supabase_access_token: 'synthetic', PgPaSsWoRd: 'synthetic', database_url: 'synthetic', GIT_WORK_TREE: 'other', GIT_CONFIG_COUNT: '1', git_object_directory: 'other', GIT_NAMESPACE: 'other' }), { PATH: 'fixture', DO_NOT_TRACK: '1' });
+    assert.deepEqual(localEnvironment({ DeepSeek_API_KEY: 'ambient', ANTHROPIC_API_KEY: 'ambient',
+      NESTSCOUT_LOCAL_DEEPSEEK_API_KEY: 'ambient', Kael_Developer_Pilot: 'ambient', PERPLEXITY_API_KEY: 'ambient' }), { DO_NOT_TRACK: '1' });
     const docker = localEnvironment({ docker_host: 'tcp://example.invalid:2376', docker_context: 'fixture' });
     assert.equal(docker.DOCKER_CONTEXT, 'fixture');
     assert.throws(() => validateDockerEndpoint(docker.DOCKER_HOST));

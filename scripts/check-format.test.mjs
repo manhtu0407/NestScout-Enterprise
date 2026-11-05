@@ -3,8 +3,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
+import { verifySuiteGitIsolation } from './git-isolation-fixture.mjs';
 import { git } from './repository-files.mjs';
 import { checkFormat, checkStagedFormat, formatViolations } from './check-format.mjs';
+
+verifySuiteGitIsolation();
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-format-'));
 after(() => {

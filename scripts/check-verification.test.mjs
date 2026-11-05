@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { parseDocument } from 'yaml';
 import { root, toolPath } from './tool-path.mjs';
 import { gitEnvironment } from './git-environment.mjs';
+import { verifySuiteGitIsolation } from './git-isolation-fixture.mjs';
 import { git } from './repository-files.mjs';
 import { checkHygiene } from './check-hygiene.mjs';
 import { checkYaml } from './check-yaml.mjs';
@@ -17,6 +18,8 @@ import { checkMessage } from './check-metadata.mjs';
 import { scanStaged, secretScanOptions, secretScanEnvironment } from './scan-staged.mjs';
 import { evidencePath, evidenceRelative, evidenceSanitizer, auditEvidence } from './qa-impact-review-evidence.mjs';
 import { benchmarkSource, preparationDirectory } from './qa-impact-review-benchmark.mjs';
+
+verifySuiteGitIsolation();
 
 test('hosted repository checks retain unconditional aggregate and negative verification', () => {
   const workflow = parseDocument(readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')).toJS();

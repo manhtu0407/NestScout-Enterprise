@@ -5,4 +5,7 @@ declare const Deno: {
   serve(handler: (request: Request) => Promise<Response>): unknown;
 };
 
-Deno.serve(createKaelHandler({ env: Deno.env.toObject() }));
+const env = Object.fromEntries(Object.entries(Deno.env.toObject())
+  .filter(([name, value]) => value !== `env(NESTSCOUT_LOCAL_${name})`));
+
+Deno.serve(createKaelHandler({ env }));

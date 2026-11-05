@@ -217,14 +217,50 @@ provider is unavailable. The gateway will not replay an interrupted stream.
 ## Local integration verification
 
 Run `npm run db:start`, then `npm run kael:serve` in another terminal in the
-same worktree and branch. The latter uses the existing local ownership guard
-before calling the pinned CLI's `functions serve kael`; the CLI serves all
-existing functions. No JWT-verification override is used. `db:start` still
-excludes Functions, so a database-only session does not start them. Serving
-Functions activates them on that same managed stack. Obtain the assigned
-loopback API URL from `npm run db:status`; never reuse another worktree's ports.
+same worktree and branch. This starts Kael without model credentials. Use
+`npm run kael:credentials` for the local source status and
+`npm run kael:serve -- --providers` to opt an authorized local stack into normal
+chat with its provisioned providers. The latter uses the local ownership guard
+and injects only the approved variables into the Kael function through the pinned
+CLI. The SMS hook receives none of Kael's provider settings. JWT verification
+remains in place. `db:start` excludes Functions. Serving Functions activates
+them on that same managed stack. Obtain the assigned loopback API URL from
+`npm run db:status`; never reuse another worktree's ports.
+
+The pinned CLI can pass an unresolved local binding to Edge as literal
+`env(...)` text. The Kael entry point treats those local references as absent.
 The mobile app's ignored `.env` needs that URL, target `local`, and the stack's
 publishable key. Server and provider keys must stay out of the mobile environment.
+
+The operator provisions `~/.codex/private/kael-server/providers.env` once for the
+local OS account using its approved development credentials. It must be a small,
+regular, single-link file outside the checkout. On Linux use an owner-only file
+and directory (0600 and 0700). On Windows the file and directory must belong to
+the launching account and allow access only to that account, SYSTEM and local
+Administrators. The launcher checks permissions and never changes them.
+
+The UTF-8 file accepts one plain `NAME=value` assignment per setting, plus blank
+lines and full-line comments. Supply `DEEPSEEK_API_KEY` and/or `ANTHROPIC_API_KEY`.
+For Anthropic also set `KAEL_ANTHROPIC_MODEL` and select it in `KAEL_MODEL_ROUTE`.
+The normal default route is DeepSeek. Ambient provider and pilot variables are
+discarded, and the launcher rejects shared and Kael function dotenv overrides.
+Missing or rejected sources stop provider-enabled launch. A valid source is
+reusable across trusted worktrees under the same OS account. Docker and the OS
+account are part of the local trust boundary. Stop the old worker and start it
+again after rotating or revoking credentials, or start in offline mode.
+
+Authenticated `GET /functions/v1/kael` with `x-kael-readiness: 1` checks the
+database and reports credential and route configuration without calling either
+provider. A configured route can make billable requests when used for chat.
+Source discovery, normal chat and developer pilot spending are separate from
+Live Evaluation authorization and accounting.
+
+Each hosted environment has its own operator-managed Supabase Edge Secrets.
+Use separate credentials for each project and keep them in the organization's
+secret store. Supabase makes Edge Secrets available at project scope, so use a
+separate project or other approved runtime boundary if function-level isolation
+is required. Local tooling never retrieves hosted secrets.
+See [Supabase environment variables](https://supabase.com/docs/guides/functions/secrets).
 
 `npm run db:test` runs SQL security and workflow tests. With Functions served,
 `npm run db:mcp:test` also runs the Kael integration scenarios in
@@ -234,7 +270,7 @@ and validate Auth-signed JWTs against Auth and RLS. This is a gateway harness,
 not phone OTP or application login E2E. No SMS is sent and authentication
 configuration is unchanged.
 
-The actual Edge Function is tested without provider credentials and must report
+The actual Edge Function is tested in offline mode and must report
 `provider_unavailable`. A temporary local Edge worker verifies the gateway and
 adapter end to end with fixture SSE. Additional deterministic scenarios inject
 a scripted provider in the test process. Both use real Auth, REST, PostgreSQL,

@@ -6,12 +6,15 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { parseDocument } from 'yaml';
 import { root } from './tool-path.mjs';
+import { verifySuiteGitIsolation } from './git-isolation-fixture.mjs';
 import { git, repositoryFiles } from './repository-files.mjs';
 import { checkPath, commentRecords, sourceComments, hasCommentGrammar } from './check-hygiene.mjs';
 import {
   commentCategory, commentViolations, isMandatoryComment, normalizeComment,
   checkCommittedComments, checkStagedComments, checkWorkingComments, checkComments,
 } from './check-comments.mjs';
+
+verifySuiteGitIsolation();
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-comments-'));
 after(() => {
