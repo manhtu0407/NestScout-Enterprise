@@ -264,11 +264,18 @@ database and provider configuration status without a provider call. An operator
 must explicitly provision one private budget row per enabled provider, naming
 one or two disposable Auth actors and an expiry within one hour. Migrations
 create no budget rows. Never reset or replace a budget row for this verification.
+The browser Preview uses the normal signed-in Kael chat route. Provider
+configuration and authenticated readiness alone do not authorize paid traffic.
+Future normal-chat rollout needs its own approved actor eligibility, budget,
+and operational controls. An expired verification window confers no access.
 
 The database atomically reserves $0.270480 for Anthropic based on 200,000 input
 tokens at $1.25 per million (the five-minute cache-write rate) and 4,096 output
-tokens at $5 per million. Terminal usage settles conservatively at those same
-rates. Each Perplexity Search request holds $0.005. Failures with uncertain
+tokens at $5 per million. Terminal usage settles conservatively at those rates
+and includes cache reads at $0.10 per million. Before reopening a paid window,
+reconcile any earlier usage that excluded cache reads against the provider's
+usage report and retain cumulative spend. Each Perplexity Search request
+holds $0.005. Failures with uncertain
 usage leave the hold in place and block that provider. Each provider has a
 strict $0.30 ceiling. [Anthropic prices](https://platform.claude.com/docs/en/models/haiku-4-5/overview) · [Perplexity prices](https://docs.perplexity.ai/docs/getting-started/pricing)
 

@@ -2,13 +2,15 @@ import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 
 import { AccessProvider, AccessStack, getDefaultAccessServices } from '@/features/access';
-import { DeveloperPilotPanel, developerPilotEnabled, HorizonPreview } from '@/features/horizon';
+import { DeveloperPilotPanel, developerPilotEnabled, HorizonPreview, HostedKaelPreview } from '@/features/horizon';
+import { hostedKaelPreviewEnabled } from '@/lib/config';
 import { FoundationShowcase } from '@/showcase/foundation-showcase';
 import { KaelMotionLab } from '@/showcase/kael-motion-lab';
 
 export const unstable_settings = { anchor: 'index' };
 
 export default function RootLayout() {
+  if (hostedKaelPreviewEnabled()) return <AccessProvider services={getDefaultAccessServices()}><HostedKaelPreview /></AccessProvider>;
   const pilot = developerPilotEnabled();
   if (!pilot && __DEV__ && process.env.EXPO_PUBLIC_DESIGN_SHOWCASE === '1') {
     if (process.env.EXPO_PUBLIC_KAEL_MOTION_LAB === '1') return <KaelMotionLab />;

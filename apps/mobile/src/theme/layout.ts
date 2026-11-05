@@ -116,6 +116,7 @@ export const horizonLayout = {
       monoFont: 'monospace', iosMonoFont: 'Menlo', codePadding: 10, quoteRule: 2,
       quoteInset: 10, quoteGap: 6, listGap: 4, rowGap: 7, cellWidth: 146, cellPadding: 6,
     },
+    hostedKaelPreview: { cardWidth: '100%', cardMaxWidth: 420 },
     kaelMemorySettings: {
       inset: 20, maxHeight: '85%', radius: 20, panelGap: 12, titleSize: 22,
       emphasisWeight: '700', bodySize: 15, bodyLineHeight: 22, contentGap: 10,
