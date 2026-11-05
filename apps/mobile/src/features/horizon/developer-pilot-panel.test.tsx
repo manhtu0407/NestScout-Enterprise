@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { DeveloperPilotPanel, developerPilotEnabled } from './developer-pilot-panel';
+import { Platform } from 'react-native';
 
 const mockSignIn = jest.fn();
 const mockRpc = jest.fn();
@@ -23,6 +24,38 @@ beforeEach(() => {
 
 test('pilot stays unavailable without its explicit web preview flag', () => {
   expect(developerPilotEnabled()).toBe(false);
+});
+
+test('actual pilot gate requires development web, an explicit flag and the exact loopback 8085 origin', () => {
+  const dev = Object.getOwnPropertyDescriptor(globalThis, '__DEV__');
+  const savedWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const flag = process.env.EXPO_PUBLIC_KAEL_DEVELOPER_PILOT;
+  const os = jest.replaceProperty(Platform, 'OS', 'web');
+  try {
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: true });
+    process.env.EXPO_PUBLIC_KAEL_DEVELOPER_PILOT = '1';
+    for (const [origin, enabled] of [['http://localhost:8085', true], ['http://127.0.0.1:8085', true],
+      ['http://localhost:8086', false], ['https://hosted.example', false], ['http://localhost:8085.evil', false]] as const) {
+      Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin } } });
+      expect(developerPilotEnabled()).toBe(enabled);
+    }
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin: 'http://localhost:8085' } } });
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: false });
+    expect(developerPilotEnabled()).toBe(false);
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: true });
+    os.replaceValue('ios');
+    expect(developerPilotEnabled()).toBe(false);
+    os.replaceValue('web');
+    delete process.env.EXPO_PUBLIC_KAEL_DEVELOPER_PILOT;
+    expect(developerPilotEnabled()).toBe(false);
+  } finally {
+    os.restore();
+    if (dev) Object.defineProperty(globalThis, '__DEV__', dev);
+    if (savedWindow) Object.defineProperty(globalThis, 'window', savedWindow);
+    else Reflect.deleteProperty(globalThis, 'window');
+    if (flag === undefined) delete process.env.EXPO_PUBLIC_KAEL_DEVELOPER_PILOT;
+    else process.env.EXPO_PUBLIC_KAEL_DEVELOPER_PILOT = flag;
+  }
 });
 
 test('local login uses real Auth SDK credentials without synthesizing an app identity', async () => {
