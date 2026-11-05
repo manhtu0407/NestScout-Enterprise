@@ -42,31 +42,33 @@ test('Anthropic receives the current saved language as policy and leaves explici
     const personal = await store.loadPersonalContext(conversation, 'client', history, 6000, new AbortController().signal,
       part => assert.fail(`Memory load degraded: ${part}`));
     return anthropicRequestBody({ model: anthropicVerificationModel }, {
-      system: buildSystemPrompt(actor, config, [], [], conversation, '2026-11-05', personal),
+      system: buildSystemPrompt(actor, config, [], [], conversation, '2026-11-05', personal, text),
       transcript: buildTranscript(history, 6000, personal), tools: [], maxOutputTokens: 64,
     });
   }
   const recall = await request('Cho tôi hai cách kiểm tra vòi nước.');
-  assert.match(recall.system[0].text, /Follow an explicit reply-language instruction in the latest user message\. Otherwise write the entire reply in English/);
+  assert.match(recall.system[0].text, /Reply language: English/);
   assert.match(recall.system[0].text, /from the first line/);
+  assert.match((await request('Write in Markdown about a dripping tap.')).system[0].text, /Reply language: English/);
   assert.match(recall.messages[0].content, /"detail","value":"brief"/);
   assert.doesNotMatch(recall.messages[0].content, /"language"/);
   const override = 'Trả lời bằng tiếng Việt: cho tôi hai cách kiểm tra vòi nước.';
   assert.deepEqual((await request(override)).messages.at(-1), { role: 'user', content: override });
+  assert.match((await request(override)).system[0].text, /Reply language: Vietnamese/);
   const correction = await request('không phải tiếng Anh, là tiếng Việt');
   assert.match(correction.system[0].text, /update result: saved/);
-  assert.match(correction.system[0].text, /entire reply in Vietnamese/);
-  assert.match((await request('How do I check a dripping tap?')).system[0].text, /entire reply in Vietnamese/);
+  assert.match(correction.system[0].text, /Reply language: Vietnamese/);
+  assert.match((await request('How do I check a dripping tap?')).system[0].text, /Reply language: Vietnamese/);
   preferences = [];
   const deleted = await request('How do I check a dripping tap?');
-  assert.match(deleted.system[0].text, /Otherwise match the language of the latest user message/);
+  assert.match(deleted.system[0].text, /Otherwise match that message’s language/);
   assert.equal(deleted.messages.length, 1);
   preferences = [row('language', 'arbitrary prompt text')];
   const invalid = await request('Hello');
   assert.doesNotMatch(JSON.stringify(invalid), /arbitrary prompt text/);
 });
 
-test('hosted verification guards all provider egress and retains a hold on missing accounting', async () => {
+test('hosted verification guards Anthropic and Perplexity and retains a hold on missing accounting', async () => {
   const order = [];
   const model = { id: 'anthropic', model: anthropicVerificationModel,
     complete: async () => {
@@ -82,7 +84,8 @@ test('hosted verification guards all provider egress and retains a hold on missi
     order.push([body.p_provider, body.p_actual]);
     return Response.json(acknowledge);
   }, 'fixture-actor', 'fixture-run');
-  await assert.rejects(guard.provider({ ...model, id: 'deepseek' }).complete(request, () => {}), { kind: 'budget' });
+  const deepseek = { ...model, id: 'deepseek' };
+  assert.equal(guard.provider(deepseek), deepseek);
   await assert.rejects(guard.provider(model).complete({ ...request, maxOutputTokens: 4097 }, () => {}), { kind: 'budget' });
   assert.deepEqual(order, []);
   await guard.provider(model).complete(request, () => {});
@@ -106,6 +109,46 @@ test('hosted verification guards all provider egress and retains a hold on missi
   await assert.rejects(guard.provider(model).complete(request, () => {}), { kind: 'budget' });
   await assert.rejects(search(perplexitySearchEndpoint, { method: 'POST', redirect: 'error' }), /denied/);
   assert.deepEqual(order, [['anthropic', null], ['perplexity', null]]);
+});
+
+test('the hosted DeepSeek route is available only to the verified, configured actor', async () => {
+  const provider = scriptedProvider('deepseek', [{ text: ['Hello!'] }]);
+  const app = harness({ env: { KAEL_HOSTED_VERIFICATION: 'required', DEEPSEEK_API_KEY: 'fixture',
+    KAEL_MODEL_ROUTE: 'deepseek', KAEL_DEEPSEEK_VERIFICATION_ACTORS: users.customer.id }, providers: () => [provider] });
+  const denied = await app.message(users.other, 'Hello');
+  assert.equal(denied.events.at(-1).code, 'provider_unavailable');
+  assert.equal(provider.requests.length, 0);
+  const allowed = await app.message(users.customer, 'Hello');
+  assert.equal(allowed.events.at(-1).type, 'run_completed');
+  assert.equal(provider.requests.length, 1);
+});
+
+test('a mismatched opening is withheld, retried, and never persisted', async () => {
+  const provider = scriptedProvider('deepseek', [
+    { text: ['# FAQ\n', 'Kiểm tra vòi nước. ', 'Nội dung sai.'] },
+    { text: ['# How to check the tap\n', 'Check the washer.'] },
+  ]);
+  const app = harness({ providers: () => [provider], wrapStore: store => ({ ...store, loadPersonalContext: async () => ({
+    summary: null, preferences: [{ preference: 'language', value: 'en' }],
+  }) }) });
+  const reply = await app.message(users.customer, 'Cho tôi cách kiểm tra vòi nước.');
+  assert.deepEqual(reply.events.filter(event => event.type === 'message_delta').map(event => event.text),
+    ['# How to check the tap\n', 'Check the washer.']);
+  assert.equal(reply.events.at(-1).text, '# How to check the tap\nCheck the washer.');
+  assert.equal(provider.requests.length, 2);
+  assert.match(provider.requests[1].transcript.at(-1).text, /Answer my latest request in English/);
+});
+
+test('a failed preference read fails the turn before contacting the provider', async () => {
+  const provider = scriptedProvider('deepseek', []);
+  const persistence = createSupabaseStore(async () => new Response(null, { status: 503 }),
+    async () => assert.fail('Unexpected server RPC'), users.customer.id);
+  const app = harness({ providers: () => [provider], wrapStore: store => ({ ...store, loadPersonalContext: persistence.loadPersonalContext }) });
+  const reply = await app.message(users.customer, 'Hello');
+  assert.equal(reply.events.at(-1).code, 'internal');
+  assert.equal(reply.events.at(-1).retryable, true);
+  assert.equal(provider.requests.length, 0);
+  assert.ok(app.logs.some(event => event.event === 'kael_context_degraded' && event.part === 'preferences'));
 });
 
 test('the pinned verification model omits unsupported Anthropic effort', () => {
@@ -942,6 +985,7 @@ test('the gateway persists runs only through the server boundary for the account
     if (path === '/rest/v1/rpc/kael_actor_capabilities') return json({ customer: true, worker: false });
     if (path === '/rest/v1/rpc/kael_start_run') return json({ status: 'started', run_id: runId, conversation_id: conversationId });
     if (path === '/rest/v1/kael_messages') return json([{ role: 'user', content: 'Xin chào', status: 'complete' }]);
+    if (path === '/rest/v1/kael_memory_preferences') return json([]);
     if (path === '/rest/v1/rpc/kael_context_tasks') return json([]);
     if (path === '/rest/v1/rpc/kael_finish_run') return json(true);
     return json({}, 404);

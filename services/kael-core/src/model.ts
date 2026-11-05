@@ -36,6 +36,7 @@ export type ModelTurn = {
   provider: ProviderId;
   model: string;
   requestedModel: string;
+  httpStatus?: number;
   text: string;
   toolCalls: ToolCall[];
   stopReason: StopReason;

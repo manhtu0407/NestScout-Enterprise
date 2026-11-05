@@ -213,11 +213,11 @@ export function createSupabaseStore(rest: Rest, server: ServerRpc, actorId: stri
             const saved = await rpc<boolean>(rest, 'kael_manage_memory', {
               p_mode: mode, p_action: correction.previous ? 'correct' : 'remember', p_preference: correction.preference,
               p_value: correction.value, p_previous: correction.previous,
-            }, signal);
+            }, signal).catch(fallback('preference_update', false));
             if (saved) memoryChange = 'saved';
           }
-          return read();
-        })().catch(fallback('preferences', [])),
+          return read().catch((error: unknown) => { onFailure('preferences'); throw error; });
+        })(),
       ]);
       return { summary: summary?.version === 1 && Array.isArray(summary.items) && summary.items.length ? summary : null, preferences: preferences.filter(row => relevantPreference(row.preference, query)), memoryChange };
     },

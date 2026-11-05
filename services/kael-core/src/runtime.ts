@@ -1,5 +1,5 @@
 import type { KaelConfig } from './config.ts';
-import { buildSystemPrompt, buildTranscript } from './context.ts';
+import { buildSystemPrompt, buildTranscript, openingLanguage, replyLanguage } from './context.ts';
 import type { KaelEmitter, KaelFailureCode } from './events.ts';
 import { executeApprovedEffect, executeDecision } from './executor.ts';
 import type { EffectOutcome, ToolContext, ToolExecution } from './executor.ts';
@@ -103,7 +103,10 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
     const offered = selectTools(actor, config);
     const personal = await store.loadPersonalContext?.(input.conversationId, actor.mode, context.history, config.limits.historyChars,
       AbortSignal.any([signal, AbortSignal.timeout(1600)]), part => input.log?.({ event: 'kael_context_degraded', run_id: input.runId, part }));
-    const system = buildSystemPrompt(actor, config, offered, context.tasks, input.conversationId, input.today, personal);
+    const message = context.history.at(-1)?.content ?? '';
+    const reply = replyLanguage(message, personal);
+    const system = buildSystemPrompt(actor, config, offered, context.tasks, input.conversationId, input.today, personal, message);
+    input.log?.({ event: 'kael_reply_language', run_id: input.runId, source: reply.source, language: reply.language });
     const transcript: TranscriptItem[] = buildTranscript(context.history, config.limits.historyChars, personal);
     if (transcript.length === 0) return fail('invalid_request');
     if (input.providers.length === 0) return fail('provider_unavailable');
@@ -113,27 +116,57 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
     const executed = new Map<string, ToolExecution>();
     let toolCallsUsed = 0;
     let providers = input.providers;
+    let retryLanguageAt = 0;
 
     while (outcome.steps < config.limits.maxModelCalls) {
       outcome.steps += 1;
       let separated = outcome.text.length === 0;
-      const turn = await completeWithFallback(providers, {
-        system, transcript, tools: offered.map(toDefinition), maxOutputTokens: config.limits.maxOutputTokens, signal,
-      }, delta => {
+      let pending = '';
+      let mismatch = false;
+      let checked = !reply.language;
+      const publish = (delta: string) => {
         if (!separated) { say('\n\n'); separated = true; }
         say(delta);
+      };
+      const checkOpening = (final = false) => {
+        const segments = pending.trimStart().split(/\r?\n|[.!?](?=\s)/u);
+        const language = (final ? segments : segments.slice(0, -1)).map(openingLanguage).find(value => value !== null) ?? null;
+        if (!language && !final) return;
+        mismatch = language !== null && language !== reply.language;
+        checked = true;
+        if (!mismatch) publish(pending);
+        pending = '';
+      };
+      const retryTranscript: TranscriptItem[] = retryLanguageAt === outcome.steps && reply.language
+        ? [...transcript, { role: 'user', text: `Answer my latest request in ${reply.language === 'en' ? 'English' : 'Vietnamese'}, starting with the first line. Keep my requested content and format.` }]
+        : transcript;
+      const turn = await completeWithFallback(providers, {
+        system, transcript: retryTranscript, tools: offered.map(toDefinition), maxOutputTokens: config.limits.maxOutputTokens, signal,
+      }, delta => {
+        if (mismatch) return;
+        if (checked) { publish(delta); return; }
+        pending += delta;
+        if (pending.length >= 240) checkOpening(true);
+        else if (/\S.*(?:\r?\n|[.!?]\s)/u.test(pending)) checkOpening();
       }, undefined, (failure, requestedModel, fallback) => input.log?.({
         event: 'kael_provider_failure', run_id: input.runId, provider: failure.provider, requested_model: requestedModel,
         kind: failure.kind, http_status: failure.httpStatus ?? null, output_started: Number(failure.outputStarted), fallback: Number(fallback),
       }));
       input.log?.({ event: 'kael_provider_terminal', run_id: input.runId, provider: turn.provider,
-        requested_model: turn.requestedModel, served_model: turn.model, reason: turn.stopReason });
+        requested_model: turn.requestedModel, served_model: turn.model, reason: turn.stopReason, http_status: turn.httpStatus ?? null });
       providers = providers.filter(provider => provider.id === turn.provider);
       outcome.provider = turn.provider;
       outcome.model = turn.model;
       outcome.requestedModel = turn.requestedModel;
       outcome.inputTokens += turn.usage.inputTokens;
       outcome.outputTokens += turn.usage.outputTokens;
+      if (!checked && pending.trim()) checkOpening(true);
+      if (mismatch) {
+        input.log?.({ event: 'kael_reply_language_mismatch', run_id: input.runId, provider: turn.provider, language: reply.language });
+        if (retryLanguageAt || outcome.text || turn.toolCalls.length || outcome.steps >= config.limits.maxModelCalls) return fail('provider_error');
+        retryLanguageAt = outcome.steps + 1;
+        continue;
+      }
 
       if (overflow) return fail('incomplete_output');
       if (turn.stopReason === 'refusal' || turn.stopReason === 'content_filter') {

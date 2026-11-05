@@ -188,6 +188,7 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
           provider: 'deepseek',
           model: servedModel ?? config.model,
           requestedModel: config.model,
+          httpStatus: response.status,
           text,
           toolCalls,
           stopReason: stopReasonOf(finishReason),

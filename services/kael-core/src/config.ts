@@ -67,7 +67,7 @@ const edgeRuntimeSettings = [
 const hostedProviderSettings = [
   'DEEPSEEK_API_KEY', 'ANTHROPIC_API_KEY', 'PERPLEXITY_API_KEY', 'KAEL_MODEL_ROUTE',
   'KAEL_DEEPSEEK_MODEL', 'KAEL_DEEPSEEK_THINKING', 'KAEL_ANTHROPIC_MODEL', 'KAEL_ANTHROPIC_EFFORT',
-  'KAEL_ANTHROPIC_SERVER_FALLBACK', 'KAEL_WEB_SEARCH',
+  'KAEL_ANTHROPIC_SERVER_FALLBACK', 'KAEL_WEB_SEARCH', 'KAEL_DEEPSEEK_VERIFICATION_ACTORS',
 ] as const;
 
 export function readKaelEdgeEnvironment(read: (name: string) => string | undefined): Environment {
@@ -119,6 +119,7 @@ const deepseekModelId = /^deepseek-[a-zA-Z0-9._-]{1,70}$/;
 
 function routeOf(env: Environment): ProviderId[] | null {
   const raw = env.KAEL_MODEL_ROUTE;
+  if (raw === undefined && env.KAEL_HOSTED_VERIFICATION === 'required') return null;
   const requested = raw === undefined ? ['deepseek'] : raw.split(',').map(item => item.trim());
   return requested.every((id): id is ProviderId => providerIds.includes(id as ProviderId))
     && new Set(requested).size === requested.length ? requested : null;

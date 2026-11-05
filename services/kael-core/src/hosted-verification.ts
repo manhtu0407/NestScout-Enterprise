@@ -18,6 +18,7 @@ export function hostedVerification(server: ServerRpc, actorId: string, runId: st
 
   return {
     provider(provider: ModelProvider): ModelProvider {
+      if (provider.id === 'deepseek') return provider;
       return {
         id: provider.id,
         model: provider.model,
