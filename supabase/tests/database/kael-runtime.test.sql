@@ -534,5 +534,32 @@ select ok(has_function_privilege('authenticated', 'public.kael_conversation_stat
 select is((select count(*)::integer from nestscout_private.kael_approvals where owner_id = '00000000-0000-4000-8000-0000000000b2'), 0,
   'Foreign attempts created no approvals');
 
+select ok(not has_function_privilege('authenticated', 'public.kael_verification_charge(uuid,uuid,text,uuid,integer)', 'execute')
+  and not has_function_privilege('anon', 'public.kael_verification_charge(uuid,uuid,text,uuid,integer)', 'execute')
+  and not has_table_privilege('service_role', 'nestscout_private.kael_verification_budgets', 'update'),
+  'Only the trusted server can call the verification RPC and it cannot edit the ledger directly');
+
+insert into nestscout_private.kael_verification_budgets (provider, actors, expires_at)
+  values ('anthropic', array['00000000-0000-4000-8000-0000000000c3'::uuid], clock_timestamp() + interval '10 minutes');
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('test.verification_run', public.kael_start_run('00000000-0000-4000-8000-0000000000c3', gen_random_uuid(), null, 'client', 'Probe') ->> 'run_id', true);
+select set_config('test.verification_call', gen_random_uuid()::text, true);
+select ok(not public.kael_verification_charge('00000000-0000-4000-8000-0000000000b2', current_setting('test.verification_run')::uuid,
+  'anthropic', current_setting('test.verification_call')::uuid, null), 'A foreign actor cannot reserve against a run');
+select ok(not public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
+  'deepseek', current_setting('test.verification_call')::uuid, null), 'A provider without a verified quote is refused');
+select ok(public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
+  'anthropic', current_setting('test.verification_call')::uuid, null), 'An allowlisted actor can reserve once');
+select ok(not public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
+  'anthropic', gen_random_uuid(), null), 'An unresolved hold blocks every new attempt');
+select ok(not public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
+  'anthropic', gen_random_uuid(), 1), 'A different call cannot release a hold');
+select ok(public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
+  'anthropic', current_setting('test.verification_call')::uuid, 30000), 'Validated usage commits and releases only the corresponding hold');
+select ok(not public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
+  'anthropic', gen_random_uuid(), null), 'A new reservation cannot exceed the provider ceiling');
+reset role;
+
 select * from finish();
 rollback;

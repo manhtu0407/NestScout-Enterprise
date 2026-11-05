@@ -133,6 +133,66 @@ $$;
 revoke all on function public.kael_runtime_ready() from public, anon, authenticated;
 grant execute on function public.kael_runtime_ready() to service_role;
 
+create table nestscout_private.kael_verification_budgets (
+  provider text primary key check (provider in ('anthropic', 'perplexity')),
+  actors uuid[] not null check (cardinality(actors) between 1 and 2 and array_position(actors, null) is null),
+  created_at timestamptz not null default clock_timestamp(),
+  expires_at timestamptz not null check (expires_at > created_at and expires_at <= created_at + interval '1 hour'),
+  committed_micro_usd integer not null default 0 check (committed_micro_usd between 0 and 300000),
+  held_call uuid,
+  held_run uuid,
+  held_actor uuid,
+  held_micro_usd integer not null default 0 check (held_micro_usd between 0 and 300000),
+  check (committed_micro_usd + held_micro_usd <= 300000),
+  check ((held_micro_usd = 0 and held_call is null and held_run is null and held_actor is null)
+    or (held_micro_usd > 0 and held_call is not null and held_run is not null and held_actor is not null))
+);
+
+alter table nestscout_private.kael_verification_budgets enable row level security;
+revoke all on nestscout_private.kael_verification_budgets from public, anon, authenticated, service_role;
+
+create function nestscout_private.kael_verification_charge(p_actor uuid, p_run uuid, p_provider text, p_call uuid, p_actual integer)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_hold integer := case p_provider when 'anthropic' then 270480 when 'perplexity' then 5000 else null end;
+begin
+  if coalesce(auth.jwt() ->> 'role', '') <> 'service_role' or p_call is null or v_hold is null then
+    return false;
+  end if;
+  if p_actual is null then
+    update nestscout_private.kael_verification_budgets b set held_call = p_call, held_run = p_run,
+      held_actor = p_actor, held_micro_usd = v_hold
+      where b.provider = p_provider and p_actor = any(b.actors) and b.expires_at > clock_timestamp()
+        and b.held_micro_usd = 0 and b.committed_micro_usd + v_hold <= 300000
+        and exists (select 1 from public.kael_runs r where r.id = p_run and r.owner_id = p_actor and r.status = 'running');
+  else
+    update nestscout_private.kael_verification_budgets b set committed_micro_usd = b.committed_micro_usd + p_actual,
+      held_call = null, held_run = null, held_actor = null, held_micro_usd = 0
+      where b.provider = p_provider and b.held_call = p_call and b.held_run = p_run and b.held_actor = p_actor
+        and p_actual between 0 and b.held_micro_usd;
+  end if;
+  return found;
+end;
+$$;
+
+create function public.kael_verification_charge(p_actor uuid, p_run uuid, p_provider text, p_call uuid, p_actual integer)
+returns boolean
+language sql
+security invoker
+set search_path = ''
+as $$
+  select nestscout_private.kael_verification_charge(p_actor, p_run, p_provider, p_call, p_actual);
+$$;
+
+revoke all on function nestscout_private.kael_verification_charge(uuid, uuid, text, uuid, integer) from public, anon, authenticated, service_role;
+revoke all on function public.kael_verification_charge(uuid, uuid, text, uuid, integer) from public, anon, authenticated, service_role;
+grant execute on function nestscout_private.kael_verification_charge(uuid, uuid, text, uuid, integer) to service_role;
+grant execute on function public.kael_verification_charge(uuid, uuid, text, uuid, integer) to service_role;
+
 create or replace function nestscout_private.kael_finish_run(p_actor uuid, p_run_id uuid, p_status text, p_text text, p_complete boolean, p_provider text,
   p_model text, p_input_tokens integer, p_output_tokens integer, p_steps integer, p_error text)
 returns boolean

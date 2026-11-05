@@ -1269,6 +1269,40 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         traces.greeting = first.events;
         traces.restored = snapshot;
       });
+      await t.test('hosted verification allows one concurrent reservation and holds it until accounted', async () => {
+        const actor = await newUser();
+        const started = await request('/rest/v1/rpc/kael_start_run', serviceKey, {
+          p_actor: actor.id, p_request_id: randomUUID(), p_conversation_id: null, p_mode: 'client', p_user_text: 'Synthetic budget probe',
+        }, true);
+        assert.equal(started.status, 200);
+        const run = await started.json();
+        assert.equal(run.status, 'started');
+        const endpoint = '/rest/v1/rpc/kael_verification_charge';
+        const charge = { p_actor: actor.id, p_run: run.run_id, p_provider: 'anthropic', p_actual: null };
+        const denied = await request(endpoint, actor.token, { ...charge, p_call: randomUUID() });
+        assert.equal(denied.status, 403);
+        query(`insert into nestscout_private.kael_verification_budgets (provider, actors, expires_at)
+          values ('anthropic', array['${actor.id}'::uuid], clock_timestamp() + interval '5 minutes');`);
+        try {
+          const calls = Array.from({ length: 4 }, () => randomUUID());
+          const outcomes = await Promise.all(calls.map(async p_call => {
+            const response = await request(endpoint, serviceKey, { ...charge, p_call }, true);
+            assert.equal(response.status, 200);
+            return response.json();
+          }));
+          assert.equal(outcomes.filter(Boolean).length, 1);
+          assert.equal(query("select held_micro_usd from nestscout_private.kael_verification_budgets where provider='anthropic';"), '270480');
+          const settled = await request(endpoint, serviceKey, { ...charge, p_call: calls[outcomes.indexOf(true)], p_actual: 30000 }, true);
+          assert.equal(settled.status, 200);
+          assert.equal(await settled.json(), true);
+          const retry = await request(endpoint, serviceKey, { ...charge, p_call: randomUUID() }, true);
+          assert.equal(retry.status, 200);
+          assert.equal(await retry.json(), false);
+        } finally {
+          query(`delete from nestscout_private.kael_verification_budgets where provider='anthropic' and actors=array['${actor.id}'::uuid];`);
+        }
+      });
+
       await t.test('opted-in web search passes fixture sources through Kael with real Auth and PostgreSQL', async () => {
         const owner = await newUser();
         const credential = 'fixture-no-provider-secret';

@@ -67,7 +67,7 @@ const edgeRuntimeSettings = [
 const hostedProviderSettings = [
   'DEEPSEEK_API_KEY', 'ANTHROPIC_API_KEY', 'PERPLEXITY_API_KEY', 'KAEL_MODEL_ROUTE',
   'KAEL_DEEPSEEK_MODEL', 'KAEL_DEEPSEEK_THINKING', 'KAEL_ANTHROPIC_MODEL', 'KAEL_ANTHROPIC_EFFORT',
-  'KAEL_ANTHROPIC_SERVER_FALLBACK', 'KAEL_WEB_SEARCH', 'KAEL_ENABLED_EFFECTS',
+  'KAEL_ANTHROPIC_SERVER_FALLBACK', 'KAEL_WEB_SEARCH',
 ] as const;
 
 export function readKaelEdgeEnvironment(read: (name: string) => string | undefined): Environment {
@@ -75,6 +75,7 @@ export function readKaelEdgeEnvironment(read: (name: string) => string | undefin
   const environment: Environment = { SUPABASE_URL: url };
   const hosted = url !== undefined && validSupabaseUrl(url) && new URL(url).protocol === 'https:'
     && Boolean(read('DENO_DEPLOYMENT_ID')?.trim());
+  if (hosted) environment.KAEL_HOSTED_VERIFICATION = 'required';
   const settings = hosted ? [...edgeRuntimeSettings, ...hostedProviderSettings] : edgeRuntimeSettings;
   for (const name of settings) {
     const value = read(name);

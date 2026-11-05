@@ -24,7 +24,7 @@ export async function searchWeb(config: PerplexityConfig, query: string, signal:
   let response: Response;
   try {
     response = await fetcher(perplexitySearchEndpoint, {
-      method: 'POST',
+      method: 'POST', redirect: 'error',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${config.apiKey}` },
       body: JSON.stringify({ query, max_results: config.maxResults, max_tokens_per_page: 512 }),
       signal: AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]),

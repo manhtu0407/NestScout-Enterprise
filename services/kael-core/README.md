@@ -256,16 +256,28 @@ session. [Supabase environment variables](https://supabase.com/docs/guides/funct
 
 Hosted validation requires a separately authorized deployment of `kael` and
 the applicable Kael database migrations on the project holding the secrets.
-Set the approved Anthropic model and chat route in the hosted configuration.
-Perplexity Search uses `web_search` when `KAEL_WEB_SEARCH=enabled`. Keep
-`KAEL_ENABLED_EFFECTS` unset for verification.
+The hosted entrypoint restricts provider calls to bounded verification.
+Set `KAEL_MODEL_ROUTE=anthropic` and `KAEL_ANTHROPIC_MODEL=claude-haiku-4-5-20251001`
+for the priced chat route. Perplexity Search uses `web_search` when
+`KAEL_WEB_SEARCH=enabled`. Business effects and provider-side fallback are off.
 
 Use authenticated `GET /functions/v1/kael` with `x-kael-readiness: 1` for
-database and provider configuration status without a provider call. A live
-verification also needs verified model pricing and enforced per-provider and
-total spend limits across all provider attempts and Preview calls. Normal
-chat's turn limits do not enforce those USD ceilings. Live Evaluation retains
-its own authorization and accounting gates.
+database and provider configuration status without a provider call. An operator
+must explicitly provision one private budget row per enabled provider, naming
+one or two disposable Auth actors and an expiry within one hour. Migrations
+create no budget rows. Never reset or replace a budget row for this verification.
+
+The database atomically reserves $0.270480 for Anthropic based on 200,000 input
+tokens at $1.25 per million (the five-minute cache-write rate) and 4,096 output
+tokens at $5 per million. Terminal usage settles conservatively at those same
+rates. Each Perplexity Search request holds $0.005. Failures with uncertain
+usage leave the hold in place and block that provider. Each provider has a
+strict $0.30 ceiling. [Anthropic prices](https://platform.claude.com/docs/en/models/haiku-4-5/overview) · [Perplexity prices](https://docs.perplexity.ai/docs/getting-started/pricing)
+
+DeepSeek remains closed to hosted paid verification. Its published peak price
+and full input context alone use the $0.30 ceiling. A verified smaller billed
+input bound or a hard provider-side spend limit is required before dispatch.
+Live Evaluation retains its own authorization and accounting gates.
 
 ## Not implemented
 

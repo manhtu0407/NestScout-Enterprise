@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { anthropicEndpoint, anthropicVersion, createAnthropicProvider } from '../services/kael-core/src/anthropic.ts';
+import { anthropicEndpoint, anthropicRequestBody, anthropicVerificationModel, anthropicVersion, createAnthropicProvider } from '../services/kael-core/src/anthropic.ts';
 import { configurationReport, defaultLimits, readKaelConfig, readKaelEdgeEnvironment } from '../services/kael-core/src/config.ts';
 import { createDeepSeekProvider, deepseekEndpoint } from '../services/kael-core/src/deepseek.ts';
+import { hostedVerification } from '../services/kael-core/src/hosted-verification.ts';
 import { completeWithFallback, ProviderError } from '../services/kael-core/src/model.ts';
 import { perplexitySearchEndpoint, searchWeb } from '../services/kael-core/src/perplexity.ts';
 import { canonicalJson, confirmableTools, evaluateCall, fingerprint, selectTools } from '../services/kael-core/src/policy.ts';
@@ -18,6 +19,50 @@ import { developerPilotProviders, pilotRoute, pilotServedModels } from '../servi
 import { parsePilotAuthorization, parsePilotRenewal } from './kael-developer-pilot.mjs';
 
 const encoder = new TextEncoder();
+
+test('hosted verification guards all provider egress and retains a hold on missing accounting', async () => {
+  const order = [];
+  const model = { id: 'anthropic', model: anthropicVerificationModel,
+    complete: async () => {
+      order.push('model');
+      return { model: anthropicVerificationModel, usage: { inputTokens: 101, outputTokens: 5 } };
+    } };
+  const request = { maxOutputTokens: 4096, signal: new AbortController().signal };
+  let acknowledge = true;
+  const guard = hostedVerification(async (operation, body) => {
+    assert.equal(operation, 'kael_verification_charge');
+    assert.equal(body.p_actor, 'fixture-actor');
+    assert.equal(body.p_run, 'fixture-run');
+    order.push([body.p_provider, body.p_actual]);
+    return Response.json(acknowledge);
+  }, 'fixture-actor', 'fixture-run');
+  await assert.rejects(guard.provider({ ...model, id: 'deepseek' }).complete(request, () => {}), { kind: 'budget' });
+  await assert.rejects(guard.provider(model).complete({ ...request, maxOutputTokens: 4097 }, () => {}), { kind: 'budget' });
+  assert.deepEqual(order, []);
+  await guard.provider(model).complete(request, () => {});
+  assert.deepEqual(order, [['anthropic', null], 'model', ['anthropic', 152]]);
+  order.length = 0;
+  await assert.rejects(guard.provider({ ...model, complete: async () => { throw new Error('interrupted'); } }).complete(request, () => {}), /interrupted/);
+  assert.deepEqual(order, [['anthropic', null]]);
+  order.length = 0;
+  const search = guard.search(async () => { order.push('search'); return Response.json({ results: [] }); });
+  await assert.rejects(search('https://example.invalid/', { method: 'POST', redirect: 'error' }), /denied/);
+  await search(perplexitySearchEndpoint, { method: 'POST', redirect: 'error' });
+  assert.deepEqual(order, [['perplexity', null], 'search', ['perplexity', 5000]]);
+  order.length = 0;
+  acknowledge = false;
+  await assert.rejects(guard.provider(model).complete(request, () => {}), { kind: 'budget' });
+  await assert.rejects(search(perplexitySearchEndpoint, { method: 'POST', redirect: 'error' }), /denied/);
+  assert.deepEqual(order, [['anthropic', null], ['perplexity', null]]);
+});
+
+test('the pinned verification model omits unsupported Anthropic effort', () => {
+  const body = anthropicRequestBody({ model: anthropicVerificationModel, effort: 'low' },
+    { maxOutputTokens: 64, system: 'Reply briefly.', transcript: [{ role: 'user', text: 'Hello' }], tools: [] });
+  assert.equal(body.model, anthropicVerificationModel);
+  assert.equal(body.output_config, undefined);
+  assert.equal(body.fallbacks, undefined);
+});
 
 const pilotEnv = { ...baseEnv, SUPABASE_URL: 'http://127.0.0.1:23624', KAEL_DEVELOPER_PILOT: 'local_8085',
   KAEL_DEVELOPER_PILOT_ID: '00000000-0000-4000-8000-000000008085', DEEPSEEK_API_KEY: 'test-deepseek-key' };
