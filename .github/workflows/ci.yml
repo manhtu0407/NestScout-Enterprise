@@ -28,6 +28,19 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
+      - name: Fetch frozen benchmark source history
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          import { gitEnvironment } from './scripts/git-environment.mjs';
+          const { sourceRevision } = JSON.parse(readFileSync('scripts/fixtures/qa-impact-review-r3-v2.json', 'utf8'));
+          assert.match(sourceRevision, /^[a-f0-9]{40}$/u, 'Invalid frozen benchmark source revision');
+          const options = { env: gitEnvironment(), stdio: 'inherit', timeout: 120000 };
+          execFileSync('git', ['fetch', '--no-tags', 'origin', sourceRevision], options);
+          execFileSync('git', ['cat-file', '-e', `${sourceRevision}^{commit}`], options);
+          NODE
       - name: Install locked repository tooling
         run: npm ci --ignore-scripts
       - name: Install checksum-verified tools

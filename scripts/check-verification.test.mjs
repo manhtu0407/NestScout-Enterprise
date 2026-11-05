@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync, lstatSync, readdirSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync, lstatSync, readdirSync, symlinkSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -72,6 +72,57 @@ function fixture(operation) {
     rmSync(repository, { recursive: true });
   }
 }
+
+function frozenHistoryScript(repository, revision) {
+  const workflow = parseDocument(readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')).toJS();
+  const step = workflow.jobs['repository-checks'].steps.find(step => step.name === 'Fetch frozen benchmark source history');
+  assert.ok(step, 'Frozen historical source must be fetched explicitly, independent of advertised branches');
+  assert.equal(step.if, undefined);
+  assert.equal(step['continue-on-error'], undefined);
+  const script = /^node --input-type=module <<'NODE'\n([\s\S]+)\nNODE$/u.exec(step.run.trim())?.[1];
+  assert.ok(script);
+  mkdirSync(path.join(repository, 'scripts/fixtures'), { recursive: true });
+  writeFileSync(path.join(repository, 'scripts/git-environment.mjs'), readFileSync(path.join(root, 'scripts/git-environment.mjs')));
+  writeFileSync(path.join(repository, 'scripts/fixtures/qa-impact-review-r3-v2.json'), JSON.stringify({ sourceRevision: revision }));
+  return spawnSync(process.execPath, ['--input-type=module'], { cwd: repository, input: script, env: gitEnvironment(), encoding: 'utf8', timeout: 30000 });
+}
+
+test('hosted history setup retrieves a frozen commit absent from advertised branch history without changing delivered files', () => fixture(({ repository, run }) => {
+  const origin = path.join(repository, 'origin');
+  const checkout = path.join(repository, 'checkout');
+  run(['init', '--quiet', origin]);
+  writeFileSync(path.join(origin, 'README.md'), 'Frozen historical source\n');
+  git(origin, ['add', '.']);
+  const tree = git(origin, ['write-tree']).trim();
+  const identity = ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid'];
+  const revision = git(origin, [...identity, 'commit-tree', tree, '-m', 'Frozen source fixture']).trim();
+  writeFileSync(path.join(origin, 'README.md'), 'Delivered source\n');
+  git(origin, ['add', '.']);
+  git(origin, [...identity, 'commit', '--quiet', '-m', 'Delivered fixture']);
+  run(['init', '--quiet', checkout]);
+  git(checkout, ['remote', 'add', 'origin', origin]);
+  git(checkout, ['fetch', '--quiet', '--no-tags', 'origin', 'HEAD']);
+  git(checkout, ['checkout', '--quiet', '--detach', 'FETCH_HEAD']);
+  const before = git(checkout, ['rev-parse', 'HEAD']);
+  const delivered = readFileSync(path.join(checkout, 'README.md'));
+  assert.throws(() => git(checkout, ['cat-file', '-e', `${revision}^{commit}`]));
+  const result = frozenHistoryScript(checkout, revision);
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(git(checkout, ['show', `${revision}:README.md`]), 'Frozen historical source\n');
+  assert.equal(git(checkout, ['rev-parse', 'HEAD']), before);
+  assert.deepEqual(readFileSync(path.join(checkout, 'README.md')), delivered);
+}));
+
+test('hosted history setup rejects malformed source pins before Git fetch', () => fixture(({ repository }) => {
+  for (const revision of ['', 'HEAD', '--all', 'a'.repeat(39), `${'a'.repeat(40)}:refs/heads/other`]) {
+    const result = frozenHistoryScript(repository, revision);
+    assert.ifError(result.error);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Invalid frozen benchmark source revision/);
+    assert.equal(existsSync(path.join(repository, '.git/FETCH_HEAD')), false);
+  }
+}));
 
 test('YAML accepts valid index, working, untracked and special-character paths', () => fixture(({ repository, write, run }) => {
   write('settings.yml', 'name: index\n');
