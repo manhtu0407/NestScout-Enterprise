@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createKaelSequence, parseKaelConversationSnapshot, parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { createKaelHandler } from '../services/kael-core/src/gateway.ts';
 import { call, lastToolResults, scriptedProvider } from './kael-test-harness.mjs';
+import { applyPilotApproval } from './kael-developer-pilot.mjs';
 import { knowledgeSeedSnapshot, knowledgeSources, knowledgeSnapshot } from '../services/kael-core/src/knowledge-sources.ts';
 import { knowledgeSeedSql, localKnowledgeDatabase, sqlLiteral } from './kael-knowledge.mjs';
 import assert from 'node:assert/strict';
@@ -28,18 +29,28 @@ test('pilot budget serializes concurrent workers and retains held spend across w
     const callA = randomUUID();
     const callB = randomUUID();
     const key = barrierKey();
+    const session = { id: pilot, stack_id: 'integration-local', accounts: [{ id: actor }] };
+    const now = Date.now();
+    const approval = { approval_id: randomUUID(), pilot_id: pilot, approved_at: new Date(now).toISOString(),
+      purpose: 'kael_developer_8085', provider: 'deepseek', model: 'deepseek-flash', owner_approved: true,
+      cap_micro_usd: 1000000, max_calls: 3, expires_at: new Date(now + 1800000).toISOString(), rates_checked_at: new Date(now).toISOString(),
+      rate_source: 'https://api-docs.deepseek.com/quick_start/pricing/', input_rate: 0.3, cached_rate: 0.006, output_rate: 1.2 };
+    let generation;
     const charge = callId => `set local request.jwt.claims='{"role":"service_role"}';
+      set local request.headers=${sqlLiteral(JSON.stringify(generation ? { 'x-kael-pilot-generation': generation } : {}))};
       select public.kael_pilot_charge('${pilot}','${actor}','${run}','${callId}','reserve',false,'deepseek-flash',0,0,0);`;
     let first;
     let second;
     try {
       database.query(`insert into auth.users (id,aud,role) values ('${actor}','authenticated','authenticated');
         insert into public.kael_conversations (id,owner_id,mode) values ('${conversation}','${actor}','client');
-        insert into public.kael_runs (id,conversation_id,owner_id,request_id) values ('${run}','${conversation}','${actor}',gen_random_uuid());
-        insert into nestscout_private.kael_pilot_budgets
-          (id,enabled,actors,expires_at,cap_micro_usd,max_calls,input_rate,cached_rate,output_rate,rate_source,rates_checked_at,source_sha,stack_id)
-          values ('${pilot}',true,array['${actor}']::uuid[],now()+interval '30 minutes',1000000,20,0.3,0.006,1.2,
-            'https://api-docs.deepseek.com/quick_start/pricing/',now(),repeat('a',40),'integration-local');`);
+        insert into public.kael_runs (id,conversation_id,owner_id,request_id) values ('${run}','${conversation}','${actor}',gen_random_uuid());`);
+      assert.throws(() => applyPilotApproval(database, session, { ...approval, owner_approved: false }), /owner authorization/);
+      assert.equal(applyPilotApproval(database, session, approval), 'AUTHORIZED_DISABLED');
+      assert.match(database.query(`begin; ${charge(callA)} rollback;`), /disabled_expired_or_halted/);
+      assert.equal(database.query(`select nestscout_private.kael_pilot_arm('${pilot}','integration-local',${sqlLiteral(approval.approved_at)});`).trim(), 'BUDGET_ENABLED');
+      assert.match(database.query(`begin; ${charge(callA)} rollback;`), /edge_authorization_mismatch/);
+      generation = database.query(`select to_json(authorized_at)#>>'{}' from nestscout_private.kael_pilot_effective_budget where id='${pilot}';`).trim();
       first = database.concurrentTransaction(`${charge(callA)} ${holdBarrier(key)}`);
       await waitForBarrier(database.query, key);
       second = database.concurrentTransaction(charge(callB));
@@ -50,12 +61,14 @@ test('pilot budget serializes concurrent workers and retains held spend across w
       assert.equal(database.query(`select count(*) from nestscout_private.kael_pilot_calls where pilot_id='${pilot}';`).trim(), '1');
       const restarted = localKnowledgeDatabase();
       assert.match(restarted.query(`begin; ${charge(randomUUID())} rollback;`), /unreconciled_call/);
+      assert.throws(() => applyPilotApproval(restarted, session, approval), /APPROVAL_ALREADY_USED/);
       assert.equal(restarted.query(`select sum(reserved_micro_usd) from nestscout_private.kael_pilot_calls where pilot_id='${pilot}';`).trim(), '319488');
     } finally {
       first?.rollback();
       second?.rollback();
       await Promise.allSettled([first?.done, second?.done]);
       database.query(`delete from nestscout_private.kael_pilot_calls where pilot_id='${pilot}';
+        delete from nestscout_private.kael_pilot_renewals where pilot_id='${pilot}';
         delete from nestscout_private.kael_pilot_budgets where id='${pilot}';
         delete from public.kael_runs where id='${run}'; delete from public.kael_conversations where id='${conversation}';
         delete from auth.users where id='${actor}';`);

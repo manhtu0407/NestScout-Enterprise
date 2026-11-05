@@ -985,8 +985,10 @@ limits. After fresh explicit owner approval, record the fields listed above
 plus a new UUID `approval_id`, that `pilot_id`, and the actual `approved_at` as
 an ISO timestamp. Set expiry within one hour of approval. Then run
 `node scripts/kael-developer-pilot.mjs reauthorize ABSOLUTE_APPROVAL_PATH`.
-PostgreSQL appends an approval to the existing pilot and leaves the original
-window, accounts, conversations, calls and spend records in place. The
+For a session prepared offline, this creates its first disabled budget and
+records the approval against the same pilot and accounts. For a session with
+a budget, PostgreSQL appends the approval and keeps the original window,
+accounts, conversations, calls and spend records in place. The
 cumulative money limit cannot increase. A fresh approval may set a different
 positive `max_calls`. Prior calls still count and unresolved accounting or a
 halt blocks renewal. Renewal leaves spending disabled.

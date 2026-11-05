@@ -63,6 +63,36 @@ function session(runtime) {
   return value;
 }
 
+function provisionPilotBudget(database, value, approval, recordApproval = false) {
+  const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  const result = database.query(`with provisioned as (
+    insert into nestscout_private.kael_pilot_budgets
+      (id,actors,authorized_at,expires_at,cap_micro_usd,max_calls,input_rate,cached_rate,output_rate,rate_source,rates_checked_at,source_sha,stack_id)
+    values (${sqlLiteral(value.id)},array[${value.accounts.map(a => sqlLiteral(a.id)).join(',')}]::uuid[],
+      ${recordApproval ? sqlLiteral(approval.approved_at) : 'clock_timestamp()'},${sqlLiteral(approval.expires_at)},
+      ${approval.cap_micro_usd},${approval.max_calls},${approval.input_rate},${approval.cached_rate},${approval.output_rate},
+      ${sqlLiteral(approval.rate_source)},${sqlLiteral(approval.rates_checked_at)},${sqlLiteral(sourceSha)},${sqlLiteral(value.stack_id)})
+    on conflict (id) do nothing returning id
+  )${recordApproval ? `, recorded as (
+    insert into nestscout_private.kael_pilot_renewals (approval_id,pilot_id,approval)
+      select ${sqlLiteral(approval.approval_id)},id,${sqlLiteral(JSON.stringify(approval))}::jsonb from provisioned
+    returning pilot_id
+  ) select pilot_id from recorded` : ' select id from provisioned'};`).trim();
+  requireLocal(result === value.id, 'BUDGET_ALREADY_EXISTS: use the existing ledger.');
+}
+
+export function applyPilotApproval(database, value, rawApproval) {
+  const approval = parsePilotRenewal(rawApproval, value.id);
+  const result = database.query(`select nestscout_private.kael_pilot_reauthorize(${sqlLiteral(value.id)},
+    ${sqlLiteral(value.stack_id)}, ${sqlLiteral(JSON.stringify(approval))}::jsonb);`).trim();
+  if (result === 'BUDGET_MISSING') {
+    provisionPilotBudget(database, value, approval, true);
+    return 'AUTHORIZED_DISABLED';
+  }
+  requireLocal(result === 'REAUTHORIZED_DISABLED', result);
+  return result;
+}
+
 async function prepare(runtime, authorizationFile) {
   protectDirectory();
   const verified = runtime.verify();
@@ -88,11 +118,7 @@ async function prepare(runtime, authorizationFile) {
       insert into nestscout_private.worker_dispatch_eligibility (user_id,basis,active) values (${sqlLiteral(user.id)},'local_fixture',true);`);
   }
   const value = { id: randomUUID(), stack_id: verified.id, root, branch: runtime.branch, origin, accounts, authorization: auth };
-  if (auth) database.query(`insert into nestscout_private.kael_pilot_budgets
-    (id,actors,expires_at,cap_micro_usd,max_calls,input_rate,cached_rate,output_rate,rate_source,rates_checked_at,source_sha,stack_id)
-    values (${sqlLiteral(value.id)},array[${accounts.map(a => sqlLiteral(a.id)).join(',')}]::uuid[],${sqlLiteral(auth.expires_at)},
-      ${auth.cap_micro_usd},${auth.max_calls},${auth.input_rate},${auth.cached_rate},${auth.output_rate},${sqlLiteral(auth.rate_source)},
-      ${sqlLiteral(auth.rates_checked_at)},${sqlLiteral(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim())},${sqlLiteral(verified.id)});`);
+  if (auth) provisionPilotBudget(database, value, auth);
   writeFileSync(sessionFile, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   console.log(JSON.stringify({ status: 'LOCAL_AUTH_READY', origin, accounts: accounts.length, credentials_file: sessionFile,
     budget: 'DISABLED', live_provider_status: 'LIVE_PROVIDER_NOT_RUN' }));
@@ -130,7 +156,7 @@ function pilotBudget(database, value) {
 }
 
 function requireBudget(budget) {
-  requireLocal(budget, 'BUDGET_MISSING: this session has no original pilot budget.');
+  requireLocal(budget, 'BUDGET_MISSING: apply explicit owner approval with reauthorize.');
   requireLocal(!budget.expired, 'AUTHORIZATION_EXPIRED: apply a fresh explicit owner approval with reauthorize.');
   requireLocal(!budget.rates_stale, 'RATE_CARD_STALE: reverify rates and obtain fresh owner approval.');
   requireLocal(!budget.halted && budget.unresolved === 0, 'RECONCILIATION_REQUIRED: prior accounting is still blocked.');
@@ -183,13 +209,7 @@ export async function developerPilotCommand(args) {
   const value = session(runtime);
   const database = localKnowledgeDatabase();
   if (action === 'reauthorize') {
-    const approval = parsePilotRenewal(JSON.parse(readFileSync(option, 'utf8')), value.id);
-    return withLocalLock(() => {
-      const result = database.query(`select nestscout_private.kael_pilot_reauthorize(${sqlLiteral(value.id)},
-        ${sqlLiteral(value.stack_id)}, ${sqlLiteral(JSON.stringify(approval))}::jsonb);`).trim();
-      requireLocal(result === 'REAUTHORIZED_DISABLED', result);
-      console.log(result);
-    });
+    return withLocalLock(() => console.log(applyPilotApproval(database, value, JSON.parse(readFileSync(option, 'utf8')))));
   }
   if (action === 'status' || action === 'arm') return withLocalLock(async () => {
     const budget = pilotBudget(database, value);
