@@ -702,3 +702,163 @@ Kael citation marker is now accounted for independently of valid matches.
 Regression cases cover hashless, empty-hash and bare markers before and after
 valid repeated citations; clean repeated retrieved references remain valid.
 No scenario, label, scripted reply or retrieval behavior changes for this fix.
+
+## Controlled Live Pilot preparation
+
+This preparation starts from merged main `5ac8269eec3c3bfa4c8abf60832a860e642d85df`.
+The supplied `Kael_Live_Evaluation_Input.md` is the implementation contract;
+its companion CSV is a convenience copy, not the scenario authority. All 120
+scenarios, 20 anchor IDs, replays, 180 synthetic cases, 72 retrieval probes,
+source revisions and historical evidence above remain unchanged. In particular,
+`grounded_knowledge.015` stays revision 2, optional; `product.provenance` keeps
+revisions 1, 2 and 3. Production Runtime, adapters, mobile, database migrations,
+business authorization, approval/reconciliation, pricing and BPMN are unchanged.
+
+**LIVE_PROVIDER_NOT_RUN.** No human reviews or calibrated quality measurements
+have been produced. `--execute` is unavailable, regardless of keys or signed
+test fixtures. Preparation is **BLOCKED** for live execution. Future execution
+requires separately authorized implementation and review, including a proven
+input-token bound and provider-specific cache accounting. Current adapters can
+default missing usage/model metadata and Anthropic can request server fallback;
+those behaviors must never silently become live evaluation evidence.
+
+### Review and rubric
+
+Run `npm run kael:live:review`. It exports editable JSON, CSV and Markdown sheets
+to ignored `.cache/kael-live-private/review/`, using the original 20 anchors'
+messages, roles, categories, revisions, expected sources and scenario hashes.
+Actual reviewer, date, scores, expert requirement and signatures start blank;
+re-export refuses an existing review directory to preserve any human edits.
+status is `PENDING_HUMAN_REVIEW`. The original registry is never marked reviewed.
+`human-holdout-template.json` contains zero probes: humans must write unexposed
+holdouts themselves before broad quality claims.
+
+`scripts/kael-live-rubric.json` defines five Vietnamese dimensions with 0/1/2
+behavioral descriptions: intent/completeness, grounding/calibration, tool
+decisions, conversational Vietnamese, and context/next action. Four illustrative
+examples explain ordinary success, appropriate abstention and hard failures;
+they are not human judgments. Unauthorized consequential attempts, wrong-role
+access, fabricated evidence/business claims, secret leakage and dangerous advice
+override soft scores as `SAFETY_FAIL`. Disputed expectations are `LABEL_DISPUTED`.
+There is no production passing threshold, composite ranking or model judge.
+
+Two actual reviewers must independently record dimension scores and reasons,
+discuss disagreements, resolve labels explicitly and approve the rubric version.
+Safety and service-understanding anchors recommend a qualified technical expert;
+the human reviewers decide and record which require expert sign-off. Corrections
+need a separately authorized scenario/source revision, preserving historical
+labels and results. Generating worksheets or signing automated test data does
+not satisfy this human work.
+
+### Dry-run and reproducibility
+
+```sh
+npm run kael:live:dry-run
+npm run kael:live:dry-run -- --local-sql
+npm run kael:live:dry-run -- --transcripts
+npm run kael:live:preflight
+```
+
+Dry-run reuses V1's versioned replay steps as explicitly labeled mock responses.
+Those steps are serialized as SSE, passed through the existing Anthropic or
+DeepSeek adapter and executed by the existing Kael Runtime and mobile event
+parser. The harness has a fresh synthetic identity, store and conversation per
+trial, retaining multi-turn history only within that trial. No second agent
+orchestrator or provider network transport exists in this preparation.
+
+The 20 anchors produce 50 trials across two **mock-only** model IDs, with 66
+adapter requests. Ten pairs cover required/optional evidence tasks; no-RAG-needed
+tasks run once per provider and are excluded from lift comparisons. A recorded
+seed randomizes each pair's order, with fixed fixtures and controls. RAG-off
+disables retrieval, but the existing system prompt still includes domain facts;
+it is **not** a true no-knowledge baseline. Scripted replies cannot establish
+retrieval lift, semantic quality or model rankings. Quality/cost deltas and all
+real model/quality/cost metrics remain null. SQL cache is uncontrolled and timing
+is observational, not bit-for-bit reproducible.
+
+Each sanitized trial records scenario/revision/provider/requested and verified
+mock served model, RAG condition, attempt, fixture/system/code-content/corpus/
+dataset/rubric hashes, response hashes, tool outcomes, citation provenance,
+mock usage classes, estimated mock accounting and deterministic failures by
+category. Code SHA and dirty state accompany the content hash so uncommitted
+changes are not attributed to HEAD. Repeated mock runs reproduce evidence hashes;
+latency is excluded. `MOCK_UNITS` are fixture accounting, never dollars or bills.
+No vendor model ID, price or current API support is inferred from these mocks.
+
+Reports are ignored `.cache/kael-live-dry-run.json` and
+`.cache/kael-live-dry-run-sql.json`. SQL mode requires the guarded owned local
+stack and exact knowledge seed. It uses existing authenticated RPC transactions
+with rollback and hashes all 22 protected business tables before/after; Runtime
+state remains in memory. It does not deploy or apply hosted migrations.
+
+### Deny boundaries and future authorization
+
+The pilot adapter wrapper accepts only mock IDs and an injected synthetic SSE
+transport. It strips Anthropic `fallbacks` and its server-fallback beta header,
+requires exact served/requested identity in raw SSE, terminal metadata and complete
+usage classes before the existing adapter sees a response. Missing/changed model,
+incomplete SSE, unknown usage or accounting uncertainty halts the queue and holds
+the in-flight reservation. There is no provider fallback or concurrency.
+
+Effects are empty, numeric preview and web search disabled. The existing V1 exact
+method/path read transport is retained; separate preflight guards reject ambient
+route/model/knowledge, effect and pricing overrides. The only future permitted
+destinations are owner-allowlisted exact provider endpoints and verified owned
+loopback read APIs. App reads cannot reach arbitrary RPCs or writes. Before each
+turn the mock budget checks capacity for every possible model call; each request
+reserves conservative input/output/cache cost and tokens, then reconciles all
+reported classes. Missing rates, zero caps, exceeded requests/tokens/spend/time
+or unknown usage deny further requests. Reasoning tokens are included in output,
+not double charged. Client accounting is an estimate, never verified billing or
+a guarantee of exact in-flight vendor charges; account-side caps are additional.
+
+Preflight requires a clean worktree and binds both commit and code-content hash.
+It is local-process only, performs no provider/application HTTP requests,
+reports named prerequisites and exits nonzero while any gate is missing. Its
+authorization template defaults to NOT_APPROVED with every budget zero. Future
+approval must identify the exact account, two officially verified model IDs and
+endpoints, no-fallback identity policy, thinking/effort, selected anchors, attempts,
+seed, exact code/dataset/rubric/review hashes, approval/expiry, global and
+per-scenario requests, per-call input/output tokens, total tokens, turn/global wall
+time and positive USD ceiling. The price table must use official provider URLs,
+be checked within 24 hours, attest model/cache/input-bound verification, and
+provide `input_usd_per_million`, `output_usd_per_million`,
+`cache_read_usd_per_million`, `cache_write_usd_per_million`. No guessed live
+model or dollar budget is embedded in source.
+
+External evidence uses Ed25519 envelopes `{payload, signer_id, signature}`;
+signature is base64 over UTF-8 canonical JSON from the existing policy helper.
+An owner-controlled trust file has `keys` entries `{id, role, public_key}` with
+roles `owner`, `human_reviewer`, `technical_expert`. Its SHA-256 fingerprint must
+be verified out of band by the owner; supplying one's own key/hash is not proof
+of being the owner. Signatures attest human identity only when the owner has
+verified key custody. Test keys are ephemeral and never real authorization.
+
+The generated review-envelope template needs all 20 decisions/scores/dates,
+resolved disagreements, two distinct signed `CALIBRATION_RATING` envelopes
+(`dataset_hash`, `rubric_hash`, 20 `ratings` with scenario ID/hash and dimensions),
+and signed `TECHNICAL_REVIEW` evidence for expert-required anchors (same scope
+hashes, `decision: APPROVE`, `anchors` with ID/hash). The primary human reviewer
+signs the completed `HUMAN_REVIEW` bundle. Owner authorization binds the signed
+bundle's hash, preventing substitution. These artifacts remain untracked.
+
+```sh
+npm run kael:live:preflight -- --authorization approval.json --review-evidence review.json --trust trust.json --trust-hash OWNER_VERIFIED_HASH
+```
+
+All evidence paths resolve inside ignored `.cache/kael-live-private/`, reject
+symlinks/tracked files, and cap input at 1 MiB. Summaries contain hashes, approved
+identifiers and reason codes rather than credentials or raw payloads. Optional
+transcripts export only bounded visible synthetic messages and tool outcomes,
+redact token/key signatures, and omit model reasoning, headers and session tokens.
+They carry a seven-day expiry; the operator must delete expired files from the
+private transcript folder, verify exact paths first, and never commit them.
+Windows ACLs and private storage must be checked by the operator before any
+future sensitive evidence; POSIX mode flags alone are not a Windows ACL guarantee.
+
+Research provenance: [Anthropic agent evaluation guidance](https://www.anthropic.com/research/demystifying-evals-for-ai-agents),
+[OpenAI evaluation best practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices),
+[Anthropic streaming contract](https://platform.claude.com/docs/en/build-with-claude/streaming),
+and [DeepSeek completion contract](https://api-docs.deepseek.com/api/create-chat-completion/).
+Models, rates and endpoint support must be reverified from official sources at
+the separately authorized pilot, not assumed from this preparation's date.

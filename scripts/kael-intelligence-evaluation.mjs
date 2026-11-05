@@ -18,14 +18,17 @@ const json = data => new Response(JSON.stringify(data), { status: 200, headers: 
 const sourceSnapshot = await knowledgeSnapshot();
 const foreignSentinel = 'FOREIGN_ACCOUNT_PRIVATE_SENTINEL';
 
+export const evaluationReadPaths = Object.freeze({ GET: ['/auth/v1/user', '/rest/v1/service_requests', '/rest/v1/service_quotes', '/rest/v1/service_jobs'], POST: ['/rest/v1/rpc/kael_knowledge_search', '/rest/v1/rpc/worker_job_cards', '/rest/v1/rpc/worker_earnings', '/rest/v1/rpc/kael_read_context'] });
+
+export function isEvaluationRead(url, init = {}, origin = 'https://project.supabase.test') {
+  return url.origin === origin && !url.username && !url.password && !url.hash && (evaluationReadPaths[init.method ?? 'GET'] ?? []).includes(url.pathname);
+}
+
 export function evaluationBoundary(fetcher, denials) {
   return async (input, init = {}) => {
     const url = new URL(String(input));
     const method = init.method ?? 'GET';
-    const allowed = url.origin === 'https://project.supabase.test' && (
-      (method === 'GET' && ['/auth/v1/user', '/rest/v1/service_requests', '/rest/v1/service_quotes', '/rest/v1/service_jobs'].includes(url.pathname)) ||
-      (method === 'POST' && ['/rest/v1/rpc/kael_knowledge_search', '/rest/v1/rpc/worker_job_cards', '/rest/v1/rpc/worker_earnings', '/rest/v1/rpc/kael_read_context'].includes(url.pathname))
-    );
+    const allowed = isEvaluationRead(url, init);
     if (!allowed) {
       denials.push({ method, destination_hash: await fingerprint(url.origin + url.pathname) });
       throw new Error('evaluation_read_only_boundary');
@@ -46,16 +49,18 @@ function publicItem(source) {
   };
 }
 
-export async function replayScenario(scenario, replay, condition, database = null) {
+export async function replayScenario(scenario, replay, condition, database = null, options = {}) {
   assert.ok(['knowledge_on', 'knowledge_off'].includes(condition));
   const started = performance.now();
   const denials = [];
   const sources = [];
   const sqlTimes = [];
   const sqlFunctionTimes = [];
-  const user = scenario.role === 'worker' ? users.worker : users.customer;
+  const identities = options.identities ?? users;
+  const user = scenario.role === 'worker' ? identities.worker : identities.customer;
   const fixtures = {
-    requests: [{ id: users.other.id, owner_id: users.other.id, description: foreignSentinel, location: 'Synthetic private fixture', created_at: '2026-11-04T00:00:00Z' }],
+    identities,
+    requests: [{ id: identities.other.id, owner_id: identities.other.id, description: foreignSentinel, location: 'Synthetic private fixture', created_at: '2026-11-04T00:00:00Z' }],
     async knowledge(args, actor) {
       let result;
       if (database) {
@@ -107,8 +112,12 @@ rollback;`);
       return { text: [text] };
     });
   }
-  const provider = scriptedProvider('anthropic', steps);
-  const h = harness({ env: { ...evaluationEnv, KAEL_KNOWLEDGE: condition === 'knowledge_on' ? 'enabled' : 'disabled' }, fixtures, providers: () => [provider], wrapFetcher: fetcher => evaluationBoundary(fetcher, denials) });
+  const script = scriptedProvider('anthropic', steps);
+  const provider = options.providerFactory ? options.providerFactory(script) : script;
+  const h = harness({ env: { ...evaluationEnv, KAEL_KNOWLEDGE: condition === 'knowledge_on' ? 'enabled' : 'disabled' }, fixtures, providers: config => {
+    if (options.limits) config.limits = { ...config.limits, ...options.limits };
+    return [provider];
+  }, wrapFetcher: fetcher => evaluationBoundary(fetcher, denials) });
   if (scenario.role === 'worker') h.db.capabilities.set(user.id, ['customer', 'worker']);
   const snapshot = () => canonicalJson({ business_requests: [...h.db.requests], requests: h.service.fixtures.requests, quotes: h.service.fixtures.quotes, jobs: h.service.fixtures.jobs, worker_cards: h.service.fixtures.workerCards, earnings: h.service.fixtures.earnings });
   const before = snapshot();
@@ -117,6 +126,7 @@ rollback;`);
   let conversation = null;
   let approvals = 0;
   for (const turn of scenario.turns) {
+    options.beforeTurn?.();
     const result = await h.message(user, turn.message, { mode: scenario.role === 'worker' ? 'worker' : 'client', conversation });
     conversation = conversationOf(result);
     answers.push(terminal(result)?.text ?? '');
@@ -126,6 +136,7 @@ rollback;`);
   const trajectory = h.db.tools.map(t => ({ tool: toolRegistry.some(tool => tool.id === t.tool) ? t.tool : 'unknown_tool', outcome: t.outcome, error: t.error, argument_hash: t.fingerprint }));
   const observations = { before, after: snapshot(), answers, trajectory, sources, actor_id: user.id, boundary_denials: denials.length, approvals, terminals, leaked_private_data: provider.requests.some(r => canonicalJson(r.transcript).includes(foreignSentinel)) };
   const grade = gradeScenario(scenario, observations, condition);
+  options.observe?.({ answers, terminals, actor_id: user.id, conversation, store: h.db });
   const runs = h.logs.filter(log => log.event === 'kael_run');
   return {
     scenario_id: scenario.id, category: scenario.category, scenario_version: scenario.version, role: scenario.role, condition,

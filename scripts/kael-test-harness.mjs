@@ -229,7 +229,7 @@ export function memoryStore(db, owner) {
 export function backend(db, options = {}) {
   const calls = [];
   const fixtures = { requests: [], quotes: [], jobs: [], workerCards: [], earnings: [], search: null, ...options };
-  const userFor = header => Object.values(users).find(user => header === `Bearer ${user.token}`);
+  const userFor = header => Object.values(options.identities ?? users).find(user => header === `Bearer ${user.token}`);
   const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   async function fetcher(input, init = {}) {
     const url = new URL(String(input));
