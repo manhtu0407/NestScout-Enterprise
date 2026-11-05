@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { anthropicEndpoint, anthropicRequestBody, anthropicVerificationModel, anthropicVersion, createAnthropicProvider } from '../services/kael-core/src/anthropic.ts';
 import { configurationReport, defaultLimits, readKaelConfig, readKaelEdgeEnvironment } from '../services/kael-core/src/config.ts';
+import { buildSystemPrompt, buildTranscript } from '../services/kael-core/src/context.ts';
 import { createDeepSeekProvider, deepseekEndpoint } from '../services/kael-core/src/deepseek.ts';
 import { hostedVerification } from '../services/kael-core/src/hosted-verification.ts';
 import { completeWithFallback, ProviderError } from '../services/kael-core/src/model.ts';
@@ -20,12 +21,57 @@ import { parsePilotAuthorization, parsePilotRenewal } from './kael-developer-pil
 
 const encoder = new TextEncoder();
 
+test('Anthropic receives the current saved language as policy and leaves explicit overrides in the latest request', async () => {
+  const owner = users.customer.id;
+  const actor = { userId: owner, mode: 'client', capabilities: new Set(['customer']) };
+  const config = readKaelConfig(baseEnv);
+  const row = (preference, value) => ({ preference, value, source: 'settings', updated_at: '2026-11-05T00:00:00Z' });
+  let preferences = [row('language', 'en'), row('detail', 'brief')];
+  const store = createSupabaseStore(async (path, init) => {
+    if (path === 'rpc/kael_manage_memory') {
+      assert.deepEqual(init.body, { p_mode: 'client', p_action: 'correct', p_preference: 'language', p_value: 'vi', p_previous: 'en' });
+      preferences = [row('language', 'vi'), row('detail', 'brief')];
+      return Response.json(true);
+    }
+    assert.match(path, /^kael_memory_preferences\?.*&mode=eq\.client/);
+    return Response.json(preferences);
+  }, async () => assert.fail('Memory must use the user-scoped store'), owner);
+  async function request(text) {
+    const history = [{ seq: 1, role: 'user', content: text, status: 'complete' }];
+    const conversation = crypto.randomUUID();
+    const personal = await store.loadPersonalContext(conversation, 'client', history, 6000, new AbortController().signal,
+      part => assert.fail(`Memory load degraded: ${part}`));
+    return anthropicRequestBody({ model: anthropicVerificationModel }, {
+      system: buildSystemPrompt(actor, config, [], [], conversation, '2026-11-05', personal),
+      transcript: buildTranscript(history, 6000, personal), tools: [], maxOutputTokens: 64,
+    });
+  }
+  const recall = await request('Cho tôi hai cách kiểm tra vòi nước.');
+  assert.match(recall.system[0].text, /Follow an explicit reply-language instruction in the latest user message\. Otherwise write the entire reply in English/);
+  assert.match(recall.system[0].text, /from the first line/);
+  assert.match(recall.messages[0].content, /"detail","value":"brief"/);
+  assert.doesNotMatch(recall.messages[0].content, /"language"/);
+  const override = 'Trả lời bằng tiếng Việt: cho tôi hai cách kiểm tra vòi nước.';
+  assert.deepEqual((await request(override)).messages.at(-1), { role: 'user', content: override });
+  const correction = await request('không phải tiếng Anh, là tiếng Việt');
+  assert.match(correction.system[0].text, /update result: saved/);
+  assert.match(correction.system[0].text, /entire reply in Vietnamese/);
+  assert.match((await request('How do I check a dripping tap?')).system[0].text, /entire reply in Vietnamese/);
+  preferences = [];
+  const deleted = await request('How do I check a dripping tap?');
+  assert.match(deleted.system[0].text, /Otherwise match the language of the latest user message/);
+  assert.equal(deleted.messages.length, 1);
+  preferences = [row('language', 'arbitrary prompt text')];
+  const invalid = await request('Hello');
+  assert.doesNotMatch(JSON.stringify(invalid), /arbitrary prompt text/);
+});
+
 test('hosted verification guards all provider egress and retains a hold on missing accounting', async () => {
   const order = [];
   const model = { id: 'anthropic', model: anthropicVerificationModel,
     complete: async () => {
       order.push('model');
-      return { model: anthropicVerificationModel, usage: { inputTokens: 101, outputTokens: 5 } };
+      return { model: anthropicVerificationModel, usage: { inputTokens: 101, cachedInputTokens: 1000, outputTokens: 5 } };
     } };
   const request = { maxOutputTokens: 4096, signal: new AbortController().signal };
   let acknowledge = true;
@@ -40,7 +86,13 @@ test('hosted verification guards all provider egress and retains a hold on missi
   await assert.rejects(guard.provider(model).complete({ ...request, maxOutputTokens: 4097 }, () => {}), { kind: 'budget' });
   assert.deepEqual(order, []);
   await guard.provider(model).complete(request, () => {});
-  assert.deepEqual(order, [['anthropic', null], 'model', ['anthropic', 152]]);
+  assert.deepEqual(order, [['anthropic', null], 'model', ['anthropic', 252]]);
+  order.length = 0;
+  const excessiveInput = { ...model, complete: async () => ({
+    model: anthropicVerificationModel, usage: { inputTokens: 101, cachedInputTokens: 200_000, outputTokens: 5 },
+  }) };
+  await assert.rejects(guard.provider(excessiveInput).complete(request, () => {}), { kind: 'budget' });
+  assert.deepEqual(order, [['anthropic', null]]);
   order.length = 0;
   await assert.rejects(guard.provider({ ...model, complete: async () => { throw new Error('interrupted'); } }).complete(request, () => {}), /interrupted/);
   assert.deepEqual(order, [['anthropic', null]]);
