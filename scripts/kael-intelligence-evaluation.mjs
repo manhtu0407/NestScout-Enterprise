@@ -12,6 +12,7 @@ import { benchmarkKnowledge, localKnowledgeDatabase, sqlLiteral } from './kael-k
 import { safeDiagnostic, withLocalLock } from './supabase-local.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+export const evaluationBase = 'cf93f11aae0c161c11557ab0feaa82a5e0d30011';
 export const evaluationEnv = Object.freeze({ KAEL_ENABLED_EFFECTS: '', KAEL_ESTIMATE_PREVIEW: 'disabled', KAEL_WEB_SEARCH: 'disabled' });
 const json = data => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
 const sourceSnapshot = await knowledgeSnapshot();
@@ -95,7 +96,7 @@ rollback;`);
       for (const item of actual) if (!sources.some(s => s.citation_ref === item.citation_ref)) {
         const known = sourceSnapshot.find(s => s.source_id === item.source_id && s.revision === item.source_revision && s.content_hash === item.content_hash);
         const injectedFixture = !database && replay.inject_untrusted && item.source_id === 'fixture.injection';
-        sources.push({ source_id: item.source_id, revision: item.source_revision, hash: item.content_hash, citation_ref: item.citation_ref, visibility: known?.visibility ?? (injectedFixture ? 'public' : 'unverified'), owner_id: known?.owner_id ?? null });
+        sources.push({ source_id: item.source_id, revision: item.source_revision, hash: item.content_hash, citation_ref: item.citation_ref, visibility: known?.visibility ?? (injectedFixture ? 'public' : 'unverified'), owner_id: known?.owner_id ?? null, turn_index: turn });
       }
       if (condition === 'knowledge_off' && scenario.ground_truth.knowledge_expected === 'required') text = 'Trong điều kiện tắt kiến thức, chưa có nguồn để xác nhận thông tin này.';
       if (replay.retrieve && condition === 'knowledge_on') {
@@ -174,11 +175,11 @@ export async function evaluateIntelligence({ database = null } = {}) {
   const unchanged = canonicalJson(before) === canonicalJson(after);
   const failures = results.flatMap(r => r.grade.failures.map(f => ({ ...f, condition: r.condition })));
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
-  const files = ['package.json', 'scripts/kael-intelligence-scenarios.json', 'scripts/kael-intelligence-replays.json', 'scripts/kael-intelligence-registry.json', 'scripts/kael-intelligence-evaluation.mjs', 'scripts/kael-intelligence-grading.mjs', 'scripts/kael-test-harness.mjs', 'scripts/kael-evaluation.test.mjs', 'supabase/tests/database/kael-intelligence-evaluation.test.sql', ...['runtime', 'policy', 'executor', 'config', 'context', 'tools', 'knowledge-sources', 'knowledge-cases', 'intelligence', 'gateway', 'store'].map(s => `services/kael-core/src/${s}.ts`)];
+  const files = ['package.json', 'apps/mobile/src/features/shared/kael-events.ts', 'scripts/supabase-local.mjs', 'scripts/supabase-mcp.integration.test.mjs', 'scripts/kael-knowledge.mjs', 'scripts/kael-knowledge-registry.json', 'scripts/kael-retrieval-probes.json', 'scripts/kael-retrieval-benchmark.json', 'scripts/kael-intelligence-scenarios.json', 'scripts/kael-intelligence-replays.json', 'scripts/kael-intelligence-registry.json', 'scripts/kael-intelligence-evaluation.mjs', 'scripts/kael-intelligence-grading.mjs', 'scripts/kael-test-harness.mjs', 'scripts/kael-evaluation.test.mjs', 'supabase/tests/database/kael-intelligence-evaluation.test.sql', ...['runtime', 'policy', 'executor', 'config', 'context', 'tools', 'knowledge-contract', 'knowledge-sources', 'knowledge-cases', 'intelligence', 'gateway', 'store'].map(s => `services/kael-core/src/${s}.ts`)];
   const manifest = Object.fromEntries(await Promise.all(files.map(async file => [file, await fingerprint(readFileSync(path.join(root, file), 'utf8'))])));
   return {
     schema_version: 1, mode: database ? 'offline_local_sql' : 'offline', measured_at: new Date().toISOString(),
-    git_sha: git(['rev-parse', 'HEAD']), working_tree_dirty: git(['status', '--porcelain']).length > 0,
+    git_sha: git(['rev-parse', 'HEAD']), base_sha: evaluationBase, working_tree_dirty: git(['status', '--porcelain']).length > 0,
     node: process.version, platform: process.platform, dataset_hash: registry.dataset_hash, replay_hash: registry.replay_hash,
     source_manifest: manifest, source_manifest_hash: await fingerprint(manifest), validation,
     conditions: { ...evaluationEnv, same_provider_model: 'anthropic-scripted', prompt_version: manifest['services/kael-core/src/context.ts'], fixture_set: 'evaluation_local_synthetic_v1', random_runtime_ids: 'omitted; argument fingerprints can include ephemeral task IDs in future fixtures', sql_stack: database?.identity ?? null },

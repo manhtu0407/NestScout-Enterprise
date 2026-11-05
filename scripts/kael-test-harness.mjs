@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createKaelHandler } from '../services/kael-core/src/gateway.ts';
 import { ProviderError } from '../services/kael-core/src/model.ts';
 import { canTransition, isTerminal } from '../services/kael-core/src/tasks.ts';
-import { parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
+import { createKaelSequence, parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
 
 export const users = {
   customer: { id: '00000000-0000-4000-8000-0000000000a1', token: 'token-customer-aaaaaaaaaaaaaaaaaaaa' },
@@ -311,9 +311,11 @@ export function harness({ env = {}, providers = () => [], fixtures = {}, db = cr
     }));
     if (!response.headers.get('content-type')?.startsWith('application/x-ndjson')) return { status: response.status, error: await response.json(), events: [] };
     const lines = (await response.text()).split('\n').filter(Boolean);
+    const sequence = createKaelSequence();
     const events = lines.map(line => {
       const event = parseKaelEvent(line);
       if (!event) throw new Error(`Event rejected by the mobile contract parser: ${line}`);
+      if (sequence(event) !== 'accept') throw new Error('Event rejected by the mobile sequence contract');
       return event;
     });
     return { status: response.status, events, runId: response.headers.get('x-kael-run-id') };
