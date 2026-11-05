@@ -184,6 +184,21 @@ test('strict Flash accepts a consistent thinking tool stream without exposing re
   assert.equal(result.usage.outputTokens, 10);
 });
 
+test('lost accounting acknowledgements fail as budget errors and request a durable halt after visible output', async () => {
+  const actions = [];
+  const visible = [];
+  const provider = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', async (url, init) => {
+    if (url === deepseekEndpoint) return pilotResponse(streamOf([pilotStream()]));
+    const action = JSON.parse(init.body).p_action;
+    actions.push(action);
+    if (action === 'settle') throw new TypeError('Synthetic lost settlement acknowledgement');
+    return Response.json({ ok: action === 'reserve' });
+  })[0];
+  await assert.rejects(provider.complete(request(), delta => visible.push(delta)), error => error instanceof ProviderError && error.kind === 'budget');
+  assert.deepEqual(actions, ['reserve', 'settle', 'uncertain']);
+  assert.deepEqual(visible, ['Chào bạn']);
+});
+
 function streamOf(chunks) {
   return new ReadableStream({
     start(controller) {

@@ -82,5 +82,13 @@ select is(jsonb_array_length(public.kael_pilot_status()->'calls'),2,'Actor can r
 select ok(not ((public.kael_pilot_status()->'budgets'->0) ? 'actors'),'Status does not leak another actor identity');
 select ok(not (public.kael_pilot_status()::text like '%test-stack%'),'Status does not expose private stack configuration');
 reset role;
+update nestscout_private.kael_pilot_budgets set halted=false;
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select is(pg_temp.charge('uncertain')->>'ok','false','A lost settlement acknowledgement requests a durable halt');
+reset role;
+select ok((select halted from nestscout_private.kael_pilot_budgets),'Uncertainty halts even after settlement committed');
+select is((select estimated_micro_usd from nestscout_private.kael_pilot_calls where id='80850000-0000-4000-8000-000000000006'),31::bigint,
+  'Known committed accounting is preserved when its HTTP acknowledgement was lost');
 select * from finish();
 rollback;

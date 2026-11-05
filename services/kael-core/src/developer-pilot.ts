@@ -21,18 +21,24 @@ export function developerPilotProviders(config: KaelConfig, actorId: string, run
     return fetcher(url, init);
   });
   const charge = async (callId: string, action: string, model: string, input = 0, cached = 0, output = 0) => {
-    const response = await fetcher(`${config.supabaseUrl}/rest/v1/rpc/kael_pilot_charge`, {
-      method: 'POST', redirect: 'error',
-      headers: { 'content-type': 'application/json', apikey: config.supabaseServiceKey, authorization: `Bearer ${config.supabaseServiceKey}` },
-      body: JSON.stringify({ p_pilot: config.developerPilotId, p_actor: actorId, p_run: runId, p_call: callId, p_action: action,
-        p_thinking: route.thinking, p_model: model, p_input: input, p_cached: cached, p_output: output }),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!response.ok) {
-      await response.body?.cancel();
+    try {
+      const response = await fetcher(`${config.supabaseUrl}/rest/v1/rpc/kael_pilot_charge`, {
+        method: 'POST', redirect: 'error',
+        headers: { 'content-type': 'application/json', apikey: config.supabaseServiceKey, authorization: `Bearer ${config.supabaseServiceKey}` },
+        body: JSON.stringify({ p_pilot: config.developerPilotId, p_actor: actorId, p_run: runId, p_call: callId, p_action: action,
+          p_thinking: route.thinking, p_model: model, p_input: input, p_cached: cached, p_output: output }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new ProviderError('deepseek', 'budget', 'The durable budget could not be verified.');
+      }
+      const result = await response.json() as { ok?: unknown } | null;
+      if (result === null || typeof result.ok !== 'boolean') throw new ProviderError('deepseek', 'budget', 'The budget response was invalid.');
+      return { ok: result.ok };
+    } catch {
       throw new ProviderError('deepseek', 'budget', 'The durable budget could not be verified.');
     }
-    return await response.json() as { ok?: boolean };
   };
   return [{
     id: 'deepseek', model: providerConfig.model,

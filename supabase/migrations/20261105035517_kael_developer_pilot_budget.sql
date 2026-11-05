@@ -85,9 +85,16 @@ begin
       values (p_call, p_pilot, p_run, p_actor, p_thinking, 'reserved', reservation);
     return jsonb_build_object('ok', true, 'reserved_micro_usd', reservation);
   end if;
-  if c.id is null or c.pilot_id <> b.id or c.run_id <> p_run or c.actor_id <> p_actor or c.status <> 'reserved' then
+  if c.id is null or c.pilot_id <> b.id or c.run_id <> p_run or c.actor_id <> p_actor then
     return jsonb_build_object('ok', false, 'reason', 'reservation_mismatch');
   end if;
+  if p_action = 'uncertain' then
+    update nestscout_private.kael_pilot_budgets set halted = true where id = b.id;
+    update nestscout_private.kael_pilot_calls set status = 'uncertain', finished_at = clock_timestamp()
+      where id = p_call and status = 'reserved';
+    return jsonb_build_object('ok', false, 'reason', 'accounting_acknowledgement_uncertain');
+  end if;
+  if c.status <> 'reserved' then return jsonb_build_object('ok', false, 'reason', 'reservation_mismatch'); end if;
   if p_action = 'settle' and p_model in ('deepseek-flash', 'DeepSeek-V4.1-Flash-1017')
     and p_input between 0 and 1048576 and p_cached between 0 and p_input and p_output between 0 and 4096 then
     actual := ceil((p_input - p_cached) * b.input_rate + p_cached * b.cached_rate + p_output * b.output_rate);
