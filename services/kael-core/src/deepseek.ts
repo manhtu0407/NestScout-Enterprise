@@ -119,9 +119,18 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
           if (config.verifiedModels && (servedModel === null || !config.verifiedModels.includes(servedModel))) {
             throw new ProviderError('deepseek', 'incomplete', 'The served model identity was not authorized.', started);
           }
+          const choice = (chunk.choices as Record<string, unknown>[] | undefined)?.[0];
+          const delta = (choice?.delta ?? {}) as Record<string, unknown>;
+          if (config.verifiedModels && verifiedUsage && choice) throw new ProviderError('deepseek', 'incomplete', 'Content followed the final usage.', started);
           const usage = chunk.usage as Record<string, unknown> | null | undefined;
           if (usage) {
             if (config.verifiedModels) {
+              if (choice && (choice.finish_reason == null || typeof delta !== 'object' || Array.isArray(delta)
+                || Object.entries(delta).some(([name, value]) => value !== null && value !== ''
+                  && !(name === 'tool_calls' && Array.isArray(value) && value.length === 0)
+                  && !(name === 'role' && value === 'assistant')))) {
+                throw new ProviderError('deepseek', 'incomplete', 'Usage accompanied non-terminal content.', started);
+              }
               const fields = ['prompt_tokens', 'completion_tokens', 'prompt_cache_hit_tokens', 'prompt_cache_miss_tokens', 'total_tokens'];
               if (verifiedUsage || !fields.every(name => Number.isSafeInteger(usage[name]) && Number(usage[name]) >= 0)
                 || Number(usage.prompt_tokens) !== Number(usage.prompt_cache_hit_tokens) + Number(usage.prompt_cache_miss_tokens)
@@ -135,10 +144,7 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
             outputTokens = Number(usage.completion_tokens ?? 0);
             cachedInputTokens = Number(usage.prompt_cache_hit_tokens ?? 0);
           }
-          const choice = (chunk.choices as Record<string, unknown>[] | undefined)?.[0];
-          if (config.verifiedModels && verifiedUsage && choice) throw new ProviderError('deepseek', 'incomplete', 'Content followed the final usage.', started);
           if (!choice) continue;
-          const delta = (choice.delta ?? {}) as Record<string, unknown>;
           if (typeof delta.reasoning_content === 'string') reasoning += delta.reasoning_content;
           if (typeof delta.content === 'string' && delta.content.length > 0) {
             text += delta.content;

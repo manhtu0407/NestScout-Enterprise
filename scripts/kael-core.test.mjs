@@ -121,6 +121,25 @@ test('strict Flash denies foreign models, absent or inconsistent usage and trunc
   }
 });
 
+test('strict Flash accepts usage on the final empty choice and rejects usage alongside new content', async () => {
+  const model = 'deepseek-flash';
+  const usage = { prompt_tokens: 100, completion_tokens: 10, prompt_cache_hit_tokens: 40, prompt_cache_miss_tokens: 60, total_tokens: 110 };
+  const start = { model, choices: [{ delta: { content: 'Chào bạn' }, finish_reason: null }], usage: null };
+  const provider = (delta, finishReason = 'stop') => createDeepSeekProvider({ ...deepseekConfig, verifiedModels: pilotServedModels }, async () =>
+    pilotResponse(sse([['message', start], ['message', { model, choices: [{ delta, finish_reason: finishReason }], usage }]])
+      + 'data: [DONE]\n\n'));
+  const result = await provider({ content: '', reasoning_content: null, tool_calls: [] }).complete(request(), () => {});
+  assert.equal(result.text, 'Chào bạn');
+  assert.equal(result.model, model);
+  assert.deepEqual(result.usage, { inputTokens: 100, cachedInputTokens: 40, outputTokens: 10 });
+  for (const [delta, reason] of [[{ content: 'extra' }, 'stop'], [{ reasoning_content: 'extra' }, 'stop'],
+    [{ tool_calls: [{ index: 0 }] }, 'tool_calls'], [{}, null]]) {
+    const visible = [];
+    await assert.rejects(provider(delta, reason).complete(request(), text => visible.push(text)), { kind: 'incomplete' });
+    assert.deepEqual(visible, ['Chào bạn']);
+  }
+});
+
 test('pilot reserves before transport, records real served identity and reconciles without fallback', async () => {
   const actions = [];
   const providers = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), 'suy nghĩ kỹ', async (url, init) => {
