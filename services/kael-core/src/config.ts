@@ -75,13 +75,27 @@ export function readKaelEdgeEnvironment(read: (name: string) => string | undefin
   const environment: Environment = { SUPABASE_URL: url };
   const hosted = url !== undefined && validSupabaseUrl(url) && new URL(url).protocol === 'https:'
     && Boolean(read('DENO_DEPLOYMENT_ID')?.trim());
-  if (hosted) environment.KAEL_HOSTED_VERIFICATION = 'required';
+  if (hosted) {
+    environment.KAEL_HOSTED_VERIFICATION = 'required';
+    environment.SUPABASE_PUBLISHABLE_KEY = defaultManagedKey(read('SUPABASE_PUBLISHABLE_KEYS'), 'sb_publishable_');
+    environment.SUPABASE_SECRET_KEY = defaultManagedKey(read('SUPABASE_SECRET_KEYS'), 'sb_secret_');
+  }
   const settings = hosted ? [...edgeRuntimeSettings, ...hostedProviderSettings] : edgeRuntimeSettings;
   for (const name of settings) {
     const value = read(name);
     if (value !== `env(NESTSCOUT_LOCAL_${name})`) environment[name] = value;
   }
   return environment;
+}
+
+function defaultManagedKey(raw: string | undefined, prefix: string): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const keys = JSON.parse(raw) as { default?: unknown } | null;
+    const key = keys?.default;
+    if (typeof key === 'string' && key.startsWith(prefix) && /^[A-Za-z0-9_-]+$/.test(key.slice(prefix.length))) return key;
+  } catch { return undefined; }
+  return undefined;
 }
 
 function legacyServiceJwt(raw: string): boolean {
@@ -121,9 +135,12 @@ function list(env: Environment, name: string): string[] {
 
 export function readKaelConfig(env: Environment): KaelConfig | null {
   const supabaseUrl = value(env, 'SUPABASE_URL');
-  const supabaseAnonKey = value(env, 'SUPABASE_ANON_KEY');
-  const supabaseServiceKey = value(env, 'SUPABASE_SERVICE_ROLE_KEY');
-  if (!supabaseUrl || !validSupabaseUrl(supabaseUrl) || !supabaseAnonKey || !supabaseServiceKey || !legacyServiceJwt(supabaseServiceKey)) return null;
+  const hosted = env.KAEL_HOSTED_VERIFICATION === 'required';
+  const supabaseAnonKey = (hosted ? value(env, 'SUPABASE_PUBLISHABLE_KEY') : undefined) ?? value(env, 'SUPABASE_ANON_KEY');
+  const managedSecret = hosted ? value(env, 'SUPABASE_SECRET_KEY') : undefined;
+  const legacySecret = value(env, 'SUPABASE_SERVICE_ROLE_KEY');
+  const supabaseServiceKey = managedSecret ?? (legacySecret && legacyServiceJwt(legacySecret) ? legacySecret : undefined);
+  if (!supabaseUrl || !validSupabaseUrl(supabaseUrl) || !supabaseAnonKey || !supabaseServiceKey) return null;
 
   const anthropicKey = value(env, 'ANTHROPIC_API_KEY');
   const anthropicModel = value(env, 'KAEL_ANTHROPIC_MODEL');
@@ -174,7 +191,7 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
 export function configurationReport(env: Environment): Record<string, string> {
   const config = readKaelConfig(env);
   return {
-    gateway: config ? 'configured' : 'requires SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY holding the legacy service-role JWT; sb_secret_ keys are not supported yet',
+    gateway: config ? 'configured' : 'requires SUPABASE_URL and managed Supabase API keys or SUPABASE_ANON_KEY and a legacy SUPABASE_SERVICE_ROLE_KEY JWT',
     anthropic: providerStatus(value(env, 'ANTHROPIC_API_KEY'), value(env, 'KAEL_ANTHROPIC_MODEL'), anthropicModelId),
     deepseek: providerStatus(value(env, 'DEEPSEEK_API_KEY'), value(env, 'KAEL_DEEPSEEK_MODEL') ?? deepseekFlashModel, deepseekModelId),
     route: config?.route.length ? config.route.join(',') : routeOf(env) === null ? 'invalid_route' : 'route_unavailable',

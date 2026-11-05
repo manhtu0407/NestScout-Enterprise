@@ -851,8 +851,30 @@ test('an opaque sb_secret_ key is refused instead of being sent as a bearer JWT'
   const opaque = { ...baseEnv, SUPABASE_SERVICE_ROLE_KEY: ['sb', 'secret', placeholder].join('_') };
   assert.equal(readKaelConfig(opaque), null);
   const report = configurationReport(opaque);
-  assert.match(report.gateway, /legacy service-role JWT; sb_secret_ keys are not supported yet/);
+  assert.match(report.gateway, /legacy SUPABASE_SERVICE_ROLE_KEY JWT/);
   assert.ok(!JSON.stringify(report).includes(placeholder));
+});
+
+test('hosted managed keys preserve the user JWT and send the server secret only as apikey', async () => {
+  const clientKey = ['sb', 'publishable', 'fixture_client'].join('_');
+  const serverKey = ['sb', 'secret', 'fixture_server'].join('_');
+  const hosted = {
+    SUPABASE_URL: 'https://fixture.supabase.co', DENO_DEPLOYMENT_ID: 'fixture',
+    SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: clientKey }),
+    SUPABASE_SECRET_KEYS: JSON.stringify({ default: serverKey }),
+  };
+  const config = readKaelConfig(readKaelEdgeEnvironment(name => hosted[name]));
+  assert.ok(config);
+  const calls = [];
+  const fetcher = async (url, init) => { calls.push([new URL(url).pathname, init.headers]); return json(true); };
+  await createRest(config, users.customer.token, fetcher)('kael_memory_preferences');
+  await createServerRpc(config, fetcher)('kael_runtime_ready', {});
+  assert.deepEqual(calls, [
+    ['/rest/v1/kael_memory_preferences', { apikey: clientKey, authorization: `Bearer ${users.customer.token}`, 'content-type': 'application/json' }],
+    ['/rest/v1/rpc/kael_runtime_ready', { apikey: serverKey, 'content-type': 'application/json' }],
+  ]);
+  assert.equal(readKaelConfig(readKaelEdgeEnvironment(name => name === 'DENO_DEPLOYMENT_ID' ? undefined : hosted[name])), null);
+  assert.equal(readKaelConfig(readKaelEdgeEnvironment(name => name === 'SUPABASE_SECRET_KEYS' ? '{' : hosted[name])), null);
 });
 
 test('the gateway persists runs only through the server boundary for the account Auth verified, whatever the request claims', async () => {

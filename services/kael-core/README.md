@@ -49,11 +49,9 @@ for the approved model. Local Edge and the 8085 local pilot run offline.
 After hosted setup or rotation, repeat a no-spend probe. With a signed-in
 NestScout session, call `GET /functions/v1/kael`
 with `x-kael-readiness: 1`. The result reports route and configuration state and
-verifies the legacy service-role bearer with the database. It makes no model
-call; it cannot verify provider balance, authorization or model availability.
-The 8085 launcher has its separate `status` command. Supabase's opaque secret
-keys are not accepted by the existing JWT-bound RPCs. Shape and role are
-checked on startup, and the Data API authenticates the signature at use.
+verifies server RPC authorization with the database. It makes no model call.
+The 8085 launcher has its separate `status` command. Hosted Edge reads the
+default Supabase managed keys, while local Edge can use the legacy pair.
 
 Normal chat falls back only before visible output, on transient transport or
 provider failures and only to the next explicitly configured provider. Auth,
@@ -101,9 +99,9 @@ the account id the gateway verified.
   forge history, approvals or outcomes around the agent's policy. The server key is
   used for nothing else and never reaches the model, logs or the mobile bundle. The
   eight-operation limit lives in `createServerRpc`; the `service_role` credential
-  itself is broader, so it must stay in the Edge Function environment. Only the
-  legacy service-role JWT is accepted; `sb_secret_` keys are refused at
-  configuration until verified.
+  itself is broader, so it must stay in the Edge Function environment. The
+  managed server key travels in `apikey`. The legacy service-role JWT also
+  travels in `Authorization` for the local Edge runtime.
 - Capabilities come from `kael_actor_capabilities()` (non-anonymous customer, and
   `current_worker_eligible()` for Worker data), never from the presentation mode or
   the model. Worker tools are offered only in Worker mode with verified eligibility.
@@ -198,7 +196,7 @@ state, not open connections.
 
 | Setting | Effect |
 | --- | --- |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Required; injected by the Edge runtime. The gateway uses the server key only for named internal RPCs and its database readiness check; it must be the legacy service-role JWT |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEYS`, `SUPABASE_SECRET_KEYS` | Hosted Edge receives the URL and default keys from Supabase. Local Edge supports `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`. The gateway uses the server key only for named internal RPCs and readiness |
 | `ANTHROPIC_API_KEY` + `KAEL_ANTHROPIC_MODEL` | Enables Anthropic (Messages API `2026-10-21`, streaming, server-side refusal fallback where supported); `KAEL_ANTHROPIC_EFFORT` = `low`, `medium` (default) or `high` |
 | `DEEPSEEK_API_KEY` | Enables DeepSeek chat completions. `KAEL_DEEPSEEK_MODEL` overrides the default `deepseek-flash`; `KAEL_DEEPSEEK_THINKING=enabled` turns on thinking mode with in-run `reasoning_content` replay |
 | `KAEL_MODEL_ROUTE` | Provider order; defaults to `deepseek`. Unknown, duplicate or unconfigured entries fail closed |

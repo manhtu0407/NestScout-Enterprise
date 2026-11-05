@@ -41,7 +41,11 @@ export function createServerRpc(config: KaelConfig, fetcher: Fetcher = fetch): S
       && !(kaelServerOperations as readonly string[]).includes(operation)) throw new StoreError(String(operation), 403);
     return fetcher(`${config.supabaseUrl}/rest/v1/rpc/${operation}`, {
       method: 'POST', redirect: 'error',
-      headers: { apikey: config.supabaseServiceKey, authorization: `Bearer ${config.supabaseServiceKey}`, 'content-type': 'application/json' },
+      headers: {
+        apikey: config.supabaseServiceKey,
+        ...(!config.supabaseServiceKey.startsWith('sb_secret_') ? { authorization: `Bearer ${config.supabaseServiceKey}` } : {}),
+        'content-type': 'application/json',
+      },
       body: JSON.stringify(body),
       signal,
     });
