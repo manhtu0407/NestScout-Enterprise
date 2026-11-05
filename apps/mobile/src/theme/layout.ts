@@ -111,6 +111,16 @@ export const horizonLayout = {
       replyTextSize: 15.5,
       replyLineHeight: 24,
     },
+    kaelRichReply: {
+      refreshMs: 85, blockGap: 9, boldWeight: '700', titleSize: 20, titleLineHeight: 27,
+      monoFont: 'monospace', iosMonoFont: 'Menlo', codePadding: 10, quoteRule: 2,
+      quoteInset: 10, quoteGap: 6, listGap: 4, rowGap: 7, cellWidth: 146, cellPadding: 6,
+    },
+    kaelMemorySettings: {
+      inset: 20, maxHeight: '85%', radius: 20, panelGap: 12, titleSize: 22,
+      emphasisWeight: '700', bodySize: 15, bodyLineHeight: 22, contentGap: 10,
+      groupGap: 4, optionGap: 14, touchHeight: 44, actionPadding: 12,
+    },
     kaelCompanion: {
       navHeight: 62,
       navInset: 8,

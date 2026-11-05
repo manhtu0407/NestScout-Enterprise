@@ -37,6 +37,7 @@ type Props = {
   kaelPhase?: KaelPhase | null;
   kaelPhaseIssue?: KaelPhaseIssue | null;
   onMenu: () => void;
+  onMemory?: () => void;
   onNew: () => void;
   messages: { id: string; role: 'user' | 'assistant'; text: string; incomplete?: boolean }[];
   activity?: string | null;
@@ -53,7 +54,7 @@ const noApprovals: readonly KaelApproval[] = [];
 
 type Footer = { top: number; height: number };
 
-export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messages, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, draftImages, onDraftImagesChange, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null }: Props) {
+export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, draftImages, onDraftImagesChange, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null }: Props) {
   const reduceMotion = useReduceMotion();
   const [inset] = useState(() => new Animated.Value(topInset));
   const conversationRef = useRef<ScrollViewInstance>(null);
@@ -85,7 +86,6 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messag
   const { progress, landing, reaction, react } = useKaelMotion(chatActive, reduceMotion);
   const expression = expressionForPhase(kaelPhase);
   const previousExpression = useRef(expression);
-  const [initialMessageIds] = useState(() => new Set(messages.map(m => m.id)));
 
   const [seenConversation, setSeenConversation] = useState(hasConversation);
   if (seenConversation !== hasConversation) {
@@ -128,6 +128,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messag
     { id: 'find', label: 'Tìm trong cuộc trò chuyện', icon: 'search', onPress: () => notify('Tìm trong cuộc trò chuyện chưa được kết nối.') },
     { id: 'archive', label: 'Lưu trữ', icon: 'archive', onPress: () => notify('Lưu trữ cuộc trò chuyện chưa được kết nối.') },
     { id: 'timeline', label: 'Tiến độ', icon: 'clock', onPress: () => setTimelineOpen(true) },
+    ...(onMemory ? [{ id: 'memory', label: 'Bộ nhớ Kael', icon: 'clock' as const, onPress: () => { setMenuOpen(false); onMemory(); } }] : []),
   ];
   const firstUserMessage = messages.find(m => m.role === 'user');
   const chatOpacity = progress.interpolate({ inputRange: [0, metrics.chatFadeStart, 1], outputRange: [0, 0, 1] });
@@ -141,9 +142,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onNew, messag
             <Text style={styles.userText}>{m.text}</Text>
           </View>
           : <View key={m.id} style={styles.reply}>
-            {initialMessageIds.has(m.id)
-              ? <Text style={styles.replyText}>{m.text}</Text>
-              : <KaelStreamingText text={m.text} style={styles.replyText}/>}
+            <KaelStreamingText text={m.text} style={styles.replyText} streaming={busy && m.id === lastMessage?.id && !m.incomplete} incomplete={m.incomplete}/>
             {m.incomplete && <KaelIncompleteNote/>}
           </View>)}
         <KaelTaskList tasks={tasks} processingTaskId={processingTaskId} processingLabel={busy ? activity : null}/>

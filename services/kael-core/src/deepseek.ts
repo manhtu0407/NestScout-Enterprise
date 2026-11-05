@@ -1,4 +1,4 @@
-import { classifyStatus, classifyThrown, ProviderError } from './model.ts';
+import { classifyStatus, classifyThrown, ProviderError, validUsage } from './model.ts';
 import type { Fetcher, ModelProvider, ModelRequest, ModelTurn, StopReason, ToolCall, TranscriptItem } from './model.ts';
 import { readSse } from './sse.ts';
 
@@ -97,7 +97,7 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
             break;
           }
           const chunk = JSON.parse(message.data) as Record<string, unknown>;
-          if (config.verifiedModels) {
+          {
             if (chunk.error !== undefined || !Array.isArray(chunk.choices) || chunk.choices.length > 1
               || (finishReason !== null && chunk.choices.length > 0)) {
               throw new ProviderError('deepseek', 'incomplete', 'The stream violated the completion lifecycle.', started);
@@ -112,7 +112,7 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
               throw new ProviderError('deepseek', 'incomplete', 'The completion reason was not recognized.', started);
             }
           }
-          if (typeof chunk.model === 'string') {
+          if (typeof chunk.model === 'string' && /^deepseek-[a-z0-9][a-z0-9._-]{0,70}$/i.test(chunk.model)) {
             if (servedModel !== null && servedModel !== chunk.model) throw new ProviderError('deepseek', 'incomplete', 'The served model changed within the stream.', started);
             servedModel = chunk.model;
           }
@@ -121,9 +121,13 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
           }
           const choice = (chunk.choices as Record<string, unknown>[] | undefined)?.[0];
           const delta = (choice?.delta ?? {}) as Record<string, unknown>;
-          if (config.verifiedModels && verifiedUsage && choice) throw new ProviderError('deepseek', 'incomplete', 'Content followed the final usage.', started);
+          if (verifiedUsage && choice) throw new ProviderError('deepseek', 'incomplete', 'Content followed the final usage.', started);
           const usage = chunk.usage as Record<string, unknown> | null | undefined;
           if (usage) {
+            if (verifiedUsage || !validUsage(usage.prompt_tokens) || !validUsage(usage.completion_tokens)
+              || (usage.prompt_cache_hit_tokens !== undefined && (!validUsage(usage.prompt_cache_hit_tokens) || usage.prompt_cache_hit_tokens > usage.prompt_tokens))) {
+              throw new ProviderError('deepseek', 'incomplete', 'The final usage was malformed.', started);
+            }
             if (config.verifiedModels) {
               if (choice && (choice.finish_reason == null || typeof delta !== 'object' || Array.isArray(delta)
                 || Object.entries(delta).some(([name, value]) => value !== null && value !== ''
@@ -138,8 +142,9 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
                 || Number(usage.completion_tokens) > request.maxOutputTokens || Number(usage.prompt_tokens) > 1_048_576) {
                 throw new ProviderError('deepseek', 'incomplete', 'The final usage was missing or inconsistent.', started);
               }
-              verifiedUsage = true;
             }
+            if (finishReason === null && choice?.finish_reason == null) throw new ProviderError('deepseek', 'incomplete', 'Usage arrived before the terminal choice.', started);
+            verifiedUsage = true;
             inputTokens = Number(usage.prompt_tokens ?? 0);
             outputTokens = Number(usage.completion_tokens ?? 0);
             cachedInputTokens = Number(usage.prompt_cache_hit_tokens ?? 0);
@@ -163,8 +168,8 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
           if (choice.finish_reason !== null && choice.finish_reason !== undefined) finishReason = choice.finish_reason;
         }
         if (finishReason === null || !terminated) throw new ProviderError('deepseek', 'incomplete', 'The DeepSeek stream ended before completion.', started);
-        if (config.verifiedModels && !verifiedUsage) throw new ProviderError('deepseek', 'incomplete', 'The final usage was unavailable.', started);
-        if (config.verifiedModels && ((finishReason === 'tool_calls') !== (calls.size > 0))) {
+        if (!verifiedUsage) throw new ProviderError('deepseek', 'incomplete', 'The final usage was unavailable.', started);
+        if ((config.verifiedModels || finishReason !== 'length') && ((finishReason === 'tool_calls') !== (calls.size > 0))) {
           throw new ProviderError('deepseek', 'incomplete', 'The tool completion reason did not match the stream.', started);
         }
         if (finishReason === 'insufficient_system_resource' || finishReason === 'aborted') {

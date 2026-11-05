@@ -8,6 +8,7 @@ import { EntryRedirect, useAccess } from '@/features/access';
 import { Sidebar } from './sidebar';
 import { Icon } from '@/features/shared';
 import { KaelHomeScreen } from './kael-home-screen';
+import { KaelMemorySettings } from './kael-memory-settings';
 import { kaelIntroSession } from './kael-intro-session';
 import type { ComposerImage } from './composer-media';
 import { KaelHomeLoading } from './skeleton-layouts';
@@ -31,6 +32,7 @@ export function HorizonEntry() {
   const router = useRouter();
   const access = useAccess();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [memoryScope, setMemoryScope] = useState<string | null>(null);
   const [input, setInput] = useState(access.horizonDraft?.text ?? '');
   const [draftImages, setDraftImages] = useState<readonly ComposerImage[]>(() => access.horizonDraft?.images ?? []);
   const inputRef = useRef(input);
@@ -45,7 +47,14 @@ export function HorizonEntry() {
   const workerUserId = access.phase === 'worker' && access.identity === 'verified' ? access.userId : null;
   const worker = useWorkerData(workerUserId);
   const kaelUserId = (access.phase === 'client' || access.phase === 'worker') && access.identity === 'verified' ? access.userId : null;
-  const kael = useKaelConversation(kaelUserId, access.phase === 'worker' ? 'worker' : 'client');
+  const kaelMode = access.phase === 'worker' ? 'worker' : 'client';
+  const kael = useKaelConversation(kaelUserId, kaelMode);
+  const scope = kaelUserId === null ? null : `${kaelUserId}:${kaelMode}`;
+  const [previousScope, setPreviousScope] = useState(scope);
+  if (previousScope !== scope) {
+    setPreviousScope(scope);
+    setMemoryScope(null);
+  }
   const [clock, setClock] = useState(() => Date.now());
   const [dismissedReceipt, setDismissedReceipt] = useState<string | null>(null);
   const [attentionHeight, setAttentionHeight] = useState(0);
@@ -174,9 +183,10 @@ export function HorizonEntry() {
           </View>
         </Presence>
         <KaelAttentionCard attention={attention} onAction={onAttentionAction} onHeight={setAttentionHeight}/>
-        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={openMenu} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
+        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    {kaelUserId !== null && scope === memoryScope && <KaelMemorySettings key={scope} userId={kaelUserId} mode={kaelMode} onClose={() => setMemoryScope(null)}/>}
     <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
       if (access.phase === 'guest') {
         kaelIntroSession.markPlayed();

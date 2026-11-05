@@ -271,6 +271,7 @@ test('preview rejects malformed, non-synthetic and misleading numeric evidence',
 test('hosted, ambiguous and default environments cannot enable numeric preview', () => {
   for (const url of ['https://project.supabase.test', 'http://127.0.0.1.evil.test', 'http://localhost@evil.test', 'http://kong:8000']) {
     const cfg = config({ SUPABASE_URL: url, KAEL_ESTIMATE_PREVIEW: 'local_only' });
+    if (!cfg) { assert.ok(url.startsWith('http:')); continue; }
     assert.equal(cfg.localEstimatePreview, false, url);
     assert.equal(previewEstimate(itemFor('cleaning.desk-surface'), true, cfg).kind, 'disabled');
   }

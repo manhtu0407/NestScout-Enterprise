@@ -50,6 +50,41 @@ export const defaultLimits: KaelLimits = {
 
 const providerIds: readonly ProviderId[] = ['anthropic', 'deepseek'];
 const modelTimeoutMs = 45_000;
+const localApi = /^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\]|host\.docker\.internal|host\.supabase\.internal)(?::\d+)?\/?$/;
+
+function validSupabaseUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return !parsed.username && !parsed.password && !parsed.search && !parsed.hash && parsed.pathname === '/'
+      && (parsed.protocol === 'https:' || localApi.test(url));
+  } catch { return false; }
+}
+
+function legacyServiceJwt(raw: string): boolean {
+  const parts = raw.split('.');
+  if (parts.length !== 3 || !parts.every(part => /^[A-Za-z0-9_-]+$/.test(part))) return false;
+  try {
+    const claims = JSON.parse(atob((parts[1] ?? '').replace(/-/g, '+').replace(/_/g, '/'))) as { role?: unknown; exp?: unknown };
+    return claims.role === 'service_role' && (claims.exp === undefined || (typeof claims.exp === 'number' && claims.exp > Date.now() / 1000));
+  } catch { return false; }
+}
+
+function providerStatus(key: string | undefined, model: string | undefined, pattern: RegExp): string {
+  if (!key) return 'credential_missing';
+  if (!/^[\x21-\x7e]+$/.test(key)) return 'credential_invalid';
+  if (!model) return 'model_missing';
+  return pattern.test(model) ? 'configured' : 'model_invalid';
+}
+
+const anthropicModelId = /^claude-[a-zA-Z0-9._-]{1,72}$/;
+const deepseekModelId = /^deepseek-[a-zA-Z0-9._-]{1,70}$/;
+
+function routeOf(env: Environment): ProviderId[] | null {
+  const raw = env.KAEL_MODEL_ROUTE;
+  const requested = raw === undefined ? ['deepseek'] : raw.split(',').map(item => item.trim());
+  return requested.every((id): id is ProviderId => providerIds.includes(id as ProviderId))
+    && new Set(requested).size === requested.length ? requested : null;
+}
 
 function value(env: Environment, name: string): string | undefined {
   const raw = env[name]?.trim();
@@ -64,16 +99,17 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   const supabaseUrl = value(env, 'SUPABASE_URL');
   const supabaseAnonKey = value(env, 'SUPABASE_ANON_KEY');
   const supabaseServiceKey = value(env, 'SUPABASE_SERVICE_ROLE_KEY');
-  if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey || supabaseServiceKey.startsWith('sb_')) return null;
+  if (!supabaseUrl || !validSupabaseUrl(supabaseUrl) || !supabaseAnonKey || !supabaseServiceKey || !legacyServiceJwt(supabaseServiceKey)) return null;
 
   const anthropicKey = value(env, 'ANTHROPIC_API_KEY');
   const anthropicModel = value(env, 'KAEL_ANTHROPIC_MODEL');
   const effort = value(env, 'KAEL_ANTHROPIC_EFFORT');
-  const anthropic: AnthropicConfig | null = anthropicKey && anthropicModel ? {
+  const anthropic: AnthropicConfig | null = anthropicKey && anthropicModel && providerStatus(anthropicKey, anthropicModel, anthropicModelId) === 'configured' ? {
     apiKey: anthropicKey,
     model: anthropicModel,
     effort: effort === 'low' || effort === 'high' ? effort : 'medium',
     timeoutMs: modelTimeoutMs,
+    serverFallback: value(env, 'KAEL_ANTHROPIC_SERVER_FALLBACK') === 'enabled',
   } : null;
 
   const deepseekKey = value(env, 'DEEPSEEK_API_KEY');
@@ -83,13 +119,12 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   if (pilotFlag && (pilotFlag !== 'local_8085' || !pilotId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pilotId)
     || deepseekModel !== deepseekFlashModel
     || !/^http:\/\/(?:127\.0\.0\.1|localhost|host\.docker\.internal|host\.supabase\.internal)(?::\d+)?\/?$/.test(supabaseUrl))) return null;
-  const deepseek = deepseekKey ? {
+  const deepseek = deepseekKey && providerStatus(deepseekKey, deepseekModel, deepseekModelId) === 'configured' ? {
     apiKey: deepseekKey, model: deepseekModel, thinking: value(env, 'KAEL_DEEPSEEK_THINKING') === 'enabled', timeoutMs: modelTimeoutMs,
   } : null;
 
-  const requested = list(env, 'KAEL_MODEL_ROUTE');
-  const order = (requested.length > 0 ? requested : ['deepseek']).filter((id): id is ProviderId => providerIds.includes(id as ProviderId));
-  const route = [...new Set(order)].filter(id => (id === 'anthropic' ? anthropic : deepseek) !== null);
+  const order = routeOf(env);
+  const route = order?.every(id => (id === 'anthropic' ? anthropic : deepseek) !== null) ? order : [];
 
   const perplexityKey = value(env, 'PERPLEXITY_API_KEY');
   const perplexity = perplexityKey && value(env, 'KAEL_WEB_SEARCH') === 'enabled'
@@ -116,8 +151,9 @@ export function configurationReport(env: Environment): Record<string, string> {
   const config = readKaelConfig(env);
   return {
     gateway: config ? 'configured' : 'requires SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY holding the legacy service-role JWT; sb_secret_ keys are not supported yet',
-    anthropic: config?.anthropic ? 'configured' : 'requires ANTHROPIC_API_KEY and KAEL_ANTHROPIC_MODEL',
-    deepseek: config?.deepseek ? 'configured' : 'requires DEEPSEEK_API_KEY',
+    anthropic: providerStatus(value(env, 'ANTHROPIC_API_KEY'), value(env, 'KAEL_ANTHROPIC_MODEL'), anthropicModelId),
+    deepseek: providerStatus(value(env, 'DEEPSEEK_API_KEY'), value(env, 'KAEL_DEEPSEEK_MODEL') ?? deepseekFlashModel, deepseekModelId),
+    route: config?.route.length ? config.route.join(',') : routeOf(env) === null ? 'invalid_route' : 'route_unavailable',
     web_search: config?.perplexity ? 'configured' : 'requires PERPLEXITY_API_KEY and KAEL_WEB_SEARCH=enabled',
     effects: config && config.enabledEffects.size > 0 ? [...config.enabledEffects].join(',') : 'none',
     knowledge: config?.knowledgeEnabled ? 'lexical' : 'disabled',

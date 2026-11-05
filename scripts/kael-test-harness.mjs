@@ -10,7 +10,7 @@ export const users = {
   worker: { id: '00000000-0000-4000-8000-0000000000c3', token: 'token-worker-cccccccccccccccccccccccc' },
 };
 
-export const baseEnv = { SUPABASE_URL: 'https://project.supabase.test', SUPABASE_ANON_KEY: 'anon-key-for-tests', SUPABASE_SERVICE_ROLE_KEY: 'server-key-for-tests' };
+export const baseEnv = { SUPABASE_URL: 'https://project.supabase.test', SUPABASE_ANON_KEY: 'anon-key-for-tests', SUPABASE_SERVICE_ROLE_KEY: [btoa(JSON.stringify({ alg: 'HS256' })), btoa(JSON.stringify({ role: 'service_role' })).replace(/=+$/, ''), 'not-a-real-signature'].join('.').replace(/=+\./g, '.') };
 
 export function createDb() {
   return { conversations: new Map(), runs: new Map(), messages: [], tasks: new Map(), events: [], approvals: new Map(), tools: [], requests: new Map(), capabilities: new Map() };

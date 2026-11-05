@@ -1,3 +1,4 @@
+import { selectHistory } from './context.ts';
 import type { KaelConfig } from './config.ts';
 import type { KaelTaskStatus } from './events.ts';
 import type { Fetcher } from './model.ts';
@@ -30,13 +31,13 @@ export const kaelServerOperations = [
   'kael_request_approval', 'kael_consume_approval', 'kael_complete_approval', 'kael_reject_approval',
 ] as const;
 
-export type KaelServerOperation = typeof kaelServerOperations[number];
+export type KaelServerOperation = typeof kaelServerOperations[number] | 'kael_runtime_ready';
 
 export type ServerRpc = (operation: KaelServerOperation, body: Record<string, unknown>, signal?: AbortSignal) => Promise<Response>;
 
 export function createServerRpc(config: KaelConfig, fetcher: Fetcher = fetch): ServerRpc {
   return (operation, body, signal) => {
-    if (!(kaelServerOperations as readonly string[]).includes(operation)) throw new StoreError(String(operation), 403);
+    if (operation !== 'kael_runtime_ready' && !(kaelServerOperations as readonly string[]).includes(operation)) throw new StoreError(String(operation), 403);
     return fetcher(`${config.supabaseUrl}/rest/v1/rpc/${operation}`, {
       method: 'POST',
       headers: { apikey: config.supabaseServiceKey, authorization: `Bearer ${config.supabaseServiceKey}`, 'content-type': 'application/json' },
@@ -51,9 +52,31 @@ export type RunStart =
   | { status: 'replay'; run_id: string; conversation_id: string; run_status: string; assistant_text: string | null }
   | { status: 'rate_limited' | 'busy' | 'invalid' };
 
-export type HistoryMessage = { role: 'user' | 'assistant'; content: string; status: 'complete' | 'incomplete' };
+export type HistoryMessage = { seq?: number; role: 'user' | 'assistant'; content: string; status: 'complete' | 'incomplete' };
+
+export type PersonalContext = { summary: { version: number; items: unknown[] } | null; preferences: { preference: string; value: string; updated_at: string; source: 'settings' | 'explicit_chat' }[]; memoryChange?: 'saved' | 'not_saved' };
 
 export type ConversationContext = { history: HistoryMessage[]; tasks: TaskRecord[] };
+
+function memoryCorrection(text: string): { preference: string; value: string; previous?: string } | null {
+  const cleaned = text.trim().toLocaleLowerCase('vi').replace(/[.!]$/, '');
+  const choices: Record<string, { preference: string; value: string }> = {
+    'tiếng việt': { preference: 'language', value: 'vi' }, 'tiếng anh': { preference: 'language', value: 'en' },
+    'ngắn gọn': { preference: 'detail', value: 'brief' }, 'chi tiết': { preference: 'detail', value: 'detailed' },
+    'đoạn văn': { preference: 'format', value: 'paragraphs' }, 'từng bước': { preference: 'format', value: 'steps' },
+  };
+  const lookup = (key: string | undefined) => key && Object.hasOwn(choices, key) ? choices[key] : undefined;
+  const save = /^ghi nhớ: (.+)$/.exec(cleaned);
+  if (save?.[1]) return lookup(save[1]) ?? null;
+  const correction = /^không phải (.+), là (.+)$/.exec(cleaned);
+  const previous = lookup(correction?.[1]);
+  const next = lookup(correction?.[2]);
+  return previous && next && previous.preference === next.preference ? { ...next, previous: previous.value } : null;
+}
+
+function relevantPreference(preference: string, query: string): boolean {
+  return preference !== 'format' || /\b(plan|compare|how|steps|instructions|recipe)\b|cách|hướng dẫn|so sánh|kế hoạch|các bước/i.test(query);
+}
 
 export type SaveTaskInput = {
   taskId: string | null;
@@ -115,6 +138,7 @@ export type KaelStore = {
   startRun(requestId: string, conversationId: string | null, mode: KaelMode, userText: string, signal: AbortSignal): Promise<RunStart>;
   finishRun(input: { runId: string; status: 'completed' | 'failed' | 'cancelled' | 'interrupted'; text: string; complete: boolean; provider: string | null; model: string | null; inputTokens: number; outputTokens: number; steps: number; error: string | null }): Promise<void>;
   loadContext(conversationId: string, mode: KaelMode, historyLimit: number, signal: AbortSignal): Promise<ConversationContext>;
+  loadPersonalContext?(conversationId: string, mode: KaelMode, history: readonly HistoryMessage[], maxHistoryChars: number, signal: AbortSignal, onFailure: (part: string) => void): Promise<PersonalContext>;
   saveTask(input: SaveTaskInput): Promise<SaveTaskResult>;
   recordTool(input: ToolRecord): Promise<void>;
   requestApproval(input: ApprovalRequest): Promise<ApprovalRequestResult>;
@@ -150,13 +174,14 @@ export function createSupabaseStore(rest: Rest, server: ServerRpc, actorId: stri
       return internal<RunStart>('kael_start_run', { p_request_id: requestId, p_conversation_id: conversationId, p_mode: mode, p_user_text: userText }, signal);
     },
     async finishRun(input) {
-      await internal<boolean>('kael_finish_run', {
+      const finished = await internal<boolean>('kael_finish_run', {
         p_run_id: input.runId, p_status: input.status, p_text: input.text, p_complete: input.complete, p_provider: input.provider,
         p_model: input.model, p_input_tokens: input.inputTokens, p_output_tokens: input.outputTokens, p_steps: input.steps, p_error: input.error,
       });
+      if (!finished) throw new StoreError('kael_finish_run', 409);
     },
     async loadContext(conversationId, mode, historyLimit, signal) {
-      const response = await rest(`kael_messages?select=role,content,status&conversation_id=eq.${encodeURIComponent(conversationId)}&order=seq.desc&limit=${historyLimit}`, { signal });
+      const response = await rest(`kael_messages?select=seq,role,content,status&conversation_id=eq.${encodeURIComponent(conversationId)}&order=seq.desc&limit=${historyLimit}`, { signal });
       if (!response.ok) {
         await response.body?.cancel();
         throw new StoreError('kael_messages', response.status);
@@ -164,6 +189,32 @@ export function createSupabaseStore(rest: Rest, server: ServerRpc, actorId: stri
       const rows = await response.json() as HistoryMessage[];
       const tasks = await rpc<TaskRecord[]>(rest, 'kael_context_tasks', { p_conversation_id: conversationId, p_mode: mode }, signal);
       return { history: rows.reverse(), tasks };
+    },
+    async loadPersonalContext(conversationId, mode, history, maxHistoryChars, signal, onFailure) {
+      const selected = selectHistory(history, maxHistoryChars);
+      const before = selected[0]?.seq ?? 1;
+      const query = history.at(-1)?.role === 'user' ? history.at(-1)?.content ?? '' : '';
+      const fallback = <T>(part: string, value: T) => () => { onFailure(part); return value; };
+      const correction = memoryCorrection(query);
+      let memoryChange: PersonalContext['memoryChange'] = correction ? 'not_saved' : undefined;
+      const read = async () => parsed<PersonalContext['preferences']>('kael_memory_preferences', await rest(
+        `kael_memory_preferences?select=preference,value,updated_at,source&mode=eq.${mode}&order=preference`, { signal }));
+      const [summary, preferences] = await Promise.all([
+        before > 1 ? rpc<PersonalContext['summary']>(rest, 'kael_context_summary', {
+          p_conversation_id: conversationId, p_mode: mode, p_before_seq: before,
+        }, signal).catch(fallback('summary', null)) : null,
+        (async () => {
+          if (correction) {
+            const saved = await rpc<boolean>(rest, 'kael_manage_memory', {
+              p_mode: mode, p_action: correction.previous ? 'correct' : 'remember', p_preference: correction.preference,
+              p_value: correction.value, p_previous: correction.previous,
+            }, signal);
+            if (saved) memoryChange = 'saved';
+          }
+          return read();
+        })().catch(fallback('preferences', [])),
+      ]);
+      return { summary: summary?.version === 1 && Array.isArray(summary.items) && summary.items.length ? summary : null, preferences: preferences.filter(row => relevantPreference(row.preference, query)), memoryChange };
     },
     saveTask(input) {
       return internal<SaveTaskResult>('kael_save_task', {

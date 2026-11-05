@@ -45,7 +45,7 @@ const failureMessages: Record<KaelFailureCode, string> = {
   invalid_request: 'Yêu cầu không hợp lệ.',
   rate_limited: 'Kael đang nhận quá nhiều yêu cầu từ tài khoản này. Vui lòng thử lại sau ít phút.',
   busy: 'Kael vẫn đang xử lý tin nhắn trước trong cuộc trò chuyện này.',
-  provider_unavailable: 'Mô hình AI của Kael chưa được cấu hình hoặc chưa khả dụng. Tin nhắn của bạn đã được lưu nhưng chưa được trả lời.',
+  provider_unavailable: 'Kael chưa thể kết nối với mô hình AI. Vui lòng thử lại sau.',
   provider_error: 'Mô hình AI tạm thời gặp lỗi. Chưa có thao tác nào được thực hiện thêm; bạn có thể thử lại.',
   incomplete_output: 'Phản hồi bị gián đoạn trước khi hoàn tất. Nội dung phía trên có thể chưa đầy đủ.',
   budget_exhausted: 'Kael đã dừng vì đạt giới hạn xử lý hoặc ngân sách. Các bước đã ghi nhận vẫn được giữ.',
@@ -65,8 +65,8 @@ export function isRetryable(code: KaelFailureCode): boolean {
 function providerFailure(error: ProviderError, deadlineHit: boolean): KaelFailureCode {
   if (error.kind === 'budget') return 'budget_exhausted';
   if (error.kind === 'cancelled') return deadlineHit ? 'budget_exhausted' : 'cancelled';
-  if (error.kind === 'incomplete') return 'incomplete_output';
-  if (error.kind === 'unavailable' || error.kind === 'auth') return 'provider_unavailable';
+  if (error.outputStarted || error.kind === 'incomplete') return 'incomplete_output';
+  if (['unavailable', 'auth', 'billing', 'bad_request'].includes(error.kind)) return 'provider_unavailable';
   return 'provider_error';
 }
 
@@ -82,9 +82,14 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
   const deadline = AbortSignal.timeout(config.limits.runDeadlineMs);
   const signal = AbortSignal.any([input.signal, deadline]);
   const outcome: RunOutcome = { status: 'failed', text: '', complete: false, provider: null, model: null, requestedModel: null, inputTokens: 0, outputTokens: 0, steps: 0, error: null };
+  let overflow = false;
   const say = (delta: string) => {
-    outcome.text += delta;
-    emit({ type: 'message_delta', text: delta });
+    if (overflow) return;
+    const remaining = 32_000 - outcome.text.length;
+    const text = delta.length > remaining ? delta.slice(0, remaining).replace(/[\uD800-\uDBFF]$/, '') : delta;
+    overflow = text !== delta;
+    outcome.text += text;
+    if (text) emit({ type: 'message_delta', text });
   };
   const fail = (code: KaelFailureCode): RunOutcome => {
     outcome.status = code === 'cancelled' ? 'cancelled' : 'failed';
@@ -96,8 +101,10 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
     const context = await store.loadContext(input.conversationId, actor.mode, config.limits.historyMessages, signal);
     const tasks = new Map<string, TaskRecord>(context.tasks.map(task => [task.id, task]));
     const offered = selectTools(actor, config);
-    const system = buildSystemPrompt(actor, config, offered, context.tasks, input.conversationId, input.today);
-    const transcript: TranscriptItem[] = buildTranscript(context.history, config.limits.historyChars);
+    const personal = await store.loadPersonalContext?.(input.conversationId, actor.mode, context.history, config.limits.historyChars,
+      AbortSignal.any([signal, AbortSignal.timeout(1600)]), part => input.log?.({ event: 'kael_context_degraded', run_id: input.runId, part }));
+    const system = buildSystemPrompt(actor, config, offered, context.tasks, input.conversationId, input.today, personal);
+    const transcript: TranscriptItem[] = buildTranscript(context.history, config.limits.historyChars, personal);
     if (transcript.length === 0) return fail('invalid_request');
     if (input.providers.length === 0) return fail('provider_unavailable');
     const toolContext: ToolContext = {
@@ -105,29 +112,37 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
     };
     const executed = new Map<string, ToolExecution>();
     let toolCallsUsed = 0;
+    let providers = input.providers;
 
     while (outcome.steps < config.limits.maxModelCalls) {
       outcome.steps += 1;
       let separated = outcome.text.length === 0;
-      const turn = await completeWithFallback(input.providers, {
+      const turn = await completeWithFallback(providers, {
         system, transcript, tools: offered.map(toDefinition), maxOutputTokens: config.limits.maxOutputTokens, signal,
       }, delta => {
         if (!separated) { say('\n\n'); separated = true; }
         say(delta);
-      });
+      }, undefined, (failure, requestedModel, fallback) => input.log?.({
+        event: 'kael_provider_failure', run_id: input.runId, provider: failure.provider, requested_model: requestedModel,
+        kind: failure.kind, http_status: failure.httpStatus ?? null, output_started: Number(failure.outputStarted), fallback: Number(fallback),
+      }));
+      input.log?.({ event: 'kael_provider_terminal', run_id: input.runId, provider: turn.provider,
+        requested_model: turn.requestedModel, served_model: turn.model, reason: turn.stopReason });
+      providers = providers.filter(provider => provider.id === turn.provider);
       outcome.provider = turn.provider;
       outcome.model = turn.model;
       outcome.requestedModel = turn.requestedModel;
       outcome.inputTokens += turn.usage.inputTokens;
       outcome.outputTokens += turn.usage.outputTokens;
 
+      if (overflow) return fail('incomplete_output');
       if (turn.stopReason === 'refusal' || turn.stopReason === 'content_filter') {
         if (turn.text.trim() === '') say(`${outcome.text ? '\n\n' : ''}Kael không thể hỗ trợ yêu cầu này.`);
         outcome.status = 'completed';
         outcome.complete = true;
         return outcome;
       }
-      if (turn.stopReason === 'max_tokens') return fail('incomplete_output');
+      if (turn.stopReason === 'max_tokens' || turn.stopReason === 'other') return fail('incomplete_output');
       if (turn.toolCalls.length === 0) {
         if (outcome.text.trim() === '') return fail('incomplete_output');
         outcome.status = 'completed';

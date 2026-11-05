@@ -44,7 +44,7 @@ export type ModelTurn = {
 };
 
 export type ProviderErrorKind =
-  | 'unavailable' | 'auth' | 'rate_limit' | 'overloaded' | 'bad_request' | 'server' | 'network' | 'timeout' | 'incomplete' | 'cancelled' | 'budget';
+  | 'unavailable' | 'auth' | 'billing' | 'rate_limit' | 'overloaded' | 'bad_request' | 'server' | 'network' | 'timeout' | 'incomplete' | 'cancelled' | 'budget';
 
 export class ProviderError extends Error {
   readonly kind: ProviderErrorKind;
@@ -72,7 +72,7 @@ export type Fetcher = (input: string, init: RequestInit) => Promise<Response>;
 
 export function classifyStatus(status: number): ProviderErrorKind {
   if (status === 401 || status === 403) return 'auth';
-  if (status === 402) return 'unavailable';
+  if (status === 402) return 'billing';
   if (status === 408) return 'timeout';
   if (status === 429) return 'rate_limit';
   if (status === 529 || status === 503) return 'overloaded';
@@ -81,25 +81,26 @@ export function classifyStatus(status: number): ProviderErrorKind {
 }
 
 export function classifyThrown(provider: ProviderId, error: unknown, signal: AbortSignal, outputStarted: boolean): ProviderError {
-  if (error instanceof ProviderError) return error;
   if (signal.aborted) return new ProviderError(provider, 'cancelled', 'The run was cancelled.', outputStarted);
+  if (error instanceof ProviderError) return outputStarted && !error.outputStarted
+    ? new ProviderError(provider, error.kind, error.message, true, error.httpStatus) : error;
   if (error instanceof DOMException && error.name === 'TimeoutError') return new ProviderError(provider, 'timeout', 'The provider timed out.', outputStarted);
   return new ProviderError(provider, outputStarted ? 'incomplete' : 'network', 'The provider connection failed.', outputStarted);
 }
 
 export function canFallBack(error: ProviderError): boolean {
-  return !error.outputStarted && error.kind !== 'cancelled' && error.kind !== 'incomplete' && error.kind !== 'budget';
+  return !error.outputStarted && ['rate_limit', 'overloaded', 'server', 'network', 'timeout'].includes(error.kind);
 }
 
 export async function completeWithFallback(
   providers: readonly ModelProvider[],
   request: ModelRequest,
   onText: (delta: string) => void,
-  onFallback: (from: ProviderError) => void = () => {},
+  onFallback?: (from: ProviderError, next: ProviderId) => void,
+  onFailure?: (failure: ProviderError, requestedModel: string, fallback: boolean) => void,
 ): Promise<ModelTurn> {
   if (providers.length === 0) throw new ProviderError('anthropic', 'unavailable', 'No model provider is configured.');
-  let lastError: ProviderError | null = null;
-  for (const provider of providers) {
+  for (const [index, provider] of providers.entries()) {
     let started = false;
     try {
       return await provider.complete(request, delta => {
@@ -108,12 +109,18 @@ export async function completeWithFallback(
       });
     } catch (error) {
       const failure = classifyThrown(provider.id, error, request.signal, started);
-      if (!canFallBack(failure)) throw failure;
-      lastError = failure;
-      onFallback(failure);
+      const next = providers[index + 1];
+      const fallback = next !== undefined && canFallBack(failure);
+      onFailure?.(failure, provider.model, fallback);
+      if (!fallback) throw failure;
+      onFallback?.(failure, next.id);
     }
   }
-  throw lastError ?? new ProviderError('anthropic', 'unavailable', 'No model provider is configured.');
+  throw new ProviderError('anthropic', 'unavailable', 'No model provider is configured.');
+}
+
+export function validUsage(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647;
 }
 
 export function costMicroUsd(usage: ModelUsage, price: { inputPerMillion: number; outputPerMillion: number } | null): number | null {

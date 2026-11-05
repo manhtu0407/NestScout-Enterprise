@@ -294,7 +294,7 @@ const request = (overrides = {}) => ({
   ...overrides,
 });
 
-const anthropicConfig = { apiKey: 'test-anthropic-key', model: 'claude-opus-5-5', effort: 'medium', timeoutMs: 5000 };
+const anthropicConfig = { apiKey: 'test-anthropic-key', model: 'claude-opus-5-5', effort: 'medium', timeoutMs: 5000, serverFallback: true };
 const deepseekConfig = { apiKey: 'test-deepseek-key', model: 'deepseek-flash', thinking: false, timeoutMs: 5000 };
 
 const anthropicStream = sse([
@@ -344,14 +344,14 @@ test('Anthropic adapter streams text, parses tool input strictly and keeps think
   assert.deepEqual(turn.usage, { inputTokens: 50, outputTokens: 33, cachedInputTokens: 10 });
   assert.equal(turn.providerState.data[0].signature, 'sig-1');
 
-  const replay = recordingFetch(new Response(streamOf([sse([['message_stop', { type: 'message_stop' }]])]), { status: 200 }));
+  const replay = recordingFetch(new Response(streamOf([anthropicStream]), { status: 200 }));
   const next = createAnthropicProvider(anthropicConfig, replay.fetcher);
   await next.complete(request({ transcript: [{ role: 'user', text: 'Xin chào' }, { role: 'assistant', text: turn.text, toolCalls: turn.toolCalls, providerState: turn.providerState }, { role: 'tool', results: [{ callId: 'toolu_1', content: '{}', isError: false }] }] }), () => {});
   const messages = replay.calls[0].body.messages;
   assert.deepEqual(messages[1].content, turn.providerState.data, 'thinking and tool_use blocks are replayed unchanged');
   assert.deepEqual(messages[2].content, [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '{}', is_error: false }]);
 
-  const other = recordingFetch(new Response(streamOf([sse([['message_stop', { type: 'message_stop' }]])]), { status: 200 }));
+  const other = recordingFetch(new Response(streamOf([anthropicStream]), { status: 200 }));
   await createAnthropicProvider({ ...anthropicConfig, model: 'claude-sonnet-5-5' }, other.fetcher).complete(request({ transcript: [{ role: 'user', text: 'a' }, { role: 'assistant', text: turn.text, toolCalls: turn.toolCalls, providerState: turn.providerState }] }), () => {});
   assert.equal(other.calls[0].body.messages[1].content.some(block => block.type === 'thinking'), false, 'state from another model is rebuilt from text and tool calls');
 });
@@ -364,7 +364,7 @@ test('Anthropic adapter attributes the turn to the model the stream reports, nev
   assert.equal(turn.requestedModel, 'claude-opus-5-5');
   assert.equal(turn.providerState.model, 'claude-sonnet-5-5');
 
-  const replay = recordingFetch(new Response(streamOf([sse([['message_stop', { type: 'message_stop' }]])]), { status: 200 }));
+  const replay = recordingFetch(new Response(streamOf([anthropicStream]), { status: 200 }));
   await createAnthropicProvider(anthropicConfig, replay.fetcher).complete(request({ transcript: [{ role: 'user', text: 'a' }, { role: 'assistant', text: turn.text, toolCalls: turn.toolCalls, providerState: turn.providerState }] }), () => {});
   const rebuilt = replay.calls[0].body.messages[1].content;
   assert.equal(rebuilt.some(block => block.type === 'thinking'), false, 'thinking from the fallback model is not replayed to the requested model');
@@ -380,11 +380,11 @@ test('Anthropic adapter treats a stream without message_stop as incomplete and c
   const truncated = anthropicStream.split('event: message_delta')[0];
   const provider = createAnthropicProvider(anthropicConfig, recordingFetch(new Response(streamOf([truncated]), { status: 200 })).fetcher);
   await assert.rejects(provider.complete(request(), () => {}), error => error instanceof ProviderError && error.kind === 'incomplete' && error.outputStarted);
-  for (const [status, kind] of [[529, 'overloaded'], [429, 'rate_limit'], [401, 'auth'], [400, 'bad_request'], [500, 'server']]) {
+  for (const [status, kind] of [[529, 'overloaded'], [429, 'rate_limit'], [401, 'auth'], [403, 'auth'], [402, 'billing'], [400, 'bad_request'], [500, 'server']]) {
     const failing = createAnthropicProvider(anthropicConfig, recordingFetch(new Response('{}', { status })).fetcher);
     await assert.rejects(failing.complete(request(), () => {}), error => error.kind === kind && !error.outputStarted, String(status));
   }
-  const refusal = sse([['message_delta', { type: 'message_delta', delta: { stop_reason: 'refusal' }, usage: { output_tokens: 1 } }], ['message_stop', { type: 'message_stop' }]]);
+  const refusal = sse([['message_start', { type: 'message_start', message: { usage: { input_tokens: 1 } } }], ['message_delta', { type: 'message_delta', delta: { stop_reason: 'refusal' }, usage: { output_tokens: 1 } }], ['message_stop', { type: 'message_stop' }]]);
   const refused = await createAnthropicProvider(anthropicConfig, recordingFetch(new Response(streamOf([refusal]), { status: 200 })).fetcher).complete(request(), () => {});
   assert.equal(refused.stopReason, 'refusal');
   const escaped = text => JSON.stringify(text).slice(1, -1);
@@ -429,7 +429,7 @@ test('DeepSeek adapter uses chat completions with explicit thinking mode and ass
 test('DeepSeek thinking mode replays reasoning_content inside the run and never across providers', async () => {
   const assistant = { role: 'assistant', text: 'Mình sẽ xem.', toolCalls: [{ id: 'call_0', name: 'customer_requests', input: { limit: 3 } }], providerState: { provider: 'deepseek', model: 'deepseek-flash', data: { reasoning: 'cân nhắc' } } };
   const transcript = [{ role: 'user', text: 'a' }, assistant, { role: 'tool', results: [{ callId: 'call_0', content: '{"requests":[]}', isError: false }] }];
-  const thinking = recordingFetch(new Response(streamOf([deepseekChunks([{ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }] }, '[DONE]'])]), { status: 200 }));
+  const thinking = recordingFetch(new Response(streamOf([deepseekChunks([{ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1 } }, '[DONE]'])]), { status: 200 }));
   await createDeepSeekProvider({ ...deepseekConfig, thinking: true }, thinking.fetcher).complete(request({ transcript }), () => {});
   const sent = thinking.calls[0].body;
   assert.deepEqual(sent.thinking, { type: 'enabled' });
@@ -438,7 +438,7 @@ test('DeepSeek thinking mode replays reasoning_content inside the run and never 
   assert.equal(sent.messages[2].tool_calls[0].function.arguments, '{"limit":3}');
   assert.deepEqual(sent.messages[3], { role: 'tool', tool_call_id: 'call_0', content: '{"requests":[]}' });
 
-  const foreign = recordingFetch(new Response(streamOf([deepseekChunks([{ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }] }, '[DONE]'])]), { status: 200 }));
+  const foreign = recordingFetch(new Response(streamOf([deepseekChunks([{ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1 } }, '[DONE]'])]), { status: 200 }));
   await createDeepSeekProvider({ ...deepseekConfig, thinking: true }, foreign.fetcher).complete(request({ transcript: [transcript[0], { ...assistant, providerState: { provider: 'anthropic', model: 'x', data: [] } }] }), () => {});
   assert.equal('reasoning_content' in foreign.calls[0].body.messages[2], false);
 });
@@ -450,12 +450,32 @@ test('DeepSeek adapter reports missing finish reasons, truncation and provider e
   const noTerminator = deepseekChunks([{ choices: [{ index: 0, delta: { content: 'Xong' }, finish_reason: 'stop' }] }]);
   await assert.rejects(createDeepSeekProvider(deepseekConfig, recordingFetch(new Response(streamOf([noTerminator]), { status: 200 })).fetcher).complete(request(), () => {}),
     error => error.kind === 'incomplete' && error.outputStarted, 'a finish reason without the [DONE] terminator is an incomplete stream');
-  const length = deepseekChunks([{ choices: [{ index: 0, delta: { content: 'Dài' }, finish_reason: 'length' }] }, '[DONE]']);
+  const length = deepseekChunks([{ choices: [{ index: 0, delta: { content: 'Dài' }, finish_reason: 'length' }], usage: { prompt_tokens: 1, completion_tokens: 1 } }, '[DONE]']);
   assert.equal((await createDeepSeekProvider(deepseekConfig, recordingFetch(new Response(streamOf([length]), { status: 200 })).fetcher).complete(request(), () => {})).stopReason, 'max_tokens');
-  const busy = deepseekChunks([{ choices: [{ index: 0, delta: {}, finish_reason: 'insufficient_system_resource' }] }, '[DONE]']);
+  const busy = deepseekChunks([{ choices: [{ index: 0, delta: {}, finish_reason: 'insufficient_system_resource' }], usage: { prompt_tokens: 1, completion_tokens: 0 } }, '[DONE]']);
   await assert.rejects(createDeepSeekProvider(deepseekConfig, recordingFetch(new Response(streamOf([busy]), { status: 200 })).fetcher).complete(request(), () => {}),
     error => error.kind === 'overloaded' && !error.outputStarted);
   await assert.rejects(createDeepSeekProvider(deepseekConfig, recordingFetch(new Response('{}', { status: 401 })).fetcher).complete(request(), () => {}), error => error.kind === 'auth');
+});
+
+test('provider transport distinguishes a deadline, cancellation, missing usage and a truncated terminator', async () => {
+  const hang = async (_url, { signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  const keepAlive = setInterval(() => {}, 100);
+  try {
+    for (const [create, config] of [[createAnthropicProvider, anthropicConfig], [createDeepSeekProvider, deepseekConfig]]) {
+      const provider = create({ ...config, timeoutMs: 10 }, hang);
+      await assert.rejects(provider.complete(request(), () => {}), error => error.kind === 'timeout');
+      const abort = new AbortController();
+      const pending = provider.complete(request({ signal: abort.signal }), () => {});
+      abort.abort();
+      await assert.rejects(pending, error => error.kind === 'cancelled');
+    }
+  } finally { clearInterval(keepAlive); }
+  const noUsage = deepseekChunks([{ choices: [{ delta: { content: 'Some text' }, finish_reason: 'stop' }] }, '[DONE]']);
+  for (const data of [noUsage, deepseekStream.slice(0, -1)]) {
+    await assert.rejects(createDeepSeekProvider(deepseekConfig, recordingFetch(new Response(streamOf([data]))).fetcher).complete(request(), () => {}),
+      error => error.kind === 'incomplete' && error.outputStarted);
+  }
 });
 
 test('Perplexity adapter uses the Search API and keeps only bounded, sourced results', async () => {
@@ -485,7 +505,11 @@ test('model gateway falls back only before any output and never after an interru
   assert.deepEqual(fallbacks, ['overloaded']);
   const partial = { id: 'anthropic', model: 'a', async complete(_request, onText) { onText('nửa'); throw new ProviderError('anthropic', 'incomplete', 'cut', true); } };
   await assert.rejects(completeWithFallback([partial, working], request({ signal }), () => {}), error => error.kind === 'incomplete');
-  await assert.rejects(completeWithFallback([failing('cancelled'), working], request({ signal }), () => {}), error => error.kind === 'cancelled');
+  for (const kind of ['auth', 'billing', 'bad_request', 'budget', 'cancelled']) {
+    await assert.rejects(completeWithFallback([failing(kind), working], request({ signal }), () => {}), error => error.kind === kind);
+  }
+  const misclassified = { ...partial, async complete(_request, onText) { onText('nửa'); throw new ProviderError('anthropic', 'overloaded', 'late'); } };
+  await assert.rejects(completeWithFallback([misclassified, working], request({ signal }), () => {}), error => error.outputStarted === true);
   await assert.rejects(completeWithFallback([], request({ signal }), () => {}), error => error.kind === 'unavailable');
 });
 
@@ -562,9 +586,13 @@ test('server configuration defaults to Flash and keeps other routes and effects 
   assert.deepEqual(keysOnly.route, ['deepseek']);
   assert.deepEqual(readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, [],
     'Anthropic is not an implicit fallback when Flash is unavailable');
-  const full = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-flash', KAEL_MODEL_ROUTE: 'deepseek,anthropic,openai', KAEL_ENABLED_EFFECTS: 'service_request_submit,mark_paid' });
+  const full = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-flash', KAEL_MODEL_ROUTE: 'deepseek,anthropic', KAEL_ENABLED_EFFECTS: 'service_request_submit,mark_paid' });
   assert.deepEqual(full.route, ['deepseek', 'anthropic'], 'only approved providers are routable');
   assert.deepEqual([...full.enabledEffects], ['service_request_submit']);
+  assert.equal(configurationReport({ ...baseEnv, KAEL_MODEL_ROUTE: 'deepseek,openai' }).route, 'invalid_route');
+  assert.equal(configurationReport({ ...baseEnv, KAEL_MODEL_ROUTE: 'anthropic', ANTHROPIC_API_KEY: 'test-key' }).anthropic, 'model_missing');
+  assert.equal(configurationReport({ ...baseEnv, KAEL_MODEL_ROUTE: 'anthropic', ANTHROPIC_API_KEY: 'test-key', KAEL_ANTHROPIC_MODEL: 'bad model' }).anthropic, 'model_invalid');
+  assert.equal(configurationReport({ ...baseEnv, SUPABASE_SERVICE_ROLE_KEY: 'not-a-jwt' }).gateway.includes('SUPABASE_SERVICE_ROLE_KEY'), true);
   const report = JSON.stringify(configurationReport({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a' }));
   assert.ok(!report.includes('secret-a') && !report.includes('anon-key-for-tests') && !report.includes('server-key-for-tests'));
   const withoutServer = { ...baseEnv, SUPABASE_SERVICE_ROLE_KEY: '' };
