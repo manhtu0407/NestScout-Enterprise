@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { anthropicEndpoint, anthropicVersion, createAnthropicProvider } from '../services/kael-core/src/anthropic.ts';
-import { configurationReport, defaultLimits, readKaelConfig } from '../services/kael-core/src/config.ts';
+import { configurationReport, defaultLimits, readKaelConfig, readKaelEdgeEnvironment } from '../services/kael-core/src/config.ts';
 import { createDeepSeekProvider, deepseekEndpoint } from '../services/kael-core/src/deepseek.ts';
 import { completeWithFallback, ProviderError } from '../services/kael-core/src/model.ts';
 import { perplexitySearchEndpoint, searchWeb } from '../services/kael-core/src/perplexity.ts';
@@ -576,6 +576,33 @@ test('the TypeScript task state machine matches the authoritative SQL transition
   assert.deepEqual(checkModelTransition(task, 'waiting_for_approval'), { ok: false, reason: 'not_model_settable' });
   assert.deepEqual(checkModelTransition({ ...task, status: 'cancelled' }, 'running'), { ok: false, reason: 'invalid_transition' });
   assert.deepEqual(checkModelTransition({ ...task, artifact: { effect_required: true, effect_result: { status: 'succeeded', resource_kind: 'service_request', resource_id: 'r' } } }, 'completed'), { ok: true });
+});
+
+test('the shipped Edge configuration reads provider secrets only from a hosted deployment environment', () => {
+  const fixtures = {
+    ...baseEnv, DEEPSEEK_API_KEY: 'fixture-only', ANTHROPIC_API_KEY: 'fixture-only', PERPLEXITY_API_KEY: 'fixture-only',
+    KAEL_ANTHROPIC_MODEL: 'claude-fixture', KAEL_MODEL_ROUTE: 'deepseek,anthropic', KAEL_WEB_SEARCH: 'enabled',
+  };
+  for (const env of [
+    { ...fixtures, SUPABASE_URL: 'http://127.0.0.1:31819', DENO_DEPLOYMENT_ID: 'fixture' },
+    { ...fixtures, SUPABASE_URL: 'https://fixture.supabase.co' },
+  ]) {
+    const names = [];
+    const config = readKaelConfig(readKaelEdgeEnvironment(name => {
+      names.push(name);
+      return env[name];
+    }));
+    assert.ok(!names.some(name => /^(DEEPSEEK|ANTHROPIC|PERPLEXITY)_API_KEY$/.test(name)));
+    assert.deepEqual(config.route, []);
+    assert.equal(config.perplexity, null);
+  }
+  const hosted = { ...fixtures, SUPABASE_URL: 'https://fixture.supabase.co', DENO_DEPLOYMENT_ID: 'fixture' };
+  const environment = readKaelEdgeEnvironment(name => hosted[name]);
+  const config = readKaelConfig(environment);
+  assert.deepEqual(config.route, ['deepseek', 'anthropic']);
+  assert.ok(config.perplexity);
+  assert.equal(config.enabledEffects.size, 0);
+  assert.ok(!JSON.stringify(configurationReport(environment)).includes('fixture-only'));
 });
 
 test('server configuration defaults to Flash and keeps other routes and effects explicit', () => {

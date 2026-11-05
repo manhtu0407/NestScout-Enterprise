@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'smol-toml';
 import { root } from './tool-path.mjs';
 import { gitEnvironment } from './git-environment.mjs';
-import { discoverLocalProviders, providerSourceReport } from './kael-local-providers.mjs';
 
 class LocalGuardError extends Error {}
 
@@ -66,21 +65,22 @@ export function validateLocalConfig(config, linked) {
 }
 
 const localKaelPrefix = 'NESTSCOUT_LOCAL_';
-const localKaelSettings = [
-  'DEEPSEEK_API_KEY', 'ANTHROPIC_API_KEY', 'KAEL_ANTHROPIC_MODEL', 'KAEL_MODEL_ROUTE',
-  'PERPLEXITY_API_KEY', 'KAEL_WEB_SEARCH',
+const localPilotSettings = [
   'KAEL_DEVELOPER_PILOT', 'KAEL_DEVELOPER_PILOT_ID', 'KAEL_PILOT_GENERATION', 'KAEL_PILOT_WORKER_ID',
 ];
 
-export function scopedKaelEnvironment(config, settings) {
+export function scopedLocalPilotEnvironment(config, settings) {
   const { functions: { kael, ...otherFunctions } = {}, ...otherConfig } = config;
   const bindings = kael?.env;
-  requireLocal(bindings && Object.keys(kael).length === 1 && Object.keys(bindings).length === localKaelSettings.length
-    && localKaelSettings.every(name => bindings[name] === `env(${localKaelPrefix}${name})`),
-  'Kael local bindings must target only the default Kael function and its approved settings.');
-  requireLocal(!JSON.stringify({ ...otherConfig, functions: otherFunctions }).toUpperCase().includes(localKaelPrefix),
+  requireLocal(bindings && Object.keys(kael).length === 1 && Object.keys(bindings).length === localPilotSettings.length
+    && localPilotSettings.every(name => bindings[name] === `env(${localKaelPrefix}${name})`),
+  'Kael local bindings must target only the default Kael function and its approved pilot metadata.');
+  const outsideKael = JSON.stringify({ ...otherConfig, functions: otherFunctions });
+  requireLocal(!outsideKael.toUpperCase().includes(localKaelPrefix),
     'Kael local bindings must not appear in shared or other function configuration.');
-  return Object.fromEntries(localKaelSettings.flatMap(name =>
+  requireLocal(!/\b(?:DEEPSEEK|ANTHROPIC|PERPLEXITY)_API_KEY\b/i.test(outsideKael),
+    'Provider credentials are available only to hosted Supabase Edge.');
+  return Object.fromEntries(localPilotSettings.flatMap(name =>
     settings[name] ? [[localKaelPrefix + name, settings[name]]] : []));
 }
 
@@ -142,7 +142,7 @@ export function validateLocalFiles(directory) {
 
 export function localEnvironment(source) {
   return Object.fromEntries(Object.entries({ ...gitEnvironment(source), DO_NOT_TRACK: '1' }).filter(([name]) =>
-    !/^(PG|SUPABASE_|DATABASE_URL$|OPENAI_API_KEY$|NESTSCOUT_LOCAL_|KAEL_|DEEPSEEK_|ANTHROPIC_|PERPLEXITY_)/i.test(name))
+    !/^(PG|SUPABASE_|DATABASE_URL$|OPENAI_API_KEY$|DENO_DEPLOYMENT_ID$|NESTSCOUT_LOCAL_|KAEL_|DEEPSEEK_|ANTHROPIC_|PERPLEXITY_)/i.test(name))
     .map(([name, value]) => [/^DOCKER_/i.test(name) ? name.toUpperCase() : name, value]));
 }
 
@@ -210,7 +210,7 @@ export function localRuntime() {
       requireLocal(!lstatSync(path.join(root, directory, '.env'), { throwIfNoEntry: false }),
         'Remove the shared or Kael functions dotenv override before starting the isolated Kael runtime.');
     }
-    const scoped = scopedKaelEnvironment(parse(readFileSync(path.join(root, 'supabase/config.toml'), 'utf8')), settings);
+    const scoped = scopedLocalPilotEnvironment(parse(readFileSync(path.join(root, 'supabase/config.toml'), 'utf8')), settings);
     onStart();
     runCli(['functions', 'serve', 'kael'], { ...environment, ...scoped });
   };
@@ -232,19 +232,12 @@ export async function withLocalLock(operation, directory = root) {
   }
 }
 
-async function main(action, enableProviders) {
-  const actions = ['start', 'status', 'reset', 'test', 'types', 'check-types', 'lint', 'drift', 'history', 'stop', 'serve-kael', 'kael-credentials'];
+async function main(action) {
+  const actions = ['start', 'status', 'reset', 'test', 'types', 'check-types', 'lint', 'drift', 'history', 'stop', 'serve-kael'];
   requireLocal(actions.includes(action), `Use one of: ${actions.join(', ')}`);
-  if (action === 'kael-credentials') {
-    console.log(JSON.stringify(providerSourceReport(discoverLocalProviders())));
-    return;
-  }
   const runtime = localRuntime();
   if (action === 'serve-kael') {
-    const source = enableProviders ? discoverLocalProviders() : { status: 'offline', env: {} };
-    requireLocal(!enableProviders || source.status === 'source_loaded',
-      `Kael credential provisioning: ${source.status}. Check npm run kael:credentials and the private provider source.`);
-    runtime.serveKael(source.env, () => console.log(JSON.stringify(providerSourceReport(source))));
+    runtime.serveKael({}, () => console.log('Starting offline Kael Edge. Live provider secrets are available only to hosted Supabase Edge.'));
     return;
   }
   await withLocalLock(() => {
@@ -309,10 +302,9 @@ async function main(action, enableProviders) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const [action, option, ...extra] = process.argv.slice(2);
-    const enableProviders = action === 'serve-kael' && option === '--providers';
-    requireLocal(!extra.length && (option === undefined || enableProviders), 'Additional flags and target overrides are forbidden.');
-    await main(action, enableProviders);
+    const [action, ...extra] = process.argv.slice(2);
+    requireLocal(!extra.length, 'Additional flags and target overrides are forbidden.');
+    await main(action);
   } catch (error) {
     console.error(safeDiagnostic(error));
     process.exitCode = 1;

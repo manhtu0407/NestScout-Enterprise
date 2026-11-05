@@ -41,16 +41,13 @@ task cards, receipts and the mascot use their existing components.
 ## Provider readiness and recovery
 
 The app sends its existing NestScout session; there is no provider key field.
-For a protected environment, the deployment operator provisions
-`DEEPSEEK_API_KEY` (default model `deepseek-flash`), or
-`ANTHROPIC_API_KEY` and `KAEL_ANTHROPIC_MODEL`, in the Edge secret store.
-Set `KAEL_MODEL_ROUTE` explicitly when using Anthropic or an ordered fallback.
-Local developers use the approved worktree-owned Edge environment; the 8085
-pilot uses its existing private provider source and spending authorization.
-Never copy these values into Expo variables, chat, source, or test fixtures.
+The hosted Supabase Edge Functions secret store supplies `DEEPSEEK_API_KEY`,
+`ANTHROPIC_API_KEY` and `PERPLEXITY_API_KEY`. Set `KAEL_MODEL_ROUTE` explicitly
+when using Anthropic or an ordered fallback, and configure `KAEL_ANTHROPIC_MODEL`
+for the approved model. Local Edge and the 8085 local pilot run offline.
 
-After local provisioning or rotation, restart the owned Edge process and repeat
-a no-spend probe. With a signed-in NestScout session, call `GET /functions/v1/kael`
+After hosted setup or rotation, repeat a no-spend probe. With a signed-in
+NestScout session, call `GET /functions/v1/kael`
 with `x-kael-readiness: 1`. The result reports route and configuration state and
 verifies the legacy service-role bearer with the database. It makes no model
 call; it cannot verify provider balance, authorization or model availability.
@@ -217,55 +214,15 @@ provider is unavailable. The gateway will not replay an interrupted stream.
 ## Local integration verification
 
 Run `npm run db:start`, then `npm run kael:serve` in another terminal in the
-same worktree and branch. This starts Kael without model credentials. Use
-`npm run kael:credentials` for the local source status and
-`npm run kael:serve -- --providers` to opt an authorized local stack into normal
-chat with its provisioned providers. The latter uses the local ownership guard
-and injects only the approved variables into the Kael function through the pinned
-CLI. The SMS hook receives none of Kael's provider settings. JWT verification
-remains in place. `db:start` excludes Functions. Serving Functions activates
-them on that same managed stack. Obtain the assigned loopback API URL from
+same worktree and branch. Local Kael runs offline for provider traffic. JWT
+verification remains in place. `db:start` excludes Functions. Serving Functions
+activates them on that same managed stack. Obtain the assigned loopback API URL from
 `npm run db:status`; never reuse another worktree's ports.
 
-The pinned CLI can pass an unresolved local binding to Edge as literal
-`env(...)` text. The Kael entry point treats those local references as absent.
 The mobile app's ignored `.env` needs that URL, target `local`, and the stack's
-publishable key. Server and provider keys must stay out of the mobile environment.
-
-The operator provisions `~/.codex/private/kael-server/providers.env` once for the
-local OS account using its approved development credentials. It must be a small,
-regular, single-link file outside the checkout. On Linux use an owner-only file
-and directory (0600 and 0700). On Windows the file and directory must belong to
-the launching account and allow access only to that account, SYSTEM and local
-Administrators. The launcher checks permissions and never changes them.
-
-The UTF-8 file accepts one plain `NAME=value` assignment per setting, plus blank
-lines and full-line comments. Supply `DEEPSEEK_API_KEY` and/or `ANTHROPIC_API_KEY`.
-For Anthropic also set `KAEL_ANTHROPIC_MODEL` and select it in `KAEL_MODEL_ROUTE`.
-The normal default route is DeepSeek. To enable the separate Perplexity Search
-tool, set `PERPLEXITY_API_KEY` and `KAEL_WEB_SEARCH=enabled`. Search stays off if
-either setting is absent or `KAEL_WEB_SEARCH=disabled`. The credentials report
-shows presence and effective search opt-in. Perplexity is available only through
-`web_search`; chat still requires a configured DeepSeek or Anthropic route.
-Ambient provider and pilot variables are
-discarded, and the launcher rejects shared and Kael function dotenv overrides.
-Missing or rejected sources stop provider-enabled launch. A valid source is
-reusable across trusted worktrees under the same OS account. Docker and the OS
-account are part of the local trust boundary. Stop the old worker and start it
-again after rotating or revoking credentials, or start in offline mode.
-
-Authenticated `GET /functions/v1/kael` with `x-kael-readiness: 1` checks the
-database and reports credential and route configuration without calling either
-provider. A configured route can make billable requests when used for chat.
-Source discovery, normal chat and developer pilot spending are separate from
-Live Evaluation authorization and accounting.
-
-Each hosted environment has its own operator-managed Supabase Edge Secrets.
-Use separate credentials for each project and keep them in the organization's
-secret store. Supabase makes Edge Secrets available at project scope, so use a
-separate project or other approved runtime boundary if function-level isolation
-is required. Local tooling never retrieves hosted secrets.
-See [Supabase environment variables](https://supabase.com/docs/guides/functions/secrets).
+publishable key. The local launcher discards ambient provider variables and
+rejects shared and Kael function dotenv overrides. It passes only metadata for
+the offline developer pilot.
 
 `npm run db:test` runs SQL security and workflow tests. With Functions served,
 `npm run db:mcp:test` also runs the Kael integration scenarios in
@@ -286,6 +243,29 @@ after the real local submission commits, and reconciliation checks the original
 submission key. Test identities and their records are removed after the run.
 Live AI inference requires separately supplied authorized provider configuration
 and is not established by these tests.
+
+## Hosted provider verification
+
+Supabase Dashboard Edge Functions Secrets is the only provider credential
+source. The deployed `kael` function reads `DEEPSEEK_API_KEY`,
+`ANTHROPIC_API_KEY`, and `PERPLEXITY_API_KEY` via `Deno.env.get` in the
+Supabase-managed environment. Kael reads provider credentials only with an
+HTTPS Supabase gateway and the platform's deployment marker. Keep the values
+in Dashboard Secrets. Clients use their publishable key and signed-in Auth
+session. [Supabase environment variables](https://supabase.com/docs/guides/functions/secrets)
+
+Hosted validation requires a separately authorized deployment of `kael` and
+the applicable Kael database migrations on the project holding the secrets.
+Set the approved Anthropic model and chat route in the hosted configuration.
+Perplexity Search uses `web_search` when `KAEL_WEB_SEARCH=enabled`. Keep
+`KAEL_ENABLED_EFFECTS` unset for verification.
+
+Use authenticated `GET /functions/v1/kael` with `x-kael-readiness: 1` for
+database and provider configuration status without a provider call. A live
+verification also needs verified model pricing and enforced per-provider and
+total spend limits across all provider attempts and Preview calls. Normal
+chat's turn limits do not enforce those USD ceilings. Live Evaluation retains
+its own authorization and accounting gates.
 
 ## Not implemented
 
