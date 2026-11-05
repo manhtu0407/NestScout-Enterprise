@@ -18,8 +18,8 @@ select ok(not has_table_privilege('authenticated','nestscout_private.kael_pilot_
 select ok(not has_table_privilege('service_role','nestscout_private.kael_pilot_calls','insert'), 'Server uses the bounded accounting RPC only');
 select ok(not has_function_privilege('authenticated','public.kael_pilot_charge(uuid,uuid,uuid,uuid,text,boolean,text,integer,integer,integer)','execute'), 'Clients cannot reserve or reconcile spend');
 select ok(not has_function_privilege('anon','public.kael_pilot_status()','execute'), 'Guest cannot inspect pilot status');
-select throws_ok($$ update nestscout_private.kael_pilot_budgets set cap_micro_usd=1000001 $$, '23514', null, 'The pilot cannot exceed the USD 1 authority');
-select throws_ok($$ update nestscout_private.kael_pilot_budgets set input_rate=0 $$, '23514', null, 'Zero or missing pricing cannot authorize calls');
+select throws_ok($$ update nestscout_private.kael_pilot_budgets set cap_micro_usd=1000001 where id='80850000-0000-4000-8000-000000000005' $$, '23514', null, 'The pilot cannot exceed the USD 1 authority');
+select throws_ok($$ update nestscout_private.kael_pilot_budgets set input_rate=0 where id='80850000-0000-4000-8000-000000000005' $$, '23514', null, 'Zero or missing pricing cannot authorize calls');
 
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"80850000-0000-4000-8000-000000000002","role":"authenticated"}',true);
@@ -38,7 +38,7 @@ set local role service_role;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 select is(pg_temp.charge('reserve')->>'ok','false','New budget is disabled by default');
 reset role;
-update nestscout_private.kael_pilot_budgets set enabled=true;
+update nestscout_private.kael_pilot_budgets set enabled=true where id='80850000-0000-4000-8000-000000000005';
 set local role service_role;
 select is(public.kael_pilot_charge('80850000-0000-4000-8000-000000000005','80850000-0000-4000-8000-000000000002',
   '80850000-0000-4000-8000-000000000004',gen_random_uuid(),'reserve',false,'deepseek-flash',0,0,0)->>'ok','false','Foreign actor cannot charge the owner budget');
@@ -49,31 +49,31 @@ select is(pg_temp.charge('reserve',gen_random_uuid())->>'ok','false','An outstan
 select is(pg_temp.charge('settle',model=>'DeepSeek-V4.1-Flash-1017')->>'estimated_micro_usd','31','Cache classes reconcile with conservative rounded-up cost');
 select is(pg_temp.charge('settle')->>'ok','false','Settlement replay cannot release or change spend');
 reset role;
-select is((select estimated_micro_usd from nestscout_private.kael_pilot_calls),31::bigint,'Real charged-call evidence is durable');
-select is((select reserved_micro_usd from nestscout_private.kael_pilot_calls),319488::bigint,'Reservation covers maximum model context and output');
-update nestscout_private.kael_pilot_budgets set cap_micro_usd=319500;
+select is((select estimated_micro_usd from nestscout_private.kael_pilot_calls where pilot_id='80850000-0000-4000-8000-000000000005'),31::bigint,'Real charged-call evidence is durable');
+select is((select reserved_micro_usd from nestscout_private.kael_pilot_calls where pilot_id='80850000-0000-4000-8000-000000000005'),319488::bigint,'Reservation covers maximum model context and output');
+update nestscout_private.kael_pilot_budgets set cap_micro_usd=319500 where id='80850000-0000-4000-8000-000000000005';
 set local role service_role;
 select is(pg_temp.charge('reserve',gen_random_uuid())->>'ok','false','Prior spend plus maximum reservation cannot exceed cap');
 reset role;
-update nestscout_private.kael_pilot_budgets set cap_micro_usd=1000000,rates_checked_at=now()-interval '25 hours';
+update nestscout_private.kael_pilot_budgets set cap_micro_usd=1000000,rates_checked_at=now()-interval '25 hours' where id='80850000-0000-4000-8000-000000000005';
 set local role service_role;
 select is(pg_temp.charge('reserve',gen_random_uuid())->>'ok','false','Stale prices deny the next paid request');
 reset role;
-update nestscout_private.kael_pilot_budgets set rates_checked_at=now(),expires_at=now()-interval '1 second';
+update nestscout_private.kael_pilot_budgets set rates_checked_at=now(),expires_at=now()-interval '1 second' where id='80850000-0000-4000-8000-000000000005';
 set local role service_role;
 select is(pg_temp.charge('reserve',gen_random_uuid())->>'ok','false','Expired authority denies the next paid request');
 reset role;
-update nestscout_private.kael_pilot_budgets set expires_at=now()+interval '30 minutes',max_calls=1;
+update nestscout_private.kael_pilot_budgets set expires_at=now()+interval '30 minutes',max_calls=1 where id='80850000-0000-4000-8000-000000000005';
 set local role service_role;
 select is(pg_temp.charge('reserve',gen_random_uuid())->>'ok','false','Request cap includes prior calls after worker restart');
 reset role;
-update nestscout_private.kael_pilot_budgets set max_calls=20;
+update nestscout_private.kael_pilot_budgets set max_calls=20 where id='80850000-0000-4000-8000-000000000005';
 set local role service_role;
 select is(pg_temp.charge('reserve','80850000-0000-4000-8000-000000000007')->>'ok','true','A reconciled call permits the next reservation');
 select is(pg_temp.charge('settle','80850000-0000-4000-8000-000000000007',input_tokens=>-1)->>'ok','false','Invalid usage cannot release a reservation');
 select is(pg_temp.charge('reserve',gen_random_uuid())->>'ok','false','Unknown usage halts the pilot');
 reset role;
-select ok((select halted from nestscout_private.kael_pilot_budgets),'The halt persists independently of Edge workers');
+select ok((select halted from nestscout_private.kael_pilot_budgets where id='80850000-0000-4000-8000-000000000005'),'The halt persists independently of Edge workers');
 select is((select status from nestscout_private.kael_pilot_calls where id='80850000-0000-4000-8000-000000000007'),'uncertain','Uncertain call retains worst-case hold');
 
 set local role authenticated;
@@ -82,12 +82,12 @@ select is(jsonb_array_length(public.kael_pilot_status()->'calls'),2,'Actor can r
 select ok(not ((public.kael_pilot_status()->'budgets'->0) ? 'actors'),'Status does not leak another actor identity');
 select ok(not (public.kael_pilot_status()::text like '%test-stack%'),'Status does not expose private stack configuration');
 reset role;
-update nestscout_private.kael_pilot_budgets set halted=false;
+update nestscout_private.kael_pilot_budgets set halted=false where id='80850000-0000-4000-8000-000000000005';
 set local role service_role;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 select is(pg_temp.charge('uncertain')->>'ok','false','A lost settlement acknowledgement requests a durable halt');
 reset role;
-select ok((select halted from nestscout_private.kael_pilot_budgets),'Uncertainty halts even after settlement committed');
+select ok((select halted from nestscout_private.kael_pilot_budgets where id='80850000-0000-4000-8000-000000000005'),'Uncertainty halts even after settlement committed');
 select is((select estimated_micro_usd from nestscout_private.kael_pilot_calls where id='80850000-0000-4000-8000-000000000006'),31::bigint,
   'Known committed accounting is preserved when its HTTP acknowledgement was lost');
 select * from finish();
