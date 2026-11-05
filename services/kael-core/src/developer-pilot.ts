@@ -10,7 +10,8 @@ export function pilotRoute(text: string): { thinking: boolean; reason: string } 
   return { thinking, reason: thinking ? 'explicit_precision_request' : 'default_low_cost_flash' };
 }
 
-export function developerPilotProviders(config: KaelConfig, actorId: string, runId: string, text: string, fetcher: Fetcher): ModelProvider[] {
+export function developerPilotProviders(config: KaelConfig, actorId: string, runId: string, text: string, fetcher: Fetcher,
+  onProviderFailure: (kind: string) => void = () => {}, generation?: string): ModelProvider[] {
   if (!config.developerPilotId || !config.deepseek) return [];
   const route = pilotRoute(text);
   const providerConfig = { ...config.deepseek, model: 'deepseek-flash', thinking: route.thinking, verifiedModels: pilotServedModels };
@@ -24,7 +25,8 @@ export function developerPilotProviders(config: KaelConfig, actorId: string, run
     try {
       const response = await fetcher(`${config.supabaseUrl}/rest/v1/rpc/kael_pilot_charge`, {
         method: 'POST', redirect: 'error',
-        headers: { 'content-type': 'application/json', apikey: config.supabaseServiceKey, authorization: `Bearer ${config.supabaseServiceKey}` },
+        headers: { 'content-type': 'application/json', apikey: config.supabaseServiceKey, authorization: `Bearer ${config.supabaseServiceKey}`,
+          ...(generation ? { 'x-kael-pilot-generation': generation } : {}) },
         body: JSON.stringify({ p_pilot: config.developerPilotId, p_actor: actorId, p_run: runId, p_call: callId, p_action: action,
           p_thinking: route.thinking, p_model: model, p_input: input, p_cached: cached, p_output: output }),
         signal: AbortSignal.timeout(5000),
@@ -52,7 +54,10 @@ export function developerPilotProviders(config: KaelConfig, actorId: string, run
       if (reserved.ok !== true) throw new ProviderError('deepseek', 'budget', 'The pilot budget or authorization did not permit this call.');
       let outputStarted = false;
       try {
-        const result = await provider.complete(request, delta => { outputStarted = true; onText(delta); });
+        const result = await provider.complete(request, delta => { outputStarted = true; onText(delta); }).catch(error => {
+          onProviderFailure(error instanceof ProviderError ? error.kind : 'unknown');
+          throw error;
+        });
         const settled = await charge(callId, 'settle', result.model, result.usage.inputTokens, result.usage.cachedInputTokens, result.usage.outputTokens);
         if (settled.ok !== true) throw new ProviderError('deepseek', 'budget', 'The provider usage could not be reconciled.', outputStarted);
         return result;

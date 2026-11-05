@@ -110,9 +110,20 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
   const now = dependencies.now ?? (() => new Date());
   const log = dependencies.log ?? (event => console.log(JSON.stringify(event)));
   const config = readKaelConfig(dependencies.env);
+  const generation = dependencies.env.KAEL_PILOT_GENERATION;
+  const pilotGeneration = generation && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(generation)
+    ? generation : undefined;
 
   return async function handle(request: Request): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
+    if (request.method === 'GET' && config?.developerPilotId && request.headers.get('x-kael-pilot-probe') === '1') {
+      return new Response(JSON.stringify({
+        pilot_id: config.developerPilotId,
+        generation: pilotGeneration ?? null,
+        credential_loaded: config.deepseek !== null,
+        model: 'deepseek-flash',
+      }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+    }
     if (request.method !== 'POST') return json(405, { error: { code: 'invalid_request', message: 'Method not allowed.' } });
     if (!config) {
       log({ event: 'kael_misconfigured', ...configurationReport(dependencies.env) });
@@ -193,7 +204,8 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
           ? await runAgentTurn({
             actor, config: config as KaelConfig, store, rest,
             providers: config?.developerPilotId
-              ? developerPilotProviders(config, actor.userId, runId, turn.action.text, fetcher)
+              ? developerPilotProviders(config, actor.userId, runId, turn.action.text, fetcher,
+                kind => log({ event: 'kael_pilot_provider_failure', run_id: runId, kind }), pilotGeneration)
               : (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config as KaelConfig),
             fetcher, runId, conversationId, emit, signal: controller.signal, today: todayIn(now()), log,
           })

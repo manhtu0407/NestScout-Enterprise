@@ -38,7 +38,9 @@ set local role service_role;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 select is(pg_temp.charge('reserve')->>'ok','false','New budget is disabled by default');
 reset role;
-update nestscout_private.kael_pilot_budgets set enabled=true where id='80850000-0000-4000-8000-000000000005';
+select is(nestscout_private.kael_pilot_arm('80850000-0000-4000-8000-000000000005','test-stack',
+  (select authorized_at from nestscout_private.kael_pilot_budgets where id='80850000-0000-4000-8000-000000000005')),
+  'BUDGET_ENABLED', 'Current approved worker can arm an intact budget');
 set local role service_role;
 select is(public.kael_pilot_charge('80850000-0000-4000-8000-000000000005','80850000-0000-4000-8000-000000000002',
   '80850000-0000-4000-8000-000000000004',gen_random_uuid(),'reserve',false,'deepseek-flash',0,0,0)->>'ok','false','Foreign actor cannot charge the owner budget');
@@ -90,5 +92,72 @@ reset role;
 select ok((select halted from nestscout_private.kael_pilot_budgets where id='80850000-0000-4000-8000-000000000005'),'Uncertainty halts even after settlement committed');
 select is((select estimated_micro_usd from nestscout_private.kael_pilot_calls where id='80850000-0000-4000-8000-000000000006'),31::bigint,
   'Known committed accounting is preserved when its HTTP acknowledgement was lost');
+insert into nestscout_private.kael_pilot_budgets
+  (id, actors, authorized_at, expires_at, cap_micro_usd, max_calls, input_rate, cached_rate, output_rate, rate_source, rates_checked_at, source_sha, stack_id)
+  select '80850000-0000-4000-8000-000000000008', actors, now()-interval '2 hours', now()-interval '1 hour',
+    cap_micro_usd, max_calls, input_rate, cached_rate, output_rate, rate_source, rates_checked_at, source_sha, stack_id
+  from nestscout_private.kael_pilot_budgets where id='80850000-0000-4000-8000-000000000005';
+insert into nestscout_private.kael_pilot_calls
+  (id,pilot_id,run_id,actor_id,thinking,status,reserved_micro_usd,estimated_micro_usd,input_tokens,cached_tokens,output_tokens)
+  select '80850000-0000-4000-8000-000000000009','80850000-0000-4000-8000-000000000008',run_id,actor_id,thinking,status,
+    reserved_micro_usd,estimated_micro_usd,input_tokens,cached_tokens,output_tokens
+  from nestscout_private.kael_pilot_calls where id='80850000-0000-4000-8000-000000000006';
+
+create function pg_temp.approval(pilot uuid)
+returns jsonb language sql as $$
+  select jsonb_build_object('approval_id', '80850000-0000-4000-8000-000000000010', 'pilot_id', pilot,
+    'purpose', 'kael_developer_8085', 'provider', 'deepseek', 'model', 'deepseek-flash', 'owner_approved', true,
+    'approved_at', now(), 'expires_at', now()+interval '45 minutes', 'rates_checked_at', now(),
+    'cap_micro_usd', 350000, 'max_calls', 2, 'input_rate', 0.3, 'cached_rate', 0.006, 'output_rate', 1.2,
+    'rate_source', 'https://api-docs.deepseek.com/quick_start/pricing/');
+$$;
+
+create function pg_temp.renew(override jsonb default '{}'::jsonb, stack text default 'test-stack')
+returns text language sql as $$
+  select nestscout_private.kael_pilot_reauthorize('80850000-0000-4000-8000-000000000008', stack,
+    pg_temp.approval('80850000-0000-4000-8000-000000000008') || override);
+$$;
+
+select ok(not has_function_privilege('service_role','nestscout_private.kael_pilot_reauthorize(uuid,text,jsonb)','execute'),
+  'Edge cannot grant itself a fresh authorization');
+select is(pg_temp.renew('{"owner_approved":false}'), 'FRESH_OWNER_APPROVAL_REQUIRED', 'Renewal requires explicit approval');
+select is(pg_temp.renew(stack=>'wrong-stack'), 'BUDGET_MISSING', 'Renewal is bound to the existing stack');
+select is(pg_temp.renew('{"cap_micro_usd":1000001}'), 'CUMULATIVE_LIMIT_INCREASE_DENIED', 'Renewal cannot increase lifetime cap');
+select is(nestscout_private.kael_pilot_reauthorize('80850000-0000-4000-8000-000000000005','test-stack',
+  pg_temp.approval('80850000-0000-4000-8000-000000000005') || jsonb_build_object('approved_at',clock_timestamp())),
+  'CLOSE_ACTIVE_BUDGET_FIRST', 'An active worker must be disarmed before renewal');
+update nestscout_private.kael_pilot_budgets set enabled=false where id='80850000-0000-4000-8000-000000000005';
+select is(nestscout_private.kael_pilot_reauthorize('80850000-0000-4000-8000-000000000005','test-stack',
+  pg_temp.approval('80850000-0000-4000-8000-000000000005') || jsonb_build_object('approved_at',clock_timestamp())),
+  'RECONCILIATION_REQUIRED', 'Renewal never releases a halt or unresolved reservation');
+select is(pg_temp.renew(), 'REAUTHORIZED_DISABLED', 'A fresh approval extends the existing session with spending disabled');
+select is(pg_temp.renew(), 'APPROVAL_ALREADY_USED', 'An approval cannot be replayed');
+select is((select expires_at from nestscout_private.kael_pilot_budgets where id='80850000-0000-4000-8000-000000000008'),
+  now()-interval '1 hour', 'Original expiry remains part of the historical record');
+select is((select expires_at from nestscout_private.kael_pilot_effective_budget where id='80850000-0000-4000-8000-000000000008'),
+  now()+interval '45 minutes', 'The effective budget reads the new approval');
+select is((select estimated_micro_usd from nestscout_private.kael_pilot_calls where id='80850000-0000-4000-8000-000000000009'),
+  31::bigint, 'Renewal retains the existing ledger charge');
+select is(nestscout_private.kael_pilot_arm('80850000-0000-4000-8000-000000000008','test-stack',now()-interval '2 hours'),
+  'EDGE_AUTHORIZATION_MISMATCH', 'An earlier worker generation cannot arm a renewal');
+select is(nestscout_private.kael_pilot_arm('80850000-0000-4000-8000-000000000008','test-stack',now()),
+  'BUDGET_ENABLED', 'The current approval can use the remaining cumulative budget');
+insert into public.kael_conversations (id,owner_id,mode) values
+  ('80850000-0000-4000-8000-000000000011','80850000-0000-4000-8000-000000000001','client');
+insert into public.kael_runs (id,conversation_id,owner_id,request_id) values
+  ('80850000-0000-4000-8000-000000000012','80850000-0000-4000-8000-000000000011','80850000-0000-4000-8000-000000000001',gen_random_uuid());
+create function pg_temp.renewed_charge(action text, call_id uuid default '80850000-0000-4000-8000-000000000013')
+returns jsonb language sql as $$ select public.kael_pilot_charge('80850000-0000-4000-8000-000000000008',
+  '80850000-0000-4000-8000-000000000001','80850000-0000-4000-8000-000000000012',call_id,action,false,'deepseek-flash',100,40,10); $$;
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select set_config('request.headers','{}',true);
+select is(pg_temp.renewed_charge('reserve')->>'reason', 'edge_authorization_mismatch', 'The previous worker cannot dispatch after renewal');
+select set_config('request.headers',jsonb_build_object('x-kael-pilot-generation',now())::text,true);
+select is(pg_temp.renewed_charge('reserve')->>'ok', 'true', 'The current worker can reserve against the renewed window');
+select is(pg_temp.renewed_charge('settle')->>'estimated_micro_usd', '31', 'The current reservation settles against its authorized rate card');
+select is(pg_temp.renewed_charge('reserve',gen_random_uuid())->>'reason', 'budget_exhausted',
+  'The renewed limit counts the previous and current calls together');
+reset role;
 select * from finish();
 rollback;

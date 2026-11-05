@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
@@ -29,8 +29,22 @@ export function parsePilotAuthorization(value, now = new Date()) {
   return value;
 }
 
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export function parsePilotRenewal(value, pilotId, now = new Date()) {
+  parsePilotAuthorization(value, now);
+  requireLocal(uuid.test(value.approval_id ?? '') && value.pilot_id === pilotId, 'Approval must identify this pilot and have a unique approval UUID.');
+  const approved = Date.parse(value.approved_at);
+  requireLocal(Number.isFinite(approved) && approved <= now.getTime()
+    && Date.parse(value.expires_at) <= approved + 3600000, 'Fresh owner approval must specify an approval time and a window of at most one hour.');
+  const fields = ['approval_id', 'pilot_id', 'approved_at', 'purpose', 'provider', 'model', 'owner_approved', 'cap_micro_usd',
+    'max_calls', 'expires_at', 'rates_checked_at', 'rate_source', 'input_rate', 'cached_rate', 'output_rate'];
+  return Object.fromEntries(fields.map(field => [field, value[field]]));
+}
+
 function protectDirectory() {
   mkdirSync(pilotDirectory, { recursive: true, mode: 0o700 });
+  requireLocal(lstatSync(pilotDirectory).isDirectory(), 'The private pilot directory must be a real directory.');
   if (process.platform === 'win32') {
     const account = execFileSync('whoami', [], { encoding: 'utf8' }).trim();
     execFileSync('icacls', [pilotDirectory, '/inheritance:r', '/grant:r', `${account}:(OI)(CI)F`], { stdio: 'ignore', windowsHide: true });
@@ -39,7 +53,9 @@ function protectDirectory() {
 
 function session(runtime) {
   const value = JSON.parse(readFileSync(sessionFile, 'utf8'));
-  requireLocal(value.stack_id === runtime.verify().id && value.root === root && value.branch === runtime.branch, 'The saved session belongs to another checkout or branch.');
+  const verified = runtime.verify();
+  requireLocal(uuid.test(value.id) && value.stack_id === verified.id && value.root === root && value.branch === runtime.branch
+    && value.origin === verified.endpoints['rest.http'].url, 'The saved session belongs to another checkout, branch or local gateway.');
   return value;
 }
 
@@ -79,35 +95,128 @@ async function prepare(runtime, authorizationFile) {
 }
 
 function providerKey() {
-  if (!existsSync(providerFile)) return '';
+  requireLocal(existsSync(providerFile), 'CREDENTIAL_MISSING: provision DEEPSEEK_API_KEY in the private local providers.env.');
+  const file = lstatSync(providerFile);
+  requireLocal(file.isFile() && file.nlink === 1 && file.size <= 4096, 'CREDENTIAL_INVALID: expected a small regular private providers.env file.');
+  if (process.platform === 'win32') {
+    execFileSync('icacls', [providerFile, '/reset'], { stdio: 'ignore', windowsHide: true });
+  } else {
+    requireLocal((file.mode & 0o077) === 0 && file.uid === process.getuid(), 'CREDENTIAL_INVALID: providers.env must be owner-only.');
+  }
   const text = readFileSync(providerFile, 'utf8');
-  requireLocal(/^DEEPSEEK_API_KEY=[^\r\n]*\r?\n?$/.test(text), 'Only DEEPSEEK_API_KEY is accepted in the private provider file.');
-  return text.slice(text.indexOf('=') + 1).trim();
+  const key = /^DEEPSEEK_API_KEY=(sk-(?!ant-)[A-Za-z0-9_-]{16,})\r?\n?$/.exec(text)?.[1];
+  requireLocal(key, 'CREDENTIAL_INVALID: providers.env must contain exactly one DeepSeek API key assignment.');
+  return key;
+}
+
+function pilotBudget(database, value) {
+  const result = database.query(`select json_build_object('enabled', b.enabled, 'halted', b.halted, 'generation', b.authorized_at,
+    'expires_at', b.expires_at, 'expired', b.expires_at <= clock_timestamp(),
+    'rates_stale', b.rates_checked_at > clock_timestamp() or b.rates_checked_at < clock_timestamp() - interval '24 hours',
+    'cap_micro_usd', b.cap_micro_usd, 'max_calls', b.max_calls,
+    'calls', c.calls, 'committed_micro_usd', c.committed, 'unresolved', c.unresolved)
+    from nestscout_private.kael_pilot_effective_budget b
+    cross join lateral (
+      select count(*) as calls, coalesce(sum(coalesce(estimated_micro_usd, reserved_micro_usd)), 0) as committed,
+        count(*) filter (where status <> 'settled') as unresolved
+      from nestscout_private.kael_pilot_calls where pilot_id = b.id
+    ) c
+    where b.id = ${sqlLiteral(value.id)} and b.stack_id = ${sqlLiteral(value.stack_id)};`).trim();
+  return result ? JSON.parse(result) : null;
+}
+
+function requireBudget(budget) {
+  requireLocal(budget, 'BUDGET_MISSING: this session has no original pilot budget.');
+  requireLocal(!budget.expired, 'AUTHORIZATION_EXPIRED: apply a fresh explicit owner approval with reauthorize.');
+  requireLocal(!budget.rates_stale, 'RATE_CARD_STALE: reverify rates and obtain fresh owner approval.');
+  requireLocal(!budget.halted && budget.unresolved === 0, 'RECONCILIATION_REQUIRED: prior accounting is still blocked.');
+  requireLocal(budget.calls < budget.max_calls && budget.committed_micro_usd < budget.cap_micro_usd, 'BUDGET_EXHAUSTED: cumulative limit reached.');
+}
+
+async function probeEdge(runtime, value) {
+  const { env } = runtime.status();
+  try {
+    const response = await fetch(`${value.origin}/functions/v1/kael`, {
+      headers: { apikey: env.PUBLISHABLE_KEY, authorization: `Bearer ${env.ANON_KEY}`, 'x-kael-pilot-probe': '1' },
+      signal: AbortSignal.timeout(5000), redirect: 'error',
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return { status: 'EDGE_UNAVAILABLE', http_status: response.status };
+    }
+    const result = await response.json();
+    if (result?.pilot_id !== value.id || result.model !== 'deepseek-flash' || typeof result.credential_loaded !== 'boolean') {
+      return { status: 'EDGE_SESSION_MISMATCH' };
+    }
+    return { status: 'EDGE_READY', credential_loaded: result.credential_loaded, generation: result.generation };
+  } catch {
+    return { status: 'EDGE_UNAVAILABLE' };
+  }
 }
 
 export async function developerPilotCommand(args) {
-  const [action, authorizationFile] = args;
-  requireLocal(['prepare', 'edge', 'preview', 'close'].includes(action) && args.length <= (action === 'prepare' ? 2 : 1), 'Use prepare [authorization.json], edge, preview or close.');
-  const runtime = localRuntime();
+  const [action, option] = args;
+  requireLocal(args.length <= 2 && (action === 'prepare' || (action === 'reauthorize' && path.isAbsolute(option ?? ''))
+    || (action === 'edge' && (!option || option === '--offline')) || (['preview', 'close', 'status', 'arm'].includes(action) && args.length === 1)),
+  'Use prepare [authorization.json], reauthorize ABSOLUTE_APPROVAL_PATH, edge [--offline], status, arm, preview or close.');
+  const runtime = localRuntime({ isolatePilotProviders: true });
   runtime.verify();
-  if (action === 'prepare') return withLocalLock(() => prepare(runtime, authorizationFile));
+  if (action === 'prepare') return withLocalLock(() => prepare(runtime, option));
   const value = session(runtime);
   const database = localKnowledgeDatabase();
-  if (action === 'close') {
-    database.query(`update nestscout_private.kael_pilot_budgets set enabled=false where id=${sqlLiteral(value.id)};`);
-    for (const file of [edgeFile, providerFile]) if (existsSync(file)) unlinkSync(file);
-    console.log('Paid budget disabled; task-owned local provider files deleted. Stop the Edge worker to remove its in-memory key.');
-    return;
+  if (action === 'reauthorize') {
+    const approval = parsePilotRenewal(JSON.parse(readFileSync(option, 'utf8')), value.id);
+    return withLocalLock(() => {
+      const result = database.query(`select nestscout_private.kael_pilot_reauthorize(${sqlLiteral(value.id)},
+        ${sqlLiteral(value.stack_id)}, ${sqlLiteral(JSON.stringify(approval))}::jsonb);`).trim();
+      requireLocal(result === 'REAUTHORIZED_DISABLED', result);
+      console.log(result);
+    });
   }
+  if (action === 'status' || action === 'arm') return withLocalLock(async () => {
+    const budget = pilotBudget(database, value);
+    const edge = await probeEdge(runtime, value);
+    if (action === 'status') {
+      console.log(JSON.stringify({ pilot_id: value.id, origin: value.origin, credential_source: existsSync(providerFile) ? 'PRESENT' : 'CREDENTIAL_MISSING',
+        authorization: !budget ? 'BUDGET_MISSING' : budget.expired ? 'AUTHORIZATION_EXPIRED' : budget.rates_stale ? 'RATE_CARD_STALE' : 'CURRENT',
+        spending: budget?.enabled ? 'ENABLED' : 'BUDGET_DISABLED', budget, edge }));
+      return;
+    }
+    requireBudget(budget);
+    requireLocal(edge.status === 'EDGE_READY', edge.status);
+    requireLocal(edge.credential_loaded && existsSync(providerFile), 'CREDENTIAL_MISSING: the current Edge has no provisioned local credential.');
+    requireLocal(edge.generation === budget.generation, 'EDGE_AUTHORIZATION_MISMATCH: restart Edge for the current approval.');
+    const armed = database.query(`select nestscout_private.kael_pilot_arm(${sqlLiteral(value.id)},
+      ${sqlLiteral(value.stack_id)}, ${sqlLiteral(budget.generation)}::timestamptz);`).trim();
+    requireLocal(armed === 'BUDGET_ENABLED', armed);
+    console.log(armed);
+    return;
+  });
+  if (action === 'close') return withLocalLock(() => {
+    database.query(`update nestscout_private.kael_pilot_budgets set enabled=false where id=${sqlLiteral(value.id)};`);
+    requireLocal(!existsSync(edgeFile),
+      'BUDGET_DISABLED: stop the Edge launcher before deleting local credentials.');
+    for (const file of [edgeFile, providerFile]) if (existsSync(file)) unlinkSync(file);
+    console.log('BUDGET_DISABLED: local provider files removed.');
+  });
   if (action === 'edge') {
     protectDirectory();
-    const key = providerKey();
-    requireLocal(!key || value.authorization, 'A provider key alone cannot authorize paid calls.');
-    if (key) parsePilotAuthorization(value.authorization);
-    database.query(`update nestscout_private.kael_pilot_budgets set enabled=${key ? 'true' : 'false'} where id=${sqlLiteral(value.id)};`);
-    writeFileSync(edgeFile, `KAEL_DEVELOPER_PILOT=local_8085\nKAEL_DEVELOPER_PILOT_ID=${value.id}\nKAEL_DEEPSEEK_MODEL=deepseek-flash\nDEEPSEEK_API_KEY=${key}\n`, { mode: 0o600 });
-    try { runtime.cli(['functions', 'serve', 'kael', '--env-file', edgeFile]); }
-    finally { if (existsSync(edgeFile)) unlinkSync(edgeFile); }
+    requireLocal(!existsSync(path.join(root, 'supabase/functions/.env')), 'Remove the local functions dotenv override before using the private pilot source.');
+    const budget = pilotBudget(database, value);
+    const key = option === '--offline' ? '' : providerKey();
+    if (key) requireBudget(budget);
+    await withLocalLock(() => {
+      requireLocal(!existsSync(edgeFile), 'EDGE_ALREADY_STARTED: stop the existing launcher before starting another.');
+      database.query(`update nestscout_private.kael_pilot_budgets set enabled=false where id=${sqlLiteral(value.id)};`);
+      writeFileSync(edgeFile, `KAEL_DEVELOPER_PILOT=local_8085\nKAEL_DEVELOPER_PILOT_ID=${value.id}\nKAEL_PILOT_GENERATION=${budget?.generation ?? ''}\nDEEPSEEK_API_KEY=${key}\n`, { flag: 'wx', mode: 0o600 });
+    });
+    try {
+      console.log(key ? 'EDGE_STARTING: use status, then arm once the authorized worker is ready.' : 'EDGE_STARTING_OFFLINE: spending disabled.');
+      runtime.cli(['functions', 'serve', 'kael', '--env-file', edgeFile]);
+    } finally {
+      try { database.query(`update nestscout_private.kael_pilot_budgets set enabled=false where id=${sqlLiteral(value.id)};`); }
+      finally { unlinkSync(edgeFile); }
+    }
     return;
   }
   const status = runtime.status();

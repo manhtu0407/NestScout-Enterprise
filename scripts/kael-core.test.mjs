@@ -15,7 +15,7 @@ import { createKaelHandler } from '../services/kael-core/src/gateway.ts';
 import { parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { baseEnv, harness, scriptedProvider, users } from './kael-test-harness.mjs';
 import { developerPilotProviders, pilotRoute, pilotServedModels } from '../services/kael-core/src/developer-pilot.ts';
-import { parsePilotAuthorization } from './kael-developer-pilot.mjs';
+import { parsePilotAuthorization, parsePilotRenewal } from './kael-developer-pilot.mjs';
 
 const encoder = new TextEncoder();
 
@@ -59,6 +59,29 @@ test('developer pilot authorization has no implicit cap, price, model, provider 
     { rates_checked_at: '2026-11-01T00:00:00Z' }, { expires_at: '2026-11-05T06:00:00Z' }, { max_calls: 21 }]) {
     assert.throws(() => parsePilotAuthorization({ ...valid, ...patch }, now));
   }
+});
+
+test('renewal requires a fresh explicit approval for this pilot and copies only approved fields', () => {
+  const now = new Date('2026-11-05T03:00:00Z');
+  const id = pilotEnv.KAEL_DEVELOPER_PILOT_ID;
+  const approval = { approval_id: crypto.randomUUID(), pilot_id: id, approved_at: now.toISOString(),
+    purpose: 'kael_developer_8085', provider: 'deepseek', model: 'deepseek-flash', owner_approved: true,
+    cap_micro_usd: 1000000, max_calls: 3, expires_at: '2026-11-05T03:30:00Z', rates_checked_at: now.toISOString(),
+    rate_source: 'https://api-docs.deepseek.com/quick_start/pricing/', input_rate: 0.3, cached_rate: 0.006, output_rate: 1.2 };
+  assert.deepEqual(parsePilotRenewal({ ...approval, extra: 'discard' }, id, now), approval);
+  assert.throws(() => parsePilotRenewal(approval, crypto.randomUUID(), now), /identify this pilot/);
+  assert.throws(() => parsePilotRenewal({ ...approval, approved_at: '2026-11-05T02:00:00Z' }, id, now), /one hour/);
+});
+
+test('local Edge probe identifies its pilot configuration without dispatching or exposing a key', async () => {
+  const generation = '2026-11-05T03:00:00.123456+00:00';
+  const env = { ...pilotEnv, KAEL_PILOT_GENERATION: generation };
+  const handler = createKaelHandler({ env, fetcher: async () => { throw new Error('Probe attempted a network call'); } });
+  const request = new Request('http://localhost/functions/v1/kael', { headers: { 'x-kael-pilot-probe': '1' } });
+  const result = await handler(request);
+  assert.deepEqual(await result.json(), { pilot_id: env.KAEL_DEVELOPER_PILOT_ID, generation,
+    credential_loaded: true, model: 'deepseek-flash' });
+  assert.equal((await createKaelHandler({ env: baseEnv })(request)).status, 405);
 });
 
 test('strict Flash streams validate actual identity and final cache-aware usage while streaming text', async () => {

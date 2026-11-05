@@ -914,11 +914,12 @@ retry/fallback that can silently generate another charge.
 
 Use the existing guarded stack commands first (`npm run db:start`, an initial
 `npm run db:reset` only for a new disposable stack, and `npm run db:types`).
-The local launcher has four explicit operations:
+The local launcher separates startup, authorization and spending.
 
 ```sh
 node scripts/kael-developer-pilot.mjs prepare
-node scripts/kael-developer-pilot.mjs edge
+node scripts/kael-developer-pilot.mjs edge --offline
+node scripts/kael-developer-pilot.mjs status
 node scripts/kael-developer-pilot.mjs preview
 node scripts/kael-developer-pilot.mjs close
 ```
@@ -944,13 +945,30 @@ rates were 0.3, 0.006 and 1.2 respectively. Reverify before enabling a session.
 The authorization JSON records the operator's actual owner approval; writing
 `owner_approved: true` without that approval does not confer permission.
 
-`edge` only enables that saved budget when a real key exists in the server-only
-`providers.env` in the same private directory (`DEEPSEEK_API_KEY=...`). It never
-downloads hosted secret values, calls providers during setup or enables a new
-budget after expiry. Hosted and local secrets are separate. `close` disables
-the budget and deletes task-owned provider/env files; then stop the Edge worker
-and restart without the key to clear in-memory credentials. Keep budget/call
-records for reconciliation; do not reset the stack to regain spending authority.
+For an existing session, use `status` to obtain its pilot ID and cumulative
+limits. After fresh explicit owner approval, record the fields listed above
+plus a new UUID `approval_id`, that `pilot_id`, and the actual `approved_at` as
+an ISO timestamp. Set expiry within one hour of approval. Then run
+`node scripts/kael-developer-pilot.mjs reauthorize ABSOLUTE_APPROVAL_PATH`.
+PostgreSQL appends an approval to the existing pilot and leaves the original
+window, accounts, conversations, calls and spend records in place. The
+cumulative money and request limits cannot increase, and unresolved accounting
+or a halt blocks renewal. Renewal leaves spending disabled.
+
+Place the locally provisioned key in the private `providers.env` as a single
+`DEEPSEEK_API_KEY=...` assignment. Hosted and local secrets are separate.
+Stop the offline Edge launcher, then run `edge` to load the key while spending
+is disabled. In another terminal, run `status` and then `arm` to enable
+spending after the local worker proves it loaded a credential for the current
+approval. The status command distinguishes a missing file, an expired
+authorization, a disabled budget and an unavailable Edge route. Actual
+provider failures appear as `kael_pilot_provider_failure` in the local Edge container log,
+with a run ID and classified failure kind.
+
+Stop the launcher and run `close` to disable spending and remove task-owned
+provider files. After an abnormal exit, verify that the owned launcher and
+worker have stopped before removing a stale private `edge.env` file. Keep all
+budget and call records for reconciliation.
 The session file contains disposable Auth passwords, not provider keys: protect
 it while needed and remove only these test accounts/credentials when retiring
 the preview.
