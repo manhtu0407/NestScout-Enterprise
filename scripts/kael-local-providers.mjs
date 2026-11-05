@@ -6,8 +6,10 @@ import path from 'node:path';
 const settings = {
   DEEPSEEK_API_KEY: /^[A-Za-z0-9_-]+$/,
   ANTHROPIC_API_KEY: /^[A-Za-z0-9_-]+$/,
+  PERPLEXITY_API_KEY: /^[A-Za-z0-9_-]+$/,
   KAEL_ANTHROPIC_MODEL: /^claude-[A-Za-z0-9._-]{1,72}$/,
   KAEL_MODEL_ROUTE: /^(deepseek|anthropic|deepseek,anthropic|anthropic,deepseek)$/,
+  KAEL_WEB_SEARCH: /^(enabled|disabled)$/,
 };
 const maxBytes = 4096;
 const windowsPrivateAcl = Buffer.from(`
@@ -75,7 +77,7 @@ export function discoverLocalProviders(home = os.homedir()) {
       closeSync(fd);
     }
     if (!env) return rejected('source_invalid');
-    if (!env.DEEPSEEK_API_KEY && !env.ANTHROPIC_API_KEY) return rejected('credential_missing');
+    if (!env.DEEPSEEK_API_KEY && !env.ANTHROPIC_API_KEY && !env.PERPLEXITY_API_KEY) return rejected('credential_missing');
     return { status: 'source_loaded', env };
   } catch {
     return rejected('source_inaccessible');
@@ -83,6 +85,12 @@ export function discoverLocalProviders(home = os.homedir()) {
 }
 
 export function providerSourceReport({ status, env }) {
-  return { source: status, deepseek: env.DEEPSEEK_API_KEY ? 'present' : 'absent',
-    anthropic: env.ANTHROPIC_API_KEY ? 'present' : 'absent', paid_probe: 'not_run' };
+  return {
+    source: status,
+    deepseek: env.DEEPSEEK_API_KEY ? 'present' : 'absent',
+    anthropic: env.ANTHROPIC_API_KEY ? 'present' : 'absent',
+    perplexity: env.PERPLEXITY_API_KEY ? 'present' : 'absent',
+    web_search: env.PERPLEXITY_API_KEY && env.KAEL_WEB_SEARCH === 'enabled' ? 'enabled' : 'disabled',
+    paid_probe: 'not_run',
+  };
 }

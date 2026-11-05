@@ -1195,6 +1195,9 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         const report = await readiness.json();
         assert.equal(report.database, 'verified');
         assert.equal(report.deepseek, 'credential_missing');
+        assert.equal(report.anthropic, 'credential_missing');
+        assert.equal(report.web_search, 'requires PERPLEXITY_API_KEY and KAEL_WEB_SEARCH=enabled');
+        assert.equal(report.effects, 'none');
         assert.equal(report.paid_probe, 'not_run');
         assert.ok(!JSON.stringify(report).includes(serviceKey));
       });
@@ -1265,6 +1268,55 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         assert.equal(snapshot.tasks.length, 0);
         traces.greeting = first.events;
         traces.restored = snapshot;
+      });
+      await t.test('opted-in web search passes fixture sources through Kael with real Auth and PostgreSQL', async () => {
+        const owner = await newUser();
+        const credential = 'fixture-no-provider-secret';
+        const source = { title: 'Fixture source', url: 'https://example.invalid/fixture', snippet: 'Fixture search result.' };
+        const prompt = 'Find a public source.';
+        let searchCalls = 0;
+        const fetcher = async (url, init) => {
+          if (new URL(url).origin === origin) return fetch(url, init);
+          assert.equal(url, 'https://api.perplexity.ai/search');
+          assert.equal(init.method, 'POST');
+          assert.ok(new Headers(init.headers).get('authorization') === `Bearer ${credential}`, 'Fixture credential did not stay on the search adapter');
+          assert.deepEqual(JSON.parse(init.body), { query: prompt, max_results: 5, max_tokens_per_page: 512 });
+          searchCalls++;
+          return Response.json({ results: [source] });
+        };
+        const run = (optIn, steps) => {
+          const provider = scriptedProvider('anthropic', steps);
+          return send(createKaelHandler({
+            env: { ...env, PERPLEXITY_API_KEY: credential, KAEL_WEB_SEARCH: optIn },
+            providers: () => [provider], fetcher, log: () => {},
+          }), owner);
+        };
+        const disabled = await run('disabled', [request => {
+          assert.ok(!request.tools.some(tool => tool.name === 'web_search'));
+          return { text: ['Search is disabled.'] };
+        }]);
+        assert.equal(end(disabled).type, 'run_completed');
+        assert.equal(searchCalls, 0);
+        const enabled = await run('enabled', [
+          request => {
+            assert.ok(request.tools.some(tool => tool.name === 'web_search'));
+            return { tools: [call('web_search', { query: prompt })] };
+          },
+          request => {
+            const [result] = lastToolResults(request);
+            assert.equal(result.outcome, 'succeeded');
+            assert.deepEqual(result.results, [{ ...source, date: null, lastUpdated: null }]);
+            return { text: [`[Fixture source](${source.url})`] };
+          },
+        ]);
+        assert.equal(end(enabled).type, 'run_completed');
+        assert.equal(searchCalls, 1);
+        assert.ok(!enabled.raw.includes(credential));
+        const snapshot = parseKaelConversationSnapshot(await rpc(owner, 'kael_conversation_state', { p_mode: 'client' }));
+        assert.equal(snapshot.conversationId, conversationOf(enabled));
+        assert.equal(snapshot.messages.at(-1).text, `[Fixture source](${source.url})`);
+        assert.equal(countEffects(owner), 0);
+        assert.equal(query(`select count(*) from nestscout_private.kael_approvals where owner_id='${owner.id}';`), '0');
       });
       await t.test('memory is explicit, isolated by account and mode, and independent of business state', async () => {
         const owner = await newUser();

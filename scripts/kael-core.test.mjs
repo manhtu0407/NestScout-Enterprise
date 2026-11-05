@@ -585,6 +585,10 @@ test('server configuration defaults to Flash and keeps other routes and effects 
   assert.equal(keysOnly.deepseek.model, 'deepseek-flash');
   assert.equal(keysOnly.perplexity, null, 'web search needs explicit enablement');
   assert.deepEqual(keysOnly.route, ['deepseek']);
+  const searchOnly = readKaelConfig({ ...baseEnv, PERPLEXITY_API_KEY: 'secret-p', KAEL_WEB_SEARCH: 'enabled' });
+  assert.ok(searchOnly.perplexity);
+  assert.deepEqual(searchOnly.route, [], 'search is not a chat model');
+  assert.equal(readKaelConfig({ ...baseEnv, KAEL_WEB_SEARCH: 'enabled' }).perplexity, null, 'search needs a server credential');
   assert.deepEqual(readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, [],
     'Anthropic is not an implicit fallback when Flash is unavailable');
   const full = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-flash', KAEL_MODEL_ROUTE: 'deepseek,anthropic', KAEL_ENABLED_EFFECTS: 'service_request_submit,mark_paid' });

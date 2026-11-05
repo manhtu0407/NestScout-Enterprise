@@ -68,6 +68,7 @@ export function validateLocalConfig(config, linked) {
 const localKaelPrefix = 'NESTSCOUT_LOCAL_';
 const localKaelSettings = [
   'DEEPSEEK_API_KEY', 'ANTHROPIC_API_KEY', 'KAEL_ANTHROPIC_MODEL', 'KAEL_MODEL_ROUTE',
+  'PERPLEXITY_API_KEY', 'KAEL_WEB_SEARCH',
   'KAEL_DEVELOPER_PILOT', 'KAEL_DEVELOPER_PILOT_ID', 'KAEL_PILOT_GENERATION', 'KAEL_PILOT_WORKER_ID',
 ];
 

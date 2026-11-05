@@ -242,7 +242,12 @@ Administrators. The launcher checks permissions and never changes them.
 The UTF-8 file accepts one plain `NAME=value` assignment per setting, plus blank
 lines and full-line comments. Supply `DEEPSEEK_API_KEY` and/or `ANTHROPIC_API_KEY`.
 For Anthropic also set `KAEL_ANTHROPIC_MODEL` and select it in `KAEL_MODEL_ROUTE`.
-The normal default route is DeepSeek. Ambient provider and pilot variables are
+The normal default route is DeepSeek. To enable the separate Perplexity Search
+tool, set `PERPLEXITY_API_KEY` and `KAEL_WEB_SEARCH=enabled`. Search stays off if
+either setting is absent or `KAEL_WEB_SEARCH=disabled`. The credentials report
+shows presence and effective search opt-in. Perplexity is available only through
+`web_search`; chat still requires a configured DeepSeek or Anthropic route.
+Ambient provider and pilot variables are
 discarded, and the launcher rejects shared and Kael function dotenv overrides.
 Missing or rejected sources stop provider-enabled launch. A valid source is
 reusable across trusted worktrees under the same OS account. Docker and the OS

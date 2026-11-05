@@ -68,6 +68,7 @@ test('Kael can serve on the isolated local stack without changing phone authenti
   assert.deepEqual(Object.keys(config.functions.kael), ['env']);
   assert.deepEqual({ ...config.functions.kael.env }, Object.fromEntries([
     'DEEPSEEK_API_KEY', 'ANTHROPIC_API_KEY', 'KAEL_ANTHROPIC_MODEL', 'KAEL_MODEL_ROUTE',
+    'PERPLEXITY_API_KEY', 'KAEL_WEB_SEARCH',
     'KAEL_DEVELOPER_PILOT', 'KAEL_DEVELOPER_PILOT_ID', 'KAEL_PILOT_GENERATION', 'KAEL_PILOT_WORKER_ID',
   ].map(name => [name, `env(NESTSCOUT_LOCAL_${name})`])));
   assert.equal(config.edge_runtime.secrets, undefined);
@@ -84,11 +85,15 @@ test('accept isolated config and reject linked, legacy, static-port and declarat
 });
 
 test('provider injection rejects shared bindings, sibling bindings and a redirected Kael entry point', () => {
-  const settings = { DEEPSEEK_API_KEY: 'fixture-only', KAEL_ENABLED_EFFECTS: 'unapproved' };
-  assert.deepEqual(scopedKaelEnvironment(config, settings), { NESTSCOUT_LOCAL_DEEPSEEK_API_KEY: 'fixture-only' });
-  const binding = { VALUE: 'env(nestscout_local_deepseek_api_key)' };
-  assert.throws(() => scopedKaelEnvironment({ ...config, edge_runtime: { ...config.edge_runtime, secrets: binding } }, settings), /shared or other/);
-  assert.throws(() => scopedKaelEnvironment({ ...config, functions: { ...config.functions, sibling: { env: binding } } }, settings), /shared or other/);
+  const settings = { DEEPSEEK_API_KEY: 'fixture-only', PERPLEXITY_API_KEY: 'fixture-only', KAEL_WEB_SEARCH: 'enabled', KAEL_ENABLED_EFFECTS: 'unapproved' };
+  assert.deepEqual(scopedKaelEnvironment(config, settings), {
+    NESTSCOUT_LOCAL_DEEPSEEK_API_KEY: 'fixture-only', NESTSCOUT_LOCAL_PERPLEXITY_API_KEY: 'fixture-only', NESTSCOUT_LOCAL_KAEL_WEB_SEARCH: 'enabled',
+  });
+  for (const name of ['deepseek_api_key', 'perplexity_api_key', 'kael_web_search']) {
+    const binding = { VALUE: `env(nestscout_local_${name})` };
+    assert.throws(() => scopedKaelEnvironment({ ...config, edge_runtime: { ...config.edge_runtime, secrets: binding } }, settings), /shared or other/);
+    assert.throws(() => scopedKaelEnvironment({ ...config, functions: { ...config.functions, sibling: { env: binding } } }, settings), /shared or other/);
+  }
   assert.throws(() => scopedKaelEnvironment({ ...config, functions: { kael: { ...config.functions.kael, entrypoint: './sibling.ts' } } }, settings), /default Kael function/);
 });
 
@@ -167,7 +172,8 @@ test('reject every dotenv/link override and scrub case-insensitive ambient targe
     }
     assert.deepEqual(localEnvironment({ PATH: 'fixture', supabase_access_token: 'synthetic', PgPaSsWoRd: 'synthetic', database_url: 'synthetic', GIT_WORK_TREE: 'other', GIT_CONFIG_COUNT: '1', git_object_directory: 'other', GIT_NAMESPACE: 'other' }), { PATH: 'fixture', DO_NOT_TRACK: '1' });
     assert.deepEqual(localEnvironment({ DeepSeek_API_KEY: 'ambient', ANTHROPIC_API_KEY: 'ambient',
-      NESTSCOUT_LOCAL_DEEPSEEK_API_KEY: 'ambient', Kael_Developer_Pilot: 'ambient', PERPLEXITY_API_KEY: 'ambient' }), { DO_NOT_TRACK: '1' });
+      NESTSCOUT_LOCAL_DEEPSEEK_API_KEY: 'ambient', Kael_Developer_Pilot: 'ambient', PERPLEXITY_API_KEY: 'ambient',
+      NESTSCOUT_LOCAL_PERPLEXITY_API_KEY: 'ambient', NESTSCOUT_LOCAL_KAEL_WEB_SEARCH: 'ambient', KAEL_WEB_SEARCH: 'ambient' }), { DO_NOT_TRACK: '1' });
     const docker = localEnvironment({ docker_host: 'tcp://example.invalid:2376', docker_context: 'fixture' });
     assert.equal(docker.DOCKER_CONTEXT, 'fixture');
     assert.throws(() => validateDockerEndpoint(docker.DOCKER_HOST));
