@@ -112,9 +112,13 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
               throw new ProviderError('deepseek', 'incomplete', 'The completion reason was not recognized.', started);
             }
           }
-          if (typeof chunk.model === 'string' && /^deepseek-[a-z0-9][a-z0-9._-]{0,70}$/i.test(chunk.model)) {
-            if (servedModel !== null && servedModel !== chunk.model) throw new ProviderError('deepseek', 'incomplete', 'The served model changed within the stream.', started);
-            servedModel = chunk.model;
+          const reportedModel = typeof chunk.model === 'string' && /^deepseek-[a-z0-9][a-z0-9._-]{0,70}$/i.test(chunk.model) ? chunk.model : null;
+          if (config.verifiedModels && chunk.model !== undefined && reportedModel === null) {
+            throw new ProviderError('deepseek', 'incomplete', 'The served model identity was malformed.', started);
+          }
+          if (reportedModel !== null) {
+            if (servedModel !== null && servedModel !== reportedModel) throw new ProviderError('deepseek', 'incomplete', 'The served model changed within the stream.', started);
+            servedModel = reportedModel;
           }
           if (config.verifiedModels && (servedModel === null || !config.verifiedModels.includes(servedModel))) {
             throw new ProviderError('deepseek', 'incomplete', 'The served model identity was not authorized.', started);

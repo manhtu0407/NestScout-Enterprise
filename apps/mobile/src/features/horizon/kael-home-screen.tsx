@@ -52,8 +52,6 @@ type Props = {
 const noTasks: readonly KaelTask[] = [];
 const noApprovals: readonly KaelApproval[] = [];
 
-type Footer = { top: number; height: number };
-
 export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, draftImages, onDraftImagesChange, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null }: Props) {
   const reduceMotion = useReduceMotion();
   const [inset] = useState(() => new Animated.Value(topInset));
@@ -82,7 +80,8 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuNotice, setMenuNotice] = useState<string | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
-  const [footer, setFooter] = useState<Footer | null>(null);
+  const [rootHeight, setRootHeight] = useState(0);
+  const [footerHeight, setFooterHeight] = useState(0);
   const { progress, landing, reaction, react } = useKaelMotion(chatActive, reduceMotion);
   const expression = expressionForPhase(kaelPhase);
   const previousExpression = useRef(expression);
@@ -110,8 +109,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
     if (chatActive && expression !== null) react();
   }, [chatActive, expression, react]);
 
-  const footerHeight = footer?.height ?? 0;
-  const seatTop = footer?.top ?? null;
+  const seatTop = rootHeight > 0 && footerHeight > 0 ? Math.max(0, rootHeight - footerHeight) : null;
   const enterChat = () => setChatActive(true);
 
   const notify = (message: string) => setMenuNotice(message);
@@ -134,7 +132,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
   const chatOpacity = progress.interpolate({ inputRange: [0, metrics.chatFadeStart, 1], outputRange: [0, 0, 1] });
   const chatShift = progress.interpolate({ inputRange: [0, 1], outputRange: [metrics.chatEnterOffset, 0] });
 
-  return <View style={styles.root}>
+  return <View testID="kael-home-layout" style={styles.root} onLayout={event => setRootHeight(event.nativeEvent.layout.height)}>
     <Animated.View pointerEvents={chatActive ? 'box-none' : 'none'} style={[styles.layer, { bottom: footerHeight, opacity: chatOpacity, transform: [{ translateY: chatShift }] }]}>
       <Animated.ScrollView ref={conversationRef} onContentSizeChange={followContent} onScroll={trackScroll} onScrollBeginDrag={() => { following.current = false; }} scrollEventThrottle={metrics.scrollThrottle} style={[styles.conversation, { top: Animated.add(inset, metrics.conversationTop) }]} contentContainerStyle={styles.conversationContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {messages.map(m => m.role === 'user'
@@ -152,7 +150,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
     </Animated.View>
     <KaelIntro progress={progress} footerHeight={footerHeight} interactive={!chatActive}/>
     <KaelStage progress={progress} landing={landing} reaction={reaction} expression={expression} nod={kaelPhase === 'completed'} seatTop={seatTop} navHeight={metrics.navHeight}/>
-    <View style={styles.footer} onLayout={event => setFooter({ top: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height })}>
+    <View testID="kael-footer-layout" style={styles.footer} onLayout={event => setFooterHeight(event.nativeEvent.layout.height)}>
       <ChatComposer key={conversationKey} value={input} onChange={value => { setMenuNotice(null); onInput(value); }} onSubmit={images => { enterChat(); onSubmit(images); }} error={composerError ?? menuNotice} onMediaChange={() => { setMenuNotice(null); onClearComposerError(); }} initialImages={draftImages} onImagesChange={onDraftImagesChange} mediaExternallyManaged={Boolean(onDraftImagesChange)} locked={draftLocked} onFocus={enterChat}/>
       <Text style={styles.disclaimer}>Kael có thể mắc sai sót. Hãy kiểm tra thông tin quan trọng.</Text>
     </View>

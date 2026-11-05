@@ -115,7 +115,8 @@ test('strict Flash denies foreign models, absent or inconsistent usage and trunc
   for (const payload of [pilotStream('deepseek-v4-pro'), pilotStream('', validUsage), pilotStream(undefined, null),
     pilotStream(undefined, { ...validUsage, total_tokens: 111 }), pilotStream(undefined, { ...validUsage, prompt_cache_hit_tokens: -1 }),
     pilotStream(undefined, { ...validUsage, completion_tokens: '10' }), pilotStream().replace('data: [DONE]\n\n', ''),
-    pilotStream().replace('DeepSeek-V4.1-Flash-1017', 'deepseek-flash')]) {
+    pilotStream().replace('DeepSeek-V4.1-Flash-1017', 'deepseek-flash'),
+    pilotStream().replace(/"model":"DeepSeek-V4\.1-Flash-1017","choices":\[\]/, '"model":"unexpected provider model","choices":[]')]) {
     const provider = createDeepSeekProvider({ ...deepseekConfig, verifiedModels: pilotServedModels }, async () => pilotResponse(streamOf([payload])));
     await assert.rejects(provider.complete(request(), () => {}), error => error instanceof ProviderError);
   }
