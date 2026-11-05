@@ -50,13 +50,15 @@ export class ProviderError extends Error {
   readonly kind: ProviderErrorKind;
   readonly provider: ProviderId;
   readonly outputStarted: boolean;
+  readonly httpStatus: number | undefined;
 
-  constructor(provider: ProviderId, kind: ProviderErrorKind, message: string, outputStarted = false) {
+  constructor(provider: ProviderId, kind: ProviderErrorKind, message: string, outputStarted = false, httpStatus?: number) {
     super(message);
     this.name = 'ProviderError';
     this.provider = provider;
     this.kind = kind;
     this.outputStarted = outputStarted;
+    this.httpStatus = httpStatus;
   }
 }
 

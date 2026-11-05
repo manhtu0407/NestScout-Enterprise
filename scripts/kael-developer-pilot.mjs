@@ -19,7 +19,7 @@ export function parsePilotAuthorization(value, now = new Date()) {
     && value.provider === 'deepseek' && value.owner_approved === true, 'Explicit Flash-only owner authorization is required.');
   requireLocal(Number.isSafeInteger(value.cap_micro_usd) && value.cap_micro_usd > 0 && value.cap_micro_usd <= 1000000,
     'The authorized cap must be at most USD 1.');
-  requireLocal(Number.isSafeInteger(value.max_calls) && value.max_calls > 0 && value.max_calls <= 20, 'Invalid request cap.');
+  requireLocal(Number.isInteger(value.max_calls) && value.max_calls > 0 && value.max_calls <= 2147483647, 'Invalid request cap.');
   const checked = Date.parse(value.rates_checked_at);
   const expires = Date.parse(value.expires_at);
   requireLocal(Number.isFinite(checked) && checked <= now.getTime() && now.getTime() - checked < 86400000
@@ -98,12 +98,12 @@ async function prepare(runtime, authorizationFile) {
     budget: 'DISABLED', live_provider_status: 'LIVE_PROVIDER_NOT_RUN' }));
 }
 
-function providerKey() {
+function providerKey(protect = false) {
   if (!existsSync(providerFile)) return '';
   const file = lstatSync(providerFile);
   requireLocal(file.isFile() && file.nlink === 1 && file.size <= 4096, 'CREDENTIAL_INVALID: expected a small regular private providers.env file.');
   if (process.platform === 'win32') {
-    execFileSync('icacls', [providerFile, '/reset'], { stdio: 'ignore', windowsHide: true });
+    if (protect) execFileSync('icacls', [providerFile, '/reset'], { stdio: 'ignore', windowsHide: true });
   } else {
     requireLocal((file.mode & 0o077) === 0 && file.uid === process.getuid(), 'CREDENTIAL_INVALID: providers.env must be owner-only.');
   }
@@ -137,7 +137,7 @@ function requireBudget(budget) {
   requireLocal(budget.calls < budget.max_calls && budget.committed_micro_usd < budget.cap_micro_usd, 'BUDGET_EXHAUSTED: cumulative limit reached.');
 }
 
-async function probeEdge(runtime, value) {
+async function probeEdge(runtime, value, budget) {
   const { env } = runtime.status();
   try {
     const response = await fetch(`${value.origin}/functions/v1/kael`, {
@@ -145,12 +145,26 @@ async function probeEdge(runtime, value) {
       signal: AbortSignal.timeout(5000), redirect: 'error',
     });
     if (!response.ok) {
-      await response.body?.cancel();
+      if (response.status === 503 && (await response.json().catch(() => null))?.status === 'EDGE_INVALID_CONFIG') {
+        return { status: 'EDGE_INVALID_CONFIG' };
+      }
+      if (!response.bodyUsed) await response.body?.cancel();
       return { status: 'EDGE_UNAVAILABLE', http_status: response.status };
     }
     const result = await response.json();
     if (result?.pilot_id !== value.id || result.model !== 'deepseek-flash' || typeof result.credential_loaded !== 'boolean') {
       return { status: 'EDGE_SESSION_MISMATCH' };
+    }
+    const launch = existsSync(edgeFile) ? readFileSync(edgeFile, 'utf8') : '';
+    const worker = /^KAEL_PILOT_WORKER_ID=([0-9a-f-]{36})$/m.exec(launch)?.[1];
+    const loaded = /^DEEPSEEK_API_KEY=.+$/m.test(launch);
+    let key;
+    try { key = launch.includes('KAEL_PILOT_OFFLINE=1\n') ? '' : providerKey(); }
+    catch { return { status: 'EDGE_INVALID_CONFIG' }; }
+    if (!worker || worker !== result.worker_id || loaded !== result.credential_loaded
+      || (budget?.generation ?? null) !== result.generation
+      || !launch.split('\n').includes(`DEEPSEEK_API_KEY=${key}`)) {
+      return { status: 'EDGE_STALE', credential_loaded: result.credential_loaded };
     }
     return { status: 'EDGE_READY', credential_loaded: result.credential_loaded, generation: result.generation };
   } catch {
@@ -180,14 +194,20 @@ export async function developerPilotCommand(args) {
   if (action === 'status' || action === 'arm') return withLocalLock(async () => {
     const budget = pilotBudget(database, value);
     if (action === 'status') {
-      const edge = await probeEdge(runtime, value);
-      console.log(JSON.stringify({ pilot_id: value.id, origin: value.origin, credential_source: existsSync(providerFile) ? 'PRESENT' : 'CREDENTIAL_MISSING',
+      let credentialSource;
+      try { credentialSource = providerKey() ? 'PRESENT' : 'CREDENTIAL_MISSING'; }
+      catch { credentialSource = 'CREDENTIAL_INVALID'; }
+      const edge = await probeEdge(runtime, value, budget);
+      console.log(JSON.stringify({ pilot_id: value.id, origin: value.origin, credential_source: credentialSource,
         credential_file: providerFile,
         authorization: !budget ? 'BUDGET_MISSING' : budget.expired ? 'AUTHORIZATION_EXPIRED' : budget.rates_stale ? 'RATE_CARD_STALE' : 'CURRENT',
         spending: budget?.enabled ? 'ENABLED' : 'BUDGET_DISABLED', budget, edge }));
       return;
     }
     requireBudget(budget);
+    const edge = await probeEdge(runtime, value, budget);
+    requireLocal(edge.status === 'EDGE_READY', edge.status);
+    requireLocal(edge.credential_loaded, 'CREDENTIAL_MISSING: the current Edge has no local credential.');
     const armed = database.query(`select nestscout_private.kael_pilot_arm(${sqlLiteral(value.id)},
       ${sqlLiteral(value.stack_id)}, ${sqlLiteral(budget.generation)}::timestamptz);`).trim();
     requireLocal(armed === 'BUDGET_ENABLED', armed);
@@ -203,10 +223,10 @@ export async function developerPilotCommand(args) {
     protectDirectory(serverDirectory);
     requireLocal(!existsSync(path.join(root, 'supabase/functions/.env')), 'Remove the local functions dotenv override before using the private pilot source.');
     const budget = pilotBudget(database, value);
-    const key = option === '--offline' ? '' : providerKey();
+    const key = option === '--offline' ? '' : providerKey(true);
     await withLocalLock(() => {
       requireLocal(!existsSync(edgeFile), 'EDGE_ALREADY_STARTED: stop the existing launcher before starting another.');
-      writeFileSync(edgeFile, `KAEL_DEVELOPER_PILOT=local_8085\nKAEL_DEVELOPER_PILOT_ID=${value.id}\nKAEL_PILOT_GENERATION=${budget?.generation ?? ''}\nDEEPSEEK_API_KEY=${key}\n`, { flag: 'wx', mode: 0o600 });
+      writeFileSync(edgeFile, `KAEL_DEVELOPER_PILOT=local_8085\nKAEL_DEVELOPER_PILOT_ID=${value.id}\nKAEL_PILOT_GENERATION=${budget?.generation ?? ''}\nKAEL_PILOT_WORKER_ID=${randomUUID()}\nKAEL_PILOT_OFFLINE=${option === '--offline' ? 1 : 0}\nKAEL_DEEPSEEK_MODEL=deepseek-flash\nDEEPSEEK_API_KEY=${key}\n`, { flag: 'wx', mode: 0o600 });
     });
     try {
       console.log(key ? 'EDGE_STARTING: server credential configured; spending follows the existing budget.' : 'EDGE_STARTING_OFFLINE: provider credential not loaded.');
@@ -216,6 +236,8 @@ export async function developerPilotCommand(args) {
     }
     return;
   }
+  const edge = await probeEdge(runtime, value, pilotBudget(database, value));
+  requireLocal(edge.status === 'EDGE_READY', edge.status);
   const status = runtime.status();
   const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^(EXPO_PUBLIC_|KAEL_|DEEPSEEK_|ANTHROPIC_|PERPLEXITY_|SUPABASE_)|(?:KEY|TOKEN|SECRET|PASSWORD)$/i.test(name)));
   execFileSync(process.execPath, [path.join(root, 'node_modules/expo/bin/cli'), 'start', '--web', '--port', '8085', '--localhost'], {

@@ -159,5 +159,13 @@ select is(pg_temp.renewed_charge('settle')->>'estimated_micro_usd', '31', 'The c
 select is(pg_temp.renewed_charge('reserve',gen_random_uuid())->>'reason', 'budget_exhausted',
   'The renewed limit counts the previous and current calls together');
 reset role;
+update nestscout_private.kael_pilot_budgets set enabled=false where id='80850000-0000-4000-8000-000000000008';
+select is(pg_temp.renew(jsonb_build_object(
+    'approval_id',gen_random_uuid(),'approved_at',clock_timestamp(),'max_calls',35)),
+  'REAUTHORIZED_DISABLED', 'Fresh approval can set a request cap above 20 without resetting spend');
+select is((select max_calls from nestscout_private.kael_pilot_effective_budget where id='80850000-0000-4000-8000-000000000008'),
+  35, 'The approved request cap is configurable');
+select is((select sum(estimated_micro_usd)::bigint from nestscout_private.kael_pilot_calls where pilot_id='80850000-0000-4000-8000-000000000008'),
+  62::bigint, 'Changing request capacity preserves previous charges');
 select * from finish();
 rollback;

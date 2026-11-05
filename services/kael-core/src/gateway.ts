@@ -113,13 +113,17 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
   const generation = dependencies.env.KAEL_PILOT_GENERATION;
   const pilotGeneration = generation && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(generation)
     ? generation : undefined;
+  const worker = dependencies.env.KAEL_PILOT_WORKER_ID;
+  const pilotWorker = worker && /^[0-9a-f-]{36}$/.test(worker) ? worker : null;
 
   return async function handle(request: Request): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
-    if (request.method === 'GET' && config?.developerPilotId && request.headers.get('x-kael-pilot-probe') === '1') {
+    if (request.method === 'GET' && dependencies.env.KAEL_DEVELOPER_PILOT && request.headers.get('x-kael-pilot-probe') === '1') {
+      if (!config?.developerPilotId) return json(503, { status: 'EDGE_INVALID_CONFIG' });
       return new Response(JSON.stringify({
         pilot_id: config.developerPilotId,
         generation: pilotGeneration ?? null,
+        worker_id: pilotWorker,
         credential_loaded: config.deepseek !== null,
         model: deepseekFlashModel,
       }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
@@ -205,7 +209,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
             actor, config: config as KaelConfig, store, rest,
             providers: config?.developerPilotId
               ? developerPilotProviders(config, actor.userId, runId, turn.action.text, fetcher,
-                kind => log({ event: 'kael_pilot_provider_failure', run_id: runId, kind }), pilotGeneration)
+                (kind, httpStatus) => log({ event: 'kael_pilot_provider_failure', run_id: runId, kind, http_status: httpStatus ?? null }), pilotGeneration)
               : (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config as KaelConfig),
             fetcher, runId, conversationId, emit, signal: controller.signal, today: todayIn(now()), log,
           })
@@ -216,7 +220,8 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
       } catch {
         result = { status: 'failed', text: '', complete: false, provider: null, model: null, requestedModel: null, inputTokens: 0, outputTokens: 0, steps: 0, error: 'internal' };
       }
-      const status = result.status === 'completed' ? 'completed' : controller.signal.aborted ? 'interrupted' : result.status;
+      let status: RunOutcome['status'] | 'interrupted' = result.status === 'completed'
+        ? 'completed' : controller.signal.aborted ? 'interrupted' : result.status;
       try {
         await store.finishRun({
           runId, status, text: result.text, complete: result.complete, provider: result.provider, model: result.model,
@@ -224,7 +229,10 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         });
       } catch {
         log({ event: 'kael_finish_failed', run_id: runId });
-        if (result.status === 'completed') result = { ...result, status: 'failed', error: 'internal' };
+        if (result.status === 'completed') {
+          status = 'failed';
+          result = { ...result, status, error: 'internal' };
+        }
       }
       log({
         event: 'kael_run', run_id: runId, action: turn.action.type, status, provider: result.provider, model: result.model, requested_model: result.requestedModel,

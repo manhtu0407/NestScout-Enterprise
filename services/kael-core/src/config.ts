@@ -79,9 +79,10 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   const deepseekKey = value(env, 'DEEPSEEK_API_KEY');
   const pilotFlag = value(env, 'KAEL_DEVELOPER_PILOT');
   const pilotId = value(env, 'KAEL_DEVELOPER_PILOT_ID');
+  const deepseekModel = value(env, 'KAEL_DEEPSEEK_MODEL') ?? deepseekFlashModel;
   if (pilotFlag && (pilotFlag !== 'local_8085' || !pilotId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pilotId)
+    || deepseekModel !== deepseekFlashModel
     || !/^http:\/\/(?:127\.0\.0\.1|localhost|host\.docker\.internal|host\.supabase\.internal)(?::\d+)?\/?$/.test(supabaseUrl))) return null;
-  const deepseekModel = pilotFlag ? deepseekFlashModel : value(env, 'KAEL_DEEPSEEK_MODEL') ?? deepseekFlashModel;
   const deepseek = deepseekKey ? {
     apiKey: deepseekKey, model: deepseekModel, thinking: value(env, 'KAEL_DEEPSEEK_THINKING') === 'enabled', timeoutMs: modelTimeoutMs,
   } : null;

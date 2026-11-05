@@ -34,8 +34,9 @@ test('developer pilot requires local identity and isolates all unapproved provid
   assert.equal(readKaelConfig({ ...pilotEnv, SUPABASE_URL: baseEnv.SUPABASE_URL }), null);
   assert.equal(readKaelConfig({ ...pilotEnv, KAEL_DEVELOPER_PILOT: 'enabled' }), null);
   assert.equal(readKaelConfig({ ...pilotEnv, KAEL_DEVELOPER_PILOT_ID: '' }), null);
+  assert.equal(readKaelConfig({ ...pilotEnv, KAEL_DEEPSEEK_MODEL: 'unapproved-pro' }), null);
   const config = readKaelConfig({ ...pilotEnv, ANTHROPIC_API_KEY: 'test-key', KAEL_ANTHROPIC_MODEL: 'unapproved',
-    KAEL_DEEPSEEK_MODEL: 'unapproved-pro', PERPLEXITY_API_KEY: 'test-key', KAEL_WEB_SEARCH: 'enabled',
+    KAEL_DEEPSEEK_MODEL: 'deepseek-flash', PERPLEXITY_API_KEY: 'test-key', KAEL_WEB_SEARCH: 'enabled',
     KAEL_ENABLED_EFFECTS: 'service_request_submit', KAEL_ESTIMATE_PREVIEW: 'local_only' });
   assert.deepEqual(config.route, ['deepseek']);
   assert.equal(config.deepseek.model, 'deepseek-flash');
@@ -54,9 +55,10 @@ test('developer pilot authorization has no implicit cap, price, model, provider 
     cap_micro_usd: 1000000, max_calls: 20, rates_checked_at: '2026-11-05T03:55:00Z', expires_at: '2026-11-05T04:30:00Z',
     rate_source: 'https://api-docs.deepseek.com/quick_start/pricing/', input_rate: 0.3, cached_rate: 0.006, output_rate: 1.2 };
   assert.equal(parsePilotAuthorization(valid, now), valid);
+  assert.equal(parsePilotAuthorization({ ...valid, max_calls: 35 }, now).max_calls, 35);
   for (const patch of [{ cap_micro_usd: 1000001 }, { model: 'deepseek-v4-pro' }, { provider: 'anthropic' },
     { owner_approved: false }, { input_rate: 0 }, { output_rate: undefined }, { cached_rate: NaN },
-    { rates_checked_at: '2026-11-01T00:00:00Z' }, { expires_at: '2026-11-05T06:00:00Z' }, { max_calls: 21 }]) {
+    { rates_checked_at: '2026-11-01T00:00:00Z' }, { expires_at: '2026-11-05T06:00:00Z' }, { max_calls: 0 }, { max_calls: 2147483648 }]) {
     assert.throws(() => parsePilotAuthorization({ ...valid, ...patch }, now));
   }
 });
@@ -75,12 +77,16 @@ test('renewal requires a fresh explicit approval for this pilot and copies only 
 
 test('local Edge probe identifies its pilot configuration without dispatching or exposing a key', async () => {
   const generation = '2026-11-05T03:00:00.123456+00:00';
-  const env = { ...pilotEnv, KAEL_PILOT_GENERATION: generation };
+  const worker = crypto.randomUUID();
+  const env = { ...pilotEnv, KAEL_PILOT_GENERATION: generation, KAEL_PILOT_WORKER_ID: worker };
   const handler = createKaelHandler({ env, fetcher: async () => { throw new Error('Probe attempted a network call'); } });
   const request = new Request('http://localhost/functions/v1/kael', { headers: { 'x-kael-pilot-probe': '1' } });
   const result = await handler(request);
-  assert.deepEqual(await result.json(), { pilot_id: env.KAEL_DEVELOPER_PILOT_ID, generation,
+  assert.deepEqual(await result.json(), { pilot_id: env.KAEL_DEVELOPER_PILOT_ID, generation, worker_id: worker,
     credential_loaded: true, model: 'deepseek-flash' });
+  const invalid = await createKaelHandler({ env: { ...env, KAEL_DEEPSEEK_MODEL: 'wrong-model' } })(request);
+  assert.equal(invalid.status, 503);
+  assert.deepEqual(await invalid.json(), { status: 'EDGE_INVALID_CONFIG' });
   assert.equal((await createKaelHandler({ env: baseEnv })(request)).status, 405);
 });
 
@@ -166,6 +172,26 @@ test('uncertain usage holds the reservation and stops further paid requests afte
   await assert.rejects(provider.complete(request(), delta => seen.push(delta)), error => error.kind === 'incomplete');
   assert.deepEqual(actions, ['reserve', 'uncertain']);
   assert.deepEqual(seen, ['Chào bạn']);
+});
+
+test('pilot diagnostics distinguish HTTP rejection, timeout and invalid SSE without logging provider content', async () => {
+  const fixtures = [
+    ['auth', 401, () => new Response('private provider body', { status: 401 })],
+    ['timeout', undefined, () => { throw new DOMException('private transport detail', 'TimeoutError'); }],
+    ['incomplete', undefined, () => pilotResponse('data: malformed\n\n')],
+  ];
+  for (const [kind, status, response] of fixtures) {
+    const diagnostics = [];
+    const actions = [];
+    const provider = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', async (url, init) => {
+      if (url === deepseekEndpoint) return response();
+      actions.push(JSON.parse(init.body).p_action);
+      return Response.json({ ok: true });
+    }, (...details) => diagnostics.push(details))[0];
+    await assert.rejects(provider.complete(request(), () => {}), error => error.kind === kind);
+    assert.deepEqual(diagnostics, [[kind, status]]);
+    assert.deepEqual(actions, ['reserve', 'uncertain']);
+  }
 });
 
 test('paid stream lifecycle violations retain reservations rather than settling a fabricated completion', async () => {

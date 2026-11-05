@@ -72,10 +72,11 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
           signal,
           redirect: 'error',
         });
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
           await response.body?.cancel();
-          throw new ProviderError('deepseek', classifyStatus(response.status), `DeepSeek responded with HTTP ${response.status}.`);
+          throw new ProviderError('deepseek', classifyStatus(response.status), `DeepSeek responded with HTTP ${response.status}.`, false, response.status);
         }
+        if (!response.body) throw new ProviderError('deepseek', 'incomplete', 'The provider did not return a stream body.');
         if (config.verifiedModels && !/^text\/event-stream(?:;|$)/i.test(response.headers.get('content-type') ?? '')) {
           await response.body.cancel();
           throw new ProviderError('deepseek', 'incomplete', 'The provider did not return an SSE stream.');
@@ -179,7 +180,8 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
           providerState: { provider: 'deepseek', model: config.model, data: { reasoning } satisfies DeepSeekState },
         };
       } catch (error) {
-        if (error instanceof SyntaxError) throw new ProviderError('deepseek', started ? 'incomplete' : 'server', 'DeepSeek sent malformed stream data.', started);
+        if (error instanceof SyntaxError) throw new ProviderError('deepseek', 'incomplete', 'DeepSeek sent malformed stream data.', started);
+        if (signal.aborted && !request.signal.aborted) throw classifyThrown('deepseek', signal.reason, request.signal, started);
         throw classifyThrown('deepseek', error, request.signal, started);
       }
     },

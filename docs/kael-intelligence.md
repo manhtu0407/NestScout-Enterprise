@@ -936,7 +936,8 @@ tokens. Reconciliation uses actual final cache-hit/cache-miss/output usage,
 including reasoning in completion tokens, rounded up to micro-USD. Costs are
 conservative estimates, not provider billing statements.
 
-The profile allows at most 20 charged calls, three calls per turn, two million
+Each approval specifies its cumulative charged-call limit. The profile keeps
+the existing account rate limit, three calls per turn, two million
 total tokens including the next reservation, 4,096 output tokens per request,
 60,000 serialized request bytes and a fresh explicit rate card. Rates expire
 after 24 hours; the launcher accepts authorization lasting at most one hour.
@@ -986,8 +987,9 @@ an ISO timestamp. Set expiry within one hour of approval. Then run
 `node scripts/kael-developer-pilot.mjs reauthorize ABSOLUTE_APPROVAL_PATH`.
 PostgreSQL appends an approval to the existing pilot and leaves the original
 window, accounts, conversations, calls and spend records in place. The
-cumulative money and request limits cannot increase, and unresolved accounting
-or a halt blocks renewal. Renewal leaves spending disabled.
+cumulative money limit cannot increase. A fresh approval may set a different
+positive `max_calls`. Prior calls still count and unresolved accounting or a
+halt blocks renewal. Renewal leaves spending disabled.
 
 Provision the local server key once in
 `~/.codex/private/kael-server/providers.env` as a single
@@ -1000,10 +1002,13 @@ worker still starts and persists messages with provider-unavailable status.
 Use `edge --offline` for an explicitly credential-free run. Startup and
 shutdown leave the budget state alone. After a fresh approved window, restart
 Edge to bind that approval to the worker and use `status` to check the
-credential and worker generation. Run `arm` to enable the current local
-spending policy independently of credential provisioning. PostgreSQL enforces
-the same cumulative ceiling on every reservation. Actual provider failures
-appear as `kael_pilot_provider_failure` in the local Edge container log.
+credential, model and launch identity. `status` reports a stale worker when
+its launch, key or approval generation differs from the current configuration.
+Run `arm` once that worker has loaded the key and the budget is current.
+PostgreSQL enforces the same cumulative ceiling on every reservation.
+The local Edge log records budget refusal, provider HTTP status, timeout and
+invalid or incomplete streams under `kael_pilot_provider_failure`. Persistence
+failures appear as `kael_setup_failed` or `kael_finish_failed`.
 
 Run `close` to disable spending. It preserves the server key and the
 accounting ledger. The launcher removes its temporary `edge.env` copy when

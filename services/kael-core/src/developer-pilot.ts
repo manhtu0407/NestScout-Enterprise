@@ -12,7 +12,7 @@ export function pilotRoute(text: string): { thinking: boolean; reason: string } 
 }
 
 export function developerPilotProviders(config: KaelConfig, actorId: string, runId: string, text: string, fetcher: Fetcher,
-  onProviderFailure: (kind: string) => void = () => {}, generation?: string): ModelProvider[] {
+  onProviderFailure: (kind: string, httpStatus?: number) => void = () => {}, generation?: string): ModelProvider[] {
   if (!config.developerPilotId || !config.deepseek) return [];
   const route = pilotRoute(text);
   const providerConfig = { ...config.deepseek, thinking: route.thinking, verifiedModels: pilotServedModels };
@@ -51,12 +51,18 @@ export function developerPilotProviders(config: KaelConfig, actorId: string, run
         throw new ProviderError('deepseek', 'budget', 'The pilot request exceeded its input or output limit.');
       }
       const callId = crypto.randomUUID();
-      const reserved = await charge(callId, 'reserve', providerConfig.model);
-      if (reserved.ok !== true) throw new ProviderError('deepseek', 'budget', 'The pilot budget or authorization did not permit this call.');
+      try {
+        const reserved = await charge(callId, 'reserve', providerConfig.model);
+        if (!reserved.ok) throw new ProviderError('deepseek', 'budget', 'The pilot budget or authorization did not permit this call.');
+      } catch (error) {
+        onProviderFailure('budget');
+        throw error;
+      }
       let outputStarted = false;
       try {
         const result = await provider.complete(request, delta => { outputStarted = true; onText(delta); }).catch(error => {
-          onProviderFailure(error instanceof ProviderError ? error.kind : 'unknown');
+          if (error instanceof ProviderError) onProviderFailure(error.kind, error.httpStatus);
+          else onProviderFailure('unknown');
           throw error;
         });
         const settled = await charge(callId, 'settle', result.model, result.usage.inputTokens, result.usage.cachedInputTokens, result.usage.outputTokens);
