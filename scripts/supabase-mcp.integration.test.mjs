@@ -1358,6 +1358,9 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         const attempts = [];
         const logs = [];
         const fixture = 'fixture-provider-credential';
+        const englishReply = '**Check the saved decision**';
+        const vietnameseReply = '**Phản hồi thử nghiệm**';
+        const englishPrompts = new Set(['Tóm tắt quyết định của tôi.', 'Xin chào.', 'không phải ngắn gọn, là chi tiết', 'How do I maintain a tap?']);
         const newHandler = () => createKaelHandler({
           env: { ...env, DEEPSEEK_API_KEY: fixture },
           log: event => logs.push(event),
@@ -1365,8 +1368,10 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
             if (url.startsWith(origin + '/')) return fetch(url, init);
             assert.equal(url, 'https://api.deepseek.com/chat/completions');
             assert.equal(init.headers.authorization, `Bearer ${fixture}`);
-            attempts.push(JSON.parse(init.body));
-            const delta = { model: 'deepseek-flash', choices: [{ delta: { content: '**Phản hồi thử nghiệm**' }, finish_reason: null }] };
+            const request = JSON.parse(init.body);
+            attempts.push(request);
+            const content = englishPrompts.has(request.messages.at(-1).content) ? englishReply : vietnameseReply;
+            const delta = { model: 'deepseek-flash', choices: [{ delta: { content }, finish_reason: null }] };
             const terminal = { model: 'deepseek-flash', choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 21, completion_tokens: 5 } };
             return new Response(`data: ${JSON.stringify(delta)}\n\ndata: ${JSON.stringify(terminal)}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } });
           },
@@ -1381,7 +1386,7 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         const first = await sendMessage(owner, oldText);
         const conversation = conversationOf(first);
         const run = first.events[0].run_id;
-        assert.equal(end(first).text, '**Phản hồi thử nghiệm**');
+        assert.equal(end(first).text, vietnameseReply);
         assert.equal(query(`select status || ':' || input_tokens || ':' || output_tokens from public.kael_runs where id='${run}';`), 'completed:21:5');
         assert.equal(await manage(owner, 'save', 'detail', 'brief'), false, 'memory is off by default');
         assert.equal(await manage(owner, 'enable'), true);
@@ -1401,7 +1406,8 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
           select '${conversation}','${owner.id}','${run}',i,'user',
           case when i=3 then 'OTP 123456' when i=4 then 'Đính chính: màu xanh lá.' else 'Trao đổi số ' || i end
           from generate_series(3,24) i;`);
-        await sendMessage(owner, 'Tóm tắt quyết định của tôi.', conversation);
+        const summarized = await sendMessage(owner, 'Tóm tắt quyết định của tôi.', conversation);
+        assert.equal(end(summarized).text, englishReply);
         let sent = attempts.at(-1).messages;
         assert.equal(sent.at(-1).content, 'Tóm tắt quyết định của tôi.');
         assert.ok(sent.length <= 18);
@@ -1414,20 +1420,22 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         assert.deepEqual(forgedSummary.items, []);
         const recalled = await sendMessage(owner, 'Xin chào.');
         assert.notEqual(conversationOf(recalled), conversation);
+        assert.equal(end(recalled).text, englishReply);
         sent = attempts.at(-1).messages;
-        assert.match(sent[0].content, /entire reply in English/);
+        assert.match(sent[0].content, /Reply language: English/);
         assert.doesNotMatch(sent[1].content, /"language"/);
         assert.match(sent[1].content, /"detail","value":"brief"/);
         assert.doesNotMatch(sent[1].content, /"format","value":"steps"|màu xanh/);
         await sendMessage(owner, 'không phải ngắn gọn, là chi tiết', conversationOf(recalled));
         assert.deepEqual((await preferences(owner)).find(item => item.preference === 'detail'), { mode: 'client', preference: 'detail', value: 'detailed', source: 'explicit_chat' });
         assert.equal(await manage(owner, 'correct', 'detail', 'brief', 'client', 'brief'), false, 'stale compare-and-set cannot overwrite a correction');
-        await sendMessage(owner, 'không phải tiếng Anh, là tiếng Việt', conversationOf(recalled));
-        assert.match(attempts.at(-1).messages[0].content, /entire reply in Vietnamese/);
+        const corrected = await sendMessage(owner, 'không phải tiếng Anh, là tiếng Việt', conversationOf(recalled));
+        assert.equal(end(corrected).text, vietnameseReply);
+        assert.match(attempts.at(-1).messages[0].content, /Reply language: Vietnamese/);
         assert.equal(await manage(owner, 'correct', 'language', 'en', 'client', 'en'), false);
         assert.equal(await manage(owner, 'remove', 'language'), true);
         await sendMessage(owner, 'How do I maintain a tap?');
-        assert.match(attempts.at(-1).messages[0].content, /Otherwise match the language of the latest user message/);
+        assert.match(attempts.at(-1).messages[0].content, /Otherwise match that message’s language/);
         await sendMessage(other, 'Hướng dẫn bảo trì.');
         assert.ok(!attempts.at(-1).messages.some(item => /"detail"|"format"/.test(item.content)));
         query(`insert into public.worker_access_grants(user_id) values ('${owner.id}'); insert into nestscout_private.worker_dispatch_eligibility(user_id,basis,active) values ('${owner.id}','local_fixture',true);`);
