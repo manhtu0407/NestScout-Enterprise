@@ -600,6 +600,12 @@ isOneToOne: false
 "kael_knowledge_search":
 { Args: { "p_limit"?: number,"p_query": string,"p_source_id"?: string,"p_strategy"?: string }; Returns: Json
                            },
+"kael_pilot_charge":
+{ Args: { "p_action": string,"p_actor": string,"p_cached": number,"p_call": string,"p_input": number,"p_model": string,"p_output": number,"p_pilot": string,"p_run": string,"p_thinking": boolean }; Returns: Json
+                           },
+"kael_pilot_status":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "kael_read_context":
 { Args: { "p_kind": string,"p_resource_id": string }; Returns: Json
                            },

@@ -133,11 +133,16 @@ export function safeEndpoints(endpoints) {
   }]));
 }
 
-export function localRuntime() {
+export function localRuntime({ isolatePilotProviders = false } = {}) {
   const config = parse(readFileSync(path.join(root, 'supabase/config.toml'), 'utf8'));
   validateLocalConfig(config, existsSync(path.join(root, 'supabase/.temp/project-ref')));
   validateLocalFiles(root);
   const environment = localEnvironment(process.env);
+  if (isolatePilotProviders) {
+    for (const name of Object.keys(environment)) {
+      if (/^(?:KAEL_|DEEPSEEK_|ANTHROPIC_|PERPLEXITY_)/i.test(name)) delete environment[name];
+    }
+  }
   const run = (command, args) => execFileSync(command, args, {
     cwd: root, env: environment, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],

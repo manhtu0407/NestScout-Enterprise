@@ -862,3 +862,175 @@ Research provenance: [Anthropic agent evaluation guidance](https://www.anthropic
 and [DeepSeek completion contract](https://api-docs.deepseek.com/api/create-chat-completion/).
 Models, rates and endpoint support must be reverified from official sources at
 the separately authorized pilot, not assumed from this preparation's date.
+
+## Server configuration and staging readiness
+
+Kael reads provider credentials from the Edge worker environment at startup.
+The authenticated request carries a user access token for identity and RLS.
+The server supplies `DEEPSEEK_API_KEY` for model traffic. One server credential
+serves the authorized conversations handled by that worker.
+
+The default normal route requests `deepseek-flash`. Operators can supply an
+explicit `KAEL_DEEPSEEK_MODEL` and use `KAEL_MODEL_ROUTE` to opt into other
+configured routes. The normal route uses the existing authenticated Runtime
+and per-run limits. The local pilot ledger and its temporary approval apply
+only to the local developer profile.
+
+Hosted staging requires an owner-identified Supabase project and an approved
+app target. The current app accepts the local target. Before any approved
+staging rollout, compare applied migration history against the Kael context,
+Runtime, Knowledge Foundation and price-prior migrations in
+`supabase/migrations/`. Keep the developer profile and its budget data local.
+Deploy `supabase/functions/kael` with its shared Runtime imports and configure
+`DEEPSEEK_API_KEY` in that project's Edge Secrets. Set
+`KAEL_DEEPSEEK_MODEL=deepseek-flash` and `KAEL_MODEL_ROUTE=deepseek` for an
+explicit Flash-only staging profile. Leave consequential effects disabled for
+the smoke test.
+
+Verify the staging JWT configuration with a real authenticated user. The
+gateway verifies the caller with Supabase Auth and uses
+`SUPABASE_SERVICE_ROLE_KEY` with the existing legacy service-role JWT contract
+for trusted RPCs. Keep that credential and provider Secrets server-side.
+After approval, verify cross-account denial and a persisted assistant reply
+restored by the approved staging app. Repository checks cover compatibility
+with the local schema and Runtime. Hosted deployment, applied migration
+history and Secret configuration require verification against the specific
+staging project.
+
+## Behavior-first local developer pilot on 8085
+
+This interactive developer profile reuses the authenticated Horizon route,
+existing Edge gateway, Runtime, tools and conversation storage. It is separate
+from formal evaluation: the 20 anchors remain pending human review, rubric
+calibration is unchanged and formal live execution remains unavailable. No
+scripted provider is installed in the web preview. A missing provider produces
+an actual failed, persisted run rather than a fabricated answer.
+
+The owner authorized at most USD 1 total, DeepSeek Flash non-thinking and
+thinking only. This authority does not include Anthropic, Pro, Perplexity,
+provider search/fetch, business effects or hosted changes. The dev profile
+requires `KAEL_DEVELOPER_PILOT=local_8085`, a valid pilot UUID and a loopback
+backend (or Docker's local host bridge). It forces consequential effects,
+numeric pricing preview, other providers and fallback off. Ordinary chat and
+optional retrieval retain their existing system prompt and tool policy.
+
+`deepseek-flash` is the default request model, with thinking explicitly disabled.
+An explicit request such as “suy nghĩ kỹ” or a comparison of risks/options
+selects thinking on the same Flash model. This inexpensive routing rule does
+not claim semantic difficulty detection. The panel reports this selection.
+The strict adapter checks actual served identity against `deepseek-flash` or
+the documented `DeepSeek-V4.1-Flash-1017`, refusing changes within a stream.
+Pro is unavailable until independent account/served-model evidence and new
+owner authorization exist. Anthropic precision/image use and Perplexity external
+search remain outside this pilot's approved provider budget.
+
+The private PostgreSQL budget and call tables extend the existing local database;
+they do not store conversations or create a second orchestrator. Migrations
+create no authorization rows and all budgets default disabled. Only the trusted
+server accounting RPC can reserve/reconcile spend; clients receive an own-actor
+status projection, never another actor's calls, tool arguments or credentials.
+An atomic row lock serializes charged requests. Reservations survive worker
+restarts, and duplicate reservation IDs cannot dispatch again. Each reservation
+covers 1,048,576 input tokens at the supplied cache-miss rate plus 4,096 output
+tokens. Reconciliation uses actual final cache-hit/cache-miss/output usage,
+including reasoning in completion tokens, rounded up to micro-USD. Costs are
+conservative estimates, not provider billing statements.
+
+Each approval specifies its cumulative charged-call limit. The profile keeps
+the existing account rate limit, three calls per turn, two million
+total tokens including the next reservation, 4,096 output tokens per request,
+60,000 serialized request bytes and a fresh explicit rate card. Rates expire
+after 24 hours; the launcher accepts authorization lasting at most one hour.
+Unknown model, missing/inconsistent final usage, interrupted transport or failed
+accounting retain the reservation and block further paid requests. Partial text
+and failed turns remain visible and persisted. SSE is delivered incrementally;
+identity is checked before text and usage at stream completion. There is no
+retry/fallback that can silently generate another charge.
+
+Use the existing guarded stack commands first (`npm run db:start`, an initial
+`npm run db:reset` only for a new disposable stack, and `npm run db:types`).
+The local launcher separates startup, authorization and spending.
+
+```sh
+node scripts/kael-developer-pilot.mjs prepare
+node scripts/kael-developer-pilot.mjs edge --offline
+node scripts/kael-developer-pilot.mjs status
+node scripts/kael-developer-pilot.mjs preview
+node scripts/kael-developer-pilot.mjs close
+```
+
+`prepare` creates two disposable real Auth accounts, with Worker access only
+through the existing local-fixture grant/eligibility mechanism. Their password
+credentials and the stable session ID are saved outside Git in
+`~/.codex/private/kael-behavior-8085/session.json`; Windows inheritance is removed
+and access is restricted to the current account. Reusing a session never resets
+its budget. `preview` starts the real app on `http://localhost:8085/`, strips
+provider/secret environment variables and disables dotenv loading. Its small
+dev-only expandable panel uses real password Auth; it never injects an identity
+or bypasses RLS. No production email/password UI is added. Existing mascot,
+conversation layout and guest showcase remain intact.
+
+An optional `prepare ABSOLUTE_AUTHORIZATION_JSON_PATH` provisions a disabled
+budget from an explicit private record with `purpose: kael_developer_8085`,
+`provider: deepseek`, `model: deepseek-flash`, `owner_approved: true`,
+`cap_micro_usd`, `max_calls`, `expires_at`, `rates_checked_at`, `rate_source`,
+`input_rate`, `cached_rate`, `output_rate`. Rates are USD per million tokens;
+there are no implicit price defaults. On 2026-11-05 the official peak Flash
+rates were 0.3, 0.006 and 1.2 respectively. Reverify before enabling a session.
+The authorization JSON records the operator's actual owner approval; writing
+`owner_approved: true` without that approval does not confer permission.
+
+For an existing session, use `status` to obtain its pilot ID and cumulative
+limits. After fresh explicit owner approval, record the fields listed above
+plus a new UUID `approval_id`, that `pilot_id`, and the actual `approved_at` as
+an ISO timestamp. Set expiry within one hour of approval. Then run
+`node scripts/kael-developer-pilot.mjs reauthorize ABSOLUTE_APPROVAL_PATH`.
+For a session prepared offline, this creates its first disabled budget and
+records the approval against the same pilot and accounts. For a session with
+a budget, PostgreSQL appends the approval and keeps the original window,
+accounts, conversations, calls and spend records in place. The
+cumulative money limit cannot increase. A fresh approval may set a different
+positive `max_calls`. Prior calls still count and unresolved accounting or a
+halt blocks renewal. Renewal leaves spending disabled.
+
+Provision the local server key once in
+`~/.codex/private/kael-server/providers.env` as a single
+`DEEPSEEK_API_KEY=...` assignment. Keep the file owner-only. The local
+launcher reuses it on worker restarts. The hosted project manages its own
+Edge Secrets.
+
+Run `edge` to load the server configuration. With no key configured the
+worker still starts and persists messages with provider-unavailable status.
+Use `edge --offline` for an explicitly credential-free run. Startup and
+shutdown leave the budget state alone. After a fresh approved window, restart
+Edge to bind that approval to the worker and use `status` to check the
+credential, model and launch identity. `status` reports a stale worker when
+its launch, key or approval generation differs from the current configuration.
+Run `arm` once that worker has loaded the key and the budget is current.
+PostgreSQL enforces the same cumulative ceiling on every reservation.
+The local Edge log records budget refusal, provider HTTP status, timeout and
+invalid or incomplete streams under `kael_pilot_provider_failure`. Persistence
+failures appear as `kael_setup_failed` or `kael_finish_failed`.
+
+Run `close` to disable spending. It preserves the server key and the
+accounting ledger. The launcher removes its temporary `edge.env` copy when
+it exits normally. After an abnormal exit, verify that the owned launcher
+and worker have stopped before removing a stale temporary file.
+The session file contains disposable Auth passwords, not provider keys: protect
+it while needed and remove only these test accounts/credentials when retiring
+the preview.
+
+Image input remains `IMAGE_NOT_CONNECTED`: the composer picker and model
+transcript are not an authenticated generic Kael-media storage contract. Existing
+business photo/avatar storage must not be repurposed for it. Persisted feedback
+also lacks an append-only actor/run/message/source-revision contract; task events
+are workflow events, not feedback. Neither limitation blocks real text chat.
+No auto-training or fabricated review/feedback is introduced.
+
+Research: [DeepSeek model identities and pricing](https://api-docs.deepseek.com/quick_start/pricing/),
+[completion and streamed usage contract](https://api-docs.deepseek.com/api/create-chat-completion/),
+and [Supabase local versus production secrets](https://supabase.com/docs/guides/functions/secrets).
+Mocked adapter tests prove enforcement and streaming mechanics only. Real model
+quality, latency, missing-RAG usefulness and billed identity require an actual
+authorized request with an available local key. Until then report
+`LIVE_PROVIDER_NOT_RUN`, zero paid requests and no measured model quality.

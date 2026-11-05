@@ -5,6 +5,8 @@ import type { PerplexityConfig } from './perplexity.ts';
 
 export type Environment = Record<string, string | undefined>;
 
+export const deepseekFlashModel = 'deepseek-flash';
+
 export const consequentialEffects = ['service_request_submit'] as const;
 
 export type ConsequentialEffect = typeof consequentialEffects[number];
@@ -32,6 +34,7 @@ export type KaelConfig = {
   knowledgeEnabled: boolean;
   localEstimatePreview: boolean;
   limits: KaelLimits;
+  developerPilotId?: string;
 };
 
 export const defaultLimits: KaelLimits = {
@@ -74,13 +77,18 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   } : null;
 
   const deepseekKey = value(env, 'DEEPSEEK_API_KEY');
-  const deepseekModel = value(env, 'KAEL_DEEPSEEK_MODEL');
-  const deepseek = deepseekKey && deepseekModel ? {
+  const pilotFlag = value(env, 'KAEL_DEVELOPER_PILOT');
+  const pilotId = value(env, 'KAEL_DEVELOPER_PILOT_ID');
+  const deepseekModel = value(env, 'KAEL_DEEPSEEK_MODEL') ?? deepseekFlashModel;
+  if (pilotFlag && (pilotFlag !== 'local_8085' || !pilotId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pilotId)
+    || deepseekModel !== deepseekFlashModel
+    || !/^http:\/\/(?:127\.0\.0\.1|localhost|host\.docker\.internal|host\.supabase\.internal)(?::\d+)?\/?$/.test(supabaseUrl))) return null;
+  const deepseek = deepseekKey ? {
     apiKey: deepseekKey, model: deepseekModel, thinking: value(env, 'KAEL_DEEPSEEK_THINKING') === 'enabled', timeoutMs: modelTimeoutMs,
   } : null;
 
   const requested = list(env, 'KAEL_MODEL_ROUTE');
-  const order = (requested.length > 0 ? requested : providerIds).filter((id): id is ProviderId => providerIds.includes(id as ProviderId));
+  const order = (requested.length > 0 ? requested : ['deepseek']).filter((id): id is ProviderId => providerIds.includes(id as ProviderId));
   const route = [...new Set(order)].filter(id => (id === 'anthropic' ? anthropic : deepseek) !== null);
 
   const perplexityKey = value(env, 'PERPLEXITY_API_KEY');
@@ -94,7 +102,14 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   const loopback = /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\/?$/.test(supabaseUrl);
   const knowledgeEnabled = value(env, 'KAEL_KNOWLEDGE') !== 'disabled';
   const localEstimatePreview = knowledgeEnabled && loopback && value(env, 'KAEL_ESTIMATE_PREVIEW') === 'local_only';
-  return { supabaseUrl: supabaseUrl.replace(/\/+$/, ''), supabaseAnonKey, supabaseServiceKey, anthropic, deepseek, route, perplexity, enabledEffects, knowledgeEnabled, localEstimatePreview, limits: defaultLimits };
+  return {
+    supabaseUrl: supabaseUrl.replace(/\/+$/, ''), supabaseAnonKey, supabaseServiceKey,
+    anthropic: pilotFlag ? null : anthropic, deepseek, route: pilotFlag ? deepseek ? ['deepseek'] : [] : route,
+    perplexity: pilotFlag ? null : perplexity, enabledEffects: pilotFlag ? new Set() : enabledEffects,
+    knowledgeEnabled, localEstimatePreview: pilotFlag ? false : localEstimatePreview,
+    limits: pilotFlag ? { ...defaultLimits, maxModelCalls: 3 } : defaultLimits,
+    ...(pilotFlag ? { developerPilotId: pilotId } : {}),
+  };
 }
 
 export function configurationReport(env: Environment): Record<string, string> {
@@ -102,7 +117,7 @@ export function configurationReport(env: Environment): Record<string, string> {
   return {
     gateway: config ? 'configured' : 'requires SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY holding the legacy service-role JWT; sb_secret_ keys are not supported yet',
     anthropic: config?.anthropic ? 'configured' : 'requires ANTHROPIC_API_KEY and KAEL_ANTHROPIC_MODEL',
-    deepseek: config?.deepseek ? 'configured' : 'requires DEEPSEEK_API_KEY and KAEL_DEEPSEEK_MODEL',
+    deepseek: config?.deepseek ? 'configured' : 'requires DEEPSEEK_API_KEY',
     web_search: config?.perplexity ? 'configured' : 'requires PERPLEXITY_API_KEY and KAEL_WEB_SEARCH=enabled',
     effects: config && config.enabledEffects.size > 0 ? [...config.enabledEffects].join(',') : 'none',
     knowledge: config?.knowledgeEnabled ? 'lexical' : 'disabled',

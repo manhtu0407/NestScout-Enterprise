@@ -71,6 +71,7 @@ select throws_ok($$ select public.kael_start_run('00000000-0000-4000-8000-000000
   '42501', 'verified Kael actor required', 'Internal operations also require the server credential in the request claims');
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 
+select set_config('test.message_count_before_start', (select count(*)::text from public.kael_messages), true);
 select set_config('test.start', public.kael_start_run('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-000000000001', null, 'client', 'Xin chào')::text, true);
 select is(current_setting('test.start')::jsonb ->> 'status', 'started', 'A run starts and creates a conversation');
 select set_config('test.run', current_setting('test.start')::jsonb ->> 'run_id', true);
@@ -78,7 +79,8 @@ select set_config('test.conversation', current_setting('test.start')::jsonb ->> 
 
 select is(public.kael_start_run('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-000000000001', null, 'client', 'Xin chào') ->> 'run_id',
   current_setting('test.run'), 'Retrying the same request id replays the same run');
-select is((select count(*)::integer from public.kael_messages), 1, 'A replay does not duplicate the user message');
+select is((select count(*) from public.kael_messages), current_setting('test.message_count_before_start')::bigint + 1,
+  'A replay does not duplicate the user message');
 select is(public.kael_start_run('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-000000000002', current_setting('test.conversation')::uuid, 'client', 'Thêm') ->> 'status',
   'busy', 'A conversation runs one turn at a time');
 select is(public.kael_start_run('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-000000000003', current_setting('test.conversation')::uuid, 'worker', 'Thêm') ->> 'status',

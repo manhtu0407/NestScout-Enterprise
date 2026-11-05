@@ -4,7 +4,7 @@ import { readSse } from './sse.ts';
 
 export const deepseekEndpoint = 'https://api.deepseek.com/chat/completions';
 
-export type DeepSeekConfig = { apiKey: string; model: string; thinking: boolean; timeoutMs: number };
+export type DeepSeekConfig = { apiKey: string; model: string; thinking: boolean; timeoutMs: number; verifiedModels?: readonly string[] };
 
 type DeepSeekState = { reasoning: string };
 
@@ -70,10 +70,16 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
           headers: { 'content-type': 'application/json', authorization: `Bearer ${config.apiKey}` },
           body: JSON.stringify(deepseekRequestBody(config, request)),
           signal,
+          redirect: 'error',
         });
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
           await response.body?.cancel();
-          throw new ProviderError('deepseek', classifyStatus(response.status), `DeepSeek responded with HTTP ${response.status}.`);
+          throw new ProviderError('deepseek', classifyStatus(response.status), `DeepSeek responded with HTTP ${response.status}.`, false, response.status);
+        }
+        if (!response.body) throw new ProviderError('deepseek', 'incomplete', 'The provider did not return a stream body.');
+        if (config.verifiedModels && !/^text\/event-stream(?:;|$)/i.test(response.headers.get('content-type') ?? '')) {
+          await response.body.cancel();
+          throw new ProviderError('deepseek', 'incomplete', 'The provider did not return an SSE stream.');
         }
         let text = '';
         let reasoning = '';
@@ -81,6 +87,8 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
         let inputTokens = 0;
         let outputTokens = 0;
         let cachedInputTokens = 0;
+        let servedModel: string | null = null;
+        let verifiedUsage = false;
         const calls = new Map<number, { id: string; name: string; args: string }>();
         let terminated = false;
         for await (const message of readSse(response.body, signal)) {
@@ -89,15 +97,54 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
             break;
           }
           const chunk = JSON.parse(message.data) as Record<string, unknown>;
+          if (config.verifiedModels) {
+            if (chunk.error !== undefined || !Array.isArray(chunk.choices) || chunk.choices.length > 1
+              || (finishReason !== null && chunk.choices.length > 0)) {
+              throw new ProviderError('deepseek', 'incomplete', 'The stream violated the completion lifecycle.', started);
+            }
+            const first = chunk.choices[0];
+            if (chunk.choices.length && (typeof first !== 'object' || first === null || Array.isArray(first))) {
+              throw new ProviderError('deepseek', 'incomplete', 'The stream choice was malformed.', started);
+            }
+            const finish = (first as Record<string, unknown> | undefined)?.finish_reason;
+            if (finish !== null && finish !== undefined && (typeof finish !== 'string'
+              || !['stop', 'tool_calls', 'length', 'content_filter', 'insufficient_system_resource', 'aborted'].includes(finish))) {
+              throw new ProviderError('deepseek', 'incomplete', 'The completion reason was not recognized.', started);
+            }
+          }
+          if (typeof chunk.model === 'string') {
+            if (servedModel !== null && servedModel !== chunk.model) throw new ProviderError('deepseek', 'incomplete', 'The served model changed within the stream.', started);
+            servedModel = chunk.model;
+          }
+          if (config.verifiedModels && (servedModel === null || !config.verifiedModels.includes(servedModel))) {
+            throw new ProviderError('deepseek', 'incomplete', 'The served model identity was not authorized.', started);
+          }
+          const choice = (chunk.choices as Record<string, unknown>[] | undefined)?.[0];
+          const delta = (choice?.delta ?? {}) as Record<string, unknown>;
+          if (config.verifiedModels && verifiedUsage && choice) throw new ProviderError('deepseek', 'incomplete', 'Content followed the final usage.', started);
           const usage = chunk.usage as Record<string, unknown> | null | undefined;
           if (usage) {
+            if (config.verifiedModels) {
+              if (choice && (choice.finish_reason == null || typeof delta !== 'object' || Array.isArray(delta)
+                || Object.entries(delta).some(([name, value]) => value !== null && value !== ''
+                  && !(name === 'tool_calls' && Array.isArray(value) && value.length === 0)
+                  && !(name === 'role' && value === 'assistant')))) {
+                throw new ProviderError('deepseek', 'incomplete', 'Usage accompanied non-terminal content.', started);
+              }
+              const fields = ['prompt_tokens', 'completion_tokens', 'prompt_cache_hit_tokens', 'prompt_cache_miss_tokens', 'total_tokens'];
+              if (verifiedUsage || !fields.every(name => Number.isSafeInteger(usage[name]) && Number(usage[name]) >= 0)
+                || Number(usage.prompt_tokens) !== Number(usage.prompt_cache_hit_tokens) + Number(usage.prompt_cache_miss_tokens)
+                || Number(usage.total_tokens) !== Number(usage.prompt_tokens) + Number(usage.completion_tokens)
+                || Number(usage.completion_tokens) > request.maxOutputTokens || Number(usage.prompt_tokens) > 1_048_576) {
+                throw new ProviderError('deepseek', 'incomplete', 'The final usage was missing or inconsistent.', started);
+              }
+              verifiedUsage = true;
+            }
             inputTokens = Number(usage.prompt_tokens ?? 0);
             outputTokens = Number(usage.completion_tokens ?? 0);
             cachedInputTokens = Number(usage.prompt_cache_hit_tokens ?? 0);
           }
-          const choice = (chunk.choices as Record<string, unknown>[] | undefined)?.[0];
           if (!choice) continue;
-          const delta = (choice.delta ?? {}) as Record<string, unknown>;
           if (typeof delta.reasoning_content === 'string') reasoning += delta.reasoning_content;
           if (typeof delta.content === 'string' && delta.content.length > 0) {
             text += delta.content;
@@ -116,6 +163,10 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
           if (choice.finish_reason !== null && choice.finish_reason !== undefined) finishReason = choice.finish_reason;
         }
         if (finishReason === null || !terminated) throw new ProviderError('deepseek', 'incomplete', 'The DeepSeek stream ended before completion.', started);
+        if (config.verifiedModels && !verifiedUsage) throw new ProviderError('deepseek', 'incomplete', 'The final usage was unavailable.', started);
+        if (config.verifiedModels && ((finishReason === 'tool_calls') !== (calls.size > 0))) {
+          throw new ProviderError('deepseek', 'incomplete', 'The tool completion reason did not match the stream.', started);
+        }
         if (finishReason === 'insufficient_system_resource' || finishReason === 'aborted') {
           throw new ProviderError('deepseek', started ? 'incomplete' : 'overloaded', 'DeepSeek stopped before completing the response.', started);
         }
@@ -126,7 +177,7 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
         });
         return {
           provider: 'deepseek',
-          model: config.model,
+          model: servedModel ?? config.model,
           requestedModel: config.model,
           text,
           toolCalls,
@@ -135,7 +186,8 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
           providerState: { provider: 'deepseek', model: config.model, data: { reasoning } satisfies DeepSeekState },
         };
       } catch (error) {
-        if (error instanceof SyntaxError) throw new ProviderError('deepseek', started ? 'incomplete' : 'server', 'DeepSeek sent malformed stream data.', started);
+        if (error instanceof SyntaxError) throw new ProviderError('deepseek', 'incomplete', 'DeepSeek sent malformed stream data.', started);
+        if (signal.aborted && !request.signal.aborted) throw classifyThrown('deepseek', signal.reason, request.signal, started);
         throw classifyThrown('deepseek', error, request.signal, started);
       }
     },

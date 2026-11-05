@@ -14,8 +14,258 @@ import { findTool, toolRegistry, validateArguments } from '../services/kael-core
 import { createKaelHandler } from '../services/kael-core/src/gateway.ts';
 import { parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { baseEnv, harness, scriptedProvider, users } from './kael-test-harness.mjs';
+import { developerPilotProviders, pilotRoute, pilotServedModels } from '../services/kael-core/src/developer-pilot.ts';
+import { parsePilotAuthorization, parsePilotRenewal } from './kael-developer-pilot.mjs';
 
 const encoder = new TextEncoder();
+
+const pilotEnv = { ...baseEnv, SUPABASE_URL: 'http://127.0.0.1:23624', KAEL_DEVELOPER_PILOT: 'local_8085',
+  KAEL_DEVELOPER_PILOT_ID: '00000000-0000-4000-8000-000000008085', DEEPSEEK_API_KEY: 'test-deepseek-key' };
+
+function pilotStream(model = 'DeepSeek-V4.1-Flash-1017', usage = { prompt_tokens: 100, completion_tokens: 10, prompt_cache_hit_tokens: 40, prompt_cache_miss_tokens: 60, total_tokens: 110 }) {
+  return sse([['message', { model, choices: [{ delta: { content: 'Chào bạn' }, finish_reason: null }] }],
+    ['message', { model, choices: [{ delta: {}, finish_reason: 'stop' }] }],
+    ...(usage ? [['message', { model, choices: [], usage }]] : [])]) + 'data: [DONE]\n\n';
+}
+
+const pilotResponse = body => new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+
+test('developer pilot requires local identity and isolates all unapproved providers and effects', () => {
+  assert.equal(readKaelConfig({ ...pilotEnv, SUPABASE_URL: baseEnv.SUPABASE_URL }), null);
+  assert.equal(readKaelConfig({ ...pilotEnv, KAEL_DEVELOPER_PILOT: 'enabled' }), null);
+  assert.equal(readKaelConfig({ ...pilotEnv, KAEL_DEVELOPER_PILOT_ID: '' }), null);
+  assert.equal(readKaelConfig({ ...pilotEnv, KAEL_DEEPSEEK_MODEL: 'unapproved-pro' }), null);
+  const config = readKaelConfig({ ...pilotEnv, ANTHROPIC_API_KEY: 'test-key', KAEL_ANTHROPIC_MODEL: 'unapproved',
+    KAEL_DEEPSEEK_MODEL: 'deepseek-flash', PERPLEXITY_API_KEY: 'test-key', KAEL_WEB_SEARCH: 'enabled',
+    KAEL_ENABLED_EFFECTS: 'service_request_submit', KAEL_ESTIMATE_PREVIEW: 'local_only' });
+  assert.deepEqual(config.route, ['deepseek']);
+  assert.equal(config.deepseek.model, 'deepseek-flash');
+  assert.equal(config.anthropic, null);
+  assert.equal(config.perplexity, null);
+  assert.equal(config.enabledEffects.size, 0);
+  assert.equal(config.localEstimatePreview, false);
+  assert.equal(config.limits.maxModelCalls, 3);
+  assert.equal(pilotRoute('Xin chào, kể một chuyện vui').thinking, false);
+  assert.equal(pilotRoute('Hãy suy nghĩ kỹ về hai phương án').thinking, true);
+});
+
+test('developer pilot authorization has no implicit cap, price, model, provider or lifetime', () => {
+  const now = new Date('2026-11-05T04:00:00Z');
+  const valid = { purpose: 'kael_developer_8085', model: 'deepseek-flash', provider: 'deepseek', owner_approved: true,
+    cap_micro_usd: 1000000, max_calls: 20, rates_checked_at: '2026-11-05T03:55:00Z', expires_at: '2026-11-05T04:30:00Z',
+    rate_source: 'https://api-docs.deepseek.com/quick_start/pricing/', input_rate: 0.3, cached_rate: 0.006, output_rate: 1.2 };
+  assert.equal(parsePilotAuthorization(valid, now), valid);
+  assert.equal(parsePilotAuthorization({ ...valid, max_calls: 35 }, now).max_calls, 35);
+  for (const patch of [{ cap_micro_usd: 1000001 }, { model: 'deepseek-v4-pro' }, { provider: 'anthropic' },
+    { owner_approved: false }, { input_rate: 0 }, { output_rate: undefined }, { cached_rate: NaN },
+    { rates_checked_at: '2026-11-01T00:00:00Z' }, { expires_at: '2026-11-05T06:00:00Z' }, { max_calls: 0 }, { max_calls: 2147483648 }]) {
+    assert.throws(() => parsePilotAuthorization({ ...valid, ...patch }, now));
+  }
+});
+
+test('renewal requires a fresh explicit approval for this pilot and copies only approved fields', () => {
+  const now = new Date('2026-11-05T03:00:00Z');
+  const id = pilotEnv.KAEL_DEVELOPER_PILOT_ID;
+  const approval = { approval_id: crypto.randomUUID(), pilot_id: id, approved_at: now.toISOString(),
+    purpose: 'kael_developer_8085', provider: 'deepseek', model: 'deepseek-flash', owner_approved: true,
+    cap_micro_usd: 1000000, max_calls: 3, expires_at: '2026-11-05T03:30:00Z', rates_checked_at: now.toISOString(),
+    rate_source: 'https://api-docs.deepseek.com/quick_start/pricing/', input_rate: 0.3, cached_rate: 0.006, output_rate: 1.2 };
+  assert.deepEqual(parsePilotRenewal({ ...approval, extra: 'discard' }, id, now), approval);
+  assert.throws(() => parsePilotRenewal(approval, crypto.randomUUID(), now), /identify this pilot/);
+  assert.throws(() => parsePilotRenewal({ ...approval, approved_at: '2026-11-05T02:00:00Z' }, id, now), /one hour/);
+});
+
+test('local Edge probe identifies its pilot configuration without dispatching or exposing a key', async () => {
+  const generation = '2026-11-05T03:00:00.123456+00:00';
+  const worker = crypto.randomUUID();
+  const env = { ...pilotEnv, KAEL_PILOT_GENERATION: generation, KAEL_PILOT_WORKER_ID: worker };
+  const handler = createKaelHandler({ env, fetcher: async () => { throw new Error('Probe attempted a network call'); } });
+  const request = new Request('http://localhost/functions/v1/kael', { headers: { 'x-kael-pilot-probe': '1' } });
+  const result = await handler(request);
+  assert.deepEqual(await result.json(), { pilot_id: env.KAEL_DEVELOPER_PILOT_ID, generation, worker_id: worker,
+    credential_loaded: true, model: 'deepseek-flash' });
+  const invalid = await createKaelHandler({ env: { ...env, KAEL_DEEPSEEK_MODEL: 'wrong-model' } })(request);
+  assert.equal(invalid.status, 503);
+  assert.deepEqual(await invalid.json(), { status: 'EDGE_INVALID_CONFIG' });
+  assert.equal((await createKaelHandler({ env: baseEnv })(request)).status, 405);
+});
+
+test('strict Flash streams validate actual identity and final cache-aware usage while streaming text', async () => {
+  const config = { ...deepseekConfig, verifiedModels: pilotServedModels };
+  const seen = [];
+  let release;
+  const continued = new Promise(resolve => { release = resolve; });
+  const chunks = pilotStream().split('event: message');
+  const body = new ReadableStream({ async start(controller) {
+    controller.enqueue(encoder.encode('event: message' + chunks[1]));
+    await continued;
+    controller.enqueue(encoder.encode(chunks.slice(2).map(c => 'event: message' + c).join('')));
+    controller.close();
+  } });
+  const provider = createDeepSeekProvider(config, async () => pilotResponse(body));
+  const turn = await provider.complete(request(), delta => { seen.push(delta); release(); });
+  assert.deepEqual(seen, ['Chào bạn']);
+  assert.equal(turn.model, 'DeepSeek-V4.1-Flash-1017');
+  assert.equal(turn.requestedModel, 'deepseek-flash');
+  assert.deepEqual(turn.usage, { inputTokens: 100, cachedInputTokens: 40, outputTokens: 10 });
+});
+
+test('strict Flash denies foreign models, absent or inconsistent usage and truncated SSE', async () => {
+  const validUsage = { prompt_tokens: 100, completion_tokens: 10, prompt_cache_hit_tokens: 40, prompt_cache_miss_tokens: 60, total_tokens: 110 };
+  for (const payload of [pilotStream('deepseek-v4-pro'), pilotStream('', validUsage), pilotStream(undefined, null),
+    pilotStream(undefined, { ...validUsage, total_tokens: 111 }), pilotStream(undefined, { ...validUsage, prompt_cache_hit_tokens: -1 }),
+    pilotStream(undefined, { ...validUsage, completion_tokens: '10' }), pilotStream().replace('data: [DONE]\n\n', ''),
+    pilotStream().replace('DeepSeek-V4.1-Flash-1017', 'deepseek-flash')]) {
+    const provider = createDeepSeekProvider({ ...deepseekConfig, verifiedModels: pilotServedModels }, async () => pilotResponse(streamOf([payload])));
+    await assert.rejects(provider.complete(request(), () => {}), error => error instanceof ProviderError);
+  }
+});
+
+test('strict Flash accepts usage on the final empty choice and rejects usage alongside new content', async () => {
+  const model = 'deepseek-flash';
+  const usage = { prompt_tokens: 100, completion_tokens: 10, prompt_cache_hit_tokens: 40, prompt_cache_miss_tokens: 60, total_tokens: 110 };
+  const start = { model, choices: [{ delta: { content: 'Chào bạn' }, finish_reason: null }], usage: null };
+  const provider = (delta, finishReason = 'stop') => createDeepSeekProvider({ ...deepseekConfig, verifiedModels: pilotServedModels }, async () =>
+    pilotResponse(sse([['message', start], ['message', { model, choices: [{ delta, finish_reason: finishReason }], usage }]])
+      + 'data: [DONE]\n\n'));
+  const result = await provider({ content: '', reasoning_content: null, tool_calls: [] }).complete(request(), () => {});
+  assert.equal(result.text, 'Chào bạn');
+  assert.equal(result.model, model);
+  assert.deepEqual(result.usage, { inputTokens: 100, cachedInputTokens: 40, outputTokens: 10 });
+  for (const [delta, reason] of [[{ content: 'extra' }, 'stop'], [{ reasoning_content: 'extra' }, 'stop'],
+    [{ tool_calls: [{ index: 0 }] }, 'tool_calls'], [{}, null]]) {
+    const visible = [];
+    await assert.rejects(provider(delta, reason).complete(request(), text => visible.push(text)), { kind: 'incomplete' });
+    assert.deepEqual(visible, ['Chào bạn']);
+  }
+});
+
+test('pilot reserves before transport, records real served identity and reconciles without fallback', async () => {
+  const actions = [];
+  const providers = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), 'suy nghĩ kỹ', async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (url.endsWith('/kael_pilot_charge')) {
+      actions.push(body.p_action);
+      if (body.p_action === 'settle') {
+        assert.equal(body.p_model, 'DeepSeek-V4.1-Flash-1017');
+        assert.equal(body.p_cached, 40);
+      }
+      return Response.json({ ok: true });
+    }
+    assert.equal(url, deepseekEndpoint);
+    assert.equal(init.redirect, 'error');
+    assert.equal(body.thinking.type, 'enabled');
+    actions.push('transport');
+    return pilotResponse(streamOf([pilotStream()]));
+  });
+  assert.equal(providers.length, 1);
+  await providers[0].complete(request(), () => {});
+  assert.deepEqual(actions, ['reserve', 'transport', 'settle']);
+});
+
+test('budget refusal, reservation outage, missing key and oversized input never reach a provider', async () => {
+  for (const response of [Response.json({ ok: false }), new Response('', { status: 503 })]) {
+    let calls = 0;
+    const providers = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', async url => {
+      assert.ok(url.endsWith('/kael_pilot_charge'));
+      calls++;
+      return response;
+    });
+    await assert.rejects(providers[0].complete(request(), () => {}), error => error.kind === 'budget');
+    assert.equal(calls, 1);
+  }
+  const noKey = readKaelConfig({ ...pilotEnv, DEEPSEEK_API_KEY: '' });
+  assert.deepEqual(developerPilotProviders(noKey, users.customer.id, crypto.randomUUID(), '', () => { throw new Error('unexpected network'); }), []);
+  const oversized = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', () => { throw new Error('unexpected network'); });
+  await assert.rejects(oversized[0].complete(request({ system: 'x'.repeat(60001) }), () => {}), error => error.kind === 'budget');
+});
+
+test('uncertain usage holds the reservation and stops further paid requests after partial output', async () => {
+  const actions = [];
+  const seen = [];
+  const provider = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', async (url, init) => {
+    if (url === deepseekEndpoint) return pilotResponse(streamOf([pilotStream(undefined, null)]));
+    actions.push(JSON.parse(init.body).p_action);
+    return Response.json({ ok: true });
+  })[0];
+  await assert.rejects(provider.complete(request(), delta => seen.push(delta)), error => error.kind === 'incomplete');
+  assert.deepEqual(actions, ['reserve', 'uncertain']);
+  assert.deepEqual(seen, ['Chào bạn']);
+});
+
+test('pilot diagnostics distinguish HTTP rejection, timeout and invalid SSE without logging provider content', async () => {
+  const fixtures = [
+    ['auth', 401, () => new Response('private provider body', { status: 401 })],
+    ['timeout', undefined, () => { throw new DOMException('private transport detail', 'TimeoutError'); }],
+    ['incomplete', undefined, () => pilotResponse('data: malformed\n\n')],
+  ];
+  for (const [kind, status, response] of fixtures) {
+    const diagnostics = [];
+    const actions = [];
+    const provider = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', async (url, init) => {
+      if (url === deepseekEndpoint) return response();
+      actions.push(JSON.parse(init.body).p_action);
+      return Response.json({ ok: true });
+    }, (...details) => diagnostics.push(details))[0];
+    await assert.rejects(provider.complete(request(), () => {}), error => error.kind === kind);
+    assert.deepEqual(diagnostics, [[kind, status]]);
+    assert.deepEqual(actions, ['reserve', 'uncertain']);
+  }
+});
+
+test('paid stream lifecycle violations retain reservations rather than settling a fabricated completion', async () => {
+  const model = 'DeepSeek-V4.1-Flash-1017';
+  const extraChoice = sse([['message', { model, choices: [{ delta: { content: ' forbidden after terminal' }, finish_reason: null }] }]]);
+  const valid = pilotStream();
+  const afterFinish = valid.indexOf('event: message', valid.indexOf('finish_reason":"stop"'));
+  for (const payload of [valid.slice(0, afterFinish) + extraChoice + valid.slice(afterFinish),
+    valid.replace('finish_reason":"stop"', 'finish_reason":"unexpected_reason"'),
+    valid.replace('finish_reason":"stop"', 'finish_reason":["stop"]'),
+    valid.replace('finish_reason":"stop"', 'finish_reason":"tool_calls"')]) {
+    const actions = [];
+    let visible = '';
+    const provider = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', async (url, init) => {
+      if (url === deepseekEndpoint) return pilotResponse(streamOf([payload]));
+      actions.push(JSON.parse(init.body).p_action);
+      return Response.json({ ok: true });
+    })[0];
+    await assert.rejects(provider.complete(request(), delta => { visible += delta; }), error => error.kind === 'incomplete');
+    assert.equal(visible, 'Chào bạn');
+    assert.deepEqual(actions, ['reserve', 'uncertain']);
+  }
+});
+
+test('strict Flash accepts a consistent thinking tool stream without exposing reasoning as visible text', async () => {
+  const model = 'DeepSeek-V4.1-Flash-1017';
+  const payload = sse([
+    ['message', { model, choices: [{ delta: { reasoning_content: 'private ephemeral reasoning' }, finish_reason: null }] }],
+    ['message', { model, choices: [{ delta: { tool_calls: [{ index: 0, id: 'read-1', function: { name: 'knowledge_search', arguments: '{"query":"an toàn"}' } }] }, finish_reason: null }] }],
+    ['message', { model, choices: [{ delta: {}, finish_reason: 'tool_calls' }] }],
+    ['message', { model, choices: [], usage: { prompt_tokens: 100, completion_tokens: 10, prompt_cache_hit_tokens: 40, prompt_cache_miss_tokens: 60, total_tokens: 110 } }],
+  ]) + 'data: [DONE]\n\n';
+  const provider = createDeepSeekProvider({ ...deepseekConfig, thinking: true, verifiedModels: pilotServedModels }, async () => pilotResponse(streamOf([payload])));
+  const visible = [];
+  const result = await provider.complete(request(), delta => visible.push(delta));
+  assert.equal(result.stopReason, 'tool_use');
+  assert.deepEqual(result.toolCalls, [{ id: 'read-1', name: 'knowledge_search', input: { query: 'an toàn' } }]);
+  assert.deepEqual(visible, []);
+  assert.equal(result.usage.outputTokens, 10);
+});
+
+test('lost accounting acknowledgements fail as budget errors and request a durable halt after visible output', async () => {
+  const actions = [];
+  const visible = [];
+  const provider = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', async (url, init) => {
+    if (url === deepseekEndpoint) return pilotResponse(streamOf([pilotStream()]));
+    const action = JSON.parse(init.body).p_action;
+    actions.push(action);
+    if (action === 'settle') throw new TypeError('Synthetic lost settlement acknowledgement');
+    return Response.json({ ok: action === 'reserve' });
+  })[0];
+  await assert.rejects(provider.complete(request(), delta => visible.push(delta)), error => error instanceof ProviderError && error.kind === 'budget');
+  assert.deepEqual(actions, ['reserve', 'settle', 'uncertain']);
+  assert.deepEqual(visible, ['Chào bạn']);
+});
 
 function streamOf(chunks) {
   return new ReadableStream({
@@ -303,13 +553,15 @@ test('the TypeScript task state machine matches the authoritative SQL transition
   assert.deepEqual(checkModelTransition({ ...task, artifact: { effect_required: true, effect_result: { status: 'succeeded', resource_kind: 'service_request', resource_id: 'r' } } }, 'completed'), { ok: true });
 });
 
-test('configuration never invents models, keeps spending opt-in and reports only setting names', () => {
+test('server configuration defaults to Flash and keeps other routes and effects explicit', () => {
   assert.equal(readKaelConfig({}), null);
   const keysOnly = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', DEEPSEEK_API_KEY: 'secret-d', PERPLEXITY_API_KEY: 'secret-p' });
   assert.equal(keysOnly.anthropic, null, 'a key without an explicitly configured model is not a usable provider');
-  assert.equal(keysOnly.deepseek, null);
+  assert.equal(keysOnly.deepseek.model, 'deepseek-flash');
   assert.equal(keysOnly.perplexity, null, 'web search needs explicit enablement');
-  assert.deepEqual(keysOnly.route, []);
+  assert.deepEqual(keysOnly.route, ['deepseek']);
+  assert.deepEqual(readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, [],
+    'Anthropic is not an implicit fallback when Flash is unavailable');
   const full = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-flash', KAEL_MODEL_ROUTE: 'deepseek,anthropic,openai', KAEL_ENABLED_EFFECTS: 'service_request_submit,mark_paid' });
   assert.deepEqual(full.route, ['deepseek', 'anthropic'], 'only approved providers are routable');
   assert.deepEqual([...full.enabledEffects], ['service_request_submit']);
@@ -318,6 +570,27 @@ test('configuration never invents models, keeps spending opt-in and reports only
   const withoutServer = { ...baseEnv, SUPABASE_SERVICE_ROLE_KEY: '' };
   assert.equal(readKaelConfig(withoutServer), null, 'the gateway does not run without its server credential');
   assert.match(configurationReport(withoutServer).gateway, /SUPABASE_SERVICE_ROLE_KEY/);
+});
+
+test('the normal authenticated Edge route reuses a server credential across conversations without a pilot budget', async () => {
+  let calls = 0;
+  const { message, db } = harness({ providers: null, env: { DEEPSEEK_API_KEY: 'test-server-credential' },
+    wrapFetcher: next => async (url, init) => {
+      assert.ok(!url.endsWith('/kael_pilot_charge'), 'Hosted inference has no dependency on the local pilot ledger');
+      if (url !== deepseekEndpoint) return next(url, init);
+      assert.equal(init.headers.authorization, 'Bearer test-server-credential');
+      assert.equal(JSON.parse(init.body).model, 'deepseek-flash');
+      calls++;
+      return pilotResponse(streamOf([pilotStream()]));
+    } });
+  for (const prompt of ['Chào Kael', 'Tôi nên bắt đầu từ đâu?']) {
+    const result = await message(users.customer, prompt);
+    assert.equal(result.events.at(-1).type, 'run_completed');
+    assert.equal(result.events.at(-1).text, 'Chào bạn');
+  }
+  assert.equal(calls, 2);
+  assert.equal(db.conversations.size, 2);
+  assert.equal(db.messages.filter(message => message.role === 'assistant' && message.content === 'Chào bạn').length, 2);
 });
 
 test('the gateway rejects unauthenticated, malformed and misconfigured requests without starting runs', async () => {
