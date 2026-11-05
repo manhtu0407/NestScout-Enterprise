@@ -14,8 +14,136 @@ import { findTool, toolRegistry, validateArguments } from '../services/kael-core
 import { createKaelHandler } from '../services/kael-core/src/gateway.ts';
 import { parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { baseEnv, harness, scriptedProvider, users } from './kael-test-harness.mjs';
+import { developerPilotProviders, pilotRoute, pilotServedModels } from '../services/kael-core/src/developer-pilot.ts';
+import { parsePilotAuthorization } from './kael-developer-pilot.mjs';
 
 const encoder = new TextEncoder();
+
+const pilotEnv = { ...baseEnv, SUPABASE_URL: 'http://127.0.0.1:23624', KAEL_DEVELOPER_PILOT: 'local_8085',
+  KAEL_DEVELOPER_PILOT_ID: '00000000-0000-4000-8000-000000008085', DEEPSEEK_API_KEY: 'test-deepseek-key' };
+
+function pilotStream(model = 'DeepSeek-V4.1-Flash-1017', usage = { prompt_tokens: 100, completion_tokens: 10, prompt_cache_hit_tokens: 40, prompt_cache_miss_tokens: 60, total_tokens: 110 }) {
+  return sse([['message', { model, choices: [{ delta: { content: 'Chào bạn' }, finish_reason: null }] }],
+    ['message', { model, choices: [{ delta: {}, finish_reason: 'stop' }] }],
+    ...(usage ? [['message', { model, choices: [], usage }]] : [])]) + 'data: [DONE]\n\n';
+}
+
+const pilotResponse = body => new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+
+test('developer pilot requires local identity and isolates all unapproved providers and effects', () => {
+  assert.equal(readKaelConfig({ ...pilotEnv, SUPABASE_URL: baseEnv.SUPABASE_URL }), null);
+  assert.equal(readKaelConfig({ ...pilotEnv, KAEL_DEVELOPER_PILOT: 'enabled' }), null);
+  assert.equal(readKaelConfig({ ...pilotEnv, KAEL_DEVELOPER_PILOT_ID: '' }), null);
+  const config = readKaelConfig({ ...pilotEnv, ANTHROPIC_API_KEY: 'test-key', KAEL_ANTHROPIC_MODEL: 'unapproved',
+    KAEL_DEEPSEEK_MODEL: 'unapproved-pro', PERPLEXITY_API_KEY: 'test-key', KAEL_WEB_SEARCH: 'enabled',
+    KAEL_ENABLED_EFFECTS: 'service_request_submit', KAEL_ESTIMATE_PREVIEW: 'local_only' });
+  assert.deepEqual(config.route, ['deepseek']);
+  assert.equal(config.deepseek.model, 'deepseek-flash');
+  assert.equal(config.anthropic, null);
+  assert.equal(config.perplexity, null);
+  assert.equal(config.enabledEffects.size, 0);
+  assert.equal(config.localEstimatePreview, false);
+  assert.equal(config.limits.maxModelCalls, 3);
+  assert.equal(pilotRoute('Xin chào, kể một chuyện vui').thinking, false);
+  assert.equal(pilotRoute('Hãy suy nghĩ kỹ về hai phương án').thinking, true);
+});
+
+test('developer pilot authorization has no implicit cap, price, model, provider or lifetime', () => {
+  const now = new Date('2026-11-05T04:00:00Z');
+  const valid = { purpose: 'kael_developer_8085', model: 'deepseek-flash', provider: 'deepseek', owner_approved: true,
+    cap_micro_usd: 1000000, max_calls: 20, rates_checked_at: '2026-11-05T03:55:00Z', expires_at: '2026-11-05T04:30:00Z',
+    rate_source: 'https://api-docs.deepseek.com/quick_start/pricing/', input_rate: 0.3, cached_rate: 0.006, output_rate: 1.2 };
+  assert.equal(parsePilotAuthorization(valid, now), valid);
+  for (const patch of [{ cap_micro_usd: 1000001 }, { model: 'deepseek-v4-pro' }, { provider: 'anthropic' },
+    { owner_approved: false }, { input_rate: 0 }, { output_rate: undefined }, { cached_rate: NaN },
+    { rates_checked_at: '2026-11-01T00:00:00Z' }, { expires_at: '2026-11-05T06:00:00Z' }, { max_calls: 21 }]) {
+    assert.throws(() => parsePilotAuthorization({ ...valid, ...patch }, now));
+  }
+});
+
+test('strict Flash streams validate actual identity and final cache-aware usage while streaming text', async () => {
+  const config = { ...deepseekConfig, verifiedModels: pilotServedModels };
+  const seen = [];
+  let release;
+  const continued = new Promise(resolve => { release = resolve; });
+  const chunks = pilotStream().split('event: message');
+  const body = new ReadableStream({ async start(controller) {
+    controller.enqueue(encoder.encode('event: message' + chunks[1]));
+    await continued;
+    controller.enqueue(encoder.encode(chunks.slice(2).map(c => 'event: message' + c).join('')));
+    controller.close();
+  } });
+  const provider = createDeepSeekProvider(config, async () => pilotResponse(body));
+  const turn = await provider.complete(request(), delta => { seen.push(delta); release(); });
+  assert.deepEqual(seen, ['Chào bạn']);
+  assert.equal(turn.model, 'DeepSeek-V4.1-Flash-1017');
+  assert.equal(turn.requestedModel, 'deepseek-flash');
+  assert.deepEqual(turn.usage, { inputTokens: 100, cachedInputTokens: 40, outputTokens: 10 });
+});
+
+test('strict Flash denies foreign models, absent or inconsistent usage and truncated SSE', async () => {
+  const validUsage = { prompt_tokens: 100, completion_tokens: 10, prompt_cache_hit_tokens: 40, prompt_cache_miss_tokens: 60, total_tokens: 110 };
+  for (const payload of [pilotStream('deepseek-v4-pro'), pilotStream('', validUsage), pilotStream(undefined, null),
+    pilotStream(undefined, { ...validUsage, total_tokens: 111 }), pilotStream(undefined, { ...validUsage, prompt_cache_hit_tokens: -1 }),
+    pilotStream(undefined, { ...validUsage, completion_tokens: '10' }), pilotStream().replace('data: [DONE]\n\n', ''),
+    pilotStream().replace('DeepSeek-V4.1-Flash-1017', 'deepseek-flash')]) {
+    const provider = createDeepSeekProvider({ ...deepseekConfig, verifiedModels: pilotServedModels }, async () => pilotResponse(streamOf([payload])));
+    await assert.rejects(provider.complete(request(), () => {}), error => error instanceof ProviderError);
+  }
+});
+
+test('pilot reserves before transport, records real served identity and reconciles without fallback', async () => {
+  const actions = [];
+  const providers = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), 'suy nghĩ kỹ', async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (url.endsWith('/kael_pilot_charge')) {
+      actions.push(body.p_action);
+      if (body.p_action === 'settle') {
+        assert.equal(body.p_model, 'DeepSeek-V4.1-Flash-1017');
+        assert.equal(body.p_cached, 40);
+      }
+      return Response.json({ ok: true });
+    }
+    assert.equal(url, deepseekEndpoint);
+    assert.equal(init.redirect, 'error');
+    assert.equal(body.thinking.type, 'enabled');
+    actions.push('transport');
+    return pilotResponse(streamOf([pilotStream()]));
+  });
+  assert.equal(providers.length, 1);
+  await providers[0].complete(request(), () => {});
+  assert.deepEqual(actions, ['reserve', 'transport', 'settle']);
+});
+
+test('budget refusal, reservation outage, missing key and oversized input never reach a provider', async () => {
+  for (const response of [Response.json({ ok: false }), new Response('', { status: 503 })]) {
+    let calls = 0;
+    const providers = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', async url => {
+      assert.ok(url.endsWith('/kael_pilot_charge'));
+      calls++;
+      return response;
+    });
+    await assert.rejects(providers[0].complete(request(), () => {}), error => error.kind === 'budget');
+    assert.equal(calls, 1);
+  }
+  const noKey = readKaelConfig({ ...pilotEnv, DEEPSEEK_API_KEY: '' });
+  assert.deepEqual(developerPilotProviders(noKey, users.customer.id, crypto.randomUUID(), '', () => { throw new Error('unexpected network'); }), []);
+  const oversized = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', () => { throw new Error('unexpected network'); });
+  await assert.rejects(oversized[0].complete(request({ system: 'x'.repeat(60001) }), () => {}), error => error.kind === 'budget');
+});
+
+test('uncertain usage holds the reservation and stops further paid requests after partial output', async () => {
+  const actions = [];
+  const seen = [];
+  const provider = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', async (url, init) => {
+    if (url === deepseekEndpoint) return pilotResponse(streamOf([pilotStream(undefined, null)]));
+    actions.push(JSON.parse(init.body).p_action);
+    return Response.json({ ok: true });
+  })[0];
+  await assert.rejects(provider.complete(request(), delta => seen.push(delta)), error => error.kind === 'incomplete');
+  assert.deepEqual(actions, ['reserve', 'uncertain']);
+  assert.deepEqual(seen, ['Chào bạn']);
+});
 
 function streamOf(chunks) {
   return new ReadableStream({

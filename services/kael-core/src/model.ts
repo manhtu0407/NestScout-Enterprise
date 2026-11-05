@@ -44,7 +44,7 @@ export type ModelTurn = {
 };
 
 export type ProviderErrorKind =
-  | 'unavailable' | 'auth' | 'rate_limit' | 'overloaded' | 'bad_request' | 'server' | 'network' | 'timeout' | 'incomplete' | 'cancelled';
+  | 'unavailable' | 'auth' | 'rate_limit' | 'overloaded' | 'bad_request' | 'server' | 'network' | 'timeout' | 'incomplete' | 'cancelled' | 'budget';
 
 export class ProviderError extends Error {
   readonly kind: ProviderErrorKind;
@@ -86,7 +86,7 @@ export function classifyThrown(provider: ProviderId, error: unknown, signal: Abo
 }
 
 export function canFallBack(error: ProviderError): boolean {
-  return !error.outputStarted && error.kind !== 'cancelled' && error.kind !== 'incomplete';
+  return !error.outputStarted && error.kind !== 'cancelled' && error.kind !== 'incomplete' && error.kind !== 'budget';
 }
 
 export async function completeWithFallback(

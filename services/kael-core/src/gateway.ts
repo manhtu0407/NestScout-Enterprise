@@ -2,6 +2,7 @@ import { createAnthropicProvider } from './anthropic.ts';
 import { configurationReport, readKaelConfig } from './config.ts';
 import type { Environment, KaelConfig } from './config.ts';
 import { createDeepSeekProvider } from './deepseek.ts';
+import { developerPilotProviders } from './developer-pilot.ts';
 import { encodeEvent, isTerminalEvent, kaelProtocolVersion } from './events.ts';
 import type { KaelEventBody, KaelFailureCode } from './events.ts';
 import type { Fetcher, ModelProvider } from './model.ts';
@@ -126,6 +127,10 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
     const turn: TurnRequest = parsed;
     const userId = await verifyUser(config, token, fetcher);
     if (!userId) return failure(401, 'unauthenticated');
+    if (config.developerPilotId && (turn.action.type !== 'message'
+      || (request.headers.has('origin') && !/^http:\/\/(?:localhost|127\.0\.0\.1):8085$/.test(request.headers.get('origin') ?? '')))) {
+      return failure(403, 'invalid_request');
+    }
 
     const rest = createRest(config, token, fetcher);
     const store = dependencies.store ? dependencies.store(rest, userId) : createSupabaseStore(rest, createServerRpc(config, fetcher), userId);
@@ -186,7 +191,10 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
       try {
         result = turn.action.type === 'message'
           ? await runAgentTurn({
-            actor, config: config as KaelConfig, store, rest, providers: (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config as KaelConfig),
+            actor, config: config as KaelConfig, store, rest,
+            providers: config?.developerPilotId
+              ? developerPilotProviders(config, actor.userId, runId, turn.action.text, fetcher)
+              : (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config as KaelConfig),
             fetcher, runId, conversationId, emit, signal: controller.signal, today: todayIn(now()), log,
           })
           : await resolveApproval({

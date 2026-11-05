@@ -32,6 +32,7 @@ export type KaelConfig = {
   knowledgeEnabled: boolean;
   localEstimatePreview: boolean;
   limits: KaelLimits;
+  developerPilotId?: string;
 };
 
 export const defaultLimits: KaelLimits = {
@@ -74,7 +75,11 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   } : null;
 
   const deepseekKey = value(env, 'DEEPSEEK_API_KEY');
-  const deepseekModel = value(env, 'KAEL_DEEPSEEK_MODEL');
+  const pilotFlag = value(env, 'KAEL_DEVELOPER_PILOT');
+  const pilotId = value(env, 'KAEL_DEVELOPER_PILOT_ID');
+  if (pilotFlag && (pilotFlag !== 'local_8085' || !pilotId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pilotId)
+    || !/^http:\/\/(?:127\.0\.0\.1|localhost|host\.docker\.internal|host\.supabase\.internal)(?::\d+)?\/?$/.test(supabaseUrl))) return null;
+  const deepseekModel = pilotFlag ? 'deepseek-flash' : value(env, 'KAEL_DEEPSEEK_MODEL');
   const deepseek = deepseekKey && deepseekModel ? {
     apiKey: deepseekKey, model: deepseekModel, thinking: value(env, 'KAEL_DEEPSEEK_THINKING') === 'enabled', timeoutMs: modelTimeoutMs,
   } : null;
@@ -94,7 +99,14 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   const loopback = /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\/?$/.test(supabaseUrl);
   const knowledgeEnabled = value(env, 'KAEL_KNOWLEDGE') !== 'disabled';
   const localEstimatePreview = knowledgeEnabled && loopback && value(env, 'KAEL_ESTIMATE_PREVIEW') === 'local_only';
-  return { supabaseUrl: supabaseUrl.replace(/\/+$/, ''), supabaseAnonKey, supabaseServiceKey, anthropic, deepseek, route, perplexity, enabledEffects, knowledgeEnabled, localEstimatePreview, limits: defaultLimits };
+  return {
+    supabaseUrl: supabaseUrl.replace(/\/+$/, ''), supabaseAnonKey, supabaseServiceKey,
+    anthropic: pilotFlag ? null : anthropic, deepseek, route: pilotFlag ? deepseek ? ['deepseek'] : [] : route,
+    perplexity: pilotFlag ? null : perplexity, enabledEffects: pilotFlag ? new Set() : enabledEffects,
+    knowledgeEnabled, localEstimatePreview: pilotFlag ? false : localEstimatePreview,
+    limits: pilotFlag ? { ...defaultLimits, maxModelCalls: 3 } : defaultLimits,
+    ...(pilotFlag ? { developerPilotId: pilotId } : {}),
+  };
 }
 
 export function configurationReport(env: Environment): Record<string, string> {

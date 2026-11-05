@@ -48,7 +48,7 @@ const failureMessages: Record<KaelFailureCode, string> = {
   provider_unavailable: 'Mô hình AI của Kael chưa được cấu hình hoặc chưa khả dụng. Tin nhắn của bạn đã được lưu nhưng chưa được trả lời.',
   provider_error: 'Mô hình AI tạm thời gặp lỗi. Chưa có thao tác nào được thực hiện thêm; bạn có thể thử lại.',
   incomplete_output: 'Phản hồi bị gián đoạn trước khi hoàn tất. Nội dung phía trên có thể chưa đầy đủ.',
-  budget_exhausted: 'Kael đã dừng vì vượt giới hạn xử lý cho một lượt. Các bước đã ghi nhận vẫn được giữ.',
+  budget_exhausted: 'Kael đã dừng vì đạt giới hạn xử lý hoặc ngân sách. Các bước đã ghi nhận vẫn được giữ.',
   approval_invalid: 'Xác nhận này không còn hợp lệ. Chưa có thao tác nào được thực hiện.',
   cancelled: 'Lượt xử lý đã bị dừng.',
   internal: 'Kael gặp lỗi nội bộ. Chưa có thao tác nào được báo là thành công.',
@@ -63,6 +63,7 @@ export function isRetryable(code: KaelFailureCode): boolean {
 }
 
 function providerFailure(error: ProviderError, deadlineHit: boolean): KaelFailureCode {
+  if (error.kind === 'budget') return 'budget_exhausted';
   if (error.kind === 'cancelled') return deadlineHit ? 'budget_exhausted' : 'cancelled';
   if (error.kind === 'incomplete') return 'incomplete_output';
   if (error.kind === 'unavailable' || error.kind === 'auth') return 'provider_unavailable';

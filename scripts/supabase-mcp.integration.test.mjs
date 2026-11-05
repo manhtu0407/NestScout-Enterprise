@@ -18,6 +18,51 @@ import { localTools } from './supabase-mcp.mjs';
 const barrierKey = () => Number.parseInt(randomUUID().slice(0, 7), 16);
 const holdBarrier = key => `select pg_advisory_xact_lock(1638597420, ${key}); select pg_sleep(8);`;
 
+test('pilot budget serializes concurrent workers and retains held spend across worker restart', { timeout: 120000 }, async () => {
+  await withLocalLock(async () => {
+    const database = localKnowledgeDatabase();
+    const actor = randomUUID();
+    const conversation = randomUUID();
+    const run = randomUUID();
+    const pilot = randomUUID();
+    const callA = randomUUID();
+    const callB = randomUUID();
+    const key = barrierKey();
+    const charge = callId => `set local request.jwt.claims='{"role":"service_role"}';
+      select public.kael_pilot_charge('${pilot}','${actor}','${run}','${callId}','reserve',false,'deepseek-flash',0,0,0);`;
+    let first;
+    let second;
+    try {
+      database.query(`insert into auth.users (id,aud,role) values ('${actor}','authenticated','authenticated');
+        insert into public.kael_conversations (id,owner_id,mode) values ('${conversation}','${actor}','client');
+        insert into public.kael_runs (id,conversation_id,owner_id,request_id) values ('${run}','${conversation}','${actor}',gen_random_uuid());
+        insert into nestscout_private.kael_pilot_budgets
+          (id,enabled,actors,expires_at,cap_micro_usd,max_calls,input_rate,cached_rate,output_rate,rate_source,rates_checked_at,source_sha,stack_id)
+          values ('${pilot}',true,array['${actor}']::uuid[],now()+interval '30 minutes',1000000,20,0.3,0.006,1.2,
+            'https://api-docs.deepseek.com/quick_start/pricing/',now(),repeat('a',40),'integration-local');`);
+      first = database.concurrentTransaction(`${charge(callA)} ${holdBarrier(key)}`);
+      await waitForBarrier(database.query, key);
+      second = database.concurrentTransaction(charge(callB));
+      first.commit();
+      second.commit();
+      assert.match(await first.done, /"ok": true/);
+      assert.match(await second.done, /unreconciled_call/);
+      assert.equal(database.query(`select count(*) from nestscout_private.kael_pilot_calls where pilot_id='${pilot}';`).trim(), '1');
+      const restarted = localKnowledgeDatabase();
+      assert.match(restarted.query(`begin; ${charge(randomUUID())} rollback;`), /unreconciled_call/);
+      assert.equal(restarted.query(`select sum(reserved_micro_usd) from nestscout_private.kael_pilot_calls where pilot_id='${pilot}';`).trim(), '319488');
+    } finally {
+      first?.rollback();
+      second?.rollback();
+      await Promise.allSettled([first?.done, second?.done]);
+      database.query(`delete from nestscout_private.kael_pilot_calls where pilot_id='${pilot}';
+        delete from nestscout_private.kael_pilot_budgets where id='${pilot}';
+        delete from public.kael_runs where id='${run}'; delete from public.kael_conversations where id='${conversation}';
+        delete from auth.users where id='${actor}';`);
+    }
+  });
+});
+
 async function waitForBarrier(query, key) {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
