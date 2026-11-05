@@ -77,7 +77,7 @@ export function DeveloperPilotPanel() {
         <Text style={styles.small}>{budget ? `Ngân sách ${budget.enabled && !budget.halted ? 'được cấu hình' : 'khóa'} · giữ/chi ước tính $${(budget.committed_micro_usd / 1e6).toFixed(6)} / $${(budget.cap_micro_usd / 1e6).toFixed(2)} · ${budget.charged_calls} call` : 'Chưa có ủy quyền ngân sách local.'}</Text>
         <Text style={styles.small}>{call ? `${call.requested_model} → ${call.served_model ?? 'chưa xác nhận'} · ${call.thinking ? 'thinking: yêu cầu phân tích kỹ' : 'thường: mặc định tiết kiệm'} · ${call.status} · tokens ${call.input_tokens ?? '?'} / ${call.output_tokens ?? '?'}` : 'LIVE_PROVIDER_NOT_RUN · chưa có call được giữ ngân sách.'}</Text>
         {(ownStatus?.tools ?? []).slice(0, 3).map((tool, index) => <Text key={`${tool.run_id}-${index}`} style={styles.small}>{tool.tool}: {tool.outcome}{tool.error_code ? ` (${tool.error_code})` : ''}</Text>)}
-        <Pressable accessibilityRole="button" onPress={() => { setStatus(null); void access.signOut(); }}><Text>Đăng xuất local</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => { setStatus(null); setNotice(''); void access.signOut(); }}><Text>Đăng xuất local</Text></Pressable>
       </View>}
       <Text style={styles.small}>Ảnh: IMAGE_NOT_CONNECTED. Feedback có lưu: chưa có hợp đồng dữ liệu. Formal review vẫn pending.</Text>
       {notice !== '' && <Text accessibilityRole="alert" style={styles.small}>{notice}</Text>}

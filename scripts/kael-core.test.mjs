@@ -145,6 +145,45 @@ test('uncertain usage holds the reservation and stops further paid requests afte
   assert.deepEqual(seen, ['Chào bạn']);
 });
 
+test('paid stream lifecycle violations retain reservations rather than settling a fabricated completion', async () => {
+  const model = 'DeepSeek-V4.1-Flash-1017';
+  const extraChoice = sse([['message', { model, choices: [{ delta: { content: ' forbidden after terminal' }, finish_reason: null }] }]]);
+  const valid = pilotStream();
+  const afterFinish = valid.indexOf('event: message', valid.indexOf('finish_reason":"stop"'));
+  for (const payload of [valid.slice(0, afterFinish) + extraChoice + valid.slice(afterFinish),
+    valid.replace('finish_reason":"stop"', 'finish_reason":"unexpected_reason"'),
+    valid.replace('finish_reason":"stop"', 'finish_reason":["stop"]'),
+    valid.replace('finish_reason":"stop"', 'finish_reason":"tool_calls"')]) {
+    const actions = [];
+    let visible = '';
+    const provider = developerPilotProviders(readKaelConfig(pilotEnv), users.customer.id, crypto.randomUUID(), '', async (url, init) => {
+      if (url === deepseekEndpoint) return pilotResponse(streamOf([payload]));
+      actions.push(JSON.parse(init.body).p_action);
+      return Response.json({ ok: true });
+    })[0];
+    await assert.rejects(provider.complete(request(), delta => { visible += delta; }), error => error.kind === 'incomplete');
+    assert.equal(visible, 'Chào bạn');
+    assert.deepEqual(actions, ['reserve', 'uncertain']);
+  }
+});
+
+test('strict Flash accepts a consistent thinking tool stream without exposing reasoning as visible text', async () => {
+  const model = 'DeepSeek-V4.1-Flash-1017';
+  const payload = sse([
+    ['message', { model, choices: [{ delta: { reasoning_content: 'private ephemeral reasoning' }, finish_reason: null }] }],
+    ['message', { model, choices: [{ delta: { tool_calls: [{ index: 0, id: 'read-1', function: { name: 'knowledge_search', arguments: '{"query":"an toàn"}' } }] }, finish_reason: null }] }],
+    ['message', { model, choices: [{ delta: {}, finish_reason: 'tool_calls' }] }],
+    ['message', { model, choices: [], usage: { prompt_tokens: 100, completion_tokens: 10, prompt_cache_hit_tokens: 40, prompt_cache_miss_tokens: 60, total_tokens: 110 } }],
+  ]) + 'data: [DONE]\n\n';
+  const provider = createDeepSeekProvider({ ...deepseekConfig, thinking: true, verifiedModels: pilotServedModels }, async () => pilotResponse(streamOf([payload])));
+  const visible = [];
+  const result = await provider.complete(request(), delta => visible.push(delta));
+  assert.equal(result.stopReason, 'tool_use');
+  assert.deepEqual(result.toolCalls, [{ id: 'read-1', name: 'knowledge_search', input: { query: 'an toàn' } }]);
+  assert.deepEqual(visible, []);
+  assert.equal(result.usage.outputTokens, 10);
+});
+
 function streamOf(chunks) {
   return new ReadableStream({
     start(controller) {

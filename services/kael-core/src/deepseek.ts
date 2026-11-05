@@ -96,6 +96,21 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
             break;
           }
           const chunk = JSON.parse(message.data) as Record<string, unknown>;
+          if (config.verifiedModels) {
+            if (chunk.error !== undefined || !Array.isArray(chunk.choices) || chunk.choices.length > 1
+              || (finishReason !== null && chunk.choices.length > 0)) {
+              throw new ProviderError('deepseek', 'incomplete', 'The stream violated the completion lifecycle.', started);
+            }
+            const first = chunk.choices[0];
+            if (chunk.choices.length && (typeof first !== 'object' || first === null || Array.isArray(first))) {
+              throw new ProviderError('deepseek', 'incomplete', 'The stream choice was malformed.', started);
+            }
+            const finish = (first as Record<string, unknown> | undefined)?.finish_reason;
+            if (finish !== null && finish !== undefined && (typeof finish !== 'string'
+              || !['stop', 'tool_calls', 'length', 'content_filter', 'insufficient_system_resource', 'aborted'].includes(finish))) {
+              throw new ProviderError('deepseek', 'incomplete', 'The completion reason was not recognized.', started);
+            }
+          }
           if (typeof chunk.model === 'string') {
             if (servedModel !== null && servedModel !== chunk.model) throw new ProviderError('deepseek', 'incomplete', 'The served model changed within the stream.', started);
             servedModel = chunk.model;
@@ -142,6 +157,9 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
         }
         if (finishReason === null || !terminated) throw new ProviderError('deepseek', 'incomplete', 'The DeepSeek stream ended before completion.', started);
         if (config.verifiedModels && !verifiedUsage) throw new ProviderError('deepseek', 'incomplete', 'The final usage was unavailable.', started);
+        if (config.verifiedModels && ((finishReason === 'tool_calls') !== (calls.size > 0))) {
+          throw new ProviderError('deepseek', 'incomplete', 'The tool completion reason did not match the stream.', started);
+        }
         if (finishReason === 'insufficient_system_resource' || finishReason === 'aborted') {
           throw new ProviderError('deepseek', started ? 'incomplete' : 'overloaded', 'DeepSeek stopped before completing the response.', started);
         }
