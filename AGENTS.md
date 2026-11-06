@@ -51,15 +51,32 @@ and resolve them within approved scope; do not silently bypass controls.
 
 ## Architecture and investigation
 
-The inspected repository contains Node.js 24/npm engineering tooling and the
-approved `apps/mobile` Expo/React Native Application Foundation V2 workspace.
-Its implemented scope is guest entry, phone OTP client integration and Client/Worker
-mode gates, not home-service business workflows. Isolated Supabase Local tooling,
-generated types and database tests support the technical `worker_access_grants`
-table. Native iOS builds and real SMS delivery are NOT VERIFIED. A standalone API
-server, Kael runtime and production deployment targets are NOT PRESENT. Reinspect
-the repository as it evolves; do not import architecture, commands, credentials,
-or conventions from another repository.
+The repository contains Node.js 24/npm engineering tooling and an Expo/React Native
+TypeScript application with guest and phone OTP entry, Customer/Worker modes, Kael
+chat, and home-services workflow slices. Supabase Auth, Postgres, Storage, RLS,
+RPCs, migrations, isolated local tooling, and Edge Functions support these paths.
+Workflow contracts and tests include local-fixture behavior; they do not establish
+commercial dispatch, payment reconciliation, or settlement. Kael is one TypeScript
+runtime in `services/kael-core`, served through `supabase/functions/kael`, not a
+separately hosted API service.
+
+The status below records evidence for `main` at `e5a35c8` (2026-11-06) and the
+connected hosted project observed that day. It describes implementation and
+verification only; it grants no deployment or data authority. Recheck the current
+source and environment before making later status claims.
+
+| Concern | Implemented and locally verified | Hosted/deployed evidence and limits |
+| --- | --- | --- |
+| Mobile and service workflows | Expo/React Native entry, phone OTP client, Customer/Worker modes, service workflow screens and repositories, and Kael chat; local app and Supabase contract tests exist. | Main config selects the approved hosted Supabase target and includes an EAS TestFlight profile. Native build, signing, TestFlight upload, device behavior, and real SMS delivery are NOT VERIFIED. |
+| Backend and Supabase | TypeScript Kael Core runs behind the Supabase `kael` Edge Function. Auth-scoped data, RLS, guarded RPCs, workflow and Kael migrations, local Auth/REST/database integration, and deterministic offline/local-SQL evaluation are implemented. | The connected hosted project reports ACTIVE_HEALTHY; `kael` is ACTIVE with JWT verification, and its migration history includes Kael Runtime, Knowledge, price-prior protection, and memory. Merged PR #102 records missing/invalid-JWT denials and limited provider checks; this does not establish a complete hosted user flow. Production pilot spend windows remain closed. |
+| Memory | Opt-in, per-mode reply preferences and a bounded digest over existing conversation history are implemented and covered by local tests. | The memory migration is applied. Live memory behavior and the authenticated hosted Preview are NOT VERIFIED. General-purpose fact memory and conversation retention/deletion jobs are NOT IMPLEMENTED. |
+| Intelligence | Versioned knowledge and provenance, caller-scoped retrieval, provisional synthetic cases, isolated price priors, and offline/local-SQL evaluation are implemented. | Live Evaluation has not run; human anchors remain pending review, model quality and RAG lift are unmeasured, and learning remains inactive. |
+
+The hosted Edge Function and database migrations are deployed, but the production
+checks recorded above cover only the stated boundaries. The merged iOS TestFlight
+change configures a build target; it does not prove an iOS build or app release.
+Do not describe local tests, deployed components, limited production checks, or
+configuration as equivalent evidence.
 
 | Concern | Canonical owner |
 | --- | --- |
@@ -108,16 +125,18 @@ conditional requirements, not claims that such modules exist.
 
 ### Language ownership
 
-TypeScript is the default for application, API and Kael agent code. `scripts/language-policy.json`
-maps these domains to actual repository paths and `npm run check:languages` enforces
-them against the index and the working tree.
+TypeScript is the primary application language and the default for API and Kael
+agent code. JavaScript remains limited to existing repository tooling and required
+configuration. Python and Rust are conditional and need approved technical
+justification. `scripts/language-policy.json` maps these domains to actual repository
+paths and `npm run check:languages` enforces them against the index and working tree.
 
 | Domain | Path | Language | Status |
 | --- | --- | --- | --- |
 | Mobile and frontend | `apps/mobile/` | TypeScript | Enforced |
-| Backend, API and Kael agent core | `services/` | TypeScript | Enforced; no runtime exists yet |
+| Backend, API and Kael agent core | `services/` | TypeScript | Enforced; Kael Runtime implemented |
 | Database, migrations and RLS | `supabase/` | PostgreSQL SQL; generated types and Edge code in TypeScript | Enforced |
-| Repository tooling | `scripts/` | Node ESM JavaScript | Existing-first |
+| Repository tooling and required configuration | `scripts/`, existing `apps/mobile/eslint.config.mjs` | Node ESM JavaScript | Existing-first; no product application JavaScript |
 | Optional Git hooks | `.githooks/` | POSIX shell | Existing-first |
 | Kael ML and training | none approved | Python | Conditional |
 | Profiled performance-critical components | none approved | Rust | Conditional |
