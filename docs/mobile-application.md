@@ -8,6 +8,13 @@ owner has not yet supplied process documents or final UI.
 
 ## Design fidelity contract
 
+The iOS icon `apps/mobile/assets/horizon/app-icon.png` is a reconstructed render
+of the third, white-background mascot variant in the owner-supplied
+`NestScout Kael Mascot Style Guide.png` (source SHA-256
+`b15f95e9b647f80a9809bb238e692f2263b23271d931e5d4a2671d97b34bc0cf`).
+The opaque 1024-pixel PNG has SHA-256
+`23f1f799222a6c5746227a9c580e388bd1883265ea60d0487d6b97ed40c39277`.
+
 ### Design foundation and development showcase
 
 The [Apple HIG accessibility guidance](https://developer.apple.com/design/human-interface-guidelines/accessibility)
