@@ -3,8 +3,9 @@ import type { Fetcher, ModelProvider, ModelRequest, ModelTurn, StopReason, ToolC
 import { readSse } from './sse.ts';
 
 export const deepseekEndpoint = 'https://api.deepseek.com/chat/completions';
+export const deepseekMaxRequestBytes = 60_000;
 
-export type DeepSeekConfig = { apiKey: string; model: string; thinking: boolean; timeoutMs: number; verifiedModels?: readonly string[] };
+export type DeepSeekConfig = { apiKey: string; model: string; thinking: boolean; timeoutMs: number; verifiedModels?: readonly string[]; maxRequestBytes?: number };
 
 type DeepSeekState = { reasoning: string };
 
@@ -65,10 +66,14 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
       const signal = AbortSignal.any([request.signal, AbortSignal.timeout(config.timeoutMs)]);
       let started = false;
       try {
+        const body = JSON.stringify(deepseekRequestBody(config, request));
+        if (config.maxRequestBytes !== undefined && new TextEncoder().encode(body).length > config.maxRequestBytes) {
+          throw new ProviderError('deepseek', 'budget', 'The DeepSeek request exceeded its approved input limit.');
+        }
         const response = await fetcher(deepseekEndpoint, {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${config.apiKey}` },
-          body: JSON.stringify(deepseekRequestBody(config, request)),
+          body,
           signal,
           redirect: 'error',
         });
@@ -132,7 +137,7 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
               || (usage.prompt_cache_hit_tokens !== undefined && (!validUsage(usage.prompt_cache_hit_tokens) || usage.prompt_cache_hit_tokens > usage.prompt_tokens))) {
               throw new ProviderError('deepseek', 'incomplete', 'The final usage was malformed.', started);
             }
-            if (config.verifiedModels) {
+            if (config.verifiedModels || config.maxRequestBytes !== undefined) {
               if (choice && (choice.finish_reason == null || typeof delta !== 'object' || Array.isArray(delta)
                 || Object.entries(delta).some(([name, value]) => value !== null && value !== ''
                   && !(name === 'tool_calls' && Array.isArray(value) && value.length === 0)
@@ -143,7 +148,8 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
               if (verifiedUsage || !fields.every(name => Number.isSafeInteger(usage[name]) && Number(usage[name]) >= 0)
                 || Number(usage.prompt_tokens) !== Number(usage.prompt_cache_hit_tokens) + Number(usage.prompt_cache_miss_tokens)
                 || Number(usage.total_tokens) !== Number(usage.prompt_tokens) + Number(usage.completion_tokens)
-                || Number(usage.completion_tokens) > request.maxOutputTokens || Number(usage.prompt_tokens) > 1_048_576) {
+                || Number(usage.completion_tokens) > request.maxOutputTokens
+                || Number(usage.prompt_tokens) > (config.maxRequestBytes ?? 1_048_576)) {
                 throw new ProviderError('deepseek', 'incomplete', 'The final usage was missing or inconsistent.', started);
               }
             }

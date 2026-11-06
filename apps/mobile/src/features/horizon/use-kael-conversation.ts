@@ -258,17 +258,24 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
       messages: [...current.messages, { id: `user-${requestId}`, role: 'user', text: userText }],
       approvals: action.type === 'message' ? current.approvals : current.approvals.filter(item => item.id !== action.approval_id),
     }));
-    const outcome = await streamer(userId, { requestId, conversationId, mode, action }, event => {
-      if (controller.signal.aborted) return;
-      if (event.type === 'run_started') {
-        conversationId = event.conversation_id;
-        replayed = event.replayed;
-        started = true;
-        if (event.replayed) interruptedRef.current = null;
-        else usersAfterAnchorRef.current += 1;
-      }
-      setState(current => applyEvent(current, event, assistantId));
-    }, controller.signal);
+    let outcome: KaelTurnOutcome;
+    try {
+      outcome = await streamer(userId, { requestId, conversationId, mode, action }, event => {
+        if (controller.signal.aborted) return;
+        if (event.type === 'run_started') {
+          conversationId = event.conversation_id;
+          replayed = event.replayed;
+          started = true;
+          if (event.replayed) interruptedRef.current = null;
+          else usersAfterAnchorRef.current += 1;
+        }
+        setState(current => applyEvent(current, event, assistantId));
+      }, controller.signal);
+    } catch {
+      outcome = controller.signal.aborted
+        ? { kind: 'cancelled' }
+        : { kind: 'refused', code: 'provider_error', message: 'Kael không thể hoàn tất yêu cầu do lỗi kết nối. Vui lòng thử lại.', retryable: true };
+    }
     if (controllerRef.current !== controller) return;
     controllerRef.current = null;
     runningRef.current = false;

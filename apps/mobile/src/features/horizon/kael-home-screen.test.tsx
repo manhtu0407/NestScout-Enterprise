@@ -9,8 +9,8 @@ afterEach(() => jest.restoreAllMocks());
 
 const initialMetrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, bottom: 0, left: 0, right: 0 } };
 
-function renderHome(onNew = jest.fn()) {
-  return render(<SafeAreaProvider initialMetrics={initialMetrics}><KaelHomeScreen input="" onInput={jest.fn()} onSubmit={jest.fn()} onMenu={jest.fn()} onNew={onNew} messages={[]} composerError={null} onClearComposerError={jest.fn()} conversationKey={0}/></SafeAreaProvider>);
+function renderHome(onNew = jest.fn(), composerError: string | null = null) {
+  return render(<SafeAreaProvider initialMetrics={initialMetrics}><KaelHomeScreen input="" onInput={jest.fn()} onSubmit={jest.fn()} onMenu={jest.fn()} onNew={onNew} messages={[]} composerError={composerError} onClearComposerError={jest.fn()} conversationKey={0}/></SafeAreaProvider>);
 }
 
 test('options button opens the conversation menu', async () => {
@@ -26,6 +26,11 @@ test('focusing the composer moves from the introduction into the conversation la
   await renderHome();
   await fireEvent(screen.getByLabelText('Nhắn Kael'), 'focus');
   expect(screen.getByLabelText('Mở thanh bên')).toBeTruthy();
+});
+
+test('a Kael connection diagnosis is visible and announced by the composer', async () => {
+  await renderHome(jest.fn(), 'Phiên Supabase Auth không hợp lệ. Vui lòng đăng nhập lại.');
+  expect(screen.getByText('Phiên Supabase Auth không hợp lệ. Vui lòng đăng nhập lại.').props.accessibilityLiveRegion).toBe('polite');
 });
 
 test('the mascot follows the footer when the available screen height changes without resizing the footer', async () => {

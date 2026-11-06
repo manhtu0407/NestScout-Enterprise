@@ -646,6 +646,9 @@ isOneToOne: false
 "kael_pilot_status":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"kael_provider_charge":
+{ Args: { "p_actor": string,"p_actual": number,"p_call": string,"p_provider": string,"p_run": string }; Returns: boolean
+                           },
 "kael_read_context":
 { Args: { "p_kind": string,"p_resource_id": string }; Returns: Json
                            },

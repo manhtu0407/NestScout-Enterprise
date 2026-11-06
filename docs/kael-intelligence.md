@@ -1001,7 +1001,7 @@ start the worker with pilot metadata only. It persists messages with
 provider-unavailable status. `status` checks the worker and authorization
 generation, and the launcher refuses `arm`. The existing authorization and
 accounting records are retained. For live verification see the
-[hosted provider verification prerequisites](../services/kael-core/README.md#hosted-provider-verification).
+[hosted TestFlight Device Beta setup](../services/kael-core/README.md#hosted-testflight-device-beta).
 
 Run `close` to disable an existing budget while preserving the accounting
 ledger. The launcher removes its private `edge.json` launch record when it

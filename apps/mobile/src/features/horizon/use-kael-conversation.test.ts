@@ -74,6 +74,17 @@ test('failures and interruptions are shown honestly and mark partial replies inc
   expect(result.current.messages.filter(message => message.role === 'assistant')).toHaveLength(2);
 });
 
+test('a thrown stream failure is visible and releases the conversation for another send', async () => {
+  const streamer = jest.fn(async () => { throw new TypeError('Network request failed'); });
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader));
+  await act(async () => { result.current.send('Xin chào'); });
+  expect(result.current.running).toBe(false);
+  expect(result.current.notice).toMatch(/lỗi kết nối/);
+  await act(async () => { result.current.send('Thử lại'); });
+  expect(streamer).toHaveBeenCalledTimes(2);
+  expect(result.current.running).toBe(false);
+});
+
 test('guests cannot send, and switching mode starts a fresh conversation', async () => {
   const { streamer, requests } = scriptedStreamer([
     { events: [started, { type: 'run_completed', text: 'Chào' }] },

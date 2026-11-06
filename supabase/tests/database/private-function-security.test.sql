@@ -28,7 +28,7 @@ select is_empty($$
   select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
   where n.nspname='nestscout_private' and has_function_privilege('service_role',p.oid,'execute')
     and p.proname not in ('kael_start_run','kael_finish_run','kael_save_task','kael_record_tool',
-      'kael_request_approval','kael_consume_approval','kael_complete_approval','kael_reject_approval','kael_pilot_charge','kael_verification_charge')
+      'kael_request_approval','kael_consume_approval','kael_complete_approval','kael_reject_approval','kael_pilot_charge','kael_provider_charge')
 $$, 'The trusted server role reaches only the reviewed Kael-internal operations in the private schema');
 
 select ok(not has_schema_privilege('anon','nestscout_private','usage'), 'Anonymous users cannot use the private schema');

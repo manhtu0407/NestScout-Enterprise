@@ -5,7 +5,8 @@ select no_plan();
 insert into auth.users (id, aud, role) values
   ('00000000-0000-4000-8000-0000000000a1', 'authenticated', 'authenticated'),
   ('00000000-0000-4000-8000-0000000000b2', 'authenticated', 'authenticated'),
-  ('00000000-0000-4000-8000-0000000000c3', 'authenticated', 'authenticated');
+  ('00000000-0000-4000-8000-0000000000c3', 'authenticated', 'authenticated'),
+  ('00000000-0000-4000-8000-0000000000e5', 'authenticated', 'authenticated');
 insert into auth.users (id, aud, role, is_anonymous) values
   ('00000000-0000-4000-8000-0000000000d4', 'authenticated', 'authenticated', true);
 insert into public.worker_access_grants (user_id) values ('00000000-0000-4000-8000-0000000000c3');
@@ -62,7 +63,7 @@ set local role service_role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 select throws_ok($$ select public.kael_start_run('00000000-0000-4000-8000-0000000000d4', '20000000-0000-4000-8000-000000000001', null, 'client', 'Xin chào') $$,
   '42501', 'verified Kael actor required', 'An anonymous account cannot act through the gateway');
-select throws_ok($$ select public.kael_start_run('00000000-0000-4000-8000-0000000000e5', '20000000-0000-4000-8000-000000000001', null, 'client', 'Xin chào') $$,
+select throws_ok($$ select public.kael_start_run('00000000-0000-4000-8000-0000000000f6', '20000000-0000-4000-8000-000000000001', null, 'client', 'Xin chào') $$,
   '42501', 'verified Kael actor required', 'An unknown actor is rejected');
 select throws_ok($$ select public.kael_start_run(null, '20000000-0000-4000-8000-000000000001', null, 'client', 'Xin chào') $$,
   '42501', 'verified Kael actor required', 'A missing actor is rejected');
@@ -534,31 +535,83 @@ select ok(has_function_privilege('authenticated', 'public.kael_conversation_stat
 select is((select count(*)::integer from nestscout_private.kael_approvals where owner_id = '00000000-0000-4000-8000-0000000000b2'), 0,
   'Foreign attempts created no approvals');
 
-select ok(not has_function_privilege('authenticated', 'public.kael_verification_charge(uuid,uuid,text,uuid,integer)', 'execute')
-  and not has_function_privilege('anon', 'public.kael_verification_charge(uuid,uuid,text,uuid,integer)', 'execute')
-  and not has_table_privilege('service_role', 'nestscout_private.kael_verification_budgets', 'update'),
-  'Only the trusted server can call the verification RPC and it cannot edit the ledger directly');
-
-insert into nestscout_private.kael_verification_budgets (provider, actors, expires_at)
-  values ('anthropic', array['00000000-0000-4000-8000-0000000000c3'::uuid], clock_timestamp() + interval '10 minutes');
+select ok(not has_function_privilege('authenticated', 'public.kael_provider_charge(uuid,uuid,text,uuid,integer)', 'execute')
+  and not has_function_privilege('anon', 'public.kael_provider_charge(uuid,uuid,text,uuid,integer)', 'execute')
+  and not has_function_privilege('authenticated', 'public.kael_verification_charge(uuid,uuid,text,uuid,integer)', 'execute')
+  and not has_table_privilege('service_role', 'nestscout_private.kael_provider_budgets', 'update')
+  and not exists (select 1 from pg_attribute where attrelid = 'nestscout_private.kael_provider_budgets'::regclass and attname = 'actors' and not attisdropped),
+  'Provider budgets are global, hidden and writable only through server RPCs');
+select ok((select count(*)::integer from nestscout_private.kael_provider_budgets where provider in ('deepseek', 'anthropic', 'perplexity')) = 3,
+  'The beta ledger provisions a shared hourly budget for each enabled provider');
 set local role service_role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-select set_config('test.verification_run', public.kael_start_run('00000000-0000-4000-8000-0000000000c3', gen_random_uuid(), null, 'client', 'Probe') ->> 'run_id', true);
-select set_config('test.verification_call', gen_random_uuid()::text, true);
-select ok(not public.kael_verification_charge('00000000-0000-4000-8000-0000000000b2', current_setting('test.verification_run')::uuid,
-  'anthropic', current_setting('test.verification_call')::uuid, null), 'A foreign actor cannot reserve against a run');
-select ok(not public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
-  'deepseek', current_setting('test.verification_call')::uuid, null), 'A provider without a verified quote is refused');
-select ok(public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
-  'anthropic', current_setting('test.verification_call')::uuid, null), 'An allowlisted actor can reserve once');
-select ok(not public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
-  'anthropic', gen_random_uuid(), null), 'An unresolved hold blocks every new attempt');
-select ok(not public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
-  'anthropic', gen_random_uuid(), 1), 'A different call cannot release a hold');
-select ok(public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
-  'anthropic', current_setting('test.verification_call')::uuid, 30000), 'Validated usage commits and releases only the corresponding hold');
-select ok(not public.kael_verification_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.verification_run')::uuid,
-  'anthropic', gen_random_uuid(), null), 'A new reservation cannot exceed the provider ceiling');
+select set_config('test.beta_run_a', public.kael_start_run('00000000-0000-4000-8000-0000000000c3', gen_random_uuid(), null, 'client', 'Beta budget probe A') ->> 'run_id', true);
+select set_config('test.beta_run_b', public.kael_start_run('00000000-0000-4000-8000-0000000000e5', gen_random_uuid(), null, 'client', 'Beta budget probe B') ->> 'run_id', true);
+select set_config('test.beta_call_a', gen_random_uuid()::text, true);
+select set_config('test.beta_call_b', gen_random_uuid()::text, true);
+select ok(not public.kael_provider_charge('00000000-0000-4000-8000-0000000000b2', current_setting('test.beta_run_a')::uuid,
+  'deepseek', current_setting('test.beta_call_a')::uuid, null), 'A foreign account cannot reserve against another account run');
+select ok(not public.kael_provider_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.beta_run_a')::uuid,
+  'unsupported', current_setting('test.beta_call_a')::uuid, null), 'A provider without an approved price bound is refused');
+select ok(public.kael_provider_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.beta_run_a')::uuid,
+  'deepseek', current_setting('test.beta_call_a')::uuid, null), 'A valid authenticated account can reserve the shared DeepSeek budget');
+select ok(not public.kael_provider_charge('00000000-0000-4000-8000-0000000000e5', current_setting('test.beta_run_b')::uuid,
+  'deepseek', current_setting('test.beta_call_b')::uuid, null), 'A second account cannot reserve against an unresolved shared hold');
+reset role;
+select is((select held_micro_usd from nestscout_private.kael_provider_budgets where provider = 'deepseek'), 22916,
+  'The DeepSeek reservation uses the full request and output bound at peak rates');
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select ok(not public.kael_provider_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.beta_run_a')::uuid,
+  'deepseek', gen_random_uuid(), 1), 'A different call cannot release the reservation');
+select ok(public.kael_provider_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.beta_run_a')::uuid,
+  'deepseek', current_setting('test.beta_call_a')::uuid, 3000), 'Validated usage commits and releases only the matching shared reservation');
+select ok(public.kael_provider_charge('00000000-0000-4000-8000-0000000000e5', current_setting('test.beta_run_b')::uuid,
+  'deepseek', current_setting('test.beta_call_b')::uuid, null), 'Another valid authenticated account can reserve after the hold is reconciled');
+select ok(public.kael_provider_charge('00000000-0000-4000-8000-0000000000e5', current_setting('test.beta_run_b')::uuid,
+  'deepseek', current_setting('test.beta_call_b')::uuid, 1000), 'The second account can settle its own provider usage');
+reset role;
+update nestscout_private.kael_provider_budgets set committed_micro_usd = 300000 where provider = 'deepseek';
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select ok(not public.kael_provider_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.beta_run_a')::uuid,
+  'deepseek', gen_random_uuid(), null), 'A provider at its hourly ceiling fails closed');
+reset role;
+update nestscout_private.kael_provider_budgets set window_started_at = clock_timestamp() - interval '2 hours',
+  expires_at = clock_timestamp() - interval '1 hour 1 second', committed_micro_usd = 300000 where provider = 'deepseek';
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('test.beta_call_reset', gen_random_uuid()::text, true);
+select ok(public.kael_provider_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.beta_run_a')::uuid,
+  'deepseek', current_setting('test.beta_call_reset')::uuid, null), 'An expired empty window rolls forward without requiring an actor allowlist');
+reset role;
+select is((select committed_micro_usd from nestscout_private.kael_provider_budgets where provider = 'deepseek'), 0,
+  'A fresh window resets only the prior window commitment');
+select ok(public.kael_provider_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.beta_run_a')::uuid,
+  'deepseek', current_setting('test.beta_call_reset')::uuid, 1000), 'A reservation in the new window settles normally');
+reset role;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('test.beta_call_anthropic', gen_random_uuid()::text, true);
+select set_config('test.beta_call_perplexity', gen_random_uuid()::text, true);
+select ok(public.kael_provider_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.beta_run_a')::uuid,
+  'anthropic', current_setting('test.beta_call_anthropic')::uuid, null), 'The approved Anthropic fallback reserves from its shared provider window');
+reset role;
+select is((select held_micro_usd from nestscout_private.kael_provider_budgets where provider = 'anthropic'), 270480,
+  'Anthropic reservation covers its byte bound, cache-write rate and output limit');
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select ok(public.kael_provider_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.beta_run_a')::uuid,
+  'anthropic', current_setting('test.beta_call_anthropic')::uuid, 270480), 'Anthropic usage settles at its approved reservation ceiling');
+select ok(public.kael_provider_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.beta_run_a')::uuid,
+  'perplexity', current_setting('test.beta_call_perplexity')::uuid, null), 'Optional search reserves from its own provider window');
+reset role;
+select is((select held_micro_usd from nestscout_private.kael_provider_budgets where provider = 'perplexity'), 5000,
+  'Optional search reserves the successful-request price');
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select ok(public.kael_provider_charge('00000000-0000-4000-8000-0000000000c3', current_setting('test.beta_run_a')::uuid,
+  'perplexity', current_setting('test.beta_call_perplexity')::uuid, 5000), 'Search usage settles from its bounded reservation');
 reset role;
 
 select * from finish();

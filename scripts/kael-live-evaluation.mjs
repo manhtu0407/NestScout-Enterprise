@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, fingerprint } from '../services/kael-core/src/policy.ts';
@@ -40,7 +40,11 @@ export function sanitizeVisible(text) {
 }
 
 export async function codeIdentity() {
-  const names = new Set([...git(root, ['ls-files', '-z', '--', 'scripts', 'services/kael-core', 'package.json']).split('\0'), ...git(root, ['ls-files', '--others', '--exclude-standard', '-z', '--', 'scripts']).split('\0')].filter(Boolean));
+  const scope = ['scripts', 'services/kael-core', 'package.json'];
+  const names = new Set([
+    ...git(root, ['ls-files', '-z', '--', ...scope]).split('\0'),
+    ...git(root, ['ls-files', '--others', '--exclude-standard', '-z', '--', ...scope]).split('\0'),
+  ].filter(name => name && existsSync(path.join(root, name))));
   const files = [...names].sort().map(name => ({ name, sha256: createHash('sha256').update(readFileSync(path.join(root, name))).digest('hex') }));
   return { code_sha: git(root, ['rev-parse', 'HEAD']).trim(), working_tree_dirty: Boolean(git(root, ['status', '--porcelain']).trim()), code_content_hash: await fingerprint(files) };
 }

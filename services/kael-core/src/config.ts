@@ -1,5 +1,7 @@
+import { anthropicBudgetModel, anthropicMaxRequestBytes } from './anthropic.ts';
 import type { AnthropicConfig } from './anthropic.ts';
 import type { DeepSeekConfig } from './deepseek.ts';
+import { deepseekMaxRequestBytes } from './deepseek.ts';
 import type { ProviderId } from './model.ts';
 import type { PerplexityConfig } from './perplexity.ts';
 
@@ -60,14 +62,15 @@ function validSupabaseUrl(url: string): boolean {
   } catch { return false; }
 }
 
-const edgeRuntimeSettings = [
+const localEdgeSettings = [
   'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'KAEL_KNOWLEDGE', 'KAEL_ESTIMATE_PREVIEW',
   'KAEL_DEVELOPER_PILOT', 'KAEL_DEVELOPER_PILOT_ID', 'KAEL_PILOT_GENERATION', 'KAEL_PILOT_WORKER_ID',
 ] as const;
+const hostedEdgeSettings = ['KAEL_KNOWLEDGE', 'KAEL_ESTIMATE_PREVIEW'] as const;
 const hostedProviderSettings = [
   'DEEPSEEK_API_KEY', 'ANTHROPIC_API_KEY', 'PERPLEXITY_API_KEY', 'KAEL_MODEL_ROUTE',
   'KAEL_DEEPSEEK_MODEL', 'KAEL_DEEPSEEK_THINKING', 'KAEL_ANTHROPIC_MODEL', 'KAEL_ANTHROPIC_EFFORT',
-  'KAEL_ANTHROPIC_SERVER_FALLBACK', 'KAEL_WEB_SEARCH', 'KAEL_DEEPSEEK_VERIFICATION_ACTORS',
+  'KAEL_WEB_SEARCH', 'KAEL_ENABLED_EFFECTS',
 ] as const;
 
 export function readKaelEdgeEnvironment(read: (name: string) => string | undefined): Environment {
@@ -76,11 +79,11 @@ export function readKaelEdgeEnvironment(read: (name: string) => string | undefin
   const hosted = url !== undefined && validSupabaseUrl(url) && new URL(url).protocol === 'https:'
     && Boolean(read('DENO_DEPLOYMENT_ID')?.trim());
   if (hosted) {
-    environment.KAEL_HOSTED_VERIFICATION = 'required';
+    environment.KAEL_EDGE_HOSTED = 'true';
     environment.SUPABASE_PUBLISHABLE_KEY = defaultManagedKey(read('SUPABASE_PUBLISHABLE_KEYS'), 'sb_publishable_');
     environment.SUPABASE_SECRET_KEY = defaultManagedKey(read('SUPABASE_SECRET_KEYS'), 'sb_secret_');
   }
-  const settings = hosted ? [...edgeRuntimeSettings, ...hostedProviderSettings] : edgeRuntimeSettings;
+  const settings = hosted ? [...hostedEdgeSettings, ...hostedProviderSettings] : localEdgeSettings;
   for (const name of settings) {
     const value = read(name);
     if (value !== `env(NESTSCOUT_LOCAL_${name})`) environment[name] = value;
@@ -119,9 +122,8 @@ const deepseekModelId = /^deepseek-[a-zA-Z0-9._-]{1,70}$/;
 
 function routeOf(env: Environment): ProviderId[] | null {
   const raw = env.KAEL_MODEL_ROUTE;
-  if (raw === undefined && env.KAEL_HOSTED_VERIFICATION === 'required') return null;
   const requested = raw === undefined ? ['deepseek'] : raw.split(',').map(item => item.trim());
-  return requested.every((id): id is ProviderId => providerIds.includes(id as ProviderId))
+  return requested[0] === 'deepseek' && requested.every((id): id is ProviderId => providerIds.includes(id as ProviderId))
     && new Set(requested).size === requested.length ? requested : null;
 }
 
@@ -136,9 +138,9 @@ function list(env: Environment, name: string): string[] {
 
 export function readKaelConfig(env: Environment): KaelConfig | null {
   const supabaseUrl = value(env, 'SUPABASE_URL');
-  const hosted = env.KAEL_HOSTED_VERIFICATION === 'required';
-  const supabaseAnonKey = (hosted ? value(env, 'SUPABASE_PUBLISHABLE_KEY') : undefined) ?? value(env, 'SUPABASE_ANON_KEY');
-  const managedSecret = hosted ? value(env, 'SUPABASE_SECRET_KEY') : undefined;
+  const managedSupabase = value(env, 'SUPABASE_PUBLISHABLE_KEY') !== undefined || value(env, 'SUPABASE_SECRET_KEY') !== undefined;
+  const supabaseAnonKey = managedSupabase ? value(env, 'SUPABASE_PUBLISHABLE_KEY') : value(env, 'SUPABASE_ANON_KEY');
+  const managedSecret = managedSupabase ? value(env, 'SUPABASE_SECRET_KEY') : undefined;
   const legacySecret = value(env, 'SUPABASE_SERVICE_ROLE_KEY');
   const supabaseServiceKey = managedSecret ?? (legacySecret && legacyServiceJwt(legacySecret) ? legacySecret : undefined);
   if (!supabaseUrl || !validSupabaseUrl(supabaseUrl) || !supabaseAnonKey || !supabaseServiceKey) return null;
@@ -151,7 +153,8 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
     model: anthropicModel,
     effort: effort === 'low' || effort === 'high' ? effort : 'medium',
     timeoutMs: modelTimeoutMs,
-    serverFallback: value(env, 'KAEL_ANTHROPIC_SERVER_FALLBACK') === 'enabled',
+    serverFallback: env.KAEL_EDGE_HOSTED !== 'true' && value(env, 'KAEL_ANTHROPIC_SERVER_FALLBACK') === 'enabled',
+    ...(env.KAEL_EDGE_HOSTED === 'true' && anthropicModel === anthropicBudgetModel ? { maxRequestBytes: anthropicMaxRequestBytes } : {}),
   } : null;
 
   const deepseekKey = value(env, 'DEEPSEEK_API_KEY');
@@ -161,12 +164,18 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   if (pilotFlag && (pilotFlag !== 'local_8085' || !pilotId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pilotId)
     || deepseekModel !== deepseekFlashModel
     || !/^http:\/\/(?:127\.0\.0\.1|localhost|host\.docker\.internal|host\.supabase\.internal)(?::\d+)?\/?$/.test(supabaseUrl))) return null;
-  const deepseek = deepseekKey && providerStatus(deepseekKey, deepseekModel, deepseekModelId) === 'configured' ? {
+  const deepseekModelStatus = providerStatus(deepseekKey, deepseekModel, deepseekModelId);
+  const deepseek = deepseekKey && deepseekModelStatus === 'configured'
+    && (env.KAEL_EDGE_HOSTED !== 'true' || deepseekModel === deepseekFlashModel) ? {
     apiKey: deepseekKey, model: deepseekModel, thinking: value(env, 'KAEL_DEEPSEEK_THINKING') === 'enabled', timeoutMs: modelTimeoutMs,
+    ...(env.KAEL_EDGE_HOSTED === 'true' ? { maxRequestBytes: deepseekMaxRequestBytes } : {}),
   } : null;
 
   const order = routeOf(env);
-  const route = order?.every(id => (id === 'anthropic' ? anthropic : deepseek) !== null) ? order : [];
+  const route: ProviderId[] = order === null || deepseek === null ? [] : [
+    'deepseek',
+    ...(order.includes('anthropic') && anthropic?.model === anthropicBudgetModel ? ['anthropic' as const] : []),
+  ];
 
   const perplexityKey = value(env, 'PERPLEXITY_API_KEY');
   const perplexity = perplexityKey && value(env, 'KAEL_WEB_SEARCH') === 'enabled'
@@ -191,10 +200,16 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
 
 export function configurationReport(env: Environment): Record<string, string> {
   const config = readKaelConfig(env);
+  const deepseekModel = value(env, 'KAEL_DEEPSEEK_MODEL') ?? deepseekFlashModel;
+  const configuredDeepSeek = providerStatus(value(env, 'DEEPSEEK_API_KEY'), deepseekModel, deepseekModelId);
+  const anthropicModel = value(env, 'KAEL_ANTHROPIC_MODEL');
+  const configuredAnthropic = providerStatus(value(env, 'ANTHROPIC_API_KEY'), anthropicModel, anthropicModelId);
   return {
     gateway: config ? 'configured' : 'requires SUPABASE_URL and managed Supabase API keys or SUPABASE_ANON_KEY and a legacy SUPABASE_SERVICE_ROLE_KEY JWT',
-    anthropic: providerStatus(value(env, 'ANTHROPIC_API_KEY'), value(env, 'KAEL_ANTHROPIC_MODEL'), anthropicModelId),
-    deepseek: providerStatus(value(env, 'DEEPSEEK_API_KEY'), value(env, 'KAEL_DEEPSEEK_MODEL') ?? deepseekFlashModel, deepseekModelId),
+    anthropic: env.KAEL_EDGE_HOSTED === 'true' && configuredAnthropic === 'configured' && anthropicModel !== anthropicBudgetModel
+      ? 'model_not_approved_for_beta_budget' : configuredAnthropic,
+    deepseek: env.KAEL_EDGE_HOSTED === 'true' && deepseekModel !== deepseekFlashModel && configuredDeepSeek === 'configured'
+      ? 'model_not_approved_for_beta_budget' : configuredDeepSeek,
     route: config?.route.length ? config.route.join(',') : routeOf(env) === null ? 'invalid_route' : 'route_unavailable',
     web_search: config?.perplexity ? 'configured' : 'requires PERPLEXITY_API_KEY and KAEL_WEB_SEARCH=enabled',
     effects: config && config.enabledEffects.size > 0 ? [...config.enabledEffects].join(',') : 'none',

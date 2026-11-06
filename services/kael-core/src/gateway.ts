@@ -1,8 +1,8 @@
-import { anthropicVerificationModel, createAnthropicProvider } from './anthropic.ts';
+import { createAnthropicProvider } from './anthropic.ts';
 import { configurationReport, deepseekFlashModel, readKaelConfig } from './config.ts';
 import type { Environment, KaelConfig } from './config.ts';
 import { createDeepSeekProvider } from './deepseek.ts';
-import { hostedVerification } from './hosted-verification.ts';
+import { hostedBudget } from './hosted-budget.ts';
 import { developerPilotProviders } from './developer-pilot.ts';
 import { encodeEvent, isTerminalEvent, kaelProtocolVersion } from './events.ts';
 import type { KaelEventBody, KaelFailureCode } from './events.ts';
@@ -110,12 +110,8 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
   const fetcher = dependencies.fetcher ?? fetch;
   const now = dependencies.now ?? (() => new Date());
   const log = dependencies.log ?? (event => console.log(JSON.stringify(event)));
-  const verifyHosted = dependencies.env.KAEL_HOSTED_VERIFICATION === 'required';
-  const config = readKaelConfig(verifyHosted
-    ? { ...dependencies.env, KAEL_ANTHROPIC_SERVER_FALLBACK: undefined, KAEL_ENABLED_EFFECTS: undefined }
-    : dependencies.env);
-  const deepseekActors = new Set((dependencies.env.KAEL_DEEPSEEK_VERIFICATION_ACTORS ?? '').split(',').map(id => id.trim().toLowerCase()).filter(id => uuidPattern.test(id)));
-  const mayUseDeepSeek = (actorId: string) => !verifyHosted || deepseekActors.has(actorId.toLowerCase());
+  const hosted = dependencies.env.KAEL_EDGE_HOSTED === 'true';
+  const config = readKaelConfig(dependencies.env);
   const generation = dependencies.env.KAEL_PILOT_GENERATION;
   const pilotGeneration = generation && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(generation)
     ? generation : undefined;
@@ -151,14 +147,12 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         if (probe.ok) database = await probe.json() === true ? 'verified' : 'authorization_failed';
         else { database = probe.status === 401 || probe.status === 403 ? 'authorization_failed' : 'unavailable'; await probe.body?.cancel(); }
       } catch { database = 'unavailable'; }
-      const route = config.route.filter(provider => provider === 'deepseek' ? mayUseDeepSeek(actorId)
-        : !verifyHosted || config.anthropic?.model === anthropicVerificationModel);
+      const route = config.route;
       const ready = database === 'verified' && route.length > 0;
       return new Response(JSON.stringify({
         ready, database, ...configurationReport(dependencies.env),
         models: route.map(provider => ({ provider, model: provider === 'deepseek' ? config.deepseek?.model : config.anthropic?.model })),
-        ...(verifyHosted ? { verification_route: route.includes('deepseek') ? 'actor_scoped' : route.length ? 'bounded' : 'unavailable' } : {}),
-        paid_probe: 'not_run',
+        readiness_scope: 'configuration_only', provider_probe: 'not_run',
       }), { status: ready ? 200 : 503, headers: { ...corsHeaders, 'content-type': 'application/json', 'cache-control': 'no-store' } });
     }
     const raw = await request.text();
@@ -234,8 +228,8 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
     async function execute() {
       let result: RunOutcome;
       try {
-        const verification = verifyHosted && config
-          ? hostedVerification(createServerRpc(config, fetcher), actor.userId, runId) : null;
+        const budget = hosted && config
+          ? hostedBudget(createServerRpc(config, fetcher), actor.userId, runId) : null;
         result = turn.action.type === 'message'
           ? await runAgentTurn({
             actor, config: config as KaelConfig, store, rest,
@@ -243,9 +237,8 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
               ? developerPilotProviders(config, actor.userId, runId, turn.action.text, fetcher,
                 (kind, httpStatus) => log({ event: 'kael_pilot_provider_failure', run_id: runId, kind, http_status: httpStatus ?? null }), pilotGeneration)
               : (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config as KaelConfig)
-                .filter(provider => provider.id !== 'deepseek' || mayUseDeepSeek(actor.userId))
-                .map(provider => verification ? verification.provider(provider) : provider),
-            fetcher: verification ? verification.search(fetcher) : fetcher,
+                .map(provider => budget ? budget.provider(provider) : provider),
+            fetcher: budget ? budget.search(fetcher) : fetcher,
             runId, conversationId, emit, signal, today: todayIn(now()), log,
           })
           : await resolveApproval({
