@@ -105,6 +105,7 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
       AbortSignal.any([signal, AbortSignal.timeout(1600)]), part => input.log?.({ event: 'kael_context_degraded', run_id: input.runId, part }));
     const message = context.history.at(-1)?.content ?? '';
     const reply = replyLanguage(message, personal);
+    const translationRequest = /^\s*(?:please\s+)?(?:translate\b|(?:hãy\s+)?dịch(?!\p{L}|\s+vụ(?!\p{L})))/iu.test(message);
     const system = buildSystemPrompt(actor, config, offered, context.tasks, input.conversationId, input.today, personal, message);
     input.log?.({ event: 'kael_reply_language', run_id: input.runId, source: reply.source, language: reply.language });
     const transcript: TranscriptItem[] = buildTranscript(context.history, config.limits.historyChars, personal);
@@ -123,7 +124,7 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
       let separated = outcome.text.length === 0;
       let pending = '';
       let mismatch = false;
-      let checked = !reply.language;
+      let checked = !reply.language || translationRequest;
       const publish = (delta: string) => {
         if (!separated) { say('\n\n'); separated = true; }
         say(delta);

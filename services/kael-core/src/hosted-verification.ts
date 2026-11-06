@@ -38,9 +38,9 @@ export function hostedVerification(server: ServerRpc, actorId: string, runId: st
           const { inputTokens, cachedInputTokens, outputTokens } = turn.usage;
           try {
             if (turn.model !== anthropicVerificationModel || !validUsage(inputTokens) || !validUsage(cachedInputTokens)
-              || inputTokens + cachedInputTokens > 200_000
+              || cachedInputTokens > inputTokens || inputTokens > 200_000
               || !validUsage(outputTokens) || outputTokens > request.maxOutputTokens
-              || !await charge('anthropic', call, Math.ceil(inputTokens * 1.25 + cachedInputTokens * 0.10 + outputTokens * 5))) {
+              || !await charge('anthropic', call, Math.ceil((inputTokens - cachedInputTokens) * 1.25 + cachedInputTokens * 0.10 + outputTokens * 5))) {
               throw new ProviderError(provider.id, 'budget', 'The verification charge was not reconciled.');
             }
           } catch {

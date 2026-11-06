@@ -73,7 +73,7 @@ test('hosted verification guards Anthropic and Perplexity and retains a hold on 
   const model = { id: 'anthropic', model: anthropicVerificationModel,
     complete: async () => {
       order.push('model');
-      return { model: anthropicVerificationModel, usage: { inputTokens: 101, cachedInputTokens: 1000, outputTokens: 5 } };
+      return { model: anthropicVerificationModel, usage: { inputTokens: 1101, cachedInputTokens: 1000, outputTokens: 5 } };
     } };
   const request = { maxOutputTokens: 4096, signal: new AbortController().signal };
   let acknowledge = true;
@@ -92,9 +92,15 @@ test('hosted verification guards Anthropic and Perplexity and retains a hold on 
   assert.deepEqual(order, [['anthropic', null], 'model', ['anthropic', 252]]);
   order.length = 0;
   const excessiveInput = { ...model, complete: async () => ({
-    model: anthropicVerificationModel, usage: { inputTokens: 101, cachedInputTokens: 200_000, outputTokens: 5 },
+    model: anthropicVerificationModel, usage: { inputTokens: 200_001, cachedInputTokens: 1000, outputTokens: 5 },
   }) };
   await assert.rejects(guard.provider(excessiveInput).complete(request, () => {}), { kind: 'budget' });
+  assert.deepEqual(order, [['anthropic', null]]);
+  order.length = 0;
+  const invalidCachedUsage = { ...model, complete: async () => ({
+    model: anthropicVerificationModel, usage: { inputTokens: 100, cachedInputTokens: 101, outputTokens: 5 },
+  }) };
+  await assert.rejects(guard.provider(invalidCachedUsage).complete(request, () => {}), { kind: 'budget' });
   assert.deepEqual(order, [['anthropic', null]]);
   order.length = 0;
   await assert.rejects(guard.provider({ ...model, complete: async () => { throw new Error('interrupted'); } }).complete(request, () => {}), /interrupted/);
@@ -137,6 +143,18 @@ test('a mismatched opening is withheld, retried, and never persisted', async () 
   assert.equal(reply.events.at(-1).text, '# How to check the tap\nCheck the washer.');
   assert.equal(provider.requests.length, 2);
   assert.match(provider.requests[1].transcript.at(-1).text, /Answer my latest request in English/);
+});
+
+test('a requested translation streams once even when its language differs from the saved preference', async () => {
+  const translation = 'Bạn là bạn của tôi.';
+  const provider = scriptedProvider('deepseek', [{ text: ['Bạn là ', 'bạn của tôi.'] }]);
+  const app = harness({ providers: () => [provider], wrapStore: store => ({ ...store, loadPersonalContext: async () => ({
+    summary: null, preferences: [{ preference: 'language', value: 'en' }],
+  }) }) });
+  const reply = await app.message(users.customer, "Translate 'You are my friend' into Vietnamese. Return only the translation.");
+  assert.deepEqual(reply.events.filter(event => event.type === 'message_delta').map(event => event.text), ['Bạn là ', 'bạn của tôi.']);
+  assert.equal(reply.events.at(-1).text, translation);
+  assert.equal(provider.requests.length, 1);
 });
 
 test('a failed preference read fails the turn before contacting the provider', async () => {
