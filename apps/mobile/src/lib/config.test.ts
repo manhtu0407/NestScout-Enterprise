@@ -1,9 +1,10 @@
 import { Platform } from 'react-native';
 
-import { ConfigError, hostedKaelPreviewEnabled, parseConfig } from './config';
+import { ConfigError, hostedKaelPreviewEnabled, hostedTestFlightEnabled, loadConfig, parseConfig } from './config';
 
 const valid = { target: 'local', supabaseUrl: 'http://127.0.0.1:54321', supabaseKey: 'sb_publishable_example' };
 const hosted = { ...valid, target: 'kael-hosted-preview', supabaseUrl: 'https://axpdymbusiwxfzurfclg.supabase.co' };
+const testFlight = { ...hosted, target: 'testflight' };
 
 function jwt(role: string): string {
   const encode = (value: object) => btoa(JSON.stringify(value)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -57,6 +58,70 @@ describe('parseConfig', () => {
     }
     expect(() => parseConfig({ ...valid, supabaseUrl: hosted.supabaseUrl }, true)).toThrow(ConfigError);
   });
+
+  test('requires explicit TestFlight permission, the approved origin and a publishable key', () => {
+    expect(() => parseConfig(testFlight)).toThrow(ConfigError);
+    expect(() => parseConfig(testFlight, true)).toThrow(ConfigError);
+    expect(parseConfig(testFlight, false, true)).toEqual({ target: testFlight.target, supabaseUrl: testFlight.supabaseUrl, supabasePublishableKey: testFlight.supabaseKey });
+    for (const supabaseUrl of ['http://axpdymbusiwxfzurfclg.supabase.co', 'https://another-project.supabase.co', 'http://localhost:54321']) {
+      expect(() => parseConfig({ ...testFlight, supabaseUrl }, false, true)).toThrow(ConfigError);
+    }
+    for (const supabaseKey of [jwt('anon'), jwt('service_role'), 'sb_secret_example', 'sb_publishable_']) {
+      expect(() => parseConfig({ ...testFlight, supabaseKey }, false, true)).toThrow(ConfigError);
+    }
+  });
+});
+
+test('admits TestFlight only in a non-development iOS build with its explicit target', () => {
+  const dev = Object.getOwnPropertyDescriptor(globalThis, '__DEV__');
+  const target = process.env.EXPO_PUBLIC_NESTSCOUT_TARGET;
+  const os = jest.replaceProperty(Platform, 'OS', 'ios');
+  try {
+    process.env.EXPO_PUBLIC_NESTSCOUT_TARGET = 'testflight';
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: false });
+    expect(hostedTestFlightEnabled()).toBe(true);
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: true });
+    expect(hostedTestFlightEnabled()).toBe(false);
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: false });
+    os.replaceValue('web');
+    expect(hostedTestFlightEnabled()).toBe(false);
+    os.replaceValue('android');
+    expect(hostedTestFlightEnabled()).toBe(false);
+    os.replaceValue('ios');
+    process.env.EXPO_PUBLIC_NESTSCOUT_TARGET = 'local';
+    expect(hostedTestFlightEnabled()).toBe(false);
+  } finally {
+    os.restore();
+    if (dev) Object.defineProperty(globalThis, '__DEV__', dev);
+    if (target === undefined) delete process.env.EXPO_PUBLIC_NESTSCOUT_TARGET;
+    else process.env.EXPO_PUBLIC_NESTSCOUT_TARGET = target;
+  }
+});
+
+test('uses dedicated TestFlight variables and never falls back to the shared preview key', () => {
+  const dev = Object.getOwnPropertyDescriptor(globalThis, '__DEV__');
+  const names = ['EXPO_PUBLIC_NESTSCOUT_TARGET', 'EXPO_PUBLIC_SUPABASE_URL', 'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'EXPO_PUBLIC_TESTFLIGHT_SUPABASE_URL', 'EXPO_PUBLIC_TESTFLIGHT_SUPABASE_PUBLISHABLE_KEY'] as const;
+  const previous = names.map(name => process.env[name]);
+  const os = jest.replaceProperty(Platform, 'OS', 'ios');
+  try {
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: false });
+    process.env.EXPO_PUBLIC_NESTSCOUT_TARGET = 'testflight';
+    process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://another-project.supabase.co';
+    process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_shared';
+    process.env.EXPO_PUBLIC_TESTFLIGHT_SUPABASE_URL = testFlight.supabaseUrl;
+    delete process.env.EXPO_PUBLIC_TESTFLIGHT_SUPABASE_PUBLISHABLE_KEY;
+    expect(() => loadConfig()).toThrow('EXPO_PUBLIC_TESTFLIGHT_SUPABASE_PUBLISHABLE_KEY is required.');
+    process.env.EXPO_PUBLIC_TESTFLIGHT_SUPABASE_PUBLISHABLE_KEY = testFlight.supabaseKey;
+    expect(loadConfig()).toEqual({ target: testFlight.target, supabaseUrl: testFlight.supabaseUrl, supabasePublishableKey: testFlight.supabaseKey });
+  } finally {
+    os.restore();
+    if (dev) Object.defineProperty(globalThis, '__DEV__', dev);
+    names.forEach((name, index) => {
+      const value = previous[index];
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    });
+  }
 });
 
 test('admits the hosted Preview only on development web loopback port 8085 with its explicit target', () => {

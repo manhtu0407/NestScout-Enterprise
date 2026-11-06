@@ -1,0 +1,26 @@
+{
+  "cli": {
+    "version": ">= 22.0.0",
+    "requireCommit": true,
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "testflight": {
+      "distribution": "store",
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_NESTSCOUT_TARGET": "testflight",
+        "EXPO_PUBLIC_TESTFLIGHT_SUPABASE_URL": "https://axpdymbusiwxfzurfclg.supabase.co"
+      },
+      "autoIncrement": true,
+      "node": "24.19.0"
+    }
+  },
+  "submit": {
+    "testflight": {
+      "ios": {
+        "ascAppId": "6831422289"
+      }
+    }
+  }
+}
