@@ -4,12 +4,10 @@ import { readSse } from './sse.ts';
 
 export const anthropicEndpoint = 'https://api.anthropic.com/v1/messages';
 export const anthropicVersion = '2026-10-21';
-export const anthropicBudgetModel = 'claude-haiku-4-5-20251001';
-export const anthropicMaxRequestBytes = 200_000;
 const serverFallbackBeta = 'server-side-fallback-2026-07-01';
 const serverFallbackModels = new Set(['claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']);
 
-export type AnthropicConfig = { apiKey: string; model: string; effort: 'low' | 'medium' | 'high'; timeoutMs: number; serverFallback?: boolean; maxRequestBytes?: number };
+export type AnthropicConfig = { apiKey: string; model: string; effort: 'low' | 'medium' | 'high'; timeoutMs: number; serverFallback?: boolean };
 
 type Block = Record<string, unknown> & { type: string };
 
@@ -52,7 +50,7 @@ export function anthropicRequestBody(config: AnthropicConfig, request: ModelRequ
     system: [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }],
     messages: toMessages(request.transcript, config.model),
   };
-  if (config.model !== anthropicBudgetModel && config.model !== 'claude-haiku-4-5') body.output_config = { effort: config.effort };
+  if (config.model !== 'claude-haiku-4-5-20251001' && config.model !== 'claude-haiku-4-5') body.output_config = { effort: config.effort };
   if (request.tools.length > 0) {
     body.tools = request.tools.map(tool => ({
       name: tool.name, description: tool.description, input_schema: tool.inputSchema, eager_input_streaming: true,
@@ -77,9 +75,6 @@ export function createAnthropicProvider(config: AnthropicConfig, fetcher: Fetche
       let started = false;
       try {
         const body = JSON.stringify(anthropicRequestBody(config, request));
-        if (config.maxRequestBytes !== undefined && new TextEncoder().encode(body).length > config.maxRequestBytes) {
-          throw new ProviderError('anthropic', 'budget', 'The Anthropic request exceeded its approved input limit.');
-        }
         const response = await fetcher(anthropicEndpoint, { method: 'POST', headers, body, signal, redirect: 'error' });
         if (!response.ok) {
           await response.body?.cancel();

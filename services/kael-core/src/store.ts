@@ -28,7 +28,7 @@ export function createRest(config: KaelConfig, accessToken: string, fetcher: Fet
 
 export const kaelServerOperations = [
   'kael_start_run', 'kael_finish_run', 'kael_save_task', 'kael_record_tool',
-  'kael_request_approval', 'kael_consume_approval', 'kael_complete_approval', 'kael_reject_approval', 'kael_provider_charge',
+  'kael_request_approval', 'kael_consume_approval', 'kael_complete_approval', 'kael_reject_approval',
 ] as const;
 
 export type KaelServerOperation = typeof kaelServerOperations[number] | 'kael_runtime_ready';
@@ -37,8 +37,7 @@ export type ServerRpc = (operation: KaelServerOperation, body: Record<string, un
 
 export function createServerRpc(config: KaelConfig, fetcher: Fetcher = fetch): ServerRpc {
   return (operation, body, signal) => {
-    if (operation !== 'kael_runtime_ready' && operation !== 'kael_provider_charge'
-      && !(kaelServerOperations as readonly string[]).includes(operation)) throw new StoreError(String(operation), 403);
+    if (operation !== 'kael_runtime_ready' && !(kaelServerOperations as readonly string[]).includes(operation)) throw new StoreError(String(operation), 403);
     return fetcher(`${config.supabaseUrl}/rest/v1/rpc/${operation}`, {
       method: 'POST', redirect: 'error',
       headers: {

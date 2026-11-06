@@ -871,10 +871,14 @@ The server supplies `DEEPSEEK_API_KEY` for model traffic. One server credential
 serves the authorized conversations handled by that worker.
 
 The default normal route requests `deepseek-flash`. Operators can supply an
-explicit `KAEL_DEEPSEEK_MODEL` and use `KAEL_MODEL_ROUTE` to opt into other
-configured routes. The normal route uses the existing authenticated Runtime
-and per-run limits. The local pilot ledger and its temporary approval apply
-only to the local developer profile.
+explicit `KAEL_DEEPSEEK_MODEL`. When an Anthropic key and model are configured,
+Anthropic is the fallback after DeepSeek; `KAEL_MODEL_ROUTE=deepseek` disables
+that fallback. Perplexity Search is available when its server key is configured
+and `KAEL_WEB_SEARCH=enabled`. The route uses the existing authenticated
+Runtime, RLS, approval workflow and per-account anti-abuse limits. Hosted
+inference has no actor whitelist or shared provider spend ceiling. The local
+pilot ledger and its temporary approval remain scoped to the offline developer
+profile.
 
 Hosted staging requires an owner-identified Supabase project and an approved
 app target. The current app accepts the local target. Before any approved

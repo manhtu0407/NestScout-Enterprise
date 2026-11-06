@@ -1270,66 +1270,32 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         traces.greeting = first.events;
         traces.restored = snapshot;
       });
-      await t.test('the global provider budget serializes real Auth users and fails closed at the shared ceiling', async () => {
-        const actor = await newUser();
+      await t.test('authenticated users can use the configured DeepSeek primary and Anthropic fallback', async () => {
+        const owner = await newUser();
         const other = await newUser();
-        const prior = JSON.parse(query("select row_to_json(b)::text from nestscout_private.kael_provider_budgets b where provider='deepseek';"));
-        assert.equal(prior.held_micro_usd, 0, 'The local shared budget starts without an unresolved call.');
-        const uuidValue = value => value === null ? 'null' : `${sqlLiteral(value)}::uuid`;
-        const restore = `update nestscout_private.kael_provider_budgets set
-          window_started_at=${sqlLiteral(prior.window_started_at)}::timestamptz,
-          expires_at=${sqlLiteral(prior.expires_at)}::timestamptz,
-          committed_micro_usd=${prior.committed_micro_usd}, held_call=${uuidValue(prior.held_call)},
-          held_run=${uuidValue(prior.held_run)}, held_actor=${uuidValue(prior.held_actor)},
-          held_micro_usd=${prior.held_micro_usd} where provider='deepseek';`;
-        try {
-        query(`with moment as (select clock_timestamp() as value)
-          update nestscout_private.kael_provider_budgets set window_started_at=moment.value,
-            expires_at=moment.value + interval '1 hour', committed_micro_usd=0,
-            held_call=null, held_run=null, held_actor=null, held_micro_usd=0
-          from moment where provider='deepseek';`);
-        const started = await request('/rest/v1/rpc/kael_start_run', serviceKey, {
-          p_actor: actor.id, p_request_id: randomUUID(), p_conversation_id: null, p_mode: 'client', p_user_text: 'Synthetic budget probe',
-        }, true);
-        assert.equal(started.status, 200);
-        const run = await started.json();
-        assert.equal(run.status, 'started');
-        const secondStarted = await request('/rest/v1/rpc/kael_start_run', serviceKey, {
-          p_actor: other.id, p_request_id: randomUUID(), p_conversation_id: null, p_mode: 'client', p_user_text: 'Synthetic second budget probe',
-        }, true);
-        assert.equal(secondStarted.status, 200);
-        const otherRun = await secondStarted.json();
-        assert.equal(otherRun.status, 'started');
-        const endpoint = '/rest/v1/rpc/kael_provider_charge';
-        const charge = { p_actor: actor.id, p_run: run.run_id, p_provider: 'deepseek', p_actual: null };
-        const denied = await request(endpoint, actor.token, { ...charge, p_call: randomUUID() });
-        assert.equal(denied.status, 403);
-          const calls = Array.from({ length: 4 }, () => randomUUID());
-          const outcomes = await Promise.all(calls.map(async p_call => {
-            const response = await request(endpoint, serviceKey, { ...charge, p_call }, true);
-            assert.equal(response.status, 200);
-            return response.json();
-          }));
-          assert.equal(outcomes.filter(Boolean).length, 1);
-          assert.equal(query("select held_micro_usd from nestscout_private.kael_provider_budgets where provider='deepseek';"), '22916');
-          const sharedDenied = await request(endpoint, serviceKey, {
-            p_actor: other.id, p_run: otherRun.run_id, p_provider: 'deepseek', p_call: randomUUID(), p_actual: null,
-          }, true);
-          assert.equal(await sharedDenied.json(), false);
-          const settled = await request(endpoint, serviceKey, { ...charge, p_call: calls[outcomes.indexOf(true)], p_actual: 1000 }, true);
-          assert.equal(settled.status, 200);
-          assert.equal(await settled.json(), true);
-          const otherCharge = { p_actor: other.id, p_run: otherRun.run_id, p_provider: 'deepseek', p_call: randomUUID(), p_actual: null };
-          const otherReserved = await request(endpoint, serviceKey, otherCharge, true);
-          assert.equal(await otherReserved.json(), true);
-          const otherSettled = await request(endpoint, serviceKey, { ...otherCharge, p_actual: 1000 }, true);
-          assert.equal(await otherSettled.json(), true);
-          query("update nestscout_private.kael_provider_budgets set committed_micro_usd=300000 where provider='deepseek';");
-          const exhausted = await request(endpoint, serviceKey, { ...charge, p_call: randomUUID() }, true);
-          assert.equal(await exhausted.json(), false);
-        } finally {
-          query(restore);
-        }
+        const primary = scriptedProvider('deepseek', [
+          { error: 'overloaded' },
+          { text: ['DeepSeek primary reply.'] },
+        ]);
+        const fallback = scriptedProvider('anthropic', [{ text: ['Anthropic fallback reply.'] }]);
+        const handler = createKaelHandler({
+          env: { ...env, DEEPSEEK_API_KEY: 'fixture-deepseek', ANTHROPIC_API_KEY: 'fixture-anthropic',
+            KAEL_ANTHROPIC_MODEL: 'claude-sonnet-4-5', KAEL_MODEL_ROUTE: 'deepseek,anthropic' },
+          providers: () => [primary, fallback],
+          fetcher: async (url, init) => {
+            return fetch(url, init);
+          },
+          log: () => {},
+        });
+        const fallbackTurn = await send(handler, owner);
+        const primaryTurn = await send(handler, other);
+        assert.equal(end(fallbackTurn).type, 'run_completed');
+        assert.equal(end(fallbackTurn).text, 'Anthropic fallback reply.');
+        assert.equal(end(primaryTurn).type, 'run_completed');
+        assert.equal(end(primaryTurn).text, 'DeepSeek primary reply.');
+        assert.equal(primary.requests.length, 2);
+        assert.equal(fallback.requests.length, 1);
+        assert.equal(query("select to_regclass('nestscout_private.kael_provider_budgets') is null;"), 't');
       });
 
       await t.test('opted-in web search passes fixture sources through Kael with real Auth and PostgreSQL', async () => {

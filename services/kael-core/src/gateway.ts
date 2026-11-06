@@ -2,7 +2,6 @@ import { createAnthropicProvider } from './anthropic.ts';
 import { configurationReport, deepseekFlashModel, readKaelConfig } from './config.ts';
 import type { Environment, KaelConfig } from './config.ts';
 import { createDeepSeekProvider } from './deepseek.ts';
-import { hostedBudget } from './hosted-budget.ts';
 import { developerPilotProviders } from './developer-pilot.ts';
 import { encodeEvent, isTerminalEvent, kaelProtocolVersion } from './events.ts';
 import type { KaelEventBody, KaelFailureCode } from './events.ts';
@@ -110,7 +109,6 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
   const fetcher = dependencies.fetcher ?? fetch;
   const now = dependencies.now ?? (() => new Date());
   const log = dependencies.log ?? (event => console.log(JSON.stringify(event)));
-  const hosted = dependencies.env.KAEL_EDGE_HOSTED === 'true';
   const config = readKaelConfig(dependencies.env);
   const generation = dependencies.env.KAEL_PILOT_GENERATION;
   const pilotGeneration = generation && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(generation)
@@ -228,17 +226,14 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
     async function execute() {
       let result: RunOutcome;
       try {
-        const budget = hosted && config
-          ? hostedBudget(createServerRpc(config, fetcher), actor.userId, runId) : null;
         result = turn.action.type === 'message'
           ? await runAgentTurn({
             actor, config: config as KaelConfig, store, rest,
             providers: config?.developerPilotId
               ? developerPilotProviders(config, actor.userId, runId, turn.action.text, fetcher,
                 (kind, httpStatus) => log({ event: 'kael_pilot_provider_failure', run_id: runId, kind, http_status: httpStatus ?? null }), pilotGeneration)
-              : (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config as KaelConfig)
-                .map(provider => budget ? budget.provider(provider) : provider),
-            fetcher: budget ? budget.search(fetcher) : fetcher,
+              : (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config as KaelConfig),
+            fetcher,
             runId, conversationId, emit, signal, today: todayIn(now()), log,
           })
           : await resolveApproval({

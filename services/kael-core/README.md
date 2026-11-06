@@ -199,9 +199,9 @@ state, not open connections.
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEYS`, `SUPABASE_SECRET_KEYS` | Hosted Edge receives the URL and default keys from Supabase. Local Edge supports `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`. The gateway uses the server key only for named internal RPCs and readiness |
 | `ANTHROPIC_API_KEY` + `KAEL_ANTHROPIC_MODEL` | Enables Anthropic (Messages API `2026-10-21`, streaming); `KAEL_ANTHROPIC_EFFORT` = `low`, `medium` (default) or `high` |
 | `DEEPSEEK_API_KEY` | Enables DeepSeek chat completions. `KAEL_DEEPSEEK_MODEL` overrides the default `deepseek-flash`; `KAEL_DEEPSEEK_THINKING=enabled` turns on thinking mode with in-run `reasoning_content` replay |
-| `KAEL_MODEL_ROUTE` | Provider order; defaults to `deepseek`. Unknown, duplicate or unconfigured entries fail closed |
+| `KAEL_MODEL_ROUTE` | Provider order; defaults to DeepSeek followed by Anthropic when configured. Unknown or duplicate entries fail closed |
 | `PERPLEXITY_API_KEY` + `KAEL_WEB_SEARCH=enabled` | Enables the `web_search` tool |
-| `KAEL_ANTHROPIC_SERVER_FALLBACK` | Local-only Anthropic-side fallback for supported models; hosted TestFlight uses the explicit DeepSeek-to-Anthropic route so budget accounting remains tied to the configured model |
+| `KAEL_ANTHROPIC_SERVER_FALLBACK` | Enables Anthropic's provider-side fallback for supported configured models |
 | `KAEL_ENABLED_EFFECTS` | Owner opt-in for consequential effects; only `service_request_submit` exists |
 | `KAEL_KNOWLEDGE=disabled` | Removes both Intelligence tools; general conversation stays available |
 | `KAEL_ESTIMATE_PREVIEW=local_only` | Enables numeric synthetic preview only when the configured Supabase target is loopback; default disabled |
@@ -251,24 +251,19 @@ Supabase-managed environment. Keep provider values in Dashboard Secrets.
 TestFlight receives only the Supabase publishable key and uses the signed-in
 Supabase Auth session. [Supabase environment variables](https://supabase.com/docs/guides/functions/secrets)
 
-Hosted chat defaults to DeepSeek Flash. Anthropic is an optional second route;
-configure `KAEL_MODEL_ROUTE=deepseek,anthropic`, the approved Anthropic model
-`claude-haiku-4-5-20251001`, and its server key. Anthropic is omitted when any
-of those values are missing or outside the budgeted model. Perplexity Search
-remains independently optional behind `KAEL_WEB_SEARCH=enabled`. Existing
-JWT validation, caller-scoped REST/RLS, role permissions, approval checks,
-per-account run limits and provider budget checks apply to every authenticated
-account. Anonymous sessions do not receive Kael access.
+Hosted chat routes to DeepSeek first and includes Anthropic as fallback when
+its server key and model are configured. Set `KAEL_MODEL_ROUTE=deepseek` to
+disable that fallback, or `KAEL_MODEL_ROUTE=deepseek,anthropic` to state the
+full route explicitly. Both adapters accept the model identifier configured by
+the server and validate its provider-specific format. Perplexity Search is
+available to Kael when `PERPLEXITY_API_KEY` is configured and
+`KAEL_WEB_SEARCH=enabled`. Provider credentials stay in Supabase Edge Secrets.
 
-The private database budget is shared across all accounts, with a separate
-$0.30 ceiling for each provider in a fixed one-hour window. DeepSeek
-requests are limited to 60,000 serialized bytes and 4,096 output tokens. At the
-published peak rates, the reservation is $0.022916 per DeepSeek call and
-settlement includes cache-hit, cache-miss and output usage. Anthropic reserves
-$0.270480 for at most 200,000 input tokens and 4,096 output tokens at its
-approved rates. Perplexity Search reserves $0.005 per call. Uncertain usage
-keeps its reservation held and blocks that provider; the next reservation after the window expires
-only after unresolved holds are absent. [DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing/) · [Anthropic pricing](https://platform.claude.com/docs/en/models/haiku-4-5/overview) · [Perplexity pricing](https://docs.perplexity.ai/docs/getting-started/pricing)
+Every eligible authenticated account uses the same provider route. The hosted
+runtime retains JWT verification, caller-scoped REST/RLS, role permissions,
+approval checks, per-account rate limits and existing per-turn resource limits.
+Hosted inference has no actor whitelist, provider spend ledger, or fixed
+$0.30-per-provider hourly ceiling. Anonymous sessions do not receive Kael access.
 
 Authenticated `GET /functions/v1/kael` with `x-kael-readiness: 1` reports
 configuration and database status only. It does not call an AI provider or

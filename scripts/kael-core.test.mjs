@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { anthropicBudgetModel, anthropicEndpoint, anthropicMaxRequestBytes, anthropicRequestBody, anthropicVersion, createAnthropicProvider } from '../services/kael-core/src/anthropic.ts';
+import { anthropicEndpoint, anthropicRequestBody, anthropicVersion, createAnthropicProvider } from '../services/kael-core/src/anthropic.ts';
 import { configurationReport, defaultLimits, readKaelConfig, readKaelEdgeEnvironment } from '../services/kael-core/src/config.ts';
 import { buildSystemPrompt, buildTranscript } from '../services/kael-core/src/context.ts';
 import { createDeepSeekProvider, deepseekEndpoint } from '../services/kael-core/src/deepseek.ts';
-import { anthropicReservationMicroUsd, deepseekReservationMicroUsd, hostedBudget } from '../services/kael-core/src/hosted-budget.ts';
 import { completeWithFallback, ProviderError } from '../services/kael-core/src/model.ts';
 import { perplexitySearchEndpoint, searchWeb } from '../services/kael-core/src/perplexity.ts';
 import { canonicalJson, confirmableTools, evaluateCall, fingerprint, selectTools } from '../services/kael-core/src/policy.ts';
@@ -41,7 +40,7 @@ test('Anthropic receives the current saved language as policy and leaves explici
     const conversation = crypto.randomUUID();
     const personal = await store.loadPersonalContext(conversation, 'client', history, 6000, new AbortController().signal,
       part => assert.fail(`Memory load degraded: ${part}`));
-    return anthropicRequestBody({ model: anthropicBudgetModel }, {
+    return anthropicRequestBody({ model: 'claude-haiku-4-5-20251001' }, {
       system: buildSystemPrompt(actor, config, [], [], conversation, '2026-11-05', personal, text),
       transcript: buildTranscript(history, 6000, personal), tools: [], maxOutputTokens: 64,
     });
@@ -68,78 +67,20 @@ test('Anthropic receives the current saved language as policy and leaves explici
   assert.doesNotMatch(JSON.stringify(invalid), /arbitrary prompt text/);
 });
 
-test('hosted provider budgets reserve and reconcile DeepSeek, Anthropic and Perplexity', async () => {
-  const order = [];
-  const model = { id: 'anthropic', model: anthropicBudgetModel,
-    complete: async () => {
-      order.push('model');
-      return { provider: 'anthropic', model: anthropicBudgetModel, text: '', usage: { inputTokens: 1101, cachedInputTokens: 1000, outputTokens: 5 } };
-    } };
-  const request = { maxOutputTokens: 4096, signal: new AbortController().signal };
-  let acknowledge = true;
-  const guard = hostedBudget(async (operation, body) => {
-    assert.equal(operation, 'kael_provider_charge');
-    assert.equal(body.p_actor, 'fixture-actor');
-    assert.equal(body.p_run, 'fixture-run');
-    order.push([body.p_provider, body.p_actual]);
-    return Response.json(acknowledge);
-  }, 'fixture-actor', 'fixture-run');
-  assert.equal(anthropicReservationMicroUsd, 270480);
-  assert.equal(deepseekReservationMicroUsd, 22916);
-  await assert.rejects(guard.provider(model).complete({ ...request, maxOutputTokens: 4097 }, () => {}), { kind: 'budget' });
-  assert.deepEqual(order, []);
-  await guard.provider(model).complete(request, () => {});
-  assert.deepEqual(order, [['anthropic', null], 'model', ['anthropic', 252]]);
-  order.length = 0;
-  const excessiveInput = { ...model, complete: async () => ({
-    model: anthropicBudgetModel, usage: { inputTokens: 200_001, cachedInputTokens: 1000, outputTokens: 5 },
-  }) };
-  await assert.rejects(guard.provider(excessiveInput).complete(request, () => {}), { kind: 'budget' });
-  assert.deepEqual(order, [['anthropic', null]]);
-  order.length = 0;
-  const invalidCachedUsage = { ...model, complete: async () => ({
-    model: anthropicBudgetModel, usage: { inputTokens: 100, cachedInputTokens: 101, outputTokens: 5 },
-  }) };
-  await assert.rejects(guard.provider(invalidCachedUsage).complete(request, () => {}), { kind: 'budget' });
-  assert.deepEqual(order, [['anthropic', null]]);
-  order.length = 0;
-  await assert.rejects(guard.provider({ ...model, complete: async () => { throw new Error('interrupted'); } }).complete(request, () => {}), /interrupted/);
-  assert.deepEqual(order, [['anthropic', null]]);
-  order.length = 0;
-  const deepseek = { id: 'deepseek', model: 'deepseek-flash', complete: async () => ({
-    provider: 'deepseek', model: 'deepseek-flash', text: 'reply', usage: { inputTokens: 1000, cachedInputTokens: 50, outputTokens: 100 },
-  }) };
-  await guard.provider(deepseek).complete(request, () => {});
-  assert.deepEqual(order, [['deepseek', null], ['deepseek', 406]]);
-  order.length = 0;
-  await assert.rejects(guard.provider({ ...deepseek, complete: async () => ({
-    ...await deepseek.complete(), usage: { inputTokens: 60001, cachedInputTokens: 0, outputTokens: 1 },
-  }) }).complete(request, () => {}), { kind: 'budget' });
-  assert.deepEqual(order, [['deepseek', null]]);
-  order.length = 0;
-  const search = guard.search(async () => { order.push('search'); return Response.json({ results: [] }); });
-  await assert.rejects(search('https://example.invalid/', { method: 'POST', redirect: 'error' }), /denied/);
-  await search(perplexitySearchEndpoint, { method: 'POST', redirect: 'error' });
-  assert.deepEqual(order, [['perplexity', null], 'search', ['perplexity', 5000]]);
-  order.length = 0;
-  acknowledge = false;
-  await assert.rejects(guard.provider(model).complete(request, () => {}), { kind: 'budget' });
-  await assert.rejects(search(perplexitySearchEndpoint, { method: 'POST', redirect: 'error' }), /denied/);
-  assert.deepEqual(order, [['anthropic', null], ['perplexity', null]]);
-});
-
-test('the hosted DeepSeek route accepts every Auth-verified user and ignores the legacy verification actor setting', async () => {
-  const provider = scriptedProvider('deepseek', [{ text: ['Hello!'] }, { text: ['Hi!'] }]);
-  const app = harness({ env: { KAEL_EDGE_HOSTED: 'true', SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_fixture',
-    SUPABASE_SECRET_KEY: 'sb_secret_fixture', DEEPSEEK_API_KEY: 'fixture', KAEL_MODEL_ROUTE: 'deepseek',
-    KAEL_DEEPSEEK_VERIFICATION_ACTORS: users.customer.id }, providers: () => [provider],
-    wrapFetcher: fetcher => async (url, init) => new URL(String(url)).pathname === '/rest/v1/rpc/kael_provider_charge'
-      ? Response.json(true) : fetcher(url, init) });
-  const first = await app.message(users.other, 'Hello');
-  const second = await app.message(users.customer, 'Hello');
-  assert.equal(first.events.at(-1).type, 'run_completed');
-  assert.equal(second.events.at(-1).type, 'run_completed');
-  assert.equal(provider.requests.length, 2);
+test('every Auth-verified user can use DeepSeek and the configured Anthropic fallback', async () => {
+  const primary = scriptedProvider('deepseek', [{ error: 'overloaded' }, { text: ['DeepSeek primary reply.'] }]);
+  const fallback = scriptedProvider('anthropic', [{ text: ['Anthropic fallback reply.'] }]);
+  const app = harness({ env: { DEEPSEEK_API_KEY: 'fixture-deepseek', KAEL_MODEL_ROUTE: 'deepseek,anthropic',
+    ANTHROPIC_API_KEY: 'fixture-anthropic', KAEL_ANTHROPIC_MODEL: 'claude-sonnet-4-5' },
+    providers: () => [primary, fallback] });
+  const fallbackTurn = await app.message(users.other, 'Hello');
+  const primaryTurn = await app.message(users.customer, 'Hello');
+  assert.equal(fallbackTurn.events.at(-1).type, 'run_completed');
+  assert.equal(fallbackTurn.events.at(-1).text, 'Anthropic fallback reply.');
+  assert.equal(primaryTurn.events.at(-1).type, 'run_completed');
+  assert.equal(primaryTurn.events.at(-1).text, 'DeepSeek primary reply.');
+  assert.equal(primary.requests.length, 2);
+  assert.equal(fallback.requests.length, 1);
 });
 
 test('a mismatched opening is withheld, retried, and never persisted', async () => {
@@ -182,10 +123,11 @@ test('a failed preference read fails the turn before contacting the provider', a
   assert.ok(app.logs.some(event => event.event === 'kael_context_degraded' && event.part === 'preferences'));
 });
 
-test('the budgeted Anthropic model omits unsupported effort settings', () => {
-  const body = anthropicRequestBody({ model: anthropicBudgetModel, effort: 'low' },
+test('Anthropic Haiku omits unsupported effort settings', () => {
+  const model = 'claude-haiku-4-5-20251001';
+  const body = anthropicRequestBody({ model, effort: 'low' },
     { maxOutputTokens: 64, system: 'Reply briefly.', transcript: [{ role: 'user', text: 'Hello' }], tools: [] });
-  assert.equal(body.model, anthropicBudgetModel);
+  assert.equal(body.model, model);
   assert.equal(body.output_config, undefined);
   assert.equal(body.fallbacks, undefined);
 });
@@ -504,11 +446,12 @@ test('Anthropic adapter sends the current Messages API shape without sampling pa
   assert.equal(body.system[0].cache_control.type, 'ephemeral');
 });
 
-test('hosted Anthropic rejects an oversized serialized request before sending it', async () => {
+test('Anthropic sends a request larger than the former preview-only byte cap', async () => {
   const { calls, fetcher } = recordingFetch(new Response(streamOf([anthropicStream]), { status: 200 }));
-  const provider = createAnthropicProvider({ ...anthropicConfig, maxRequestBytes: 100 }, fetcher);
-  await assert.rejects(provider.complete(request({ system: 'x'.repeat(200) }), () => {}), error => error.kind === 'budget');
-  assert.equal(calls.length, 0);
+  const provider = createAnthropicProvider(anthropicConfig, fetcher);
+  await provider.complete(request({ system: 'x'.repeat(200) }), () => {});
+  assert.equal(calls.length, 1);
+  assert.ok(JSON.stringify(calls[0].body).length > 100);
 });
 
 test('Anthropic adapter streams text, parses tool input strictly and keeps thinking blocks for same-run replay', async () => {
@@ -605,11 +548,12 @@ test('DeepSeek adapter uses chat completions with explicit thinking mode and ass
   assert.deepEqual(turn.providerState.data, { reasoning: 'cân nhắc' });
 });
 
-test('hosted DeepSeek rejects an oversized serialized request before sending it', async () => {
+test('DeepSeek sends a request larger than the former preview-only byte cap', async () => {
   const { calls, fetcher } = recordingFetch(new Response(streamOf([deepseekStream]), { status: 200 }));
-  const provider = createDeepSeekProvider({ ...deepseekConfig, maxRequestBytes: 100 }, fetcher);
-  await assert.rejects(provider.complete(request({ system: 'x'.repeat(200) }), () => {}), error => error.kind === 'budget');
-  assert.equal(calls.length, 0);
+  const provider = createDeepSeekProvider(deepseekConfig, fetcher);
+  await provider.complete(request({ system: 'x'.repeat(200) }), () => {});
+  assert.equal(calls.length, 1);
+  assert.ok(JSON.stringify(calls[0].body).length > 100);
 });
 
 test('DeepSeek thinking mode replays reasoning_content inside the run and never across providers', async () => {
@@ -788,51 +732,46 @@ test('the shipped Edge configuration reads provider secrets only from a hosted d
     SUPABASE_SECRET_KEYS: JSON.stringify({ default: 'sb_secret_fixture' }) };
   const environment = readKaelEdgeEnvironment(name => hosted[name]);
   const config = readKaelConfig(environment);
-  assert.deepEqual(config.route, ['deepseek']);
+  assert.deepEqual(config.route, ['deepseek', 'anthropic']);
   assert.ok(config.perplexity);
   assert.deepEqual([...config.enabledEffects], ['service_request_submit']);
-  assert.equal(environment.KAEL_EDGE_HOSTED, 'true');
   assert.equal(environment.KAEL_DEVELOPER_PILOT, undefined);
   assert.equal(environment.KAEL_DEVELOPER_PILOT_ID, undefined);
   assert.ok(!JSON.stringify(configurationReport(environment)).includes('fixture-only'));
 });
 
-test('server configuration defaults to Flash and keeps other routes and effects explicit', () => {
+test('server configuration defaults to Flash, routes to Anthropic when configured, and keeps search/effects explicit', () => {
   assert.equal(readKaelConfig({}), null);
   const keysOnly = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', DEEPSEEK_API_KEY: 'secret-d', PERPLEXITY_API_KEY: 'secret-p' });
   assert.equal(keysOnly.anthropic, null, 'a key without an explicitly configured model is not a usable provider');
   assert.equal(keysOnly.deepseek.model, 'deepseek-flash');
   assert.equal(keysOnly.perplexity, null, 'web search needs explicit enablement');
-  assert.deepEqual(keysOnly.route, ['deepseek']);
-  const hostedPrimary = readKaelConfig({ ...baseEnv, KAEL_EDGE_HOSTED: 'true',
-    SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_fixture', SUPABASE_SECRET_KEY: 'sb_secret_fixture', DEEPSEEK_API_KEY: 'secret-d' });
-  assert.deepEqual(hostedPrimary.route, ['deepseek']);
-  assert.equal(hostedPrimary.deepseek.maxRequestBytes, 60000);
-  const hostedFallback = readKaelConfig({ ...baseEnv, KAEL_EDGE_HOSTED: 'true',
-    SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_fixture', SUPABASE_SECRET_KEY: 'sb_secret_fixture',
-    DEEPSEEK_API_KEY: 'secret-d', KAEL_MODEL_ROUTE: 'deepseek,anthropic', ANTHROPIC_API_KEY: 'secret-a',
-    KAEL_ANTHROPIC_MODEL: anthropicBudgetModel, KAEL_ANTHROPIC_SERVER_FALLBACK: 'enabled' });
-  assert.deepEqual(hostedFallback.route, ['deepseek', 'anthropic']);
-  assert.equal(hostedFallback.anthropic.serverFallback, false, 'hosted budget accounting pins Anthropic to its configured model');
-  assert.equal(hostedFallback.anthropic.maxRequestBytes, anthropicMaxRequestBytes);
+  assert.deepEqual(keysOnly.route, ['deepseek'], 'Anthropic needs a configured model before it can be used');
+  const serverFallback = readKaelConfig({ ...baseEnv, DEEPSEEK_API_KEY: 'secret-d', ANTHROPIC_API_KEY: 'secret-a',
+    KAEL_ANTHROPIC_MODEL: 'claude-sonnet-4-5' });
+  assert.deepEqual(serverFallback.route, ['deepseek', 'anthropic'], 'the configured default route is DeepSeek first, Anthropic fallback second');
+  assert.equal(serverFallback.anthropic.serverFallback, false, 'provider-level Anthropic fallback stays opt-in');
+  const serverFallbackEnabled = readKaelConfig({ ...baseEnv, DEEPSEEK_API_KEY: 'secret-d', ANTHROPIC_API_KEY: 'secret-a',
+    KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', KAEL_ANTHROPIC_SERVER_FALLBACK: 'enabled' });
+  assert.deepEqual(serverFallbackEnabled.route, ['deepseek', 'anthropic']);
+  assert.equal(serverFallbackEnabled.anthropic.serverFallback, true);
   const searchOnly = readKaelConfig({ ...baseEnv, PERPLEXITY_API_KEY: 'secret-p', KAEL_WEB_SEARCH: 'enabled' });
   assert.ok(searchOnly.perplexity);
   assert.deepEqual(searchOnly.route, [], 'search is not a chat model');
   assert.equal(readKaelConfig({ ...baseEnv, KAEL_WEB_SEARCH: 'enabled' }).perplexity, null, 'search needs a server credential');
   assert.deepEqual(readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, [],
     'Anthropic cannot replace the DeepSeek primary route');
-  const full = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-flash', KAEL_MODEL_ROUTE: 'deepseek,anthropic', KAEL_ENABLED_EFFECTS: 'service_request_submit,mark_paid' });
-  assert.deepEqual(full.route, ['deepseek'], 'Anthropic fallback needs the approved model and explicit route');
-  const fallback = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: anthropicBudgetModel,
-    DEEPSEEK_API_KEY: 'secret-d', KAEL_MODEL_ROUTE: 'deepseek,anthropic' });
+  const full = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-flash', KAEL_ENABLED_EFFECTS: 'service_request_submit,mark_paid' });
+  assert.deepEqual(full.route, ['deepseek', 'anthropic']);
+  const fallback = serverFallback;
   assert.deepEqual(fallback.route, ['deepseek', 'anthropic']);
   assert.deepEqual(configuredProviders(fallback, async () => new Response(null)).map(provider => provider.id), ['deepseek', 'anthropic']);
   assert.deepEqual(readKaelConfig({ ...baseEnv, DEEPSEEK_API_KEY: 'secret-d', KAEL_MODEL_ROUTE: 'deepseek,anthropic' }).route, ['deepseek'],
     'A missing optional fallback does not disable the primary');
-  assert.equal(readKaelConfig({ ...baseEnv, DEEPSEEK_API_KEY: 'secret-d', KAEL_EDGE_HOSTED: 'true', KAEL_DEEPSEEK_MODEL: 'deepseek-v4-pro' }).route.length, 0,
-    'The hosted ledger is bound to the reviewed DeepSeek price model');
-  assert.equal(configurationReport({ ...baseEnv, KAEL_EDGE_HOSTED: 'true', ANTHROPIC_API_KEY: 'secret-a',
-    KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).anthropic, 'model_not_approved_for_beta_budget');
+  assert.deepEqual(readKaelConfig({ ...baseEnv, DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-v4-pro' }).route, ['deepseek'],
+    'DeepSeek model choice is not bound to the retired beta budget');
+  assert.equal(configurationReport({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a',
+    KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).anthropic, 'configured');
   assert.deepEqual([...full.enabledEffects], ['service_request_submit']);
   assert.equal(configurationReport({ ...baseEnv, KAEL_MODEL_ROUTE: 'deepseek,openai' }).route, 'invalid_route');
   assert.equal(configurationReport({ ...baseEnv, KAEL_MODEL_ROUTE: 'anthropic', ANTHROPIC_API_KEY: 'test-key' }).route, 'invalid_route');
@@ -990,10 +929,6 @@ test('Kael-internal writes leave only through named server RPCs bound to the ver
   await store.consumeApproval(id, id, 'a'.repeat(64), ['service_request_submit'], 'reconcile');
   await store.completeApproval(id, id, 'failed', { reason: 'x' });
   await store.rejectApproval(id, id, 'b'.repeat(64));
-  await server('kael_provider_charge', {
-    p_actor: users.customer.id, p_run: id, p_provider: 'deepseek', p_call: id, p_actual: null,
-  }, signal);
-
   const internal = calls.filter(entry => isServerOperation(entry.path));
   assert.deepEqual(internal.map(entry => entry.path.split('/rpc/')[1]).sort(), [...kaelServerOperations].sort());
   for (const entry of internal) {
@@ -1013,7 +948,6 @@ test('Kael-internal writes leave only through named server RPCs bound to the ver
   assert.deepEqual(bodyOf('kael_complete_approval'), { p_actor: users.customer.id, p_run_id: id, p_approval_id: id, p_outcome: 'failed', p_result: { reason: 'x' } });
   assert.deepEqual(bodyOf('kael_reject_approval'), { p_actor: users.customer.id, p_run_id: id, p_approval_id: id, p_fingerprint: 'b'.repeat(64) }, 'rejecting carries the run and fingerprint like approving');
   assert.deepEqual(bodyOf('kael_request_approval').p_details, { 'Mô tả': 'x' });
-  assert.deepEqual(bodyOf('kael_provider_charge'), { p_actor: users.customer.id, p_run: id, p_provider: 'deepseek', p_call: id, p_actual: null });
   assert.throws(() => server('service_requests', {}), /HTTP 403/, 'the server credential cannot reach an arbitrary table');
   assert.throws(() => server('submit_service_request', {}), /HTTP 403/, 'the server credential cannot run a business command');
 });
@@ -1037,6 +971,8 @@ test('hosted managed keys preserve the user JWT and send the server secret only 
   };
   const config = readKaelConfig(readKaelEdgeEnvironment(name => hosted[name]));
   assert.ok(config);
+  assert.equal(config.supabaseAnonKey, clientKey);
+  assert.equal(config.supabaseServiceKey, serverKey);
   const calls = [];
   const fetcher = async (url, init) => { calls.push([new URL(url).pathname, init.headers]); return json(true); };
   await createRest(config, users.customer.token, fetcher)('kael_memory_preferences');
@@ -1045,7 +981,6 @@ test('hosted managed keys preserve the user JWT and send the server secret only 
     ['/rest/v1/kael_memory_preferences', { apikey: clientKey, authorization: `Bearer ${users.customer.token}`, 'content-type': 'application/json' }],
     ['/rest/v1/rpc/kael_runtime_ready', { apikey: serverKey, 'content-type': 'application/json' }],
   ]);
-  assert.equal(readKaelEdgeEnvironment(name => hosted[name]).KAEL_EDGE_HOSTED, 'true');
   assert.equal(readKaelConfig(readKaelEdgeEnvironment(name => name === 'DENO_DEPLOYMENT_ID' ? undefined : hosted[name])), null);
   assert.equal(readKaelConfig(readKaelEdgeEnvironment(name => name === 'SUPABASE_SECRET_KEYS' ? '{' : hosted[name])), null);
 });
