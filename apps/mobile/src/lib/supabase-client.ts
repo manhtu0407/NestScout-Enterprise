@@ -16,6 +16,7 @@ export function getSupabaseClient(): SupabaseClient {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
+        ...(config.target === 'kael-hosted-preview' ? { storageKey: 'nestscout.kael-hosted-preview.session' } : {}),
       },
     });
   }

@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react-native';
+import { act, render, screen, waitFor } from '@testing-library/react-native';
 import { AccessibilityInfo } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { KaelShimmerText, shimmerStops } from './kael-shimmer-text';
-import { KaelStreamingText, splitWords, streamTiming } from './kael-streaming-text';
+import { KaelStreamingText } from './kael-streaming-text';
 import { KaelStepNotes } from './kael-step-notes';
 import { KaelThinkingRow, isKaelThinking } from './kael-thinking-row';
 import { KaelThinkingStatus } from './kael-thinking-status';
@@ -37,28 +37,20 @@ test('a single character still produces a valid shimmer range', () => {
   expect(peak).toBeLessThan(end);
 });
 
-test('words split on any whitespace and ignore leading and trailing space', () => {
-  expect(splitWords('  Kael  đang\ttìm thợ\n')).toEqual(['Kael', 'đang', 'tìm', 'thợ']);
-  expect(splitWords('   ')).toEqual([]);
-});
-
-test('streaming keeps the word cadence for short answers and compresses it for long ones', () => {
-  expect(streamTiming(1).total).toBe(metrics.streamWordDuration);
-  expect(streamTiming(5)).toEqual({ gap: metrics.streamWordGap, total: 4 * metrics.streamWordGap + metrics.streamWordDuration });
-  const long = streamTiming(400);
-  expect(long.gap).toBeLessThan(metrics.streamWordGap);
-  expect(long.total).toBeCloseTo(metrics.streamMaxDuration);
-});
-
-test('streamed text exposes the whole answer to assistive technology', async () => {
-  reduceMotion(false);
-  await render(<KaelStreamingText text="Kael đã tìm được ba thợ gần bạn"/>);
-  expect(screen.getByLabelText('Kael đã tìm được ba thợ gần bạn')).toBeTruthy();
-});
-
-test('text that should not animate renders as one plain line', async () => {
-  await render(<KaelStreamingText text="Kael đã tìm được ba thợ gần bạn" animate={false}/>);
-  expect(screen.getByText('Kael đã tìm được ba thợ gần bạn')).toBeTruthy();
+test('Kael replies render Vietnamese Markdown with semantic headings, nesting, tables, code and safe links', async () => {
+  const reply = '# Kiểm tra máy lạnh\n\nGiữ **an toàn**.\\*\nDòng hai\n\n1. Quan sát\n   - Ngắt điện\n\n| Mục | Tình trạng |\n| --- | --- |\n| Lọc | Bẩn |\n\n```ts\n  const dấu = 1 < 2;\n```\n\n[Hướng dẫn](https://example.com) [Nguy hiểm](javascript:alert(1)) ![ảnh](https://example.com/img.png) <script>bad()</script>';
+  await render(<KaelStreamingText text={reply}/>);
+  expect(screen.getByRole('header', { name: 'Kiểm tra máy lạnh' })).toBeTruthy();
+  expect(screen.getByText('an toàn').props.style).toEqual(expect.objectContaining({ fontWeight: '700' }));
+  expect(screen.getByText('1.')).toBeTruthy();
+  expect(screen.getByText('•')).toBeTruthy();
+  expect(screen.getByText('Ngắt điện')).toBeTruthy();
+  expect(screen.getByRole('header', { name: 'Tình trạng' })).toBeTruthy();
+  expect(screen.getByText('Bẩn')).toBeTruthy();
+  expect(screen.getByText('const dấu = 1 < 2;').props.children).toBe('  const dấu = 1 < 2;');
+  expect(screen.getAllByRole('link')).toHaveLength(1);
+  expect(screen.queryByRole('image')).toBeNull();
+  expect(screen.getByText('Hướng dẫn')).toBeTruthy();
 });
 
 test('Reduce Motion turns streaming and shimmer into plain text', async () => {
@@ -83,13 +75,20 @@ test('step notes show every line at once without implying live reasoning', async
   expect(screen.getByText('Kiểm tra lịch trống')).toBeTruthy();
 });
 
-test('streaming text keeps earlier words and adds only the new ones when the answer grows', async () => {
-  reduceMotion(false);
-  const view = await render(<KaelStreamingText text="Kael đã tìm được"/>);
-  expect(screen.getByLabelText('Kael đã tìm được')).toBeTruthy();
-  await view.rerender(<KaelStreamingText text="Kael đã tìm được ba thợ"/>);
-  expect(screen.getByLabelText('Kael đã tìm được ba thợ')).toBeTruthy();
-  expect(screen.getAllByText('Kael')).toHaveLength(1);
+test('split Markdown, Vietnamese and emoji stream to the same final tree as restored history', async () => {
+  jest.useFakeTimers();
+  const reply = '# Bảo trì 🧰\n\n**Bước đầu**\n\n- Ngắt điện\n\n```ts\n  const x = 1;\n```';
+  const view = await render(<KaelStreamingText text="#" streaming/>);
+  for (let i = 2, seed = 17; i <= reply.length; i += 1 + seed % 4) {
+    await view.rerender(<KaelStreamingText text={reply.slice(0, i)} streaming/>);
+    await act(() => { jest.advanceTimersByTime(90); });
+    seed = (seed * 13 + 7) % 97;
+  }
+  await view.rerender(<KaelStreamingText text={reply}/>);
+  const completed = view.toJSON();
+  await view.unmount();
+  const restored = await render(<KaelStreamingText text={reply}/>);
+  expect(restored.toJSON()).toEqual(completed);
 });
 
 test('only the phases where Kael is still working show the thinking row', async () => {

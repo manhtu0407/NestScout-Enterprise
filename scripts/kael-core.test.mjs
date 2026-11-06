@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { anthropicEndpoint, anthropicVersion, createAnthropicProvider } from '../services/kael-core/src/anthropic.ts';
-import { configurationReport, defaultLimits, readKaelConfig } from '../services/kael-core/src/config.ts';
+import { anthropicEndpoint, anthropicRequestBody, anthropicVerificationModel, anthropicVersion, createAnthropicProvider } from '../services/kael-core/src/anthropic.ts';
+import { configurationReport, defaultLimits, readKaelConfig, readKaelEdgeEnvironment } from '../services/kael-core/src/config.ts';
+import { buildSystemPrompt, buildTranscript } from '../services/kael-core/src/context.ts';
 import { createDeepSeekProvider, deepseekEndpoint } from '../services/kael-core/src/deepseek.ts';
+import { hostedVerification } from '../services/kael-core/src/hosted-verification.ts';
 import { completeWithFallback, ProviderError } from '../services/kael-core/src/model.ts';
 import { perplexitySearchEndpoint, searchWeb } from '../services/kael-core/src/perplexity.ts';
 import { canonicalJson, confirmableTools, evaluateCall, fingerprint, selectTools } from '../services/kael-core/src/policy.ts';
@@ -18,6 +20,162 @@ import { developerPilotProviders, pilotRoute, pilotServedModels } from '../servi
 import { parsePilotAuthorization, parsePilotRenewal } from './kael-developer-pilot.mjs';
 
 const encoder = new TextEncoder();
+
+test('Anthropic receives the current saved language as policy and leaves explicit overrides in the latest request', async () => {
+  const owner = users.customer.id;
+  const actor = { userId: owner, mode: 'client', capabilities: new Set(['customer']) };
+  const config = readKaelConfig(baseEnv);
+  const row = (preference, value) => ({ preference, value, source: 'settings', updated_at: '2026-11-05T00:00:00Z' });
+  let preferences = [row('language', 'en'), row('detail', 'brief')];
+  const store = createSupabaseStore(async (path, init) => {
+    if (path === 'rpc/kael_manage_memory') {
+      assert.deepEqual(init.body, { p_mode: 'client', p_action: 'correct', p_preference: 'language', p_value: 'vi', p_previous: 'en' });
+      preferences = [row('language', 'vi'), row('detail', 'brief')];
+      return Response.json(true);
+    }
+    assert.match(path, /^kael_memory_preferences\?.*&mode=eq\.client/);
+    return Response.json(preferences);
+  }, async () => assert.fail('Memory must use the user-scoped store'), owner);
+  async function request(text) {
+    const history = [{ seq: 1, role: 'user', content: text, status: 'complete' }];
+    const conversation = crypto.randomUUID();
+    const personal = await store.loadPersonalContext(conversation, 'client', history, 6000, new AbortController().signal,
+      part => assert.fail(`Memory load degraded: ${part}`));
+    return anthropicRequestBody({ model: anthropicVerificationModel }, {
+      system: buildSystemPrompt(actor, config, [], [], conversation, '2026-11-05', personal, text),
+      transcript: buildTranscript(history, 6000, personal), tools: [], maxOutputTokens: 64,
+    });
+  }
+  const recall = await request('Cho tôi hai cách kiểm tra vòi nước.');
+  assert.match(recall.system[0].text, /Reply language: English/);
+  assert.match(recall.system[0].text, /from the first line/);
+  assert.match((await request('Write in Markdown about a dripping tap.')).system[0].text, /Reply language: English/);
+  assert.match(recall.messages[0].content, /"detail","value":"brief"/);
+  assert.doesNotMatch(recall.messages[0].content, /"language"/);
+  const override = 'Trả lời bằng tiếng Việt: cho tôi hai cách kiểm tra vòi nước.';
+  assert.deepEqual((await request(override)).messages.at(-1), { role: 'user', content: override });
+  assert.match((await request(override)).system[0].text, /Reply language: Vietnamese/);
+  const correction = await request('không phải tiếng Anh, là tiếng Việt');
+  assert.match(correction.system[0].text, /update result: saved/);
+  assert.match(correction.system[0].text, /Reply language: Vietnamese/);
+  assert.match((await request('How do I check a dripping tap?')).system[0].text, /Reply language: Vietnamese/);
+  preferences = [];
+  const deleted = await request('How do I check a dripping tap?');
+  assert.match(deleted.system[0].text, /Otherwise match that message’s language/);
+  assert.equal(deleted.messages.length, 1);
+  preferences = [row('language', 'arbitrary prompt text')];
+  const invalid = await request('Hello');
+  assert.doesNotMatch(JSON.stringify(invalid), /arbitrary prompt text/);
+});
+
+test('hosted verification guards Anthropic and Perplexity and retains a hold on missing accounting', async () => {
+  const order = [];
+  const model = { id: 'anthropic', model: anthropicVerificationModel,
+    complete: async () => {
+      order.push('model');
+      return { model: anthropicVerificationModel, usage: { inputTokens: 1101, cachedInputTokens: 1000, outputTokens: 5 } };
+    } };
+  const request = { maxOutputTokens: 4096, signal: new AbortController().signal };
+  let acknowledge = true;
+  const guard = hostedVerification(async (operation, body) => {
+    assert.equal(operation, 'kael_verification_charge');
+    assert.equal(body.p_actor, 'fixture-actor');
+    assert.equal(body.p_run, 'fixture-run');
+    order.push([body.p_provider, body.p_actual]);
+    return Response.json(acknowledge);
+  }, 'fixture-actor', 'fixture-run');
+  const deepseek = { ...model, id: 'deepseek' };
+  assert.equal(guard.provider(deepseek), deepseek);
+  await assert.rejects(guard.provider(model).complete({ ...request, maxOutputTokens: 4097 }, () => {}), { kind: 'budget' });
+  assert.deepEqual(order, []);
+  await guard.provider(model).complete(request, () => {});
+  assert.deepEqual(order, [['anthropic', null], 'model', ['anthropic', 252]]);
+  order.length = 0;
+  const excessiveInput = { ...model, complete: async () => ({
+    model: anthropicVerificationModel, usage: { inputTokens: 200_001, cachedInputTokens: 1000, outputTokens: 5 },
+  }) };
+  await assert.rejects(guard.provider(excessiveInput).complete(request, () => {}), { kind: 'budget' });
+  assert.deepEqual(order, [['anthropic', null]]);
+  order.length = 0;
+  const invalidCachedUsage = { ...model, complete: async () => ({
+    model: anthropicVerificationModel, usage: { inputTokens: 100, cachedInputTokens: 101, outputTokens: 5 },
+  }) };
+  await assert.rejects(guard.provider(invalidCachedUsage).complete(request, () => {}), { kind: 'budget' });
+  assert.deepEqual(order, [['anthropic', null]]);
+  order.length = 0;
+  await assert.rejects(guard.provider({ ...model, complete: async () => { throw new Error('interrupted'); } }).complete(request, () => {}), /interrupted/);
+  assert.deepEqual(order, [['anthropic', null]]);
+  order.length = 0;
+  const search = guard.search(async () => { order.push('search'); return Response.json({ results: [] }); });
+  await assert.rejects(search('https://example.invalid/', { method: 'POST', redirect: 'error' }), /denied/);
+  await search(perplexitySearchEndpoint, { method: 'POST', redirect: 'error' });
+  assert.deepEqual(order, [['perplexity', null], 'search', ['perplexity', 5000]]);
+  order.length = 0;
+  acknowledge = false;
+  await assert.rejects(guard.provider(model).complete(request, () => {}), { kind: 'budget' });
+  await assert.rejects(search(perplexitySearchEndpoint, { method: 'POST', redirect: 'error' }), /denied/);
+  assert.deepEqual(order, [['anthropic', null], ['perplexity', null]]);
+});
+
+test('the hosted DeepSeek route is available only to the verified, configured actor', async () => {
+  const provider = scriptedProvider('deepseek', [{ text: ['Hello!'] }]);
+  const app = harness({ env: { KAEL_HOSTED_VERIFICATION: 'required', DEEPSEEK_API_KEY: 'fixture',
+    KAEL_MODEL_ROUTE: 'deepseek', KAEL_DEEPSEEK_VERIFICATION_ACTORS: users.customer.id }, providers: () => [provider] });
+  const denied = await app.message(users.other, 'Hello');
+  assert.equal(denied.events.at(-1).code, 'provider_unavailable');
+  assert.equal(provider.requests.length, 0);
+  const allowed = await app.message(users.customer, 'Hello');
+  assert.equal(allowed.events.at(-1).type, 'run_completed');
+  assert.equal(provider.requests.length, 1);
+});
+
+test('a mismatched opening is withheld, retried, and never persisted', async () => {
+  const provider = scriptedProvider('deepseek', [
+    { text: ['# FAQ\n', 'Kiểm tra vòi nước. ', 'Nội dung sai.'] },
+    { text: ['# How to check the tap\n', 'Check the washer.'] },
+  ]);
+  const app = harness({ providers: () => [provider], wrapStore: store => ({ ...store, loadPersonalContext: async () => ({
+    summary: null, preferences: [{ preference: 'language', value: 'en' }],
+  }) }) });
+  const reply = await app.message(users.customer, 'Cho tôi cách kiểm tra vòi nước.');
+  assert.deepEqual(reply.events.filter(event => event.type === 'message_delta').map(event => event.text),
+    ['# How to check the tap\n', 'Check the washer.']);
+  assert.equal(reply.events.at(-1).text, '# How to check the tap\nCheck the washer.');
+  assert.equal(provider.requests.length, 2);
+  assert.match(provider.requests[1].transcript.at(-1).text, /Answer my latest request in English/);
+});
+
+test('a requested translation streams once even when its language differs from the saved preference', async () => {
+  const translation = 'Bạn là bạn của tôi.';
+  const provider = scriptedProvider('deepseek', [{ text: ['Bạn là ', 'bạn của tôi.'] }]);
+  const app = harness({ providers: () => [provider], wrapStore: store => ({ ...store, loadPersonalContext: async () => ({
+    summary: null, preferences: [{ preference: 'language', value: 'en' }],
+  }) }) });
+  const reply = await app.message(users.customer, "Translate 'You are my friend' into Vietnamese. Return only the translation.");
+  assert.deepEqual(reply.events.filter(event => event.type === 'message_delta').map(event => event.text), ['Bạn là ', 'bạn của tôi.']);
+  assert.equal(reply.events.at(-1).text, translation);
+  assert.equal(provider.requests.length, 1);
+});
+
+test('a failed preference read fails the turn before contacting the provider', async () => {
+  const provider = scriptedProvider('deepseek', []);
+  const persistence = createSupabaseStore(async () => new Response(null, { status: 503 }),
+    async () => assert.fail('Unexpected server RPC'), users.customer.id);
+  const app = harness({ providers: () => [provider], wrapStore: store => ({ ...store, loadPersonalContext: persistence.loadPersonalContext }) });
+  const reply = await app.message(users.customer, 'Hello');
+  assert.equal(reply.events.at(-1).code, 'internal');
+  assert.equal(reply.events.at(-1).retryable, true);
+  assert.equal(provider.requests.length, 0);
+  assert.ok(app.logs.some(event => event.event === 'kael_context_degraded' && event.part === 'preferences'));
+});
+
+test('the pinned verification model omits unsupported Anthropic effort', () => {
+  const body = anthropicRequestBody({ model: anthropicVerificationModel, effort: 'low' },
+    { maxOutputTokens: 64, system: 'Reply briefly.', transcript: [{ role: 'user', text: 'Hello' }], tools: [] });
+  assert.equal(body.model, anthropicVerificationModel);
+  assert.equal(body.output_config, undefined);
+  assert.equal(body.fallbacks, undefined);
+});
 
 const pilotEnv = { ...baseEnv, SUPABASE_URL: 'http://127.0.0.1:23624', KAEL_DEVELOPER_PILOT: 'local_8085',
   KAEL_DEVELOPER_PILOT_ID: '00000000-0000-4000-8000-000000008085', DEEPSEEK_API_KEY: 'test-deepseek-key' };
@@ -115,7 +273,8 @@ test('strict Flash denies foreign models, absent or inconsistent usage and trunc
   for (const payload of [pilotStream('deepseek-v4-pro'), pilotStream('', validUsage), pilotStream(undefined, null),
     pilotStream(undefined, { ...validUsage, total_tokens: 111 }), pilotStream(undefined, { ...validUsage, prompt_cache_hit_tokens: -1 }),
     pilotStream(undefined, { ...validUsage, completion_tokens: '10' }), pilotStream().replace('data: [DONE]\n\n', ''),
-    pilotStream().replace('DeepSeek-V4.1-Flash-1017', 'deepseek-flash')]) {
+    pilotStream().replace('DeepSeek-V4.1-Flash-1017', 'deepseek-flash'),
+    pilotStream().replace(/"model":"DeepSeek-V4\.1-Flash-1017","choices":\[\]/, '"model":"unexpected provider model","choices":[]')]) {
     const provider = createDeepSeekProvider({ ...deepseekConfig, verifiedModels: pilotServedModels }, async () => pilotResponse(streamOf([payload])));
     await assert.rejects(provider.complete(request(), () => {}), error => error instanceof ProviderError);
   }
@@ -294,7 +453,7 @@ const request = (overrides = {}) => ({
   ...overrides,
 });
 
-const anthropicConfig = { apiKey: 'test-anthropic-key', model: 'claude-opus-5-5', effort: 'medium', timeoutMs: 5000 };
+const anthropicConfig = { apiKey: 'test-anthropic-key', model: 'claude-opus-5-5', effort: 'medium', timeoutMs: 5000, serverFallback: true };
 const deepseekConfig = { apiKey: 'test-deepseek-key', model: 'deepseek-flash', thinking: false, timeoutMs: 5000 };
 
 const anthropicStream = sse([
@@ -344,14 +503,14 @@ test('Anthropic adapter streams text, parses tool input strictly and keeps think
   assert.deepEqual(turn.usage, { inputTokens: 50, outputTokens: 33, cachedInputTokens: 10 });
   assert.equal(turn.providerState.data[0].signature, 'sig-1');
 
-  const replay = recordingFetch(new Response(streamOf([sse([['message_stop', { type: 'message_stop' }]])]), { status: 200 }));
+  const replay = recordingFetch(new Response(streamOf([anthropicStream]), { status: 200 }));
   const next = createAnthropicProvider(anthropicConfig, replay.fetcher);
   await next.complete(request({ transcript: [{ role: 'user', text: 'Xin chào' }, { role: 'assistant', text: turn.text, toolCalls: turn.toolCalls, providerState: turn.providerState }, { role: 'tool', results: [{ callId: 'toolu_1', content: '{}', isError: false }] }] }), () => {});
   const messages = replay.calls[0].body.messages;
   assert.deepEqual(messages[1].content, turn.providerState.data, 'thinking and tool_use blocks are replayed unchanged');
   assert.deepEqual(messages[2].content, [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '{}', is_error: false }]);
 
-  const other = recordingFetch(new Response(streamOf([sse([['message_stop', { type: 'message_stop' }]])]), { status: 200 }));
+  const other = recordingFetch(new Response(streamOf([anthropicStream]), { status: 200 }));
   await createAnthropicProvider({ ...anthropicConfig, model: 'claude-sonnet-5-5' }, other.fetcher).complete(request({ transcript: [{ role: 'user', text: 'a' }, { role: 'assistant', text: turn.text, toolCalls: turn.toolCalls, providerState: turn.providerState }] }), () => {});
   assert.equal(other.calls[0].body.messages[1].content.some(block => block.type === 'thinking'), false, 'state from another model is rebuilt from text and tool calls');
 });
@@ -364,7 +523,7 @@ test('Anthropic adapter attributes the turn to the model the stream reports, nev
   assert.equal(turn.requestedModel, 'claude-opus-5-5');
   assert.equal(turn.providerState.model, 'claude-sonnet-5-5');
 
-  const replay = recordingFetch(new Response(streamOf([sse([['message_stop', { type: 'message_stop' }]])]), { status: 200 }));
+  const replay = recordingFetch(new Response(streamOf([anthropicStream]), { status: 200 }));
   await createAnthropicProvider(anthropicConfig, replay.fetcher).complete(request({ transcript: [{ role: 'user', text: 'a' }, { role: 'assistant', text: turn.text, toolCalls: turn.toolCalls, providerState: turn.providerState }] }), () => {});
   const rebuilt = replay.calls[0].body.messages[1].content;
   assert.equal(rebuilt.some(block => block.type === 'thinking'), false, 'thinking from the fallback model is not replayed to the requested model');
@@ -380,11 +539,11 @@ test('Anthropic adapter treats a stream without message_stop as incomplete and c
   const truncated = anthropicStream.split('event: message_delta')[0];
   const provider = createAnthropicProvider(anthropicConfig, recordingFetch(new Response(streamOf([truncated]), { status: 200 })).fetcher);
   await assert.rejects(provider.complete(request(), () => {}), error => error instanceof ProviderError && error.kind === 'incomplete' && error.outputStarted);
-  for (const [status, kind] of [[529, 'overloaded'], [429, 'rate_limit'], [401, 'auth'], [400, 'bad_request'], [500, 'server']]) {
+  for (const [status, kind] of [[529, 'overloaded'], [429, 'rate_limit'], [401, 'auth'], [403, 'auth'], [402, 'billing'], [400, 'bad_request'], [500, 'server']]) {
     const failing = createAnthropicProvider(anthropicConfig, recordingFetch(new Response('{}', { status })).fetcher);
     await assert.rejects(failing.complete(request(), () => {}), error => error.kind === kind && !error.outputStarted, String(status));
   }
-  const refusal = sse([['message_delta', { type: 'message_delta', delta: { stop_reason: 'refusal' }, usage: { output_tokens: 1 } }], ['message_stop', { type: 'message_stop' }]]);
+  const refusal = sse([['message_start', { type: 'message_start', message: { usage: { input_tokens: 1 } } }], ['message_delta', { type: 'message_delta', delta: { stop_reason: 'refusal' }, usage: { output_tokens: 1 } }], ['message_stop', { type: 'message_stop' }]]);
   const refused = await createAnthropicProvider(anthropicConfig, recordingFetch(new Response(streamOf([refusal]), { status: 200 })).fetcher).complete(request(), () => {});
   assert.equal(refused.stopReason, 'refusal');
   const escaped = text => JSON.stringify(text).slice(1, -1);
@@ -429,7 +588,7 @@ test('DeepSeek adapter uses chat completions with explicit thinking mode and ass
 test('DeepSeek thinking mode replays reasoning_content inside the run and never across providers', async () => {
   const assistant = { role: 'assistant', text: 'Mình sẽ xem.', toolCalls: [{ id: 'call_0', name: 'customer_requests', input: { limit: 3 } }], providerState: { provider: 'deepseek', model: 'deepseek-flash', data: { reasoning: 'cân nhắc' } } };
   const transcript = [{ role: 'user', text: 'a' }, assistant, { role: 'tool', results: [{ callId: 'call_0', content: '{"requests":[]}', isError: false }] }];
-  const thinking = recordingFetch(new Response(streamOf([deepseekChunks([{ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }] }, '[DONE]'])]), { status: 200 }));
+  const thinking = recordingFetch(new Response(streamOf([deepseekChunks([{ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1 } }, '[DONE]'])]), { status: 200 }));
   await createDeepSeekProvider({ ...deepseekConfig, thinking: true }, thinking.fetcher).complete(request({ transcript }), () => {});
   const sent = thinking.calls[0].body;
   assert.deepEqual(sent.thinking, { type: 'enabled' });
@@ -438,7 +597,7 @@ test('DeepSeek thinking mode replays reasoning_content inside the run and never 
   assert.equal(sent.messages[2].tool_calls[0].function.arguments, '{"limit":3}');
   assert.deepEqual(sent.messages[3], { role: 'tool', tool_call_id: 'call_0', content: '{"requests":[]}' });
 
-  const foreign = recordingFetch(new Response(streamOf([deepseekChunks([{ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }] }, '[DONE]'])]), { status: 200 }));
+  const foreign = recordingFetch(new Response(streamOf([deepseekChunks([{ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1 } }, '[DONE]'])]), { status: 200 }));
   await createDeepSeekProvider({ ...deepseekConfig, thinking: true }, foreign.fetcher).complete(request({ transcript: [transcript[0], { ...assistant, providerState: { provider: 'anthropic', model: 'x', data: [] } }] }), () => {});
   assert.equal('reasoning_content' in foreign.calls[0].body.messages[2], false);
 });
@@ -450,12 +609,32 @@ test('DeepSeek adapter reports missing finish reasons, truncation and provider e
   const noTerminator = deepseekChunks([{ choices: [{ index: 0, delta: { content: 'Xong' }, finish_reason: 'stop' }] }]);
   await assert.rejects(createDeepSeekProvider(deepseekConfig, recordingFetch(new Response(streamOf([noTerminator]), { status: 200 })).fetcher).complete(request(), () => {}),
     error => error.kind === 'incomplete' && error.outputStarted, 'a finish reason without the [DONE] terminator is an incomplete stream');
-  const length = deepseekChunks([{ choices: [{ index: 0, delta: { content: 'Dài' }, finish_reason: 'length' }] }, '[DONE]']);
+  const length = deepseekChunks([{ choices: [{ index: 0, delta: { content: 'Dài' }, finish_reason: 'length' }], usage: { prompt_tokens: 1, completion_tokens: 1 } }, '[DONE]']);
   assert.equal((await createDeepSeekProvider(deepseekConfig, recordingFetch(new Response(streamOf([length]), { status: 200 })).fetcher).complete(request(), () => {})).stopReason, 'max_tokens');
-  const busy = deepseekChunks([{ choices: [{ index: 0, delta: {}, finish_reason: 'insufficient_system_resource' }] }, '[DONE]']);
+  const busy = deepseekChunks([{ choices: [{ index: 0, delta: {}, finish_reason: 'insufficient_system_resource' }], usage: { prompt_tokens: 1, completion_tokens: 0 } }, '[DONE]']);
   await assert.rejects(createDeepSeekProvider(deepseekConfig, recordingFetch(new Response(streamOf([busy]), { status: 200 })).fetcher).complete(request(), () => {}),
     error => error.kind === 'overloaded' && !error.outputStarted);
   await assert.rejects(createDeepSeekProvider(deepseekConfig, recordingFetch(new Response('{}', { status: 401 })).fetcher).complete(request(), () => {}), error => error.kind === 'auth');
+});
+
+test('provider transport distinguishes a deadline, cancellation, missing usage and a truncated terminator', async () => {
+  const hang = async (_url, { signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  const keepAlive = setInterval(() => {}, 100);
+  try {
+    for (const [create, config] of [[createAnthropicProvider, anthropicConfig], [createDeepSeekProvider, deepseekConfig]]) {
+      const provider = create({ ...config, timeoutMs: 10 }, hang);
+      await assert.rejects(provider.complete(request(), () => {}), error => error.kind === 'timeout');
+      const abort = new AbortController();
+      const pending = provider.complete(request({ signal: abort.signal }), () => {});
+      abort.abort();
+      await assert.rejects(pending, error => error.kind === 'cancelled');
+    }
+  } finally { clearInterval(keepAlive); }
+  const noUsage = deepseekChunks([{ choices: [{ delta: { content: 'Some text' }, finish_reason: 'stop' }] }, '[DONE]']);
+  for (const data of [noUsage, deepseekStream.slice(0, -1)]) {
+    await assert.rejects(createDeepSeekProvider(deepseekConfig, recordingFetch(new Response(streamOf([data]))).fetcher).complete(request(), () => {}),
+      error => error.kind === 'incomplete' && error.outputStarted);
+  }
 });
 
 test('Perplexity adapter uses the Search API and keeps only bounded, sourced results', async () => {
@@ -485,7 +664,11 @@ test('model gateway falls back only before any output and never after an interru
   assert.deepEqual(fallbacks, ['overloaded']);
   const partial = { id: 'anthropic', model: 'a', async complete(_request, onText) { onText('nửa'); throw new ProviderError('anthropic', 'incomplete', 'cut', true); } };
   await assert.rejects(completeWithFallback([partial, working], request({ signal }), () => {}), error => error.kind === 'incomplete');
-  await assert.rejects(completeWithFallback([failing('cancelled'), working], request({ signal }), () => {}), error => error.kind === 'cancelled');
+  for (const kind of ['auth', 'billing', 'bad_request', 'budget', 'cancelled']) {
+    await assert.rejects(completeWithFallback([failing(kind), working], request({ signal }), () => {}), error => error.kind === kind);
+  }
+  const misclassified = { ...partial, async complete(_request, onText) { onText('nửa'); throw new ProviderError('anthropic', 'overloaded', 'late'); } };
+  await assert.rejects(completeWithFallback([misclassified, working], request({ signal }), () => {}), error => error.outputStarted === true);
   await assert.rejects(completeWithFallback([], request({ signal }), () => {}), error => error.kind === 'unavailable');
 });
 
@@ -553,6 +736,33 @@ test('the TypeScript task state machine matches the authoritative SQL transition
   assert.deepEqual(checkModelTransition({ ...task, artifact: { effect_required: true, effect_result: { status: 'succeeded', resource_kind: 'service_request', resource_id: 'r' } } }, 'completed'), { ok: true });
 });
 
+test('the shipped Edge configuration reads provider secrets only from a hosted deployment environment', () => {
+  const fixtures = {
+    ...baseEnv, DEEPSEEK_API_KEY: 'fixture-only', ANTHROPIC_API_KEY: 'fixture-only', PERPLEXITY_API_KEY: 'fixture-only',
+    KAEL_ANTHROPIC_MODEL: 'claude-fixture', KAEL_MODEL_ROUTE: 'deepseek,anthropic', KAEL_WEB_SEARCH: 'enabled',
+  };
+  for (const env of [
+    { ...fixtures, SUPABASE_URL: 'http://127.0.0.1:31819', DENO_DEPLOYMENT_ID: 'fixture' },
+    { ...fixtures, SUPABASE_URL: 'https://fixture.supabase.co' },
+  ]) {
+    const names = [];
+    const config = readKaelConfig(readKaelEdgeEnvironment(name => {
+      names.push(name);
+      return env[name];
+    }));
+    assert.ok(!names.some(name => /^(DEEPSEEK|ANTHROPIC|PERPLEXITY)_API_KEY$/.test(name)));
+    assert.deepEqual(config.route, []);
+    assert.equal(config.perplexity, null);
+  }
+  const hosted = { ...fixtures, SUPABASE_URL: 'https://fixture.supabase.co', DENO_DEPLOYMENT_ID: 'fixture' };
+  const environment = readKaelEdgeEnvironment(name => hosted[name]);
+  const config = readKaelConfig(environment);
+  assert.deepEqual(config.route, ['deepseek', 'anthropic']);
+  assert.ok(config.perplexity);
+  assert.equal(config.enabledEffects.size, 0);
+  assert.ok(!JSON.stringify(configurationReport(environment)).includes('fixture-only'));
+});
+
 test('server configuration defaults to Flash and keeps other routes and effects explicit', () => {
   assert.equal(readKaelConfig({}), null);
   const keysOnly = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', DEEPSEEK_API_KEY: 'secret-d', PERPLEXITY_API_KEY: 'secret-p' });
@@ -560,11 +770,19 @@ test('server configuration defaults to Flash and keeps other routes and effects 
   assert.equal(keysOnly.deepseek.model, 'deepseek-flash');
   assert.equal(keysOnly.perplexity, null, 'web search needs explicit enablement');
   assert.deepEqual(keysOnly.route, ['deepseek']);
+  const searchOnly = readKaelConfig({ ...baseEnv, PERPLEXITY_API_KEY: 'secret-p', KAEL_WEB_SEARCH: 'enabled' });
+  assert.ok(searchOnly.perplexity);
+  assert.deepEqual(searchOnly.route, [], 'search is not a chat model');
+  assert.equal(readKaelConfig({ ...baseEnv, KAEL_WEB_SEARCH: 'enabled' }).perplexity, null, 'search needs a server credential');
   assert.deepEqual(readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, [],
     'Anthropic is not an implicit fallback when Flash is unavailable');
-  const full = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-flash', KAEL_MODEL_ROUTE: 'deepseek,anthropic,openai', KAEL_ENABLED_EFFECTS: 'service_request_submit,mark_paid' });
+  const full = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-flash', KAEL_MODEL_ROUTE: 'deepseek,anthropic', KAEL_ENABLED_EFFECTS: 'service_request_submit,mark_paid' });
   assert.deepEqual(full.route, ['deepseek', 'anthropic'], 'only approved providers are routable');
   assert.deepEqual([...full.enabledEffects], ['service_request_submit']);
+  assert.equal(configurationReport({ ...baseEnv, KAEL_MODEL_ROUTE: 'deepseek,openai' }).route, 'invalid_route');
+  assert.equal(configurationReport({ ...baseEnv, KAEL_MODEL_ROUTE: 'anthropic', ANTHROPIC_API_KEY: 'test-key' }).anthropic, 'model_missing');
+  assert.equal(configurationReport({ ...baseEnv, KAEL_MODEL_ROUTE: 'anthropic', ANTHROPIC_API_KEY: 'test-key', KAEL_ANTHROPIC_MODEL: 'bad model' }).anthropic, 'model_invalid');
+  assert.equal(configurationReport({ ...baseEnv, SUPABASE_SERVICE_ROLE_KEY: 'not-a-jwt' }).gateway.includes('SUPABASE_SERVICE_ROLE_KEY'), true);
   const report = JSON.stringify(configurationReport({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a' }));
   assert.ok(!report.includes('secret-a') && !report.includes('anon-key-for-tests') && !report.includes('server-key-for-tests'));
   const withoutServer = { ...baseEnv, SUPABASE_SERVICE_ROLE_KEY: '' };
@@ -746,8 +964,30 @@ test('an opaque sb_secret_ key is refused instead of being sent as a bearer JWT'
   const opaque = { ...baseEnv, SUPABASE_SERVICE_ROLE_KEY: ['sb', 'secret', placeholder].join('_') };
   assert.equal(readKaelConfig(opaque), null);
   const report = configurationReport(opaque);
-  assert.match(report.gateway, /legacy service-role JWT; sb_secret_ keys are not supported yet/);
+  assert.match(report.gateway, /legacy SUPABASE_SERVICE_ROLE_KEY JWT/);
   assert.ok(!JSON.stringify(report).includes(placeholder));
+});
+
+test('hosted managed keys preserve the user JWT and send the server secret only as apikey', async () => {
+  const clientKey = ['sb', 'publishable', 'fixture_client'].join('_');
+  const serverKey = ['sb', 'secret', 'fixture_server'].join('_');
+  const hosted = {
+    SUPABASE_URL: 'https://fixture.supabase.co', DENO_DEPLOYMENT_ID: 'fixture',
+    SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: clientKey }),
+    SUPABASE_SECRET_KEYS: JSON.stringify({ default: serverKey }),
+  };
+  const config = readKaelConfig(readKaelEdgeEnvironment(name => hosted[name]));
+  assert.ok(config);
+  const calls = [];
+  const fetcher = async (url, init) => { calls.push([new URL(url).pathname, init.headers]); return json(true); };
+  await createRest(config, users.customer.token, fetcher)('kael_memory_preferences');
+  await createServerRpc(config, fetcher)('kael_runtime_ready', {});
+  assert.deepEqual(calls, [
+    ['/rest/v1/kael_memory_preferences', { apikey: clientKey, authorization: `Bearer ${users.customer.token}`, 'content-type': 'application/json' }],
+    ['/rest/v1/rpc/kael_runtime_ready', { apikey: serverKey, 'content-type': 'application/json' }],
+  ]);
+  assert.equal(readKaelConfig(readKaelEdgeEnvironment(name => name === 'DENO_DEPLOYMENT_ID' ? undefined : hosted[name])), null);
+  assert.equal(readKaelConfig(readKaelEdgeEnvironment(name => name === 'SUPABASE_SECRET_KEYS' ? '{' : hosted[name])), null);
 });
 
 test('the gateway persists runs only through the server boundary for the account Auth verified, whatever the request claims', async () => {
@@ -763,6 +1003,7 @@ test('the gateway persists runs only through the server boundary for the account
     if (path === '/rest/v1/rpc/kael_actor_capabilities') return json({ customer: true, worker: false });
     if (path === '/rest/v1/rpc/kael_start_run') return json({ status: 'started', run_id: runId, conversation_id: conversationId });
     if (path === '/rest/v1/kael_messages') return json([{ role: 'user', content: 'Xin chào', status: 'complete' }]);
+    if (path === '/rest/v1/kael_memory_preferences') return json([]);
     if (path === '/rest/v1/rpc/kael_context_tasks') return json([]);
     if (path === '/rest/v1/rpc/kael_finish_run') return json(true);
     return json({}, 404);

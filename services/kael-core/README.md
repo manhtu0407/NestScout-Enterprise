@@ -10,6 +10,57 @@ The sources use web-standard APIs and erasable TypeScript, so the same files run
 Deno and in the Node test suite. This folder is not an npm workspace and adds no
 dependency.
 
+## Reply memory and rendering
+
+The conversation menu's **Bộ nhớ Kael** control opts in separately for Customer
+and Worker. It stores only reply language, level of detail, and formatting as
+fixed choices, with the latest explicit choice and its source. Turning it off
+removes all choices for that mode. A user can remove a single choice or replace
+it in the settings. With memory enabled, `ghi nhớ: ngắn gọn` saves a choice,
+and `không phải ngắn gọn, là chi tiết` replaces the old value if it still
+matches. Chat cannot save arbitrary facts or personal information.
+
+Conversation continuity uses existing messages and task rows. When the recent
+transcript runs out of room, PostgreSQL assembles a versioned digest of up to
+eight older excerpts from a bounded scan, prioritizing corrections, decisions,
+references and questions. It does not store another copy or call a model.
+Excerpts retain source message IDs and timestamps, are unverified, and use a
+conservative filter for credential and personal data patterns. Free-form
+messages are still retained under the existing conversation policy; disabling
+preferences does not delete transcripts. Older details outside the digest
+may need to be restated. Only task rows and verified tool results can attest
+to business state. Preferences are read at turn start; a change affects
+subsequent turns, not text already sent to a provider.
+
+Mobile renders persisted and live assistant text with the same pinned,
+MIT-licensed Markdown parser. HTML and automatic linking are disabled, images
+are represented by their alt text, and HTTPS links open only when tapped.
+During a stream, updates are coalesced without animating each word. Approvals,
+task cards, receipts and the mascot use their existing components.
+
+## Provider readiness and recovery
+
+The app sends its existing NestScout session; there is no provider key field.
+The hosted Supabase Edge Functions secret store supplies `DEEPSEEK_API_KEY`,
+`ANTHROPIC_API_KEY` and `PERPLEXITY_API_KEY`. Set `KAEL_MODEL_ROUTE` explicitly
+when using Anthropic or an ordered fallback, and configure `KAEL_ANTHROPIC_MODEL`
+for the approved model. Local Edge and the 8085 local pilot run offline.
+
+After hosted setup or rotation, repeat a no-spend probe. With a signed-in
+NestScout session, call `GET /functions/v1/kael`
+with `x-kael-readiness: 1`. The result reports route and configuration state and
+verifies server RPC authorization with the database. It makes no model call.
+The 8085 launcher has its separate `status` command. Hosted Edge reads the
+default Supabase managed keys, while local Edge can use the legacy pair.
+
+Normal chat falls back only before visible output, on transient transport or
+provider failures and only to the next explicitly configured provider. Auth,
+billing, invalid requests, and incomplete streams fail visibly. Once a provider
+completes a model step, subsequent steps stay on that provider. Usage, provider
+and terminal diagnostics are separate from durable run completion; logs carry
+IDs, status and sanitized model metadata. No part of this readiness flow
+enables Live Evaluation or bypasses its approvals or budget.
+
 ## Responsibilities
 
 | File | Responsibility |
@@ -48,9 +99,9 @@ the account id the gateway verified.
   forge history, approvals or outcomes around the agent's policy. The server key is
   used for nothing else and never reaches the model, logs or the mobile bundle. The
   eight-operation limit lives in `createServerRpc`; the `service_role` credential
-  itself is broader, so it must stay in the Edge Function environment. Only the
-  legacy service-role JWT is accepted; `sb_secret_` keys are refused at
-  configuration until verified.
+  itself is broader, so it must stay in the Edge Function environment. The
+  managed server key travels in `apikey`. The legacy service-role JWT also
+  travels in `Authorization` for the local Edge runtime.
 - Capabilities come from `kael_actor_capabilities()` (non-anonymous customer, and
   `current_worker_eligible()` for Worker data), never from the presentation mode or
   the model. Worker tools are offered only in Worker mode with verified eligibility.
@@ -145,31 +196,31 @@ state, not open connections.
 
 | Setting | Effect |
 | --- | --- |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Required; injected by the Edge runtime. The gateway uses the server key only for the eight Kael-internal RPCs; it must be the legacy service-role JWT |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEYS`, `SUPABASE_SECRET_KEYS` | Hosted Edge receives the URL and default keys from Supabase. Local Edge supports `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`. The gateway uses the server key only for named internal RPCs and readiness |
 | `ANTHROPIC_API_KEY` + `KAEL_ANTHROPIC_MODEL` | Enables Anthropic (Messages API `2026-10-21`, streaming, server-side refusal fallback where supported); `KAEL_ANTHROPIC_EFFORT` = `low`, `medium` (default) or `high` |
-| `DEEPSEEK_API_KEY` + `KAEL_DEEPSEEK_MODEL` | Enables DeepSeek chat completions; `KAEL_DEEPSEEK_THINKING=enabled` turns on thinking mode with in-run `reasoning_content` replay |
-| `KAEL_MODEL_ROUTE` | Provider order, default `anthropic,deepseek`; only approved providers are accepted |
+| `DEEPSEEK_API_KEY` | Enables DeepSeek chat completions. `KAEL_DEEPSEEK_MODEL` overrides the default `deepseek-flash`; `KAEL_DEEPSEEK_THINKING=enabled` turns on thinking mode with in-run `reasoning_content` replay |
+| `KAEL_MODEL_ROUTE` | Provider order; defaults to `deepseek`. Unknown, duplicate or unconfigured entries fail closed |
 | `PERPLEXITY_API_KEY` + `KAEL_WEB_SEARCH=enabled` | Enables the `web_search` tool |
+| `KAEL_ANTHROPIC_SERVER_FALLBACK` | Optional explicit Anthropic-side fallback for supported models; off by default |
 | `KAEL_ENABLED_EFFECTS` | Owner opt-in for consequential effects; only `service_request_submit` exists |
 | `KAEL_KNOWLEDGE=disabled` | Removes both Intelligence tools; general conversation stays available |
 | `KAEL_ESTIMATE_PREVIEW=local_only` | Enables numeric synthetic preview only when the configured Supabase target is loopback; default disabled |
 
-No model id has a default: a key without an explicit model leaves that provider
-unavailable and the user sees an honest unavailable state. Fallback to the next
-provider happens only when a call fails before producing output; a stream that
-already produced text fails the run instead of silently replaying it.
+Anthropic requires an explicit model. A route containing an unconfigured
+provider is unavailable. The gateway will not replay an interrupted stream.
 
 ## Local integration verification
 
 Run `npm run db:start`, then `npm run kael:serve` in another terminal in the
-same worktree and branch. The latter uses the existing local ownership guard
-before calling the pinned CLI's `functions serve kael`; the CLI serves all
-existing functions. No JWT-verification override is used. `db:start` still
-excludes Functions, so a database-only session does not start them. Serving
-Functions activates them on that same managed stack. Obtain the assigned
-loopback API URL from `npm run db:status`; never reuse another worktree's ports.
+same worktree and branch. Local Kael runs offline for provider traffic. JWT
+verification remains in place. `db:start` excludes Functions. Serving Functions
+activates them on that same managed stack. Obtain the assigned loopback API URL from
+`npm run db:status`; never reuse another worktree's ports.
+
 The mobile app's ignored `.env` needs that URL, target `local`, and the stack's
-publishable key. Server and provider keys must stay out of the mobile environment.
+publishable key. The local launcher discards ambient provider variables and
+rejects shared and Kael function dotenv overrides. It passes only metadata for
+the offline developer pilot.
 
 `npm run db:test` runs SQL security and workflow tests. With Functions served,
 `npm run db:mcp:test` also runs the Kael integration scenarios in
@@ -179,21 +230,64 @@ and validate Auth-signed JWTs against Auth and RLS. This is a gateway harness,
 not phone OTP or application login E2E. No SMS is sent and authentication
 configuration is unchanged.
 
-The actual Edge Function is tested without provider credentials and must report
-`provider_unavailable`. Successful deterministic scenarios inject the existing
-scripted provider into the gateway in the test process, using the real Auth,
-REST, PostgreSQL, policy and persistence implementations. No scripted provider
-is installed in the Edge Function or mobile path. Synthetic-only approval tests
+The actual Edge Function is tested in offline mode and must report
+`provider_unavailable`. A temporary local Edge worker verifies the gateway and
+adapter end to end with fixture SSE. Additional deterministic scenarios inject
+a scripted provider in the test process. Both use real Auth, REST, PostgreSQL,
+policy and persistence. The test removes its temporary worker entry; no mock
+transport is available in the shipped Edge or mobile code. Synthetic-only approval tests
 enable the effect only in that test handler. Lost-response injection happens
 after the real local submission commits, and reconciliation checks the original
 submission key. Test identities and their records are removed after the run.
 Live AI inference requires separately supplied authorized provider configuration
 and is not established by these tests.
 
+## Hosted provider verification
+
+Supabase Dashboard Edge Functions Secrets is the only provider credential
+source. The deployed `kael` function reads `DEEPSEEK_API_KEY`,
+`ANTHROPIC_API_KEY`, and `PERPLEXITY_API_KEY` via `Deno.env.get` in the
+Supabase-managed environment. Kael reads provider credentials only with an
+HTTPS Supabase gateway and the platform's deployment marker. Keep the values
+in Dashboard Secrets. Clients use their publishable key and signed-in Auth
+session. [Supabase environment variables](https://supabase.com/docs/guides/functions/secrets)
+
+Hosted validation requires a separately authorized deployment of `kael` and
+the applicable Kael database migrations on the project holding the secrets.
+The hosted entrypoint restricts provider calls to bounded verification.
+Set `KAEL_MODEL_ROUTE=anthropic` and `KAEL_ANTHROPIC_MODEL=claude-haiku-4-5-20251001`
+for the priced chat route. Perplexity Search uses `web_search` when
+`KAEL_WEB_SEARCH=enabled`. Business effects and provider-side fallback are off.
+
+Use authenticated `GET /functions/v1/kael` with `x-kael-readiness: 1` for
+database and provider configuration status without a provider call. An operator
+must explicitly provision one private budget row per enabled provider, naming
+one or two disposable Auth actors and an expiry within one hour. Migrations
+create no budget rows. Never reset or replace a budget row for this verification.
+The browser Preview uses the normal signed-in Kael chat route. Provider
+configuration and authenticated readiness alone do not authorize paid traffic.
+Future normal-chat rollout needs its own approved actor eligibility, budget,
+and operational controls. An expired verification window confers no access.
+
+The database atomically reserves $0.270480 for Anthropic based on 200,000 input
+tokens at $1.25 per million (the five-minute cache-write rate) and 4,096 output
+tokens at $5 per million. Terminal usage settles conservatively at those rates
+and includes cache reads at $0.10 per million. Before reopening a paid window,
+reconcile any earlier usage that excluded cache reads against the provider's
+usage report and retain cumulative spend. Each Perplexity Search request
+holds $0.005. Failures with uncertain
+usage leave the hold in place and block that provider. Each provider has a
+strict $0.30 ceiling. [Anthropic prices](https://platform.claude.com/docs/en/models/haiku-4-5/overview) · [Perplexity prices](https://docs.perplexity.ai/docs/getting-started/pricing)
+
+DeepSeek remains closed to hosted paid verification. Its published peak price
+and full input context alone use the $0.30 ceiling. A verified smaller billed
+input bound or a hard provider-side spend limit is required before dispatch.
+Live Evaluation retains its own authorization and accounting gates.
+
 ## Not implemented
 
 Image understanding, voice, background workers, proactive notifications,
-long-term user memory, conversation deletion or retention jobs, quotes,
+general-purpose fact memory, conversation deletion or retention jobs, quotes,
 matching and booking beyond request submission. These need owner policy before work
 starts. See `scripts/kael-evaluation.test.mjs` for the deterministic scenarios; they
 use scripted providers and do not measure model quality.

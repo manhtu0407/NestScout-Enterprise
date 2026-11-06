@@ -81,6 +81,40 @@ isOneToOne: false
                   Relationships: [
 
                   ]
+                },"kael_memory_modes": {
+                  Row: {
+                    "enabled_at": string,"mode": string,"owner_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "enabled_at"?: string,"mode": string,"owner_id"?: string
+                  }
+                  Update: {
+                    "enabled_at"?: string,"mode"?: string,"owner_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"kael_memory_preferences": {
+                  Row: {
+                    "mode": string,"owner_id": string,"preference": string,"source": string,"updated_at": string,"value": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "mode": string,"owner_id"?: string,"preference": string,"source"?: string,"updated_at"?: string,"value": string
+                  }
+                  Update: {
+                    "mode"?: string,"owner_id"?: string,"preference"?: string,"source"?: string,"updated_at"?: string,"value"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "kael_memory_preferences_owner_id_mode_fkey"
+      columns: ["owner_id","mode"]
+isOneToOne: false
+      referencedRelation: "kael_memory_modes"
+      referencedColumns: ["owner_id","mode"]
+    }
+                  ]
                 },"kael_messages": {
                   Row: {
                     "content": string,"conversation_id": string,"created_at": string,"id": string,"owner_id": string,"role": string,"run_id": string,"seq": number,"status": string
@@ -588,6 +622,9 @@ isOneToOne: false
 "kael_consume_approval":
 { Args: { "p_actor": string,"p_allowed_tools": (string)[],"p_approval_id": string,"p_fingerprint": string,"p_intent"?: string,"p_run_id": string }; Returns: Json
                            },
+"kael_context_summary":
+{ Args: { "p_before_seq": number,"p_conversation_id": string,"p_mode": string }; Returns: Json
+                           },
 "kael_context_tasks":
 { Args: { "p_conversation_id": string,"p_mode": string }; Returns: Json
                            },
@@ -599,6 +636,9 @@ isOneToOne: false
                            },
 "kael_knowledge_search":
 { Args: { "p_limit"?: number,"p_query": string,"p_source_id"?: string,"p_strategy"?: string }; Returns: Json
+                           },
+"kael_manage_memory":
+{ Args: { "p_action": string,"p_mode": string,"p_preference"?: string,"p_previous"?: string,"p_value"?: string }; Returns: boolean
                            },
 "kael_pilot_charge":
 { Args: { "p_action": string,"p_actor": string,"p_cached": number,"p_call": string,"p_input": number,"p_model": string,"p_output": number,"p_pilot": string,"p_run": string,"p_thinking": boolean }; Returns: Json
@@ -618,11 +658,17 @@ isOneToOne: false
 "kael_request_approval":
 { Args: { "p_actor": string,"p_args": Json,"p_details": Json,"p_expected_version": number,"p_fingerprint": string,"p_run_id": string,"p_summary": string,"p_task_id": string,"p_tool": string,"p_ttl_seconds": number }; Returns: Json
                            },
+"kael_runtime_ready":
+{ Args: Record<PropertyKey, never>; Returns: boolean
+                           },
 "kael_save_task":
 { Args: { "p_actor": string,"p_artifact": Json,"p_conversation_id": string,"p_event": string,"p_expected_version": number,"p_kind": string,"p_run_id": string,"p_status": string,"p_summary": string,"p_task_id": string,"p_title": string }; Returns: Json
                            },
 "kael_start_run":
 { Args: { "p_actor": string,"p_conversation_id": string,"p_mode": string,"p_request_id": string,"p_user_text": string }; Returns: Json
+                           },
+"kael_verification_charge":
+{ Args: { "p_actor": string,"p_actual": number,"p_call": string,"p_provider": string,"p_run": string }; Returns: boolean
                            },
 "mark_notifications_read":
 { Args: { "p_ids": (string)[] }; Returns: number

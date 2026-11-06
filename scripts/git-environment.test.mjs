@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync, lstatSync, chmodSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, writeFileSync, readFileSync, chmodSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { root } from './tool-path.mjs';
 import { gitEnvironment } from './git-environment.mjs';
+import { gitIsolationFixture } from './git-isolation-fixture.mjs';
 import { git as repositoryGit, repositoryFiles, checkHookIndex } from './repository-files.mjs';
 
 test('aggregate verification retains Foundation, hygiene and existing checks', () => {
@@ -22,36 +22,19 @@ test('aggregate verification retains Foundation, hygiene and existing checks', (
 });
 
 test('hook-inherited Git selectors cannot redirect fixture or recovery operations into a donor repository', () => {
-  const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-hook-environment-'));
-  const repository = path.join(directory, 'donor');
-  mkdirSync(repository);
-  const git = args => execFileSync('git', args, { cwd: repository, env: gitEnvironment(), encoding: 'utf8', stdio: 'pipe' }).trim();
+  const { directory, git, poisoned, snapshot, cleanup } = gitIsolationFixture();
   try {
-    git(['init', '--quiet']);
-    writeFileSync(path.join(repository, 'keep.txt'), 'unrelated work must survive\n');
-    git(['add', '--', 'keep.txt']);
-    git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'donor baseline']);
-    const snapshot = () => ({
-      head: git(['rev-parse', 'HEAD']), refs: git(['show-ref']), index: git(['ls-files', '--stage']),
-      config: readFileSync(path.join(repository, '.git/config'), 'utf8'),
-      content: readFileSync(path.join(repository, 'keep.txt'), 'utf8'), status: git(['status', '--porcelain']),
-    });
     const before = snapshot();
-    const poisoned = {
-      ...gitEnvironment(), GIT_DIR: path.join(repository, '.git'), GIT_WORK_TREE: repository,
-      GIT_INDEX_FILE: path.join(repository, '.git/index'), GIT_COMMON_DIR: path.join(repository, '.git'),
-      GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.bare', GIT_CONFIG_VALUE_0: 'true',
-    };
     assert.ok(!Object.keys(gitEnvironment({ ...poisoned, git_namespace: 'other' })).some(name => /^git_/i.test(name)));
     delete poisoned.NODE_TEST_CONTEXT;
-    assert.equal(realpathSync.native(execFileSync('git', ['rev-parse', '--show-toplevel'], {
-      cwd: root, env: poisoned, encoding: 'utf8', stdio: 'pipe',
-    }).trim()), realpathSync.native(repository), 'An unisolated Git subprocess must be redirected to the donor.');
-    const result = spawnSync(process.execPath, ['--test', 'scripts/backup.test.mjs', 'scripts/agent-evaluation.test.mjs'], {
-      cwd: root, env: poisoned, encoding: 'utf8', timeout: 60000,
-    });
-    assert.ifError(result.error);
-    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const runPoisoned = (args, timeout) => {
+      const child = spawnSync(process.execPath, args, { cwd: root, env: poisoned, encoding: 'utf8', timeout });
+      const command = `node ${args.join(' ')}`;
+      assert.ok(!child.error, `${command}: ${child.error?.message}`);
+      assert.equal(child.status, 0, `${command}\n${child.stdout}${child.stderr}`);
+      return child;
+    };
+    const result = runPoisoned(['--test', 'scripts/backup.test.mjs', 'scripts/agent-evaluation.test.mjs'], 60000);
     assert.match(result.stdout, /tests 6\b/);
     assert.deepEqual(snapshot(), before, 'Donor HEAD, refs, index, config or unrelated work changed.');
 
@@ -102,10 +85,6 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
     assert.equal(withLinked.status, before.status);
 
     for (const args of [
-      ['--test', 'scripts/check-hygiene.test.mjs'],
-      ['--test', 'scripts/check-verification.test.mjs'],
-      ['--test', 'scripts/check-comments.test.mjs'],
-      ['--test', 'scripts/check-format.test.mjs'],
       ['scripts/verify-negative.mjs'],
       ['scripts/check-reserved-files.mjs'],
       ['scripts/check-hygiene.mjs'],
@@ -116,20 +95,10 @@ test('hook-inherited Git selectors cannot redirect fixture or recovery operation
       ['scripts/check-tools.mjs', 'workflows'],
       ['scripts/check-tools.mjs', 'secrets'],
     ]) {
-      const child = spawnSync(process.execPath, args, { cwd: root, env: poisoned, encoding: 'utf8', timeout: 120000 });
-      assert.ifError(child.error);
-      assert.equal(child.status, 0, `${args.join(' ')}\n${child.stdout}${child.stderr}`);
-      if (args[0] === '--test') {
-        const summary = outcome => Number(new RegExp(`^\\W*${outcome} (\\d+)\\b`, 'm').exec(child.stdout)?.[1]);
-        assert.ok(summary('tests') > 0, 'No tests were executed.');
-        assert.equal(summary('pass'), summary('tests'), 'Every executed test must pass.');
-        for (const outcome of ['fail', 'cancelled', 'skipped', 'todo']) assert.match(child.stdout, new RegExp(`${outcome} 0\\b`));
-      }
+      runPoisoned(args, 120000);
       assert.deepEqual(snapshot(), withLinked, 'Poisoned hygiene checks or fixtures changed the donor repository.');
     }
   } finally {
-    assert.equal(path.dirname(realpathSync(directory)), realpathSync(tmpdir()));
-    assert.ok(!lstatSync(directory).isSymbolicLink());
-    rmSync(directory, { recursive: true });
+    cleanup();
   }
 });

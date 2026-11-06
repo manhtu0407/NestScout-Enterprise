@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KaelHomeScreen } from './kael-home-screen';
 import { kaelIntroSession } from './kael-intro-session';
+import * as kaelStage from './kael-stage';
 
 beforeEach(() => kaelIntroSession.reset());
 afterEach(() => jest.restoreAllMocks());
@@ -25,4 +26,16 @@ test('focusing the composer moves from the introduction into the conversation la
   await renderHome();
   await fireEvent(screen.getByLabelText('Nhắn Kael'), 'focus');
   expect(screen.getByLabelText('Mở thanh bên')).toBeTruthy();
+});
+
+test('the mascot follows the footer when the available screen height changes without resizing the footer', async () => {
+  const stage = jest.spyOn(kaelStage, 'KaelStage');
+  await renderHome();
+  const root = screen.getByTestId('kael-home-layout');
+  const footer = screen.getByTestId('kael-footer-layout');
+  await fireEvent(root, 'layout', { nativeEvent: { layout: { height: 613 } } });
+  await fireEvent(footer, 'layout', { nativeEvent: { layout: { height: 78, y: 535 } } });
+  expect(stage.mock.lastCall?.[0].seatTop).toBe(535);
+  await fireEvent(root, 'layout', { nativeEvent: { layout: { height: 810 } } });
+  expect(stage.mock.lastCall?.[0].seatTop).toBe(732);
 });

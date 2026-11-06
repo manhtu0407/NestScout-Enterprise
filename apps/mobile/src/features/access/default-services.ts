@@ -1,4 +1,5 @@
 import { deviceStorage } from '@/lib/device-storage';
+import { hostedKaelPreviewEnabled } from '@/lib/config';
 import { getSupabaseClient } from '@/lib/supabase-client';
 
 import { createSupabaseAuthGateway } from './auth/supabase-auth-gateway';
@@ -14,7 +15,7 @@ export function getDefaultAccessServices(): AccessServices {
     services = {
       auth: createSupabaseAuthGateway(client),
       capabilities: createSupabaseCapabilityRepository(client),
-      preferredMode: createPreferredModeStore(deviceStorage),
+      preferredMode: createPreferredModeStore(deviceStorage, hostedKaelPreviewEnabled() ? 'nestscout.kael-hosted-preview.preferred-mode' : undefined),
     };
   }
   return services;

@@ -1,7 +1,8 @@
-import { createAnthropicProvider } from './anthropic.ts';
+import { anthropicVerificationModel, createAnthropicProvider } from './anthropic.ts';
 import { configurationReport, deepseekFlashModel, readKaelConfig } from './config.ts';
 import type { Environment, KaelConfig } from './config.ts';
 import { createDeepSeekProvider } from './deepseek.ts';
+import { hostedVerification } from './hosted-verification.ts';
 import { developerPilotProviders } from './developer-pilot.ts';
 import { encodeEvent, isTerminalEvent, kaelProtocolVersion } from './events.ts';
 import type { KaelEventBody, KaelFailureCode } from './events.ts';
@@ -9,7 +10,7 @@ import type { Fetcher, ModelProvider } from './model.ts';
 import type { Actor } from './policy.ts';
 import { failureMessage, isRetryable, resolveApproval, runAgentTurn } from './runtime.ts';
 import type { RunOutcome } from './runtime.ts';
-import { createRest, createServerRpc, createSupabaseStore } from './store.ts';
+import { createRest, createServerRpc, createSupabaseStore, StoreError } from './store.ts';
 import type { KaelStore, Rest, RunStart } from './store.ts';
 import type { Capability, KaelMode } from './tools.ts';
 
@@ -32,8 +33,8 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const maxBodyChars = 16_384;
 const corsHeaders = {
   'access-control-allow-origin': '*',
-  'access-control-allow-headers': 'authorization, apikey, content-type, x-client-info',
-  'access-control-allow-methods': 'POST, OPTIONS',
+  'access-control-allow-headers': 'authorization, apikey, content-type, x-client-info, x-kael-readiness',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
 };
 
 function json(status: number, body: unknown): Response {
@@ -109,7 +110,12 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
   const fetcher = dependencies.fetcher ?? fetch;
   const now = dependencies.now ?? (() => new Date());
   const log = dependencies.log ?? (event => console.log(JSON.stringify(event)));
-  const config = readKaelConfig(dependencies.env);
+  const verifyHosted = dependencies.env.KAEL_HOSTED_VERIFICATION === 'required';
+  const config = readKaelConfig(verifyHosted
+    ? { ...dependencies.env, KAEL_ANTHROPIC_SERVER_FALLBACK: undefined, KAEL_ENABLED_EFFECTS: undefined }
+    : dependencies.env);
+  const deepseekActors = new Set((dependencies.env.KAEL_DEEPSEEK_VERIFICATION_ACTORS ?? '').split(',').map(id => id.trim().toLowerCase()).filter(id => uuidPattern.test(id)));
+  const mayUseDeepSeek = (actorId: string) => !verifyHosted || deepseekActors.has(actorId.toLowerCase());
   const generation = dependencies.env.KAEL_PILOT_GENERATION;
   const pilotGeneration = generation && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(generation)
     ? generation : undefined;
@@ -128,13 +134,33 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         model: deepseekFlashModel,
       }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
     }
-    if (request.method !== 'POST') return json(405, { error: { code: 'invalid_request', message: 'Method not allowed.' } });
+    const readiness = request.method === 'GET' && request.headers.get('x-kael-readiness') === '1';
+    if (request.method !== 'POST' && !readiness) return json(405, { error: { code: 'invalid_request', message: 'Method not allowed.' } });
     if (!config) {
       log({ event: 'kael_misconfigured', ...configurationReport(dependencies.env) });
       return failure(503, 'provider_unavailable');
     }
     const token = /^Bearer ([A-Za-z0-9._~+/=-]{20,4096})$/.exec(request.headers.get('authorization') ?? '')?.[1];
     if (!token) return failure(401, 'unauthenticated');
+    if (readiness) {
+      const actorId = await verifyUser(config, token, fetcher);
+      if (!actorId) return failure(401, 'unauthenticated');
+      let database = 'unavailable';
+      try {
+        const probe = await createServerRpc(config, fetcher)('kael_runtime_ready', {}, AbortSignal.timeout(4000));
+        if (probe.ok) database = await probe.json() === true ? 'verified' : 'authorization_failed';
+        else { database = probe.status === 401 || probe.status === 403 ? 'authorization_failed' : 'unavailable'; await probe.body?.cancel(); }
+      } catch { database = 'unavailable'; }
+      const route = config.route.filter(provider => provider === 'deepseek' ? mayUseDeepSeek(actorId)
+        : !verifyHosted || config.anthropic?.model === anthropicVerificationModel);
+      const ready = database === 'verified' && route.length > 0;
+      return new Response(JSON.stringify({
+        ready, database, ...configurationReport(dependencies.env),
+        models: route.map(provider => ({ provider, model: provider === 'deepseek' ? config.deepseek?.model : config.anthropic?.model })),
+        ...(verifyHosted ? { verification_route: route.includes('deepseek') ? 'actor_scoped' : route.length ? 'bounded' : 'unavailable' } : {}),
+        paid_probe: 'not_run',
+      }), { status: ready ? 200 : 503, headers: { ...corsHeaders, 'content-type': 'application/json', 'cache-control': 'no-store' } });
+    }
     const raw = await request.text();
     if (raw.length > maxBodyChars) return failure(413, 'invalid_request');
     const parsed = parseTurnRequest(raw, config.limits.maxInputChars);
@@ -147,6 +173,9 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
       return failure(403, 'invalid_request');
     }
 
+    if (turn.action.type === 'message' && config.route.length === 0 && !dependencies.providers) {
+      log({ event: 'kael_provider_not_ready', request_id: turn.request_id, ...configurationReport(dependencies.env) });
+    }
     const rest = createRest(config, token, fetcher);
     const store = dependencies.store ? dependencies.store(rest, userId) : createSupabaseStore(rest, createServerRpc(config, fetcher), userId);
     const setup = AbortSignal.timeout(10_000);
@@ -156,8 +185,8 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
       capabilities = await store.capabilities(setup);
       if (!capabilities.has('customer')) return failure(401, 'unauthenticated');
       started = await store.startRun(turn.request_id, turn.conversation_id, turn.mode, userTextFor(turn.action), setup);
-    } catch {
-      log({ event: 'kael_setup_failed' });
+    } catch (error) {
+      log({ event: 'kael_setup_failed', request_id: turn.request_id, http_status: error instanceof StoreError ? error.status : null });
       return failure(503, 'internal');
     }
     if (started.status === 'rate_limited') return failure(429, 'rate_limited');
@@ -169,6 +198,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
     const conversationId = started.conversation_id;
     const actor: Actor = { userId, capabilities, mode: turn.mode };
     const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, request.signal]);
     let seq = 0;
     let closed = false;
     let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
@@ -204,29 +234,36 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
     async function execute() {
       let result: RunOutcome;
       try {
+        const verification = verifyHosted && config
+          ? hostedVerification(createServerRpc(config, fetcher), actor.userId, runId) : null;
         result = turn.action.type === 'message'
           ? await runAgentTurn({
             actor, config: config as KaelConfig, store, rest,
             providers: config?.developerPilotId
               ? developerPilotProviders(config, actor.userId, runId, turn.action.text, fetcher,
                 (kind, httpStatus) => log({ event: 'kael_pilot_provider_failure', run_id: runId, kind, http_status: httpStatus ?? null }), pilotGeneration)
-              : (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config as KaelConfig),
-            fetcher, runId, conversationId, emit, signal: controller.signal, today: todayIn(now()), log,
+              : (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config as KaelConfig)
+                .filter(provider => provider.id !== 'deepseek' || mayUseDeepSeek(actor.userId))
+                .map(provider => verification ? verification.provider(provider) : provider),
+            fetcher: verification ? verification.search(fetcher) : fetcher,
+            runId, conversationId, emit, signal, today: todayIn(now()), log,
           })
           : await resolveApproval({
             approvalId: turn.action.approval_id, fingerprint: turn.action.fingerprint, decision: turn.action.type,
-            actor, config: config as KaelConfig, store, rest, runId, emit, signal: controller.signal,
+            actor, config: config as KaelConfig, store, rest, runId, emit, signal,
           });
       } catch {
         result = { status: 'failed', text: '', complete: false, provider: null, model: null, requestedModel: null, inputTokens: 0, outputTokens: 0, steps: 0, error: 'internal' };
       }
+      let persisted = false;
       let status: RunOutcome['status'] | 'interrupted' = result.status === 'completed'
-        ? 'completed' : controller.signal.aborted ? 'interrupted' : result.status;
+        ? 'completed' : signal.aborted ? 'interrupted' : result.status;
       try {
         await store.finishRun({
           runId, status, text: result.text, complete: result.complete, provider: result.provider, model: result.model,
           inputTokens: result.inputTokens, outputTokens: result.outputTokens, steps: result.steps, error: result.error,
         });
+        persisted = true;
       } catch {
         log({ event: 'kael_finish_failed', run_id: runId });
         if (result.status === 'completed') {
@@ -235,7 +272,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         }
       }
       log({
-        event: 'kael_run', run_id: runId, action: turn.action.type, status, provider: result.provider, model: result.model, requested_model: result.requestedModel,
+        event: 'kael_run', run_id: runId, request_id: turn.request_id, action: turn.action.type, status, persisted: Number(persisted), provider: result.provider, model: result.model, requested_model: result.requestedModel,
         steps: result.steps, input_tokens: result.inputTokens, output_tokens: result.outputTokens, error: result.error,
       });
       if (result.status === 'completed') emit({ type: 'run_completed', text: result.text });

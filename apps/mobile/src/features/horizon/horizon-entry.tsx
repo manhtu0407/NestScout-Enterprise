@@ -8,6 +8,7 @@ import { EntryRedirect, useAccess } from '@/features/access';
 import { Sidebar } from './sidebar';
 import { Icon } from '@/features/shared';
 import { KaelHomeScreen } from './kael-home-screen';
+import { KaelMemorySettings } from './kael-memory-settings';
 import { kaelIntroSession } from './kael-intro-session';
 import type { ComposerImage } from './composer-media';
 import { KaelHomeLoading } from './skeleton-layouts';
@@ -27,10 +28,11 @@ import { useKaelConversation } from './use-kael-conversation';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
-export function HorizonEntry() {
+export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } = {}) {
   const router = useRouter();
   const access = useAccess();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [memoryScope, setMemoryScope] = useState<string | null>(null);
   const [input, setInput] = useState(access.horizonDraft?.text ?? '');
   const [draftImages, setDraftImages] = useState<readonly ComposerImage[]>(() => access.horizonDraft?.images ?? []);
   const inputRef = useRef(input);
@@ -39,17 +41,25 @@ export function HorizonEntry() {
   const [composerError, setComposerError] = useState<string | null>(null);
   const [dataNotice, setDataNotice] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
-  const customerUserId = access.phase === 'client' && access.identity === 'verified' ? access.userId : null;
+  const customerUserId = !onPreviewMenu && access.phase === 'client' && access.identity === 'verified' ? access.userId : null;
   const customer = useCustomerData(customerUserId);
   const { data } = customer;
-  const workerUserId = access.phase === 'worker' && access.identity === 'verified' ? access.userId : null;
+  const workerUserId = !onPreviewMenu && access.phase === 'worker' && access.identity === 'verified' ? access.userId : null;
   const worker = useWorkerData(workerUserId);
   const kaelUserId = (access.phase === 'client' || access.phase === 'worker') && access.identity === 'verified' ? access.userId : null;
-  const kael = useKaelConversation(kaelUserId, access.phase === 'worker' ? 'worker' : 'client');
+  const kaelMode = access.phase === 'worker' ? 'worker' : 'client';
+  const kael = useKaelConversation(kaelUserId, kaelMode);
+  const scope = kaelUserId === null ? null : `${kaelUserId}:${kaelMode}`;
+  const [previousScope, setPreviousScope] = useState(scope);
+  if (previousScope !== scope) {
+    setPreviousScope(scope);
+    setMemoryScope(null);
+  }
   const [clock, setClock] = useState(() => Date.now());
   const [dismissedReceipt, setDismissedReceipt] = useState<string | null>(null);
   const [attentionHeight, setAttentionHeight] = useState(0);
-  const counting = kael.approvals.some(approval => approval.kind === 'confirm' && approval.expires_at !== null);
+  const approvals = onPreviewMenu ? [] : kael.approvals;
+  const counting = approvals.some(approval => approval.kind === 'confirm' && approval.expires_at !== null);
   useEffect(() => {
     if (!counting) return;
     const timer = setInterval(() => setClock(Date.now()), horizonLayout.kaelAttention.countdownTick);
@@ -158,7 +168,7 @@ export function HorizonEntry() {
   const noticeMessage = useRetained(accessMessage ?? dataNotice);
   const dismissNotice = () => { access.dismissNotice(); setDataNotice(null); };
   const accountNoticeVisible = access.notice !== null || dataNotice !== null;
-  const attention = accountNoticeVisible ? null : deriveKaelAttention({ approvals: kael.approvals, tasks: kael.tasks, running: kael.running, notice: kael.notice, receipt: kael.receipt, dismissedReceipt, now: clock });
+  const attention = accountNoticeVisible ? null : deriveKaelAttention({ approvals, tasks: kael.tasks, running: kael.running, notice: kael.notice, receipt: kael.receipt, dismissedReceipt, now: clock });
   const onAttentionAction = (item: KaelAttention) => { if (item.kind === 'receipt') setDismissedReceipt(item.receiptId); };
 
   if (access.phase === 'bootstrapping' || access.phase === 'resolving') return <EntryRedirect pending={renderPending}/>;
@@ -174,10 +184,11 @@ export function HorizonEntry() {
           </View>
         </Presence>
         <KaelAttentionCard attention={attention} onAction={onAttentionAction} onHeight={setAttentionHeight}/>
-        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={openMenu} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
+        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
-    <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
+    {kaelUserId !== null && scope === memoryScope && <KaelMemorySettings key={scope} userId={kaelUserId} mode={kaelMode} onClose={() => setMemoryScope(null)}/>}
+    {!onPreviewMenu && <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
       if (access.phase === 'guest') {
         kaelIntroSession.markPlayed();
         access.prepareHorizonDraftTransfer({ text: inputRef.current, images: imagesRef.current });
@@ -185,12 +196,12 @@ export function HorizonEntry() {
         setDrawerOpen(false);
         router.push({ pathname: '/phone', params: { role: mode } });
       } else access.switchMode(mode);
-    }} onModeCancel={access.cancelModeRequest} onDismissModeNotice={access.dismissNotice}/>
+    }} onModeCancel={access.cancelModeRequest} onDismissModeNotice={access.dismissNotice}/>}
   </>;
 }
 
 
-export function HorizonRoute() {
+export function HorizonRoute({ onPreviewMenu }: { onPreviewMenu?: () => void } = {}) {
   const access = useAccess();
   if (access.phase === 'bootstrapping' || access.phase === 'resolving') return <EntryRedirect pending={renderPending}/>;
   if (access.horizonDraftLocked) return <SafeAreaView style={styles.locked}>
@@ -198,7 +209,7 @@ export function HorizonRoute() {
     <Text style={styles.lockedBody}>Cần xác minh tài khoản trước khi khôi phục bản nháp.</Text>
     <Pressable accessibilityRole="button" accessibilityLabel="Thử xác minh lại" disabled={access.identityPending} onPress={access.recheck} style={styles.lockedAction}><Text style={styles.lockedActionText}>{access.identityPending ? 'Đang xác minh…' : 'Thử lại'}</Text></Pressable>
   </SafeAreaView>;
-  return <HorizonEntry key={access.userId ?? 'guest'} />;
+  return <HorizonEntry key={access.userId ?? 'guest'} onPreviewMenu={onPreviewMenu} />;
 }
 
 const styles = StyleSheet.create({

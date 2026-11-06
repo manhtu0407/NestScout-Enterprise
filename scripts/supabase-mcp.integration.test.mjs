@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createKaelSequence, parseKaelConversationSnapshot, parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { createKaelHandler } from '../services/kael-core/src/gateway.ts';
@@ -1188,6 +1188,60 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         assert.equal(end(result).code, 'provider_unavailable');
         assert.equal(query(`select status from public.kael_runs where id='${result.events[0].run_id}';`), 'failed');
         traces.edgeUnavailable = result.events;
+        const readiness = await fetch(`${origin}/functions/v1/kael`, { headers: {
+          apikey: publicKey, authorization: `Bearer ${user.token}`, 'x-kael-readiness': '1',
+        } });
+        assert.equal(readiness.status, 503);
+        const report = await readiness.json();
+        assert.equal(report.database, 'verified');
+        assert.equal(report.deepseek, 'credential_missing');
+        assert.equal(report.anthropic, 'credential_missing');
+        assert.equal(report.web_search, 'requires PERPLEXITY_API_KEY and KAEL_WEB_SEARCH=enabled');
+        assert.equal(report.effects, 'none');
+        assert.equal(report.paid_probe, 'not_run');
+        assert.ok(!JSON.stringify(report).includes(serviceKey));
+      });
+      await t.test('a real local Edge worker streams a provider fixture and preserves exact Markdown in history', async () => {
+        const owner = await newUser();
+        const other = await newUser();
+        const slug = `kael-fixture-${randomUUID().slice(0, 8)}`;
+        const directory = path.join(root, 'supabase', 'functions', slug);
+        const entry = path.join(directory, 'index.ts');
+        const reply = '    const dấu = 1 < 2;\n\n**An toàn**  \n';
+        const providerFrames = [
+          { model: 'deepseek-flash', choices: [{ delta: { content: reply }, finish_reason: null }] },
+          { model: 'deepseek-flash', choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 7, completion_tokens: 6 } },
+        ].map(frame => `data: ${JSON.stringify(frame)}\n\n`).join('') + 'data: [DONE]\n\n';
+        const fixture = [
+          "import { createKaelHandler } from '../../../services/kael-core/src/gateway.ts';",
+          "const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';",
+          "const api = new URL(supabaseUrl);",
+          "if (api.protocol !== 'http:' || !['127.0.0.1', 'localhost', 'host.supabase.internal', 'host.docker.internal'].includes(api.hostname)) throw new Error('Local fixture only');",
+          "const env = { SUPABASE_URL: supabaseUrl, SUPABASE_ANON_KEY: Deno.env.get('SUPABASE_ANON_KEY'), SUPABASE_SERVICE_ROLE_KEY: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'), DEEPSEEK_API_KEY: 'fixture-no-provider-secret' };",
+          'Deno.serve(createKaelHandler({ env, fetcher: (url, init) => {',
+          "  if (new URL(url).origin === api.origin) return fetch(url, init);",
+          "  if (url !== 'https://api.deepseek.com/chat/completions' || new Headers(init.headers).get('authorization') !== 'Bearer fixture-no-provider-secret') throw new Error('Fixture denied outbound request');",
+          `  return Promise.resolve(new Response(${JSON.stringify(providerFrames)}, { headers: { 'content-type': 'text/event-stream' } }));`,
+          '} }));',
+          '',
+        ].join('\n');
+        mkdirSync(directory);
+        try {
+          writeFileSync(entry, fixture, { flag: 'wx' });
+          const handle = req => fetch(new Request(`${origin}/functions/v1/${slug}`, req));
+          const result = await send(handle, owner);
+          assert.equal(result.status, 200);
+          assert.equal(end(result).type, 'run_completed');
+          assert.equal(end(result).text, reply);
+          const snapshot = parseKaelConversationSnapshot(await rpc(owner, 'kael_conversation_state', { p_mode: 'client' }));
+          assert.equal(snapshot.messages.at(-1).text, reply);
+          const otherSnapshot = parseKaelConversationSnapshot(await rpc(other, 'kael_conversation_state', { p_mode: 'client' }));
+          assert.deepEqual(otherSnapshot.messages, []);
+          assert.equal(countEffects(owner), 0);
+        } finally {
+          rmSync(entry, { force: true });
+          rmdirSync(directory);
+        }
       });
       await t.test('real JWT roles, RLS and server-only RPC permissions enforce account boundaries', async () => {
         const customer = await newUser();
@@ -1214,6 +1268,191 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         assert.equal(snapshot.tasks.length, 0);
         traces.greeting = first.events;
         traces.restored = snapshot;
+      });
+      await t.test('hosted verification allows one concurrent reservation and holds it until accounted', async () => {
+        const actor = await newUser();
+        const started = await request('/rest/v1/rpc/kael_start_run', serviceKey, {
+          p_actor: actor.id, p_request_id: randomUUID(), p_conversation_id: null, p_mode: 'client', p_user_text: 'Synthetic budget probe',
+        }, true);
+        assert.equal(started.status, 200);
+        const run = await started.json();
+        assert.equal(run.status, 'started');
+        const endpoint = '/rest/v1/rpc/kael_verification_charge';
+        const charge = { p_actor: actor.id, p_run: run.run_id, p_provider: 'anthropic', p_actual: null };
+        const denied = await request(endpoint, actor.token, { ...charge, p_call: randomUUID() });
+        assert.equal(denied.status, 403);
+        query(`insert into nestscout_private.kael_verification_budgets (provider, actors, expires_at)
+          values ('anthropic', array['${actor.id}'::uuid], clock_timestamp() + interval '5 minutes');`);
+        try {
+          const calls = Array.from({ length: 4 }, () => randomUUID());
+          const outcomes = await Promise.all(calls.map(async p_call => {
+            const response = await request(endpoint, serviceKey, { ...charge, p_call }, true);
+            assert.equal(response.status, 200);
+            return response.json();
+          }));
+          assert.equal(outcomes.filter(Boolean).length, 1);
+          assert.equal(query("select held_micro_usd from nestscout_private.kael_verification_budgets where provider='anthropic';"), '270480');
+          const settled = await request(endpoint, serviceKey, { ...charge, p_call: calls[outcomes.indexOf(true)], p_actual: 30000 }, true);
+          assert.equal(settled.status, 200);
+          assert.equal(await settled.json(), true);
+          const retry = await request(endpoint, serviceKey, { ...charge, p_call: randomUUID() }, true);
+          assert.equal(retry.status, 200);
+          assert.equal(await retry.json(), false);
+        } finally {
+          query(`delete from nestscout_private.kael_verification_budgets where provider='anthropic' and actors=array['${actor.id}'::uuid];`);
+        }
+      });
+
+      await t.test('opted-in web search passes fixture sources through Kael with real Auth and PostgreSQL', async () => {
+        const owner = await newUser();
+        const credential = 'fixture-no-provider-secret';
+        const source = { title: 'Fixture source', url: 'https://example.invalid/fixture', snippet: 'Fixture search result.' };
+        const prompt = 'Find a public source.';
+        let searchCalls = 0;
+        const fetcher = async (url, init) => {
+          if (new URL(url).origin === origin) return fetch(url, init);
+          assert.equal(url, 'https://api.perplexity.ai/search');
+          assert.equal(init.method, 'POST');
+          assert.ok(new Headers(init.headers).get('authorization') === `Bearer ${credential}`, 'Fixture credential did not stay on the search adapter');
+          assert.deepEqual(JSON.parse(init.body), { query: prompt, max_results: 5, max_tokens_per_page: 512 });
+          searchCalls++;
+          return Response.json({ results: [source] });
+        };
+        const run = (optIn, steps) => {
+          const provider = scriptedProvider('anthropic', steps);
+          return send(createKaelHandler({
+            env: { ...env, PERPLEXITY_API_KEY: credential, KAEL_WEB_SEARCH: optIn },
+            providers: () => [provider], fetcher, log: () => {},
+          }), owner);
+        };
+        const disabled = await run('disabled', [request => {
+          assert.ok(!request.tools.some(tool => tool.name === 'web_search'));
+          return { text: ['Search is disabled.'] };
+        }]);
+        assert.equal(end(disabled).type, 'run_completed');
+        assert.equal(searchCalls, 0);
+        const enabled = await run('enabled', [
+          request => {
+            assert.ok(request.tools.some(tool => tool.name === 'web_search'));
+            return { tools: [call('web_search', { query: prompt })] };
+          },
+          request => {
+            const [result] = lastToolResults(request);
+            assert.equal(result.outcome, 'succeeded');
+            assert.deepEqual(result.results, [{ ...source, date: null, lastUpdated: null }]);
+            return { text: [`[Fixture source](${source.url})`] };
+          },
+        ]);
+        assert.equal(end(enabled).type, 'run_completed');
+        assert.equal(searchCalls, 1);
+        assert.ok(!enabled.raw.includes(credential));
+        const snapshot = parseKaelConversationSnapshot(await rpc(owner, 'kael_conversation_state', { p_mode: 'client' }));
+        assert.equal(snapshot.conversationId, conversationOf(enabled));
+        assert.equal(snapshot.messages.at(-1).text, `[Fixture source](${source.url})`);
+        assert.equal(countEffects(owner), 0);
+        assert.equal(query(`select count(*) from nestscout_private.kael_approvals where owner_id='${owner.id}';`), '0');
+      });
+      await t.test('memory is explicit, isolated by account and mode, and independent of business state', async () => {
+        const owner = await newUser();
+        const other = await newUser();
+        const attempts = [];
+        const logs = [];
+        const fixture = 'fixture-provider-credential';
+        const englishReply = '**Check the saved decision**';
+        const vietnameseReply = '**Phản hồi thử nghiệm**';
+        const englishPrompts = new Set(['Tóm tắt quyết định của tôi.', 'Xin chào.', 'không phải ngắn gọn, là chi tiết', 'How do I maintain a tap?']);
+        const newHandler = () => createKaelHandler({
+          env: { ...env, DEEPSEEK_API_KEY: fixture },
+          log: event => logs.push(event),
+          fetcher: async (url, init) => {
+            if (url.startsWith(origin + '/')) return fetch(url, init);
+            assert.equal(url, 'https://api.deepseek.com/chat/completions');
+            assert.equal(init.headers.authorization, `Bearer ${fixture}`);
+            const request = JSON.parse(init.body);
+            attempts.push(request);
+            const content = englishPrompts.has(request.messages.at(-1).content) ? englishReply : vietnameseReply;
+            const delta = { model: 'deepseek-flash', choices: [{ delta: { content }, finish_reason: null }] };
+            const terminal = { model: 'deepseek-flash', choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 21, completion_tokens: 5 } };
+            return new Response(`data: ${JSON.stringify(delta)}\n\ndata: ${JSON.stringify(terminal)}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } });
+          },
+        });
+        const manage = (user, action, preference, value, mode = 'client', previous) => rpc(user, 'kael_manage_memory', {
+          p_mode: mode, p_action: action, p_preference: preference, p_value: value, p_previous: previous,
+        });
+        const preferences = user => request('/rest/v1/kael_memory_preferences?select=mode,preference,value,source', user.token).then(response => response.json());
+        const message = text => ({ type: 'message', text });
+        const sendMessage = (user, text, id, mode) => send(newHandler(), user, message(text), id, mode);
+        const oldText = 'Quyết định: dùng kệ màu xanh.';
+        const first = await sendMessage(owner, oldText);
+        const conversation = conversationOf(first);
+        const run = first.events[0].run_id;
+        assert.equal(end(first).text, vietnameseReply);
+        assert.equal(query(`select status || ':' || input_tokens || ':' || output_tokens from public.kael_runs where id='${run}';`), 'completed:21:5');
+        assert.equal(await manage(owner, 'save', 'detail', 'brief'), false, 'memory is off by default');
+        assert.equal(await manage(owner, 'enable'), true);
+        assert.equal(await manage(owner, 'save', 'detail', 'brief'), true);
+        assert.equal(await manage(owner, 'save', 'format', 'steps'), true);
+        assert.equal(await manage(owner, 'save', 'language', 'en'), true);
+        const rejected = await request('/rest/v1/rpc/kael_manage_memory', owner.token, { p_mode: 'client', p_action: 'save', p_preference: 'detail', p_value: 'sensitive free text' });
+        assert.ok(rejected.status >= 400);
+        const guest = await request('/rest/v1/rpc/kael_manage_memory', null, { p_mode: 'client', p_action: 'enable' });
+        assert.ok([401, 403].includes(guest.status));
+        const worker = await request('/rest/v1/rpc/kael_manage_memory', owner.token, { p_mode: 'worker', p_action: 'enable' });
+        assert.ok([401, 403].includes(worker.status));
+        const forged = await request(`/rest/v1/kael_memory_preferences?select=value&owner_id=eq.${owner.id}`, other.token);
+        assert.deepEqual(await forged.json(), []);
+        assert.deepEqual(await preferences(other), []);
+        query(`insert into public.kael_messages(conversation_id,owner_id,run_id,seq,role,content)
+          select '${conversation}','${owner.id}','${run}',i,'user',
+          case when i=3 then 'OTP 123456' when i=4 then 'Đính chính: màu xanh lá.' else 'Trao đổi số ' || i end
+          from generate_series(3,24) i;`);
+        const summarized = await sendMessage(owner, 'Tóm tắt quyết định của tôi.', conversation);
+        assert.equal(end(summarized).text, englishReply);
+        let sent = attempts.at(-1).messages;
+        assert.equal(sent.at(-1).content, 'Tóm tắt quyết định của tôi.');
+        assert.ok(sent.length <= 18);
+        assert.ok(!sent.slice(1).some(item => item.content === oldText), 'the original decision left the transcript window');
+        assert.ok(!sent[0].content.includes(oldText), 'quotes never enter the system message');
+        assert.ok(sent[1].content.includes(oldText));
+        assert.ok(sent[1].content.includes('Đính chính: màu xanh lá.'));
+        assert.ok(!sent[1].content.includes('123456'));
+        const forgedSummary = await rpc(other, 'kael_context_summary', { p_conversation_id: conversation, p_mode: 'client', p_before_seq: 20 });
+        assert.deepEqual(forgedSummary.items, []);
+        const recalled = await sendMessage(owner, 'Xin chào.');
+        assert.notEqual(conversationOf(recalled), conversation);
+        assert.equal(end(recalled).text, englishReply);
+        sent = attempts.at(-1).messages;
+        assert.match(sent[0].content, /Reply language: English/);
+        assert.doesNotMatch(sent[1].content, /"language"/);
+        assert.match(sent[1].content, /"detail","value":"brief"/);
+        assert.doesNotMatch(sent[1].content, /"format","value":"steps"|màu xanh/);
+        await sendMessage(owner, 'không phải ngắn gọn, là chi tiết', conversationOf(recalled));
+        assert.deepEqual((await preferences(owner)).find(item => item.preference === 'detail'), { mode: 'client', preference: 'detail', value: 'detailed', source: 'explicit_chat' });
+        assert.equal(await manage(owner, 'correct', 'detail', 'brief', 'client', 'brief'), false, 'stale compare-and-set cannot overwrite a correction');
+        const corrected = await sendMessage(owner, 'không phải tiếng Anh, là tiếng Việt', conversationOf(recalled));
+        assert.equal(end(corrected).text, vietnameseReply);
+        assert.match(attempts.at(-1).messages[0].content, /Reply language: Vietnamese/);
+        assert.equal(await manage(owner, 'correct', 'language', 'en', 'client', 'en'), false);
+        assert.equal(await manage(owner, 'remove', 'language'), true);
+        await sendMessage(owner, 'How do I maintain a tap?');
+        assert.match(attempts.at(-1).messages[0].content, /Otherwise match that message’s language/);
+        await sendMessage(other, 'Hướng dẫn bảo trì.');
+        assert.ok(!attempts.at(-1).messages.some(item => /"detail"|"format"/.test(item.content)));
+        query(`insert into public.worker_access_grants(user_id) values ('${owner.id}'); insert into nestscout_private.worker_dispatch_eligibility(user_id,basis,active) values ('${owner.id}','local_fixture',true);`);
+        await sendMessage(owner, 'Hướng dẫn bảo trì.', null, 'worker');
+        assert.ok(!attempts.at(-1).messages.some(item => /"detail"|"format"/.test(item.content)));
+        assert.equal(await manage(owner, 'enable', undefined, undefined, 'worker'), true);
+        assert.equal(await manage(owner, 'save', 'detail', 'brief', 'worker'), true);
+        const races = await Promise.all([1, 2].map(() => manage(owner, 'correct', 'detail', 'detailed', 'worker', 'brief')));
+        assert.deepEqual(races.sort(), [false, true]);
+        assert.equal(await manage(owner, 'remove', 'detail'), true);
+        assert.equal(await manage(owner, 'disable'), true);
+        assert.equal(await manage(owner, 'enable'), true);
+        await sendMessage(owner, 'Hướng dẫn bảo trì.');
+        assert.deepEqual((await preferences(owner)).filter(item => item.mode === 'client'), []);
+        assert.ok(!attempts.at(-1).messages.some(item => /"detail"|"format"/.test(item.content)));
+        assert.ok(!JSON.stringify(logs).includes(fixture));
+        assert.equal(countEffects(owner), 0);
       });
       await t.test('duplicate request IDs replay the same persisted run without another model call', async () => {
         const user = await newUser();

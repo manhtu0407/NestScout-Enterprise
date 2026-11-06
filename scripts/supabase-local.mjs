@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, openSync, closeSync, readFileSync, writeFileSync, renameSync, unlinkSync, realpathSync, readdirSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, openSync, closeSync, readFileSync, writeFileSync, renameSync, unlinkSync, realpathSync, readdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,6 +64,26 @@ export function validateLocalConfig(config, linked) {
   return config.project_id;
 }
 
+const localKaelPrefix = 'NESTSCOUT_LOCAL_';
+const localPilotSettings = [
+  'KAEL_DEVELOPER_PILOT', 'KAEL_DEVELOPER_PILOT_ID', 'KAEL_PILOT_GENERATION', 'KAEL_PILOT_WORKER_ID',
+];
+
+export function scopedLocalPilotEnvironment(config, settings) {
+  const { functions: { kael, ...otherFunctions } = {}, ...otherConfig } = config;
+  const bindings = kael?.env;
+  requireLocal(bindings && Object.keys(kael).length === 1 && Object.keys(bindings).length === localPilotSettings.length
+    && localPilotSettings.every(name => bindings[name] === `env(${localKaelPrefix}${name})`),
+  'Kael local bindings must target only the default Kael function and its approved pilot metadata.');
+  const outsideKael = JSON.stringify({ ...otherConfig, functions: otherFunctions });
+  requireLocal(!outsideKael.toUpperCase().includes(localKaelPrefix),
+    'Kael local bindings must not appear in shared or other function configuration.');
+  requireLocal(!/\b(?:DEEPSEEK|ANTHROPIC|PERPLEXITY)_API_KEY\b/i.test(outsideKael),
+    'Provider credentials are available only to hosted Supabase Edge.');
+  return Object.fromEntries(localPilotSettings.flatMap(name =>
+    settings[name] ? [[localKaelPrefix + name, settings[name]]] : []));
+}
+
 export function validateDockerEndpoint(endpoint) {
   requireLocal(/^(unix:\/\/\/[^\s]+|npipe:\/\/\/\/\.\/pipe\/[^\s]+)$/.test(endpoint), 'Only a local Docker socket/pipe is allowed.');
 }
@@ -122,7 +142,7 @@ export function validateLocalFiles(directory) {
 
 export function localEnvironment(source) {
   return Object.fromEntries(Object.entries({ ...gitEnvironment(source), DO_NOT_TRACK: '1' }).filter(([name]) =>
-    !/^(PG|SUPABASE_|DATABASE_URL$|OPENAI_API_KEY$)/i.test(name))
+    !/^(PG|SUPABASE_|DATABASE_URL$|OPENAI_API_KEY$|DENO_DEPLOYMENT_ID$|NESTSCOUT_LOCAL_|KAEL_|DEEPSEEK_|ANTHROPIC_|PERPLEXITY_)/i.test(name))
     .map(([name, value]) => [/^DOCKER_/i.test(name) ? name.toUpperCase() : name, value]));
 }
 
@@ -133,28 +153,24 @@ export function safeEndpoints(endpoints) {
   }]));
 }
 
-export function localRuntime({ isolatePilotProviders = false } = {}) {
+export function localRuntime() {
   const config = parse(readFileSync(path.join(root, 'supabase/config.toml'), 'utf8'));
   validateLocalConfig(config, existsSync(path.join(root, 'supabase/.temp/project-ref')));
   validateLocalFiles(root);
   const environment = localEnvironment(process.env);
-  if (isolatePilotProviders) {
-    for (const name of Object.keys(environment)) {
-      if (/^(?:KAEL_|DEEPSEEK_|ANTHROPIC_|PERPLEXITY_)/i.test(name)) delete environment[name];
-    }
-  }
-  const run = (command, args) => execFileSync(command, args, {
-    cwd: root, env: environment, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+  const run = (command, args, env = environment) => execFileSync(command, args, {
+    cwd: root, env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (environment.DOCKER_HOST) validateDockerEndpoint(environment.DOCKER_HOST);
   validateDockerEndpoint(run('docker', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}']).trim());
   requireLocal(realpathSync(run('git', ['rev-parse', '--show-toplevel']).trim()) === realpathSync(root), 'Git root does not match this checkout.');
   const branch = run('git', ['symbolic-ref', 'HEAD']).trim();
-  const cli = args => {
+  const runCli = (args, env) => {
     validateLocalFiles(root);
-    return run(process.execPath, [path.join(root, 'node_modules/supabase/dist/supabase.js'), '--workdir', root, '--agent', 'no', ...args]);
+    return run(process.execPath, [path.join(root, 'node_modules/supabase/dist/supabase.js'), '--workdir', root, '--agent', 'no', ...args], env);
   };
+  const cli = args => runCli(args);
   const status = (allowMissing = false) => {
     try { return JSON.parse(cli(['stack', 'status', '--output-format', 'json'])); }
     catch (error) {
@@ -185,7 +201,20 @@ export function localRuntime({ isolatePilotProviders = false } = {}) {
     requireLocal(stopped.identity.id === current.identity.id && stopped.lifecycle !== 'running', 'Local owner still reports a running stack after stop.');
     return true;
   };
-  return { cli, status, verify, branch, stop };
+  const serveKael = (settings = {}, onStart = () => {}) => {
+    const current = verify();
+    const active = run('docker', ['ps', '--filter', `label=com.supabase.stack=${current.id}`,
+      '--filter', 'label=com.supabase.service=functions', '--format', '{{.ID}}']).trim();
+    requireLocal(!active, 'The verified stack already has a running Edge worker. Stop that launcher before changing its configuration.');
+    for (const directory of ['supabase/functions', 'supabase/functions/kael']) {
+      requireLocal(!lstatSync(path.join(root, directory, '.env'), { throwIfNoEntry: false }),
+        'Remove the shared or Kael functions dotenv override before starting the isolated Kael runtime.');
+    }
+    const scoped = scopedLocalPilotEnvironment(parse(readFileSync(path.join(root, 'supabase/config.toml'), 'utf8')), settings);
+    onStart();
+    runCli(['functions', 'serve', 'kael'], { ...environment, ...scoped });
+  };
+  return { cli, status, verify, branch, stop, serveKael };
 }
 
 export async function withLocalLock(operation, directory = root) {
@@ -208,9 +237,7 @@ async function main(action) {
   requireLocal(actions.includes(action), `Use one of: ${actions.join(', ')}`);
   const runtime = localRuntime();
   if (action === 'serve-kael') {
-    runtime.verify();
-    console.log('Serving the existing Edge Functions on the verified worktree/branch stack; no target overrides.');
-    runtime.cli(['functions', 'serve', 'kael']);
+    runtime.serveKael({}, () => console.log('Starting offline Kael Edge. Live provider secrets are available only to hosted Supabase Edge.'));
     return;
   }
   await withLocalLock(() => {
@@ -275,8 +302,9 @@ async function main(action) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    requireLocal(process.argv.length === 3, 'Additional flags and target overrides are forbidden.');
-    await main(process.argv[2]);
+    const [action, ...extra] = process.argv.slice(2);
+    requireLocal(!extra.length, 'Additional flags and target overrides are forbidden.');
+    await main(action);
   } catch (error) {
     console.error(safeDiagnostic(error));
     process.exitCode = 1;

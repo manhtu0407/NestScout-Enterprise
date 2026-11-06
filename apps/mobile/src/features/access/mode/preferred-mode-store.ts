@@ -10,11 +10,11 @@ export type PreferredModeStore = {
   clear(): Promise<void>;
 };
 
-export function createPreferredModeStore(storage: AsyncStringStorage): PreferredModeStore {
+export function createPreferredModeStore(storage: AsyncStringStorage, key = storageKey): PreferredModeStore {
   return {
     async load(userId) {
       try {
-        const raw = await storage.getItem(storageKey);
+        const raw = await storage.getItem(key);
         if (raw === null) return null;
         const value = JSON.parse(raw) as { userId?: unknown; mode?: unknown };
         return value.userId === userId && isAppMode(value.mode) ? value.mode : null;
@@ -22,7 +22,7 @@ export function createPreferredModeStore(storage: AsyncStringStorage): Preferred
         return null;
       }
     },
-    save: (userId, mode) => storage.setItem(storageKey, JSON.stringify({ userId, mode })),
-    clear: () => storage.removeItem(storageKey),
+    save: (userId, mode) => storage.setItem(key, JSON.stringify({ userId, mode })),
+    clear: () => storage.removeItem(key),
   };
 }

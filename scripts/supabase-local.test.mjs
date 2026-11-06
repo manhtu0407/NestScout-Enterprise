@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'smol-toml';
-import { validateLocalConfig, validateContainer, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock, validateLocalFiles, localEnvironment, safeDiagnostic, safeEndpoints, isMissingStack, databaseTestDiagnostic } from './supabase-local.mjs';
+import { validateLocalConfig, scopedLocalPilotEnvironment, validateContainer, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock, validateLocalFiles, localEnvironment, safeDiagnostic, safeEndpoints, isMissingStack, databaseTestDiagnostic } from './supabase-local.mjs';
 import { localTools, safeToolResult } from './supabase-mcp.mjs';
 
 const config = parse(readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8'));
@@ -51,7 +51,8 @@ test('only the pinned CLI missing-stack response permits cold start or absent-st
 });
 
 test('reject target overrides before Docker operations', () => {
-  for (const [script, args] of [['supabase-local.mjs', ['reset', '--linked']], ['supabase-local.mjs', ['serve-kael', '--linked']], ['supabase-mcp.mjs', ['--url=https://example.invalid']]]) {
+  for (const [script, args] of [['supabase-local.mjs', ['reset', '--linked']], ['supabase-local.mjs', ['serve-kael', '--linked']],
+    ['supabase-local.mjs', ['serve-kael', '--providers']], ['supabase-mcp.mjs', ['--url=https://example.invalid']]]) {
     const result = spawnSync(process.execPath,
       [fileURLToPath(new URL(script, import.meta.url)), ...args], { encoding: 'utf8' });
     assert.equal(result.status, 1);
@@ -64,7 +65,12 @@ test('Kael can serve on the isolated local stack without changing phone authenti
   assert.equal(config.auth.enable_signup, false);
   assert.equal(config.auth.enable_anonymous_sign_ins, false);
   assert.equal(config.auth.sms, undefined);
-  assert.equal(config.functions, undefined);
+  assert.deepEqual(Object.keys(config.functions), ['kael']);
+  assert.deepEqual(Object.keys(config.functions.kael), ['env']);
+  assert.deepEqual({ ...config.functions.kael.env }, Object.fromEntries([
+    'KAEL_DEVELOPER_PILOT', 'KAEL_DEVELOPER_PILOT_ID', 'KAEL_PILOT_GENERATION', 'KAEL_PILOT_WORKER_ID',
+  ].map(name => [name, `env(NESTSCOUT_LOCAL_${name})`])));
+  assert.equal(config.edge_runtime.secrets, undefined);
 });
 
 test('accept isolated config and reject linked, legacy, static-port and declarative targets', () => {
@@ -75,6 +81,31 @@ test('accept isolated config and reject linked, legacy, static-port and declarat
   assert.throws(() => validateLocalConfig({ ...config, experimental: { stack: false } }, false));
   assert.throws(() => validateLocalConfig({ ...config, db: { ...config.db, migrations: { enabled: true, schema_paths: ['schemas/*.sql'] } } }, false));
   assert.throws(() => validateLocalConfig({ ...config, api: { ...config.api, schemas: [...config.api.schemas, 'unreviewed'] } }, false));
+});
+
+test('local Kael only forwards pilot metadata and rejects shared or redirected bindings', () => {
+  const settings = {
+    KAEL_DEVELOPER_PILOT: 'local_8085', DEEPSEEK_API_KEY: 'fixture-only', ANTHROPIC_API_KEY: 'fixture-only',
+    PERPLEXITY_API_KEY: 'fixture-only', KAEL_WEB_SEARCH: 'enabled', KAEL_ENABLED_EFFECTS: 'unapproved',
+  };
+  assert.deepEqual(scopedLocalPilotEnvironment(config, settings), { NESTSCOUT_LOCAL_KAEL_DEVELOPER_PILOT: 'local_8085' });
+  for (const name of ['kael_developer_pilot', 'perplexity_api_key']) {
+    const binding = { VALUE: `env(nestscout_local_${name})` };
+    assert.throws(() => scopedLocalPilotEnvironment({ ...config, edge_runtime: { ...config.edge_runtime, secrets: binding } }, settings), /shared or other/);
+    assert.throws(() => scopedLocalPilotEnvironment({ ...config, functions: { ...config.functions, sibling: { env: binding } } }, settings), /shared or other/);
+  }
+  assert.throws(() => scopedLocalPilotEnvironment({ ...config, functions: { kael: { ...config.functions.kael, entrypoint: './sibling.ts' } } }, settings), /default Kael function/);
+  const extra = { ...config.functions.kael.env, PERPLEXITY_API_KEY: 'env(NESTSCOUT_LOCAL_PERPLEXITY_API_KEY)' };
+  assert.throws(() => scopedLocalPilotEnvironment({ ...config, functions: { kael: { env: extra } } }, settings), /approved pilot metadata/);
+  const secrets = { PERPLEXITY_API_KEY: 'env(PERPLEXITY_API_KEY)' };
+  assert.throws(() => scopedLocalPilotEnvironment({ ...config, edge_runtime: { ...config.edge_runtime, secrets } }, settings), /hosted Supabase Edge/);
+});
+
+test('local pilot arming stops before opening a stack or accessing credentials', () => {
+  const script = fileURLToPath(new URL('./kael-developer-pilot.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [script, 'arm'], { encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /LOCAL_PILOT_OFFLINE/);
 });
 
 test('reject wrong container identity, stopped services and public Docker bindings', () => {
@@ -151,6 +182,10 @@ test('reject every dotenv/link override and scrub case-insensitive ambient targe
       unlinkSync(file);
     }
     assert.deepEqual(localEnvironment({ PATH: 'fixture', supabase_access_token: 'synthetic', PgPaSsWoRd: 'synthetic', database_url: 'synthetic', GIT_WORK_TREE: 'other', GIT_CONFIG_COUNT: '1', git_object_directory: 'other', GIT_NAMESPACE: 'other' }), { PATH: 'fixture', DO_NOT_TRACK: '1' });
+    assert.deepEqual(localEnvironment({ DeepSeek_API_KEY: 'ambient', ANTHROPIC_API_KEY: 'ambient',
+      NESTSCOUT_LOCAL_DEEPSEEK_API_KEY: 'ambient', Kael_Developer_Pilot: 'ambient', PERPLEXITY_API_KEY: 'ambient',
+      NESTSCOUT_LOCAL_PERPLEXITY_API_KEY: 'ambient', NESTSCOUT_LOCAL_KAEL_WEB_SEARCH: 'ambient',
+      KAEL_WEB_SEARCH: 'ambient', DENO_DEPLOYMENT_ID: 'ambient' }), { DO_NOT_TRACK: '1' });
     const docker = localEnvironment({ docker_host: 'tcp://example.invalid:2376', docker_context: 'fixture' });
     assert.equal(docker.DOCKER_CONTEXT, 'fixture');
     assert.throws(() => validateDockerEndpoint(docker.DOCKER_HOST));

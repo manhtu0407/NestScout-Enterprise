@@ -899,6 +899,9 @@ staging project.
 
 ## Behavior-first local developer pilot on 8085
 
+The local launcher runs offline. The routing and accounting contracts below
+remain in the runtime and database for regression coverage.
+
 This interactive developer profile reuses the authenticated Horizon route,
 existing Edge gateway, Runtime, tools and conversation storage. It is separate
 from formal evaluation: the 20 anchors remain pending human review, rubric
@@ -993,29 +996,19 @@ cumulative money limit cannot increase. A fresh approval may set a different
 positive `max_calls`. Prior calls still count and unresolved accounting or a
 halt blocks renewal. Renewal leaves spending disabled.
 
-Provision the local server key once in
-`~/.codex/private/kael-server/providers.env` as a single
-`DEEPSEEK_API_KEY=...` assignment. Keep the file owner-only. The local
-launcher reuses it on worker restarts. The hosted project manages its own
-Edge Secrets.
+The local developer pilot runs offline. Both `edge` and `edge --offline`
+start the worker with pilot metadata only. It persists messages with
+provider-unavailable status. `status` checks the worker and authorization
+generation, and the launcher refuses `arm`. The existing authorization and
+accounting records are retained. For live verification see the
+[hosted provider verification prerequisites](../services/kael-core/README.md#hosted-provider-verification).
 
-Run `edge` to load the server configuration. With no key configured the
-worker still starts and persists messages with provider-unavailable status.
-Use `edge --offline` for an explicitly credential-free run. Startup and
-shutdown leave the budget state alone. After a fresh approved window, restart
-Edge to bind that approval to the worker and use `status` to check the
-credential, model and launch identity. `status` reports a stale worker when
-its launch, key or approval generation differs from the current configuration.
-Run `arm` once that worker has loaded the key and the budget is current.
-PostgreSQL enforces the same cumulative ceiling on every reservation.
-The local Edge log records budget refusal, provider HTTP status, timeout and
-invalid or incomplete streams under `kael_pilot_provider_failure`. Persistence
-failures appear as `kael_setup_failed` or `kael_finish_failed`.
-
-Run `close` to disable spending. It preserves the server key and the
-accounting ledger. The launcher removes its temporary `edge.env` copy when
-it exits normally. After an abnormal exit, verify that the owned launcher
-and worker have stopped before removing a stale temporary file.
+Run `close` to disable an existing budget while preserving the accounting
+ledger. The launcher removes its private `edge.json` launch record when it
+exits normally. It contains the worker identifier.
+After an abnormal exit, verify that the owned launcher and worker have stopped
+before removing a stale launch record. Earlier versions used a private
+`edge.env` file that could hold a provider key.
 The session file contains disposable Auth passwords, not provider keys: protect
 it while needed and remove only these test accounts/credentials when retiring
 the preview.
@@ -1029,8 +1022,8 @@ No auto-training or fabricated review/feedback is introduced.
 
 Research: [DeepSeek model identities and pricing](https://api-docs.deepseek.com/quick_start/pricing/),
 [completion and streamed usage contract](https://api-docs.deepseek.com/api/create-chat-completion/),
-and [Supabase local versus production secrets](https://supabase.com/docs/guides/functions/secrets).
+and [Supabase Edge Function secrets](https://supabase.com/docs/guides/functions/secrets).
 Mocked adapter tests prove enforcement and streaming mechanics only. Real model
 quality, latency, missing-RAG usefulness and billed identity require an actual
-authorized request with an available local key. Until then report
+authorized request through deployed Supabase Edge. Until then report
 `LIVE_PROVIDER_NOT_RUN`, zero paid requests and no measured model quality.

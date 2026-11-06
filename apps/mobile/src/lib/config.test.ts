@@ -1,6 +1,9 @@
-import { ConfigError, parseConfig } from './config';
+import { Platform } from 'react-native';
+
+import { ConfigError, hostedKaelPreviewEnabled, parseConfig } from './config';
 
 const valid = { target: 'local', supabaseUrl: 'http://127.0.0.1:54321', supabaseKey: 'sb_publishable_example' };
+const hosted = { ...valid, target: 'kael-hosted-preview', supabaseUrl: 'https://axpdymbusiwxfzurfclg.supabase.co' };
 
 function jwt(role: string): string {
   const encode = (value: object) => btoa(JSON.stringify(value)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -41,4 +44,49 @@ describe('parseConfig', () => {
       expect(String(error)).not.toContain('leaky');
     }
   });
+
+  test('requires explicit Preview permission, the exact approved HTTPS origin and a publishable key', () => {
+    expect(() => parseConfig(hosted)).toThrow(ConfigError);
+    expect(parseConfig(hosted, true)).toEqual({ target: hosted.target, supabaseUrl: hosted.supabaseUrl, supabasePublishableKey: hosted.supabaseKey });
+    for (const supabaseUrl of ['http://axpdymbusiwxfzurfclg.supabase.co', 'https://axpdymbusiwxfzurfclg.supabase.co:8085',
+      'https://axpdymbusiwxfzurfclg.supabase.co.example.org', 'https://another-project.supabase.co', 'http://localhost:54321']) {
+      expect(() => parseConfig({ ...hosted, supabaseUrl }, true)).toThrow(ConfigError);
+    }
+    for (const supabaseKey of [jwt('anon'), jwt('service_role'), 'sb_secret_example', 'sb_publishable_']) {
+      expect(() => parseConfig({ ...hosted, supabaseKey }, true)).toThrow(ConfigError);
+    }
+    expect(() => parseConfig({ ...valid, supabaseUrl: hosted.supabaseUrl }, true)).toThrow(ConfigError);
+  });
+});
+
+test('admits the hosted Preview only on development web loopback port 8085 with its explicit target', () => {
+  const dev = Object.getOwnPropertyDescriptor(globalThis, '__DEV__');
+  const savedWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const target = process.env.EXPO_PUBLIC_NESTSCOUT_TARGET;
+  const os = jest.replaceProperty(Platform, 'OS', 'web');
+  try {
+    process.env.EXPO_PUBLIC_NESTSCOUT_TARGET = hosted.target;
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: true });
+    for (const [origin, enabled] of [['http://localhost:8085', true], ['http://127.0.0.1:8085', true],
+      ['http://localhost:8086', false], ['https://localhost:8085', false], ['http://localhost:8085.example.org', false]] as const) {
+      Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin } } });
+      expect(hostedKaelPreviewEnabled()).toBe(enabled);
+    }
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin: 'http://localhost:8085' } } });
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: false });
+    expect(hostedKaelPreviewEnabled()).toBe(false);
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: true });
+    os.replaceValue('ios');
+    expect(hostedKaelPreviewEnabled()).toBe(false);
+    os.replaceValue('web');
+    process.env.EXPO_PUBLIC_NESTSCOUT_TARGET = 'local';
+    expect(hostedKaelPreviewEnabled()).toBe(false);
+  } finally {
+    os.restore();
+    if (dev) Object.defineProperty(globalThis, '__DEV__', dev);
+    if (savedWindow) Object.defineProperty(globalThis, 'window', savedWindow);
+    else Reflect.deleteProperty(globalThis, 'window');
+    if (target === undefined) delete process.env.EXPO_PUBLIC_NESTSCOUT_TARGET;
+    else process.env.EXPO_PUBLIC_NESTSCOUT_TARGET = target;
+  }
 });

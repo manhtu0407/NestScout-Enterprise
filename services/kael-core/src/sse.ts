@@ -9,8 +9,10 @@ export async function* readSse(body: ReadableStream<Uint8Array>, signal: AbortSi
   const abort = () => { void reader.cancel(); };
   signal.addEventListener('abort', abort, { once: true });
   try {
+    signal.throwIfAborted();
     while (true) {
       const { value, done } = await reader.read();
+      signal.throwIfAborted();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       let newline = buffer.search(/\r?\n/);
@@ -29,9 +31,10 @@ export async function* readSse(body: ReadableStream<Uint8Array>, signal: AbortSi
         newline = buffer.search(/\r?\n/);
       }
     }
-    if (data.length > 0) yield { event: event || 'message', data: data.join('\n') };
+    if (buffer || data.length > 0) throw new SyntaxError('Truncated SSE frame');
   } finally {
     signal.removeEventListener('abort', abort);
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }

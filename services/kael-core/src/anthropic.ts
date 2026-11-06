@@ -1,17 +1,18 @@
-import { classifyStatus, classifyThrown, ProviderError } from './model.ts';
+import { classifyStatus, classifyThrown, ProviderError, validUsage } from './model.ts';
 import type { Fetcher, ModelProvider, ModelRequest, ModelTurn, StopReason, ToolCall, TranscriptItem } from './model.ts';
 import { readSse } from './sse.ts';
 
 export const anthropicEndpoint = 'https://api.anthropic.com/v1/messages';
 export const anthropicVersion = '2026-10-21';
+export const anthropicVerificationModel = 'claude-haiku-4-5-20251001';
 const serverFallbackBeta = 'server-side-fallback-2026-07-01';
 const serverFallbackModels = new Set(['claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']);
 
-export type AnthropicConfig = { apiKey: string; model: string; effort: 'low' | 'medium' | 'high'; timeoutMs: number };
+export type AnthropicConfig = { apiKey: string; model: string; effort: 'low' | 'medium' | 'high'; timeoutMs: number; serverFallback?: boolean };
 
 type Block = Record<string, unknown> & { type: string };
 
-const modelIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,79}$/;
+const modelIdPattern = /^claude-[a-zA-Z0-9._-]{1,72}$/;
 
 function reportedModel(value: unknown): string | null {
   return typeof value === 'string' && modelIdPattern.test(value) ? value : null;
@@ -49,14 +50,14 @@ export function anthropicRequestBody(config: AnthropicConfig, request: ModelRequ
     stream: true,
     system: [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }],
     messages: toMessages(request.transcript, config.model),
-    output_config: { effort: config.effort },
   };
+  if (config.model !== anthropicVerificationModel && config.model !== 'claude-haiku-4-5') body.output_config = { effort: config.effort };
   if (request.tools.length > 0) {
     body.tools = request.tools.map(tool => ({
       name: tool.name, description: tool.description, input_schema: tool.inputSchema, eager_input_streaming: true,
     }));
   }
-  if (serverFallbackModels.has(config.model)) body.fallbacks = 'default';
+  if (config.serverFallback && serverFallbackModels.has(config.model)) body.fallbacks = 'default';
   return body;
 }
 
@@ -71,15 +72,19 @@ export function createAnthropicProvider(config: AnthropicConfig, fetcher: Fetche
         'x-api-key': config.apiKey,
         'anthropic-version': anthropicVersion,
       };
-      if (serverFallbackModels.has(config.model)) headers['anthropic-beta'] = serverFallbackBeta;
+      if (config.serverFallback && serverFallbackModels.has(config.model)) headers['anthropic-beta'] = serverFallbackBeta;
       let started = false;
       try {
-        const response = await fetcher(anthropicEndpoint, { method: 'POST', headers, body: JSON.stringify(anthropicRequestBody(config, request)), signal });
-        if (!response.ok || !response.body) {
+        const response = await fetcher(anthropicEndpoint, { method: 'POST', headers, body: JSON.stringify(anthropicRequestBody(config, request)), signal, redirect: 'error' });
+        if (!response.ok) {
           await response.body?.cancel();
-          throw new ProviderError('anthropic', classifyStatus(response.status), `Anthropic responded with HTTP ${response.status}.`);
+          throw new ProviderError('anthropic', classifyStatus(response.status), `Anthropic responded with HTTP ${response.status}.`, false, response.status);
         }
+        if (!response.body) throw new ProviderError('anthropic', 'incomplete', 'The provider did not return a stream body.');
         const blocks: Block[] = [];
+        const openBlocks = new Set<number>();
+        let openedMessage = false;
+        let terminalUsage = false;
         const partialInputs = new Map<number, string>();
         let text = '';
         let stopReason: StopReason = 'other';
@@ -91,20 +96,29 @@ export function createAnthropicProvider(config: AnthropicConfig, fetcher: Fetche
         for await (const message of readSse(response.body, signal)) {
           const data = JSON.parse(message.data) as Record<string, unknown>;
           const index = typeof data.index === 'number' ? data.index : -1;
+          if (finished) throw new ProviderError('anthropic', 'incomplete', 'Data followed message_stop.', started);
           if (data.type === 'message_start') {
+            if (openedMessage) throw new ProviderError('anthropic', 'incomplete', 'Duplicate message_start.', started);
+            openedMessage = true;
             const opened = data.message as { model?: unknown; usage?: Record<string, unknown> } | undefined;
             servedModel = reportedModel(opened?.model);
             const usage = opened?.usage ?? {};
-            inputTokens = Number(usage.input_tokens ?? 0);
+            if (!validUsage(usage.input_tokens) || (usage.cache_read_input_tokens !== undefined && !validUsage(usage.cache_read_input_tokens))
+              || (usage.cache_creation_input_tokens !== undefined && !validUsage(usage.cache_creation_input_tokens))) {
+              throw new ProviderError('anthropic', 'incomplete', 'The input usage was malformed.', started);
+            }
+            inputTokens = usage.input_tokens + (validUsage(usage.cache_creation_input_tokens) ? usage.cache_creation_input_tokens : 0);
             cachedInputTokens = Number(usage.cache_read_input_tokens ?? 0);
           } else if (data.type === 'content_block_start') {
+            if (!openedMessage || stopReason !== 'other' || !Number.isInteger(index) || index < 0 || index > 100 || blocks[index]) throw new ProviderError('anthropic', 'incomplete', 'Unexpected content block.', started);
+            openBlocks.add(index);
             const block = { ...(data.content_block as Block) };
             if (block.type === 'tool_use') { partialInputs.set(index, ''); block.input = {}; }
             blocks[index] = block;
           } else if (data.type === 'content_block_delta') {
             const delta = data.delta as Record<string, unknown>;
             const block = blocks[index];
-            if (!block) continue;
+            if (!block || !openBlocks.has(index)) throw new ProviderError('anthropic', 'incomplete', 'Unexpected content delta.', started);
             if (delta.type === 'text_delta' && typeof delta.text === 'string') {
               block.text = `${String(block.text ?? '')}${delta.text}`;
               text += delta.text;
@@ -118,6 +132,7 @@ export function createAnthropicProvider(config: AnthropicConfig, fetcher: Fetche
               block.signature = delta.signature;
             }
           } else if (data.type === 'content_block_stop') {
+            if (!openBlocks.delete(index)) throw new ProviderError('anthropic', 'incomplete', 'Unexpected content stop.', started);
             const block = blocks[index];
             if (block?.type === 'tool_use') {
               const raw = partialInputs.get(index) ?? '';
@@ -132,7 +147,7 @@ export function createAnthropicProvider(config: AnthropicConfig, fetcher: Fetche
             const delta = data.delta as Record<string, unknown> | undefined;
             if (delta && 'stop_reason' in delta) stopReason = stopReasonOf(delta.stop_reason);
             const usage = data.usage as Record<string, unknown> | undefined;
-            if (usage?.output_tokens !== undefined) outputTokens = Number(usage.output_tokens);
+            if (validUsage(usage?.output_tokens)) { outputTokens = usage.output_tokens; terminalUsage = true; }
           } else if (data.type === 'message_stop') {
             finished = true;
           } else if (data.type === 'error') {
@@ -140,7 +155,7 @@ export function createAnthropicProvider(config: AnthropicConfig, fetcher: Fetche
             throw new ProviderError('anthropic', started ? 'incomplete' : kind, 'Anthropic reported a stream error.', started);
           }
         }
-        if (!finished) throw new ProviderError('anthropic', 'incomplete', 'The Anthropic stream ended before completion.', started);
+        if (!finished || !openedMessage || !terminalUsage || stopReason === 'other' || openBlocks.size > 0 || ((stopReason === 'tool_use') !== blocks.some(block => block.type === 'tool_use') && stopReason !== 'max_tokens')) throw new ProviderError('anthropic', 'incomplete', 'The Anthropic stream ended before completion.', started);
         const toolCalls: ToolCall[] = [];
         const replay = blocks.filter(Boolean).map(block => {
           if (block.type !== 'tool_use') return block;
@@ -161,6 +176,7 @@ export function createAnthropicProvider(config: AnthropicConfig, fetcher: Fetche
         };
       } catch (error) {
         if (error instanceof SyntaxError) throw new ProviderError('anthropic', started ? 'incomplete' : 'server', 'Anthropic sent malformed stream data.', started);
+        if (signal.aborted && !request.signal.aborted) throw classifyThrown('anthropic', signal.reason, request.signal, started);
         throw classifyThrown('anthropic', error, request.signal, started);
       }
     },
