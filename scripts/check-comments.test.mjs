@@ -65,6 +65,58 @@ test('strings, URLs, templates, regular expressions and JSX text are not comment
   assert.throws(() => commentRecords('input.ts', 'type Value = { broken: ; };'), /Invalid TypeScript/);
 });
 
+test('Rust, Python and Go comment extraction follows language string and comment syntax', () => {
+  const rust = [
+    "fn parse(input: &'static str) {",
+    '    let ordinary = "// string /* text */";',
+    '    let raw = r###"// raw /* text */"###;',
+    '    let bytes = br#"/* bytes // text */"#;',
+    '    let c_raw = cr#"// raw C string /* text */"#;',
+    "    let slash = '/';",
+    '    let _ = (input, ordinary, raw, bytes, c_raw, slash);',
+    '}',
+  ].join('\n');
+  assert.deepEqual(texts('engine.rs', rust), []);
+  assert.deepEqual(texts('engine.rs', '// line\n/* outer /* nested */ remains */\n/// doc\n//! inner doc\n'), [
+    '// line', '/* outer /* nested */ remains */', '/// doc', '//! inner doc',
+  ]);
+  assert.throws(() => commentRecords('engine.rs', 'let text = r###"unterminated // text\n'), /Invalid Rust syntax/);
+
+  const python = [
+    'url = "https://example.invalid/a//b"',
+    'raw = r"# not //"',
+    'triple = """# not',
+    '// not"""',
+    'formatted = f"{url!r} # literal {2:#x}"',
+    'formatted_alignment = f"{value:=#10x}"',
+    'pattern = rf"\\{value}"',
+    'template = t"{value}"',
+    'template_raw = tr"{value}"',
+    'template_raw_reverse = rt"{value}"',
+    'template_dict_format = t"{42:{{1: 2}}}"',
+    'def fragment():\n    return"#fragment"',
+    "quote = '# not'",
+  ].join('\n');
+  assert.deepEqual(texts('engine.py', python), []);
+  assert.deepEqual(texts('engine.py', 'value = "text"\nformatted = f"{value # field comment\n}"\n# module comment\n'), [
+    '# field comment', '# module comment',
+  ]);
+  assert.deepEqual(texts('engine.py', 'message = t"""{1 # field comment\n}"""\n'), ['# field comment']);
+  assert.deepEqual(texts('engine.py', 'message = t"{42:{{1: # dict comment\n2}}}"\n'), ['# dict comment']);
+  assert.throws(() => commentRecords('engine.py', 'value = "unterminated # text\n'), /Invalid Python syntax/);
+
+  const go = [
+    'package kael',
+    'const raw = `// raw',
+    '/* raw */`',
+    'const quoted = "https://example.invalid/a//b"',
+    "const slash = '/'",
+  ].join('\n');
+  assert.deepEqual(texts('engine.go', go), []);
+  assert.deepEqual(texts('engine.go', 'package kael // inline\n/* block */\n'), ['// inline', '/* block */']);
+  assert.throws(() => commentRecords('engine.go', 'package kael\nconst raw = `unterminated // text\n'), /Invalid Go syntax/);
+});
+
 test('SQL comments are found around quoted text, nested blocks, escape strings and dollar quotes', () => {
   const cases = [
     ["SELECT '-- not', \"a--b\", 'it''s /* not */';\n", []],
@@ -108,6 +160,51 @@ test('TOML, JSONC and shell comments exclude strings, parameters and word-intern
   assert.deepEqual(texts('.githooks/example', '#!/bin/sh\nset -eu\necho "# x" \'# y\' $# ${#1} a#b\nrun # real\n'), ['#!/bin/sh', '# real']);
 });
 
+test('admitted Kael manifests use comment grammars in every Git snapshot', () => {
+  const clean = {
+    'services/kael-core/Cargo.lock': 'version = 3\n',
+    'services/kael-core/Pipfile': '[packages]\nrequests = "*"\n',
+    'services/kael-core/requirements.txt': 'requests==2.32.0\nrequests @ https://example.invalid/archive.zip#egg=requests\n',
+    'services/kael-core/.python-version': '3.12.1\n',
+    'services/kael-core/go.mod': 'module example.com/kael\n\ngo 1.25\n',
+  };
+  const commented = {
+    'services/kael-core/Cargo.lock': 'version = 3\n# dependency note\n',
+    'services/kael-core/Pipfile': '[packages]\n# dependency note\nrequests = "*"\n',
+    'services/kael-core/requirements.txt': '# dependency note\nrequests==2.32.0\n',
+    'services/kael-core/.python-version': '3.12.1 # dependency note\n',
+    'services/kael-core/go.mod': 'module example.com/kael\n// dependency note\ngo 1.25\n',
+  };
+  for (const [file, source] of Object.entries(clean)) {
+    assert.equal(hasCommentGrammar(file), true, file);
+    assert.deepEqual(violations(file, source), [], file);
+    assert.equal(violations(file, commented[file]).length, 1, file);
+  }
+  const apostropheUrl = "requests @ https://example.invalid/it's-a-package.whl\n# explanatory note\n";
+  assert.deepEqual(texts('services/kael-core/requirements.txt', apostropheUrl), ['# explanatory note']);
+  assert.equal(violations('services/kael-core/requirements.txt', apostropheUrl).length, 1);
+  const { repository, run, write } = repositoryFixture(clean);
+  assert.doesNotThrow(() => checkComments(repository));
+  for (const [file, source] of Object.entries(commented)) write(file, source);
+  assert.throws(() => checkWorkingComments(repository), error => Object.keys(clean).every(file => error.message.includes(file)));
+  run(['add', '.']);
+  for (const [file, source] of Object.entries(clean)) write(file, source);
+  assert.throws(() => checkStagedComments(repository), error => Object.keys(clean).every(file => error.message.includes(file)));
+  run(['commit', '--quiet', '-m', 'chore: add manifest comments']);
+  assert.throws(() => checkCommittedComments(repository), error => Object.keys(clean).every(file => error.message.includes(file)));
+});
+
+test('Python shebangs pass the comment gate while explanatory comments remain prohibited', () => {
+  const file = 'services/kael-core/bin/runner.py';
+  const clean = '#!/usr/bin/env python3\nprint("ready")\n';
+  assert.deepEqual(texts(file, clean), ['#!/usr/bin/env python3']);
+  assert.deepEqual(violations(file, clean), []);
+  const { repository, write } = repositoryFixture({ [file]: clean });
+  assert.doesNotThrow(() => checkComments(repository));
+  write(file, `${clean}# explain the runner\n`);
+  assert.throws(() => checkWorkingComments(repository), /runner\.py:3 inline: # explain the runner/);
+});
+
 test('ignore, attributes, editor and environment example files only comment at a line start or after whitespace', () => {
   assert.deepEqual(texts('.gitignore', '# note\n\\#literal\nname#tag\n  # indented\ndist/\n'), ['# note', '# indented']);
   assert.deepEqual(texts('supabase/.gitignore', '.branches\n# note\r\n'), ['# note']);
@@ -127,7 +224,7 @@ test('only files with a comment grammar are inspected; JSON keeps its line-leadi
     assert.equal(commentRecords(file, '// text\n'), null, file);
     assert.equal(hasCommentGrammar(file), false, file);
   }
-  for (const file of ['a.mjs', 'a.cjs', 'a.ts', 'a.d.ts', 'a.tsx', 'a.sql', 'a.toml', 'a.yml', 'a.yaml', 'a.jsonc', '.githooks/pre-push']) {
+  for (const file of ['a.mjs', 'a.cjs', 'a.ts', 'a.d.ts', 'a.tsx', 'a.rs', 'a.py', 'a.go', 'a.sql', 'a.toml', 'a.yml', 'a.yaml', 'a.jsonc', '.githooks/pre-push']) {
     assert.equal(hasCommentGrammar(file), true, file);
   }
   assert.equal(sourceComments('package.json', '{\n// x\n}\n'), '// x');
@@ -214,6 +311,9 @@ const formats = [
   ['src/example.ts', 'export const value: number = 1;\n', '// TODO: later\nexport const value: number = 1;\n', 'annotation'],
   ['src/example.tsx', 'export const View = () => <a href="//x">text</a>;\n', 'export const View = () => <a href="//x">text</a>; // @ts-ignore\n', 'suppression'],
   ['src/types.d.ts', 'declare const x: string;\n', 'declare const x: string; // note\n', 'inline'],
+  ['services/kael-core/src/agent.rs', 'fn main() { let value = r#"// kept"#; let _ = value; }\n', 'fn main() {} // note\n', 'inline'],
+  ['services/kael-core/src/agent.py', 'value = "# kept"\n', 'value = "# kept" # note\n', 'inline'],
+  ['supabase/functions/kael/agent.go', 'package kael\n', 'package kael // note\n', 'inline'],
   ['db/query.sql', 'select 1;\n', 'select 1; -- note\n', 'inline'],
   ['db/query.sql', 'select 1;\n', '/* note */ select 1;\n', 'block'],
   ['config/settings.toml', 'key = "# kept"\n', 'key = "# kept" # note\n', 'inline'],
@@ -451,7 +551,7 @@ test('the delivered repository sources contain no prohibited comment and only th
 });
 
 const approvedMandatoryKinds = [
-  ['shebang', (file, text) => /^#!(?:\/[\w.-]+)+(?: [-\w=./]+){0,2}$/.test(text) && /\.(?:[cm]?js|[cm]?ts)$|^\.githooks\//.test(file)],
+  ['shebang', (file, text) => /^#!(?:\/[\w.-]+)+(?: [-\w=./]+){0,2}$/.test(text) && /\.(?:[cm]?js|[cm]?ts|py)$|^\.githooks\//.test(file)],
   ['triple-slash', (file, text) => /^\/\/\/\s*<(?:reference|amd-module|amd-dependency)\b[^<>]*\/>\s*$/.test(text) && /\.(?:[cm]?js|[cm]?ts|tsx)$/.test(file)],
   ['jsx-pragma', (file, text) => /^\/\*\*?\s*(?:@jsx(?:Frag|ImportSource|Runtime)? \S+\s*)+\*\/$/.test(text) && /\.(?:[cm]?js|[cm]?ts|tsx)$/.test(file)],
   ['dependabot-version', (file, text) => /^# v\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?$/.test(text) && /\.ya?ml$/.test(file)],
@@ -470,6 +570,7 @@ test('the repository-wide mandatory assertion accepts every approved category an
   const approved = [
     ['.githooks/pre-push', '#!/bin/sh'],
     ['scripts/tool.mjs', '#!/usr/bin/env node'],
+    ['services/kael-core/bin/runner.py', '#!/usr/bin/env python3'],
     ['.github/workflows/ci.yml', '# v7.1.2'],
     ['apps/mobile/env.d.ts', '/// <reference types="expo/types" />'],
     ['apps/mobile/src/view.tsx', '/** @jsxImportSource preact */'],

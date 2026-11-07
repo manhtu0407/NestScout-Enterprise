@@ -10,12 +10,17 @@ import { root } from './tool-path.mjs';
 import { gitEnvironment } from './git-environment.mjs';
 import { verifySuiteGitIsolation } from './git-isolation-fixture.mjs';
 import { git, repositoryFiles, blobByteLimit } from './repository-files.mjs';
-import { checkPath, checkAttribution, checkHygiene, sourceComments } from './check-hygiene.mjs';
+import { checkPath, checkAttribution, checkHygiene, sourceComments, hasCommentGrammar } from './check-hygiene.mjs';
 import { inspectArtifact, artifactLimits } from './inspect-artifact.mjs';
 import { scanStaged } from './scan-staged.mjs';
 import { checkBranch, checkMessage, checkMetadata, checkPullRequest, checkCommitRange, checkPush, checkRemote, metadataRange } from './check-metadata.mjs';
 
 verifySuiteGitIsolation();
+
+const languagePolicy = JSON.parse(readFileSync(path.join(root, 'scripts/language-policy.json'), 'utf8'));
+const kaelManifestNames = Object.entries(languagePolicy.manifests)
+  .filter(([, language]) => languagePolicy.kaelBackend.priority.includes(language))
+  .map(([name]) => name).sort();
 
 const directory = mkdtempSync(path.join(tmpdir(), 'nestscout-hygiene-'));
 after(() => {
@@ -104,6 +109,33 @@ test('existing naming categories and exact required/generated/legal filenames pa
     assert.doesNotThrow(() => checkPath(file), file);
   }
 });
+
+test('Kael backend Rust, Python and Go files and manifests have narrowly approved paths and names', () => {
+  const backendPaths = languagePolicy.kaelBackend.paths;
+  const sourceFiles = [
+    'src/agent_core.rs', 'src/__init__.py', 'src/__main__.py', 'src/agent_core.py', 'src/agent_core.pyi', 'src/agent_core.pyw',
+    'src/agent_core.go', 'src/agent_core_test.go', 'internal/planner.go',
+  ];
+  const manifests = [
+    'Cargo.toml', 'Cargo.lock', 'rust-toolchain', 'rust-toolchain.toml', 'requirements.txt', 'pyproject.toml',
+    'Pipfile', 'poetry.lock', 'uv.lock', '.python-version', 'go.mod', 'go.sum',
+  ];
+  assert.deepEqual([...manifests].sort(), kaelManifestNames);
+  for (const backendPath of backendPaths) {
+    for (const relative of sourceFiles) assert.doesNotThrow(() => checkPath(`${backendPath}${relative}`), `${backendPath}${relative}`);
+    for (const manifest of manifests) {
+      assert.doesNotThrow(() => checkPath(`${backendPath}${manifest}`), `${backendPath}${manifest}`);
+      assert.equal(hasCommentGrammar(`${backendPath}${manifest}`), true, `${backendPath}${manifest}`);
+    }
+  }
+  for (const file of [
+    'services/other/src/agent_core.rs', 'services/other/pyproject.toml', 'supabase/functions/send-sms-hook/handler.go',
+    'supabase/functions/send-sms-hook/go.mod', 'apps/mobile/src/features/access/requirements.txt',
+    'services/kael-core/src/AgentCore.rs', 'services/kael-core/src/agent-core.rs',
+    'services/kael-core/src/agent_core.js', 'supabase/functions/kael/internal/BadName.py',
+  ]) assert.throws(() => checkPath(file), /No approved naming convention|Disposable document\/source name/, file);
+});
+
 test('unknown architecture, case variants, scratch names, archives and unsafe paths fail', () => {
   for (const file of ['Scripts/tool.mjs', 'scripts/CheckTools.mjs', 'scripts/check_tools.mjs', 'docs/New Guide.md',
     '.github/workflows/CI.yml', 'supabase/migrations/001_example.sql', 'scripts/example.js', 'src/App.tsx',
