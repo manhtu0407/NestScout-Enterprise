@@ -76,6 +76,22 @@ test('Kael backend accepts Rust, Python and Go in the declared preference order'
   });
 });
 
+test('Kael backend module ownership cannot be shadowed by nested modules', () => {
+  for (const backendPath of actualPolicy.kaelBackend.paths) {
+    const policy = {
+      ...actualPolicy,
+      modules: [...actualPolicy.modules, {
+        path: `${backendPath}src/experimental/`,
+        domain: 'Nested Kael module',
+        languages: ['typescript'],
+      }],
+    };
+    fixture(({ repository }) => {
+      assert.throws(() => checkLanguages(repository), /Kael backend modules cannot be nested/);
+    }, policy);
+  }
+});
+
 test('new TypeScript or JavaScript sources cannot join the legacy Kael backend file set', () => {
   for (const [file, content] of [
     ['services/kael-core/src/new-runtime.ts', 'export {};\n'],
@@ -130,7 +146,7 @@ test('reject runtime setup actions for unapproved languages in workflows', () =>
   for (const action of ['actions/setup-python@v5', 'dtolnay/rust-toolchain@stable', 'actions/setup-go@v5', 'astral-sh/setup-uv@v6']) {
     fixture(({ repository, write }) => {
       write('.github/workflows/build.yml', `name: build\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: ${action}\n`);
-      assert.throws(() => checkLanguages(repository), /not approved for an unowned path/);
+      assert.throws(() => checkLanguages(repository), /requires matching Kael backend source/);
     });
   }
 });
@@ -144,14 +160,32 @@ test('accept workflows that only use Node.js and checkout actions', () => {
   });
 });
 
-test('Kael language setup actions are admitted only when matching backend code exists', () => {
-  fixture(({ repository, write, run }) => {
-    write('.github/workflows/kael.yml', 'name: kael\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: dtolnay/rust-toolchain@stable\n');
-    write('services/kael-core/src/engine.rs', 'pub fn run() {}\n');
-    run(['add', '--all']);
-    const [indexed, working] = checkLanguages(repository);
-    assert.equal(working, indexed);
-  });
+test('Kael setup actions require actual matching backend source, never a manifest alone', () => {
+  const source = { rust: 'services/kael-core/src/engine.rs', python: 'services/kael-core/src/engine.py', go: 'services/kael-core/src/engine.go' };
+  const code = { rust: 'pub fn run() {}\n', python: 'def run():\n    return None\n', go: 'package kaelcore\n' };
+  const action = { rust: 'dtolnay/rust-toolchain@stable', python: 'actions/setup-python@v5', go: 'actions/setup-go@v5' };
+  const manifests = Object.entries(actualPolicy.manifests).filter(([, language]) => actualPolicy.kaelBackend.priority.includes(language));
+  for (const [manifest, language] of manifests) {
+    test(`reject ${manifest} without matching ${language} source for its setup action`, () => {
+      fixture(({ repository, write, run }) => {
+        write('.github/workflows/kael.yml', `name: kael\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: ${action[language]}\n`);
+        write(`services/kael-core/${manifest}`, 'fixture manifest\n');
+        run(['add', '--all']);
+        assert.throws(() => checkLanguages(repository), /requires matching Kael backend source/);
+      });
+    });
+  }
+  for (const [setup, language] of Object.entries(actualPolicy.setupActions).filter(([, language]) => actualPolicy.kaelBackend.priority.includes(language))) {
+    test(`accept ${setup} only with matching ${language} Kael backend source`, () => {
+      fixture(({ repository, write, run }) => {
+        write('.github/workflows/kael.yml', `name: kael\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: ${setup}@v1\n`);
+        write(source[language], code[language]);
+        run(['add', '--all']);
+        const [indexed, working] = checkLanguages(repository);
+        assert.equal(working, indexed);
+      });
+    });
+  }
 });
 
 test('a justified, architecture-approved exception permits a conditional language only where granted', () => {

@@ -152,8 +152,10 @@ paths and `npm run check:languages` enforces them against the index and working 
 | Optional Git hooks | `.githooks/` | POSIX shell | Existing-first |
 
 - A language manifest or source language outside its owned module fails the check.
-  Kael Rust/Python/Go setup actions are admitted only when matching Kael backend
-  source is present; other runtime setup actions fail unless specifically approved.
+  Kael backend roots cannot have nested module owners that shadow or expand their
+  Rust/Python/Go boundary. Setup actions require matching extension- or shebang-
+  detected Kael source under an approved backend root; manifests alone do not count.
+  Other runtime setup actions fail unless specifically approved.
   A conditional or new language needs an `exceptions` entry with a technical
   justification and architecture approval reference; this cannot grant a Kael
   backend TypeScript or JavaScript exception. Agents never grant their own exception.

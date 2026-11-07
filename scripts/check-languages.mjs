@@ -107,6 +107,9 @@ export function parsePolicy(content, label) {
     if (!owner || owner.languages.join() !== kaelBackendPriority.join()) {
       fail(label, `Kael backend module ${backendPath} must allow languages in priority order`);
     }
+    if (policy.modules.some(module => module.path !== backendPath && module.path.startsWith(backendPath))) {
+      fail(label, `Kael backend modules cannot be nested beneath ${backendPath}`);
+    }
   }
 
   if (!Array.isArray(policy.kaelBackend.legacyTypeScript)) fail(label, 'kaelBackend legacyTypeScript must be a list');
@@ -175,18 +178,18 @@ function workflowLanguages(content, policy, label) {
   return found;
 }
 
-function sourceLanguages(file, content, policy) {
-  const found = new Set();
+function fileLanguages(file, content, policy) {
+  const found = [];
   const base = path.posix.basename(file);
-  if (Object.hasOwn(policy.manifests, base)) found.add(policy.manifests[base]);
+  if (Object.hasOwn(policy.manifests, base)) found.push({ file, language: policy.manifests[base], kind: 'manifest' });
   const extension = path.posix.extname(base).toLowerCase();
-  if (policy.extensions.has(extension)) found.add(policy.extensions.get(extension));
+  if (policy.extensions.has(extension)) found.push({ file, language: policy.extensions.get(extension), kind: 'source' });
   else if (!extension) {
     const interpreted = shebangLanguage(content, policy);
-    if (interpreted) found.add(interpreted);
+    if (interpreted) found.push({ file, language: interpreted, kind: 'source' });
   }
   if (/^\.github\/workflows\/[^/]+\.ya?ml$/.test(file)) {
-    for (const language of workflowLanguages(content, policy, file)) found.add(language);
+    for (const language of workflowLanguages(content, policy, file)) found.push({ file, language, kind: 'workflow' });
   }
   return found;
 }
@@ -198,17 +201,24 @@ function checkSnapshot(files, state) {
   const policy = parsePolicy(policyFile.content, label);
   const detections = [];
   for (const { file, content } of files) {
-    for (const language of sourceLanguages(file, content, policy)) detections.push({ file, language });
+    detections.push(...fileLanguages(file, content, policy));
   }
-  for (const { file, language } of detections) {
-    const owner = policy.modules.find(module => file.startsWith(module.path));
+  for (const { file, language, kind } of detections) {
     const isKaelBackend = policy.kaelBackend.paths.some(backendPath => file.startsWith(backendPath));
-    if (isKaelBackend && language === 'typescript' && policy.kaelBackend.legacyTypeScript.has(file)) continue;
-    const workflowRuntime = /^\.github\/workflows\/[^/]+\.ya?ml$/.test(file)
-      && policy.kaelBackend.priority.includes(language)
-      && detections.some(item => item.language === language
-        && policy.kaelBackend.paths.some(backendPath => item.file.startsWith(backendPath)));
-    if (workflowRuntime) continue;
+    if (kind === 'workflow') {
+      if (policy.kaelBackend.priority.includes(language)) {
+        const matchingSource = detections.some(item => item.kind === 'source' && item.language === language
+          && policy.kaelBackend.paths.some(backendPath => item.file.startsWith(backendPath)));
+        if (matchingSource) continue;
+        fail(`${state} ${file}`, `workflow setup action for ${language} requires matching Kael backend source code`);
+      }
+    }
+    if (isKaelBackend) {
+      if (kind === 'source' && language === 'typescript' && policy.kaelBackend.legacyTypeScript.has(file)) continue;
+      if (policy.kaelBackend.priority.includes(language)) continue;
+      fail(`${state} ${file}`, `${language} is not approved for Kael Backend; only Rust, Python and Go source or manifests are permitted, with exact legacy TypeScript paths`);
+    }
+    const owner = policy.modules.find(module => file.startsWith(module.path));
     if (owner?.languages.includes(language) || policy.exceptions.some(exception => exception.language === language && covers(exception, file))) continue;
     fail(`${state} ${file}`, `${language} is not approved for ${owner ? owner.domain : 'an unowned path'}; a new language needs a justified, architecture-approved exception in ${policyPath}`);
   }

@@ -28,6 +28,15 @@ const fixedPaths = new Set([
 const word = '[a-z0-9]+(?:-[a-z0-9]+)*';
 const segments = `(?:${word}/)*`;
 const mobileSource = `apps/mobile/src/${segments}`;
+const kaelBackendPaths = ['services/kael-core/', 'supabase/functions/kael/'];
+const kaelBackendManifests = new Set([
+  'Cargo.toml', 'Cargo.lock', 'rust-toolchain', 'rust-toolchain.toml',
+  'requirements.txt', 'pyproject.toml', 'Pipfile', 'poetry.lock', 'uv.lock', '.python-version',
+  'go.mod', 'go.sum',
+]);
+const kaelSourceWord = '[a-z0-9]+(?:_[a-z0-9]+)*';
+const kaelSourceSegments = `(?:${kaelSourceWord}/)*`;
+const kaelSourceName = `(?:${kaelSourceWord}|__init__|__main__)`;
 const disposable = /^(?:todo|notes|plan|report|handoff|session-summary|debug|scratch)(?:[-.]|$)/i;
 const approvedLogo = Object.freeze({
   path: 'docs/assets/nestscout-horizon-logo-light.png',
@@ -58,6 +67,12 @@ export function checkPath(file, artifacts = []) {
   if (file.startsWith('docs/processes/')) throw new Error(`docs/processes must contain only an empty .gitkeep: ${JSON.stringify(file)}`);
   const name = path.posix.basename(file);
   if (disposable.test(name)) throw new Error(`Disposable document/source name: ${JSON.stringify(file)}`);
+  const kaelRoot = kaelBackendPaths.find(backendPath => file.startsWith(backendPath));
+  if (kaelRoot) {
+    const relative = file.slice(kaelRoot.length);
+    if (kaelBackendManifests.has(name)
+      || new RegExp(`^${kaelSourceSegments}${kaelSourceName}\\.(?:rs|py|pyi|pyw|go)$`).test(relative)) return;
+  }
   if (new RegExp(`^scripts/${segments}${word}(?:(?:\\.integration)?\\.(?:test|spec))?\\.mjs$`).test(file)
     || new RegExp(`^scripts/${segments}${word}\\.json$`).test(file)
     || new RegExp(`^docs/${segments}${word}(?:\\.${word})*\\.md$`).test(file)
@@ -232,6 +247,190 @@ function sqlComments(file, text, from = 0, stop = text.length) {
   return found;
 }
 
+function rustCharacterEnd(text, index) {
+  let cursor = index + 1;
+  if (cursor >= text.length || /[\r\n]/.test(text[cursor])) return null;
+  if (text[cursor] === '\\') {
+    cursor++;
+    if (text[cursor] === 'u' && text[cursor + 1] === '{') {
+      const end = text.indexOf('}', cursor + 2);
+      if (end < 0) return null;
+      cursor = end + 1;
+    } else if (text[cursor] === 'x') cursor += 3;
+    else cursor++;
+  } else {
+    const point = text.codePointAt(cursor);
+    cursor += point > 0xffff ? 2 : 1;
+  }
+  return text[cursor] === "'" ? cursor + 1 : null;
+}
+
+function rustRawStringEnd(text, index) {
+  let cursor = index;
+  if (text.startsWith('br', cursor) || text.startsWith('cr', cursor)) cursor += 2;
+  else if (text[cursor] === 'r') cursor++;
+  else return null;
+  const hashStart = cursor;
+  while (text[cursor] === '#') cursor++;
+  if (text[cursor] !== '"') return null;
+  const closing = `"${'#'.repeat(cursor - hashStart)}`;
+  const end = text.indexOf(closing, cursor + 1);
+  if (end < 0) throw new Error('Invalid Rust syntax: unterminated raw string.');
+  return end + closing.length;
+}
+
+function delimitedEnd(text, index, quote, { backslash = false, line = false } = {}) {
+  for (let cursor = index + 1; cursor < text.length; cursor++) {
+    const char = text[cursor];
+    if (line && /[\r\n]/.test(char)) return null;
+    if (backslash && char === '\\') cursor++;
+    else if (char === quote) return cursor + 1;
+  }
+  return null;
+}
+
+function rustComments(_file, text) {
+  const found = [];
+  for (let index = 0; index < text.length;) {
+    if (text.startsWith('//', index)) {
+      const end = lineEnd(text, index);
+      found.push(span(text, index, end));
+      index = end;
+    } else if (text.startsWith('/*', index)) {
+      let depth = 1;
+      let end = index + 2;
+      while (end < text.length && depth) {
+        if (text.startsWith('/*', end)) {
+          depth++;
+          end += 2;
+        } else if (text.startsWith('*/', end)) {
+          depth--;
+          end += 2;
+        } else end++;
+      }
+      if (depth) throw new Error('Invalid Rust syntax: unterminated block comment.');
+      found.push(span(text, index, end));
+      index = end;
+    } else {
+      const rawEnd = rustRawStringEnd(text, index);
+      if (rawEnd !== null) index = rawEnd;
+      else if (text[index] === '"') {
+        const end = delimitedEnd(text, index, '"', { backslash: true });
+        if (end === null) throw new Error('Invalid Rust syntax: unterminated string.');
+        index = end;
+      } else if (text[index] === "'") index = rustCharacterEnd(text, index) ?? index + 1;
+      else index++;
+    }
+  }
+  return found;
+}
+
+function goComments(_file, text) {
+  const found = [];
+  for (let index = 0; index < text.length;) {
+    if (text.startsWith('//', index)) {
+      const end = lineEnd(text, index);
+      found.push(span(text, index, end));
+      index = end;
+    } else if (text.startsWith('/*', index)) {
+      const close = text.indexOf('*/', index + 2);
+      if (close < 0) throw new Error('Invalid Go syntax: unterminated block comment.');
+      const end = close + 2;
+      found.push(span(text, index, end));
+      index = end;
+    } else if (text[index] === '`') {
+      const end = text.indexOf('`', index + 1);
+      if (end < 0) throw new Error('Invalid Go syntax: unterminated raw string.');
+      index = end + 1;
+    } else if (text[index] === '"' || text[index] === "'") {
+      const end = delimitedEnd(text, index, text[index], { backslash: true, line: true });
+      if (end === null) throw new Error('Invalid Go syntax: unterminated interpreted string or rune.');
+      index = end;
+    } else index++;
+  }
+  return found;
+}
+
+function pythonStringToken(text, index) {
+  if (index > 0 && /[A-Za-z0-9_]/.test(text[index - 1])) return null;
+  const quote = char => char === '"' || char === "'";
+  if (quote(text[index])) return { prefix: '', quoteStart: index };
+  const pair = text.slice(index, index + 2).toLowerCase();
+  if (['fr', 'rf', 'br', 'rb'].includes(pair) && quote(text[index + 2])) return { prefix: pair, quoteStart: index + 2 };
+  if ('rfbu'.includes(text[index].toLowerCase()) && quote(text[index + 1])) {
+    return { prefix: text[index].toLowerCase(), quoteStart: index + 1 };
+  }
+  return null;
+}
+
+function pythonFormatSpec(text, index, found) {
+  for (let cursor = index; cursor < text.length;) {
+    if (text.startsWith('{{', cursor)) cursor += 2;
+    else if (text[cursor] === '{') cursor = pythonFExpression(text, cursor + 1, found);
+    else if (text[cursor] === '}') return cursor + 1;
+    else cursor++;
+  }
+  throw new Error('Invalid Python syntax: unterminated formatted string field.');
+}
+
+function pythonFExpression(text, index, found) {
+  const closing = [];
+  for (let cursor = index; cursor < text.length;) {
+    const token = pythonStringToken(text, cursor);
+    if (token) cursor = pythonStringEnd(text, token, found);
+    else if (text[cursor] === '#') {
+      const end = lineEnd(text, cursor);
+      found.push(span(text, cursor, end));
+      cursor = end;
+    } else if ('([{'.includes(text[cursor])) {
+      closing.push({ '(': ')', '[': ']', '{': '}' }[text[cursor]]);
+      cursor++;
+    } else if (')]}'.includes(text[cursor])) {
+      if (text[cursor] === '}' && closing.length === 0) return cursor + 1;
+      if (closing.pop() !== text[cursor]) throw new Error('Invalid Python syntax: unmatched formatted string delimiter.');
+      cursor++;
+    } else if (text[cursor] === ':' && text[cursor + 1] !== '=' && closing.length === 0) {
+      return pythonFormatSpec(text, cursor + 1, found);
+    } else cursor++;
+  }
+  throw new Error('Invalid Python syntax: unterminated formatted string field.');
+}
+
+function pythonStringEnd(text, token, found) {
+  const quote = text[token.quoteStart];
+  const triple = text.startsWith(quote.repeat(3), token.quoteStart);
+  const delimiter = quote.repeat(triple ? 3 : 1);
+  const formatted = token.prefix.includes('f');
+  for (let cursor = token.quoteStart + delimiter.length; cursor < text.length;) {
+    if (text.startsWith(delimiter, cursor)) return cursor + delimiter.length;
+    if (text[cursor] === '\\') {
+      if (cursor + 1 >= text.length) break;
+      cursor += text[cursor + 1] === '\r' && text[cursor + 2] === '\n' ? 3 : 2;
+    } else if (!triple && /[\r\n]/.test(text[cursor])) {
+      throw new Error('Invalid Python syntax: newline in single-quoted string.');
+    } else if (formatted && text.startsWith('{{', cursor)) cursor += 2;
+    else if (formatted && text[cursor] === '{') cursor = pythonFExpression(text, cursor + 1, found);
+    else if (formatted && text.startsWith('}}', cursor)) cursor += 2;
+    else if (formatted && text[cursor] === '}') throw new Error('Invalid Python syntax: unmatched formatted string brace.');
+    else cursor++;
+  }
+  throw new Error('Invalid Python syntax: unterminated string.');
+}
+
+function pythonComments(_file, text) {
+  const found = [];
+  for (let index = 0; index < text.length;) {
+    const token = pythonStringToken(text, index);
+    if (token) index = pythonStringEnd(text, token, found);
+    else if (text[index] === '#') {
+      const end = lineEnd(text, index);
+      found.push(span(text, index, end));
+      index = end;
+    } else index++;
+  }
+  return found;
+}
+
 function tomlComments(_file, text) {
   const found = [];
   for (let index = 0; index < text.length;) {
@@ -311,6 +510,7 @@ function yamlComments(_file, text) {
 
 const commentGrammars = [
   [/\.(?:[cm]?ts|tsx)$/, typeScriptComments], [/\.[cm]?js$/, javaScriptComments], [/\.sql$/, sqlComments],
+  [/\.rs$/, rustComments], [/\.(?:py|pyi|pyw)$/, pythonComments], [/\.go$/, goComments],
   [/\.toml$/, tomlComments], [/\.ya?ml$/, yamlComments], [/\.jsonc$/, jsoncComments], [/^\.githooks\//, shellComments],
   [/(?:^|\/)\.(?:gitignore|gitattributes)$/, lineComments('#')], [/(?:^|\/)\.editorconfig$/, lineComments('#;')],
   [/(?:^|\/)\.env\.example$/, shellComments],

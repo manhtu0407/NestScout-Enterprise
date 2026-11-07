@@ -56,6 +56,8 @@ in the existing module. Do not add a source file merely to split a short functio
 | Tool data | `scripts/<kebab-name>.json` in lowercase kebab directories |
 | Technical documentation | `docs/<kebab-name>.md`; dotted technical names such as `claude.architecture.md` remain valid |
 | Mobile application | `apps/mobile/{package,app,tsconfig}.json`, `eslint.config.mjs`, `.env.example`; `apps/mobile/src/**/<kebab-name>[.test].ts[x]`; routes `apps/mobile/src/app/**/<kebab-name>.tsx`, `_layout.tsx` and `(group)` directories only under `src/app` |
+| Kael backend sources | Rust, Python and Go source files use lowercase snake_case names under `services/kael-core/` or `supabase/functions/kael/`; Rust crate roots may use `lib.rs`, `main.rs` or `mod.rs`, Python packages may use `__init__.py`, and Go tests may use `_test.go` |
+| Kael backend manifests | Cargo, Rust toolchain, Python and Go manifests are accepted by exact basename only under `services/kael-core/` or `supabase/functions/kael/` |
 | Mobile visual assets | `apps/mobile/assets/feature/semantic-purpose.ext` (PNG, JPEG, WebP or JSON); lowercase kebab-case, no standalone numeric or temporary/revision labels |
 | Empty process folder | `docs/processes/.gitkeep`, exactly 0 bytes; nothing else may live in `docs/processes/` |
 | Workflows and Issue Forms | `.github/workflows/<kebab-name>.yml`, `.github/ISSUE_TEMPLATE/<kebab-name>.yml` |
@@ -127,10 +129,13 @@ parsed with Acorn so test strings and regular expressions are not treated as com
 TypeScript (`.ts`, `.mts`, `.cts`, declarations and `.tsx`) uses the pinned compiler's
 native syntax tree to exclude literal/JSX text spans, then its scanner to collect
 inline and multiline comments, including comments inside type-only declarations.
-This does not expand the approved repository filename categories. SQL, YAML, TOML,
-JSONC and the `.githooks/` shell scripts use lexical comment scanners that skip quoted
-text, dollar-quoted delimiters, block scalars and URL fragments (YAML uses the `yaml`
-parser's syntax tree). JSON files receive line-leading checks; Markdown
+Rust, Python and Go use token-aware lexical scanners that skip their escaped, raw,
+triple-quoted and character literal forms and recognize their line and block comment
+syntax, including nested Rust block comments and Python comments inside formatted
+string expressions. Unterminated literals and block comments fail closed. SQL, YAML,
+TOML, JSONC and the `.githooks/` shell scripts use lexical comment scanners that skip
+quoted text, dollar-quoted delimiters, block scalars and URL fragments (YAML uses the
+`yaml` parser's syntax tree). JSON files receive line-leading checks; Markdown
 and legal/contributor records receive signature-line checks. Known AI trailers,
 promotional signatures, explicit role signatures and AI self-introductions fail.
 The checkers never rewrite files. Reviewers must still assess

@@ -65,6 +65,49 @@ test('strings, URLs, templates, regular expressions and JSX text are not comment
   assert.throws(() => commentRecords('input.ts', 'type Value = { broken: ; };'), /Invalid TypeScript/);
 });
 
+test('Rust, Python and Go comment extraction follows language string and comment syntax', () => {
+  const rust = [
+    "fn parse(input: &'static str) {",
+    '    let ordinary = "// string /* text */";',
+    '    let raw = r###"// raw /* text */"###;',
+    '    let bytes = br#"/* bytes // text */"#;',
+    '    let c_raw = cr#"// raw C string /* text */"#;',
+    "    let slash = '/';",
+    '    let _ = (input, ordinary, raw, bytes, c_raw, slash);',
+    '}',
+  ].join('\n');
+  assert.deepEqual(texts('engine.rs', rust), []);
+  assert.deepEqual(texts('engine.rs', '// line\n/* outer /* nested */ remains */\n/// doc\n//! inner doc\n'), [
+    '// line', '/* outer /* nested */ remains */', '/// doc', '//! inner doc',
+  ]);
+  assert.throws(() => commentRecords('engine.rs', 'let text = r###"unterminated // text\n'), /Invalid Rust syntax/);
+
+  const python = [
+    'url = "https://example.invalid/a//b"',
+    'raw = r"# not //"',
+    'triple = """# not',
+    '// not"""',
+    'formatted = f"{url!r} # literal {2:#x}"',
+    "quote = '# not'",
+  ].join('\n');
+  assert.deepEqual(texts('engine.py', python), []);
+  assert.deepEqual(texts('engine.py', 'value = "text"\nformatted = f"{value # field comment\n}"\n# module comment\n'), [
+    '# field comment', '# module comment',
+  ]);
+  assert.throws(() => commentRecords('engine.py', 'value = "unterminated # text\n'), /Invalid Python syntax/);
+
+  const go = [
+    'package kael',
+    'const raw = `// raw',
+    '/* raw */`',
+    'const quoted = "https://example.invalid/a//b"',
+    "const slash = '/'",
+  ].join('\n');
+  assert.deepEqual(texts('engine.go', go), []);
+  assert.deepEqual(texts('engine.go', 'package kael // inline\n/* block */\n'), ['// inline', '/* block */']);
+  assert.throws(() => commentRecords('engine.go', 'package kael\nconst raw = `unterminated // text\n'), /Invalid Go syntax/);
+});
+
 test('SQL comments are found around quoted text, nested blocks, escape strings and dollar quotes', () => {
   const cases = [
     ["SELECT '-- not', \"a--b\", 'it''s /* not */';\n", []],
@@ -127,7 +170,7 @@ test('only files with a comment grammar are inspected; JSON keeps its line-leadi
     assert.equal(commentRecords(file, '// text\n'), null, file);
     assert.equal(hasCommentGrammar(file), false, file);
   }
-  for (const file of ['a.mjs', 'a.cjs', 'a.ts', 'a.d.ts', 'a.tsx', 'a.sql', 'a.toml', 'a.yml', 'a.yaml', 'a.jsonc', '.githooks/pre-push']) {
+  for (const file of ['a.mjs', 'a.cjs', 'a.ts', 'a.d.ts', 'a.tsx', 'a.rs', 'a.py', 'a.go', 'a.sql', 'a.toml', 'a.yml', 'a.yaml', 'a.jsonc', '.githooks/pre-push']) {
     assert.equal(hasCommentGrammar(file), true, file);
   }
   assert.equal(sourceComments('package.json', '{\n// x\n}\n'), '// x');
@@ -214,6 +257,9 @@ const formats = [
   ['src/example.ts', 'export const value: number = 1;\n', '// TODO: later\nexport const value: number = 1;\n', 'annotation'],
   ['src/example.tsx', 'export const View = () => <a href="//x">text</a>;\n', 'export const View = () => <a href="//x">text</a>; // @ts-ignore\n', 'suppression'],
   ['src/types.d.ts', 'declare const x: string;\n', 'declare const x: string; // note\n', 'inline'],
+  ['services/kael-core/src/agent.rs', 'fn main() { let value = r#"// kept"#; let _ = value; }\n', 'fn main() {} // note\n', 'inline'],
+  ['services/kael-core/src/agent.py', 'value = "# kept"\n', 'value = "# kept" # note\n', 'inline'],
+  ['supabase/functions/kael/agent.go', 'package kael\n', 'package kael // note\n', 'inline'],
   ['db/query.sql', 'select 1;\n', 'select 1; -- note\n', 'inline'],
   ['db/query.sql', 'select 1;\n', '/* note */ select 1;\n', 'block'],
   ['config/settings.toml', 'key = "# kept"\n', 'key = "# kept" # note\n', 'inline'],
