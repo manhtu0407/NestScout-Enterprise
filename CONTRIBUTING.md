@@ -56,6 +56,8 @@ in the existing module. Do not add a source file merely to split a short functio
 | Tool data | `scripts/<kebab-name>.json` in lowercase kebab directories |
 | Technical documentation | `docs/<kebab-name>.md`; dotted technical names such as `claude.architecture.md` remain valid |
 | Mobile application | `apps/mobile/{package,app,tsconfig}.json`, `eslint.config.mjs`, `.env.example`; `apps/mobile/src/**/<kebab-name>[.test].ts[x]`; routes `apps/mobile/src/app/**/<kebab-name>.tsx`, `_layout.tsx` and `(group)` directories only under `src/app` |
+| Kael backend sources | Rust, Python and Go source files use lowercase snake_case names under `services/kael-core/` or `supabase/functions/kael/`; Rust crate roots may use `lib.rs`, `main.rs` or `mod.rs`, Python packages may use `__init__.py`, and Go tests may use `_test.go` |
+| Kael backend manifests | Cargo, Rust toolchain, Python and Go manifests are accepted by exact basename only under `services/kael-core/` or `supabase/functions/kael/` |
 | Mobile visual assets | `apps/mobile/assets/feature/semantic-purpose.ext` (PNG, JPEG, WebP or JSON); lowercase kebab-case, no standalone numeric or temporary/revision labels |
 | Empty process folder | `docs/processes/.gitkeep`, exactly 0 bytes; nothing else may live in `docs/processes/` |
 | Workflows and Issue Forms | `.github/workflows/<kebab-name>.yml`, `.github/ISSUE_TEMPLATE/<kebab-name>.yml` |
@@ -127,10 +129,17 @@ parsed with Acorn so test strings and regular expressions are not treated as com
 TypeScript (`.ts`, `.mts`, `.cts`, declarations and `.tsx`) uses the pinned compiler's
 native syntax tree to exclude literal/JSX text spans, then its scanner to collect
 inline and multiline comments, including comments inside type-only declarations.
-This does not expand the approved repository filename categories. SQL, YAML, TOML,
-JSONC and the `.githooks/` shell scripts use lexical comment scanners that skip quoted
-text, dollar-quoted delimiters, block scalars and URL fragments (YAML uses the `yaml`
-parser's syntax tree). JSON files receive line-leading checks; Markdown
+Rust, Python and Go use token-aware lexical scanners that skip their escaped, raw,
+triple-quoted and character literal forms and recognize their line and block comment
+syntax, including nested Rust block comments and Python comments inside formatted
+f-string and template-string replacement expressions. Unterminated literals and block
+comments fail closed. SQL, YAML,
+TOML and the admitted Cargo, Rust toolchain, Python and Go manifests use syntax-aware
+comment scanners; Python requirements files use pip's whitespace-delimited comment
+rules. JSONC and
+the `.githooks/` shell scripts use lexical comment scanners that skip quoted text,
+dollar-quoted delimiters, block scalars and URL fragments (YAML uses the `yaml` parser's
+syntax tree). JSON files receive line-leading checks; Markdown
 and legal/contributor records receive signature-line checks. Known AI trailers,
 promotional signatures, explicit role signatures and AI self-introductions fail.
 The checkers never rewrite files. Reviewers must still assess
@@ -179,9 +188,10 @@ The generated `supabase/database.types.ts` is skipped.
 
 Only these pass automatically:
 
-- Technically mandatory directives: a leading shebang line (the three `.githooks/`
-  scripts need it to run), TypeScript triple-slash `reference` and `amd-*` directives
-  before any code, JSX pragmas (`@jsx`, `@jsxFrag`, `@jsxImportSource`, `@jsxRuntime`),
+- Technically mandatory directives: a leading shebang line (including for executable
+  Python tools; the three `.githooks/` scripts need it to run), TypeScript triple-slash
+  `reference` and `amd-*` directives before any code, JSX pragmas (`@jsx`, `@jsxFrag`,
+  `@jsxImportSource`, `@jsxRuntime`),
   and the version tag (for example `# v7` or `# v7.1.2`) that Dependabot maintains
   after a full-SHA `uses:` pin in workflow YAML. `.github/dependabot.yml` enables the
   `github-actions` ecosystem, which reads that tag.
@@ -202,11 +212,12 @@ same change as its naming rule. It also needs a justified, architecture-approved
 `scripts/language-policy.json`; `npm run check:languages` rejects unlisted source languages,
 language manifests and runtime setup actions, and exceptions that nothing uses.
 
-The gate inspects JavaScript, TypeScript, SQL, YAML (including shell inside `run:` block
-scalars), TOML, JSONC, the `.githooks/` scripts, and the line-comment forms of
-`.gitignore`, `.gitattributes`, `.editorconfig` and `.env.example`. Markdown and JSON
-data are not source files for it, and embedded languages other than workflow `run:`
-shell (for example a `github-script` body) are not parsed. It cannot recognize
+The gate inspects JavaScript, TypeScript, Rust, Python and Go sources; SQL; YAML
+(including shell inside `run:` block scalars); TOML and the exact admitted Kael backend
+manifests; JSONC; the `.githooks/` scripts; and the line-comment forms of `.gitignore`,
+`.gitattributes`, `.editorconfig` and `.env.example`. Markdown and JSON data are not
+source files for it, and embedded languages other than workflow `run:` shell (for
+example a `github-script` body) are not parsed. It cannot recognize
 narrative that is moved into strings, identifiers or documentation, so human review of
 usefulness and provenance still applies.
 

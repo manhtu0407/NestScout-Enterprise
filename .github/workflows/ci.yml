@@ -43,6 +43,8 @@ jobs:
           NODE
       - name: Install locked repository tooling
         run: npm ci --ignore-scripts
+      - name: Enforce language ownership
+        run: npm run check:languages
       - name: Install checksum-verified tools
         run: npm run tools:install
       - name: Check the zero-comment source policy on the delivered state

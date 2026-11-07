@@ -6,8 +6,10 @@ import { root } from './tool-path.mjs';
 
 export const policyPath = 'scripts/language-policy.json';
 
-const topLevelKeys = ['version', 'conditionalLanguages', 'languages', 'interpreters', 'manifests', 'setupActions', 'modules', 'exceptions'];
+const topLevelKeys = ['version', 'conditionalLanguages', 'languages', 'interpreters', 'manifests', 'setupActions', 'modules', 'exceptions', 'kaelBackend'];
 const modulePattern = /^(?:\.?[a-z0-9][a-z0-9-]*\/)+$/;
+const kaelBackendPaths = ['services/kael-core/', 'supabase/functions/kael/'];
+const kaelBackendPriority = ['rust', 'python', 'go'];
 
 function fail(label, message) {
   throw new Error(`${label}: ${message}`);
@@ -31,10 +33,18 @@ function text(value, minimum, label) {
 
 function safeScope(value, label) {
   const parts = typeof value === 'string' ? value.split('/') : [];
-  if (!/^[A-Za-z0-9._/-]+$/.test(value ?? '') || value.startsWith('/')
+  if (typeof value !== 'string' || !/^[A-Za-z0-9._/-]+$/.test(value) || value.startsWith('/')
     || parts.some((part, index) => part === '.' || part === '..' || (!part && index !== parts.length - 1))) {
     fail(label, 'expected a safe repository-relative file or directory path');
   }
+}
+
+const covers = (exception, file) => (exception.path.endsWith('/') ? file.startsWith(exception.path) : file === exception.path);
+
+function overlapsScope(exception, scope) {
+  return exception.path.startsWith(scope)
+    || exception.path === scope.slice(0, -1)
+    || (exception.path.endsWith('/') && scope.startsWith(exception.path));
 }
 
 export function parsePolicy(content, label) {
@@ -45,7 +55,7 @@ export function parsePolicy(content, label) {
     fail(label, 'invalid JSON');
   }
   exactKeys(policy, topLevelKeys, label);
-  if (policy.version !== 1) fail(label, 'unsupported policy version');
+  if (policy.version !== 2) fail(label, 'unsupported policy version');
 
   if (!isRecord(policy.languages) || !Object.keys(policy.languages).length) fail(label, 'languages must be a nonempty mapping');
   const extensions = new Map();
@@ -83,6 +93,37 @@ export function parsePolicy(content, label) {
     }
   }
 
+  exactKeys(policy.kaelBackend, ['paths', 'priority', 'legacyTypeScript'], `${label} kaelBackend`);
+  if (!Array.isArray(policy.kaelBackend.paths)
+    || policy.kaelBackend.paths.join() !== kaelBackendPaths.join()) {
+    fail(label, `kaelBackend paths must remain ${kaelBackendPaths.join(', ')}`);
+  }
+  if (!Array.isArray(policy.kaelBackend.priority)
+    || policy.kaelBackend.priority.join() !== kaelBackendPriority.join()) {
+    fail(label, `Kael backend language priority must remain ${kaelBackendPriority.join(' -> ')}`);
+  }
+  for (const backendPath of kaelBackendPaths) {
+    const owner = policy.modules.find(module => module.path === backendPath);
+    if (!owner || owner.languages.join() !== kaelBackendPriority.join()) {
+      fail(label, `Kael backend module ${backendPath} must allow languages in priority order`);
+    }
+    if (policy.modules.some(module => module.path !== backendPath && module.path.startsWith(backendPath))) {
+      fail(label, `Kael backend modules cannot be nested beneath ${backendPath}`);
+    }
+  }
+
+  if (!Array.isArray(policy.kaelBackend.legacyTypeScript)) fail(label, 'kaelBackend legacyTypeScript must be a list');
+  const legacyTypeScript = new Set();
+  for (const file of policy.kaelBackend.legacyTypeScript) {
+    safeScope(file, `${label} legacy TypeScript`);
+    if (file.endsWith('/') || !kaelBackendPaths.some(backendPath => file.startsWith(backendPath))
+      || extensions.get(path.posix.extname(file).toLowerCase()) !== 'typescript') {
+      fail(label, `legacy TypeScript path is outside the Kael backend or is not TypeScript: ${JSON.stringify(file)}`);
+    }
+    if (legacyTypeScript.has(file)) fail(label, `duplicated legacy TypeScript path ${file}`);
+    legacyTypeScript.add(file);
+  }
+
   if (!Array.isArray(policy.exceptions)) fail(label, 'exceptions must be a list');
   const granted = new Set();
   for (const exception of policy.exceptions) {
@@ -93,6 +134,9 @@ export function parsePolicy(content, label) {
     text(exception.approval, 20, `${label} exception ${exception.path} approval`);
     const identity = `${exception.language}:${exception.path}`;
     if (granted.has(identity)) fail(label, `duplicated exception ${identity}`);
+    if (kaelBackendPaths.some(backendPath => overlapsScope(exception, backendPath))) {
+      fail(label, `language exceptions cannot expand the Kael backend legacy or implementation boundary: ${exception.path}`);
+    }
     granted.add(identity);
   }
 
@@ -103,6 +147,7 @@ export function parsePolicy(content, label) {
     setupActions: Object.entries(policy.setupActions),
     modules: [...policy.modules].sort((a, b) => b.path.length - a.path.length),
     exceptions: policy.exceptions,
+    kaelBackend: { paths: kaelBackendPaths, priority: kaelBackendPriority, legacyTypeScript },
   };
 }
 
@@ -133,23 +178,21 @@ function workflowLanguages(content, policy, label) {
   return found;
 }
 
-function sourceLanguages(file, content, policy) {
-  const found = new Set();
+function fileLanguages(file, content, policy) {
+  const found = [];
   const base = path.posix.basename(file);
-  if (Object.hasOwn(policy.manifests, base)) found.add(policy.manifests[base]);
+  if (Object.hasOwn(policy.manifests, base)) found.push({ file, language: policy.manifests[base], kind: 'manifest' });
   const extension = path.posix.extname(base).toLowerCase();
-  if (policy.extensions.has(extension)) found.add(policy.extensions.get(extension));
+  if (policy.extensions.has(extension)) found.push({ file, language: policy.extensions.get(extension), kind: 'source' });
   else if (!extension) {
     const interpreted = shebangLanguage(content, policy);
-    if (interpreted) found.add(interpreted);
+    if (interpreted) found.push({ file, language: interpreted, kind: 'source' });
   }
   if (/^\.github\/workflows\/[^/]+\.ya?ml$/.test(file)) {
-    for (const language of workflowLanguages(content, policy, file)) found.add(language);
+    for (const language of workflowLanguages(content, policy, file)) found.push({ file, language, kind: 'workflow' });
   }
   return found;
 }
-
-const covers = (exception, file) => (exception.path.endsWith('/') ? file.startsWith(exception.path) : file === exception.path);
 
 function checkSnapshot(files, state) {
   const label = `${state} ${policyPath}`;
@@ -158,12 +201,31 @@ function checkSnapshot(files, state) {
   const policy = parsePolicy(policyFile.content, label);
   const detections = [];
   for (const { file, content } of files) {
-    for (const language of sourceLanguages(file, content, policy)) detections.push({ file, language });
+    detections.push(...fileLanguages(file, content, policy));
   }
-  for (const { file, language } of detections) {
+  for (const { file, language, kind } of detections) {
+    const isKaelBackend = policy.kaelBackend.paths.some(backendPath => file.startsWith(backendPath));
+    if (kind === 'workflow') {
+      if (policy.kaelBackend.priority.includes(language)) {
+        const matchingSource = detections.some(item => item.kind === 'source' && item.language === language
+          && policy.kaelBackend.paths.some(backendPath => item.file.startsWith(backendPath)));
+        if (matchingSource) continue;
+        fail(`${state} ${file}`, `workflow setup action for ${language} requires matching Kael backend source code`);
+      }
+    }
+    if (isKaelBackend) {
+      if (kind === 'source' && language === 'typescript' && policy.kaelBackend.legacyTypeScript.has(file)) continue;
+      if (policy.kaelBackend.priority.includes(language)) continue;
+      fail(`${state} ${file}`, `${language} is not approved for Kael Backend; only Rust, Python and Go source or manifests are permitted, with exact legacy TypeScript paths`);
+    }
     const owner = policy.modules.find(module => file.startsWith(module.path));
     if (owner?.languages.includes(language) || policy.exceptions.some(exception => exception.language === language && covers(exception, file))) continue;
     fail(`${state} ${file}`, `${language} is not approved for ${owner ? owner.domain : 'an unowned path'}; a new language needs a justified, architecture-approved exception in ${policyPath}`);
+  }
+  for (const file of policy.kaelBackend.legacyTypeScript) {
+    if (!detections.some(item => item.file === file && item.language === 'typescript')) {
+      fail(label, `legacy TypeScript entry is missing from ${state}: ${file}`);
+    }
   }
   for (const exception of policy.exceptions) {
     if (!detections.some(({ file, language }) => language === exception.language && covers(exception, file))) {

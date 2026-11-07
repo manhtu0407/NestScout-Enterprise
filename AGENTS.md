@@ -125,26 +125,40 @@ conditional requirements, not claims that such modules exist.
 
 ### Language ownership
 
-TypeScript is the primary application language and the default for API and Kael
-agent code. JavaScript remains limited to existing repository tooling and required
-configuration. Python and Rust are conditional and need approved technical
-justification. `scripts/language-policy.json` maps these domains to actual repository
+TypeScript/TSX is exclusive for Kael UI/UX and all other NestScout application
+components. Kael backend work covering the Backend, AI Core, Agent Runtime, Memory,
+Reasoning and Tools uses Rust first, Python second, and Go third. Select the first
+technically suitable language in that order. Do not add TypeScript or JavaScript
+backend implementations.
+
+The existing TypeScript Kael runtime in `services/kael-core/` and
+`supabase/functions/kael/` remains supported as legacy. Its exact source files are
+listed in `scripts/language-policy.json`; do not add new TypeScript/JavaScript
+sources there, replace the runtime, or begin a migration without separate owner
+authorization. Preserve existing Supabase integrations and TestFlight behavior.
+
+PostgreSQL SQL, required infrastructure/configuration, repository tooling, and the
+existing mobile ESLint configuration retain their technically required language
+exceptions. `scripts/language-policy.json` maps these domains to actual repository
 paths and `npm run check:languages` enforces them against the index and working tree.
 
 | Domain | Path | Language | Status |
 | --- | --- | --- | --- |
-| Mobile and frontend | `apps/mobile/` | TypeScript | Enforced |
-| Backend, API and Kael agent core | `services/` | TypeScript | Enforced; Kael Runtime implemented |
-| Database, migrations and RLS | `supabase/` | PostgreSQL SQL; generated types and Edge code in TypeScript | Enforced |
+| Kael UI/UX and other mobile application code | `apps/mobile/` | TypeScript/TSX (React Native) | Enforced |
+| Other NestScout application services | `services/` | TypeScript | Enforced |
+| Kael Backend, AI Core, Agent Runtime, Memory, Reasoning and Tools | `services/kael-core/`, `supabase/functions/kael/` | Rust → Python → Go | Enforced for new source; existing pinned TypeScript files remain legacy |
+| Database, migrations and RLS | `supabase/` | PostgreSQL SQL; generated types and other Edge code in TypeScript | Enforced |
 | Repository tooling and required configuration | `scripts/`, existing `apps/mobile/eslint.config.mjs` | Node ESM JavaScript | Existing-first; no product application JavaScript |
 | Optional Git hooks | `.githooks/` | POSIX shell | Existing-first |
-| Kael ML and training | none approved | Python | Conditional |
-| Profiled performance-critical components | none approved | Rust | Conditional |
 
-- Any other source language, language manifest or runtime setup action in a workflow
-  fails the check. A conditional or new language needs an `exceptions` entry with a
-  technical justification (measured workload, rejected TypeScript alternative) and
-  an architecture approval reference. Agents never grant their own exception.
+- A language manifest or source language outside its owned module fails the check.
+  Kael backend roots cannot have nested module owners that shadow or expand their
+  Rust/Python/Go boundary. Setup actions require matching extension- or shebang-
+  detected Kael source under an approved backend root; manifests alone do not count.
+  Other runtime setup actions fail unless specifically approved.
+  A conditional or new language needs an `exceptions` entry with a technical
+  justification and architecture approval reference; this cannot grant a Kael
+  backend TypeScript or JavaScript exception. Agents never grant their own exception.
 - An exception also needs the matching `check-hygiene.mjs` naming rule and comment
   inspector in the same change. Stale exceptions fail. Do not create placeholder
   Python or Rust modules, services or manifests to satisfy or test the policy.
@@ -237,7 +251,9 @@ hooks and successful workflows alone do not prove server-side enforcement.
   list approves any other comment, and `repositoryHygiene.commentExceptions` is
   rejected. Never add a scanner-disable comment. The checks judge the complete
   delivered state, namely the committed tree, the staged index and the working tree,
-  not only the changes against a base. CONTRIBUTING lists the details.
+  not only the changes against a base. Rust, Python and Go source plus every admitted
+  Kael backend manifest use registered comment inspectors in the same gate. CONTRIBUTING
+  lists the details.
 - New source files need one responsibility, a real caller or verification consumer,
   and a location/name consistent with the current module. Use the enforced naming
   categories in CONTRIBUTING; approve a real new module's convention before adding
