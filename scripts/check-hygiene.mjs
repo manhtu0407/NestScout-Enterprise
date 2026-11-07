@@ -356,8 +356,8 @@ function pythonStringToken(text, index) {
   if (quote(text[index])) return { prefix: '', quoteStart: index };
   if (index > 0 && /[A-Za-z0-9_]/.test(text[index - 1])) return null;
   const pair = text.slice(index, index + 2).toLowerCase();
-  if (['fr', 'rf', 'br', 'rb'].includes(pair) && quote(text[index + 2])) return { prefix: pair, quoteStart: index + 2 };
-  if ('rfbu'.includes(text[index].toLowerCase()) && quote(text[index + 1])) {
+  if (['fr', 'rf', 'br', 'rb', 'tr', 'rt'].includes(pair) && quote(text[index + 2])) return { prefix: pair, quoteStart: index + 2 };
+  if ('rfbut'.includes(text[index].toLowerCase()) && quote(text[index + 1])) {
     return { prefix: text[index].toLowerCase(), quoteStart: index + 1 };
   }
   return null;
@@ -389,7 +389,7 @@ function pythonFExpression(text, index, found) {
       if (text[cursor] === '}' && closing.length === 0) return cursor + 1;
       if (closing.pop() !== text[cursor]) throw new Error('Invalid Python syntax: unmatched formatted string delimiter.');
       cursor++;
-    } else if (text[cursor] === ':' && text[cursor + 1] !== '=' && closing.length === 0) {
+    } else if (text[cursor] === ':' && closing.length === 0) {
       return pythonFormatSpec(text, cursor + 1, found);
     } else cursor++;
   }
@@ -400,7 +400,7 @@ function pythonStringEnd(text, token, found) {
   const quote = text[token.quoteStart];
   const triple = text.startsWith(quote.repeat(3), token.quoteStart);
   const delimiter = quote.repeat(triple ? 3 : 1);
-  const formatted = token.prefix.includes('f');
+  const formatted = token.prefix.includes('f') || token.prefix.includes('t');
   for (let cursor = token.quoteStart + delimiter.length; cursor < text.length;) {
     if (text.startsWith(delimiter, cursor)) return cursor + delimiter.length;
     if (text[cursor] === '\\') {
@@ -458,17 +458,8 @@ function tomlComments(_file, text) {
 
 function requirementsComments(_file, text) {
   const found = [];
-  let quote = null;
   for (let index = 0; index < text.length;) {
-    const char = text[index];
-    if (char === '\\') index += 2;
-    else if (quote) {
-      if (char === quote) quote = null;
-      index++;
-    } else if (char === '"' || char === "'") {
-      quote = char;
-      index++;
-    } else if (char === '#' && (index === 0 || /\s/.test(text[index - 1]))) {
+    if (text[index] === '#' && (index === 0 || /\s/.test(text[index - 1]))) {
       const end = lineEnd(text, index);
       found.push(span(text, index, end));
       index = end;

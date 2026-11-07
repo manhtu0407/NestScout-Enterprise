@@ -88,7 +88,11 @@ test('Rust, Python and Go comment extraction follows language string and comment
     'triple = """# not',
     '// not"""',
     'formatted = f"{url!r} # literal {2:#x}"',
+    'formatted_alignment = f"{value:=#10x}"',
     'pattern = rf"\\{value}"',
+    'template = t"{value}"',
+    'template_raw = tr"{value}"',
+    'template_raw_reverse = rt"{value}"',
     'def fragment():\n    return"#fragment"',
     "quote = '# not'",
   ].join('\n');
@@ -96,6 +100,7 @@ test('Rust, Python and Go comment extraction follows language string and comment
   assert.deepEqual(texts('engine.py', 'value = "text"\nformatted = f"{value # field comment\n}"\n# module comment\n'), [
     '# field comment', '# module comment',
   ]);
+  assert.deepEqual(texts('engine.py', 'message = t"""{1 # field comment\n}"""\n'), ['# field comment']);
   assert.throws(() => commentRecords('engine.py', 'value = "unterminated # text\n'), /Invalid Python syntax/);
 
   const go = [
@@ -173,6 +178,9 @@ test('admitted Kael manifests use comment grammars in every Git snapshot', () =>
     assert.deepEqual(violations(file, source), [], file);
     assert.equal(violations(file, commented[file]).length, 1, file);
   }
+  const apostropheUrl = "requests @ https://example.invalid/it's-a-package.whl\n# explanatory note\n";
+  assert.deepEqual(texts('services/kael-core/requirements.txt', apostropheUrl), ['# explanatory note']);
+  assert.equal(violations('services/kael-core/requirements.txt', apostropheUrl).length, 1);
   const { repository, run, write } = repositoryFixture(clean);
   assert.doesNotThrow(() => checkComments(repository));
   for (const [file, source] of Object.entries(commented)) write(file, source);
