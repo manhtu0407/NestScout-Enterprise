@@ -251,7 +251,9 @@ hooks and successful workflows alone do not prove server-side enforcement.
   list approves any other comment, and `repositoryHygiene.commentExceptions` is
   rejected. Never add a scanner-disable comment. The checks judge the complete
   delivered state, namely the committed tree, the staged index and the working tree,
-  not only the changes against a base. CONTRIBUTING lists the details.
+  not only the changes against a base. Rust, Python and Go source plus every admitted
+  Kael backend manifest use registered comment inspectors in the same gate. CONTRIBUTING
+  lists the details.
 - New source files need one responsibility, a real caller or verification consumer,
   and a location/name consistent with the current module. Use the enforced naming
   categories in CONTRIBUTING; approve a real new module's convention before adding

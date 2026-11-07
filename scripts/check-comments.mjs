@@ -23,7 +23,7 @@ export function commentCategory(text) {
 }
 
 const scriptFile = /\.(?:[cm]?js|[cm]?ts|tsx)$/;
-const shebangFile = /\.(?:[cm]?js|[cm]?ts)$|^\.githooks\//;
+const shebangFile = /\.(?:[cm]?js|[cm]?ts|py)$|^\.githooks\//;
 const shebang = /^#!(?:\/[\w.-]+)+(?: [-\w=./]+){0,2}$/;
 const tripleSlash = /^\/\/\/\s*<(?:reference|amd-module|amd-dependency)\b[^<>]*\/>\s*$/;
 const jsxPragma = /^(?:@jsx(?:Frag|ImportSource|Runtime)? \S+ ?)+$/;

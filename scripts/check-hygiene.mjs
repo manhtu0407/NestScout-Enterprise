@@ -352,9 +352,9 @@ function goComments(_file, text) {
 }
 
 function pythonStringToken(text, index) {
-  if (index > 0 && /[A-Za-z0-9_]/.test(text[index - 1])) return null;
   const quote = char => char === '"' || char === "'";
   if (quote(text[index])) return { prefix: '', quoteStart: index };
+  if (index > 0 && /[A-Za-z0-9_]/.test(text[index - 1])) return null;
   const pair = text.slice(index, index + 2).toLowerCase();
   if (['fr', 'rf', 'br', 'rb'].includes(pair) && quote(text[index + 2])) return { prefix: pair, quoteStart: index + 2 };
   if ('rfbu'.includes(text[index].toLowerCase()) && quote(text[index + 1])) {
@@ -455,6 +455,39 @@ function tomlComments(_file, text) {
   return found;
 }
 
+function requirementsComments(_file, text) {
+  const found = [];
+  let quote = null;
+  for (let index = 0; index < text.length;) {
+    const char = text[index];
+    if (char === '\\') index += 2;
+    else if (quote) {
+      if (char === quote) quote = null;
+      index++;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+      index++;
+    } else if (char === '#' && (index === 0 || /\s/.test(text[index - 1]))) {
+      const end = lineEnd(text, index);
+      found.push(span(text, index, end));
+      index = end;
+    } else index++;
+  }
+  return found;
+}
+
+function pythonVersionComments(_file, text) {
+  const found = [];
+  for (let index = 0; index < text.length;) {
+    if (text[index] === '#') {
+      const end = lineEnd(text, index);
+      found.push(span(text, index, end));
+      index = end;
+    } else index++;
+  }
+  return found;
+}
+
 function shellComments(_file, text) {
   const found = [];
   for (let index = 0; index < text.length;) {
@@ -511,6 +544,9 @@ function yamlComments(_file, text) {
 const commentGrammars = [
   [/\.(?:[cm]?ts|tsx)$/, typeScriptComments], [/\.[cm]?js$/, javaScriptComments], [/\.sql$/, sqlComments],
   [/\.rs$/, rustComments], [/\.(?:py|pyi|pyw)$/, pythonComments], [/\.go$/, goComments],
+  [/(?:^|\/)(?:go\.mod|go\.sum)$/, goComments],
+  [/(?:^|\/)(?:Cargo\.toml|Cargo\.lock|rust-toolchain(?:\.toml)?|pyproject\.toml|Pipfile|poetry\.lock|uv\.lock)$/, tomlComments],
+  [/(?:^|\/)requirements\.txt$/, requirementsComments], [/(?:^|\/)\.python-version$/, pythonVersionComments],
   [/\.toml$/, tomlComments], [/\.ya?ml$/, yamlComments], [/\.jsonc$/, jsoncComments], [/^\.githooks\//, shellComments],
   [/(?:^|\/)\.(?:gitignore|gitattributes)$/, lineComments('#')], [/(?:^|\/)\.editorconfig$/, lineComments('#;')],
   [/(?:^|\/)\.env\.example$/, shellComments],

@@ -133,9 +133,11 @@ Rust, Python and Go use token-aware lexical scanners that skip their escaped, ra
 triple-quoted and character literal forms and recognize their line and block comment
 syntax, including nested Rust block comments and Python comments inside formatted
 string expressions. Unterminated literals and block comments fail closed. SQL, YAML,
-TOML, JSONC and the `.githooks/` shell scripts use lexical comment scanners that skip
-quoted text, dollar-quoted delimiters, block scalars and URL fragments (YAML uses the
-`yaml` parser's syntax tree). JSON files receive line-leading checks; Markdown
+TOML and the admitted Cargo, Rust toolchain, Python and Go manifests use syntax-aware
+comment scanners; Python requirements files use a requirement-line scanner. JSONC and
+the `.githooks/` shell scripts use lexical comment scanners that skip quoted text,
+dollar-quoted delimiters, block scalars and URL fragments (YAML uses the `yaml` parser's
+syntax tree). JSON files receive line-leading checks; Markdown
 and legal/contributor records receive signature-line checks. Known AI trailers,
 promotional signatures, explicit role signatures and AI self-introductions fail.
 The checkers never rewrite files. Reviewers must still assess
@@ -184,9 +186,10 @@ The generated `supabase/database.types.ts` is skipped.
 
 Only these pass automatically:
 
-- Technically mandatory directives: a leading shebang line (the three `.githooks/`
-  scripts need it to run), TypeScript triple-slash `reference` and `amd-*` directives
-  before any code, JSX pragmas (`@jsx`, `@jsxFrag`, `@jsxImportSource`, `@jsxRuntime`),
+- Technically mandatory directives: a leading shebang line (including for executable
+  Python tools; the three `.githooks/` scripts need it to run), TypeScript triple-slash
+  `reference` and `amd-*` directives before any code, JSX pragmas (`@jsx`, `@jsxFrag`,
+  `@jsxImportSource`, `@jsxRuntime`),
   and the version tag (for example `# v7` or `# v7.1.2`) that Dependabot maintains
   after a full-SHA `uses:` pin in workflow YAML. `.github/dependabot.yml` enables the
   `github-actions` ecosystem, which reads that tag.
@@ -207,11 +210,12 @@ same change as its naming rule. It also needs a justified, architecture-approved
 `scripts/language-policy.json`; `npm run check:languages` rejects unlisted source languages,
 language manifests and runtime setup actions, and exceptions that nothing uses.
 
-The gate inspects JavaScript, TypeScript, SQL, YAML (including shell inside `run:` block
-scalars), TOML, JSONC, the `.githooks/` scripts, and the line-comment forms of
-`.gitignore`, `.gitattributes`, `.editorconfig` and `.env.example`. Markdown and JSON
-data are not source files for it, and embedded languages other than workflow `run:`
-shell (for example a `github-script` body) are not parsed. It cannot recognize
+The gate inspects JavaScript, TypeScript, Rust, Python and Go sources; SQL; YAML
+(including shell inside `run:` block scalars); TOML and the exact admitted Kael backend
+manifests; JSONC; the `.githooks/` scripts; and the line-comment forms of `.gitignore`,
+`.gitattributes`, `.editorconfig` and `.env.example`. Markdown and JSON data are not
+source files for it, and embedded languages other than workflow `run:` shell (for
+example a `github-script` body) are not parsed. It cannot recognize
 narrative that is moved into strings, identifiers or documentation, so human review of
 usefulness and provenance still applies.
 

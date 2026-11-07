@@ -10,7 +10,7 @@ import { root } from './tool-path.mjs';
 import { gitEnvironment } from './git-environment.mjs';
 import { verifySuiteGitIsolation } from './git-isolation-fixture.mjs';
 import { git, repositoryFiles, blobByteLimit } from './repository-files.mjs';
-import { checkPath, checkAttribution, checkHygiene, sourceComments } from './check-hygiene.mjs';
+import { checkPath, checkAttribution, checkHygiene, sourceComments, hasCommentGrammar } from './check-hygiene.mjs';
 import { inspectArtifact, artifactLimits } from './inspect-artifact.mjs';
 import { scanStaged } from './scan-staged.mjs';
 import { checkBranch, checkMessage, checkMetadata, checkPullRequest, checkCommitRange, checkPush, checkRemote, metadataRange } from './check-metadata.mjs';
@@ -123,7 +123,10 @@ test('Kael backend Rust, Python and Go files and manifests have narrowly approve
   assert.deepEqual([...manifests].sort(), kaelManifestNames);
   for (const backendPath of backendPaths) {
     for (const relative of sourceFiles) assert.doesNotThrow(() => checkPath(`${backendPath}${relative}`), `${backendPath}${relative}`);
-    for (const manifest of manifests) assert.doesNotThrow(() => checkPath(`${backendPath}${manifest}`), `${backendPath}${manifest}`);
+    for (const manifest of manifests) {
+      assert.doesNotThrow(() => checkPath(`${backendPath}${manifest}`), `${backendPath}${manifest}`);
+      assert.equal(hasCommentGrammar(`${backendPath}${manifest}`), true, `${backendPath}${manifest}`);
+    }
   }
   for (const file of [
     'services/other/src/agent_core.rs', 'services/other/pyproject.toml', 'supabase/functions/send-sms-hook/handler.go',

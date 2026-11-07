@@ -88,6 +88,7 @@ test('Rust, Python and Go comment extraction follows language string and comment
     'triple = """# not',
     '// not"""',
     'formatted = f"{url!r} # literal {2:#x}"',
+    'def fragment():\n    return"#fragment"',
     "quote = '# not'",
   ].join('\n');
   assert.deepEqual(texts('engine.py', python), []);
@@ -149,6 +150,48 @@ test('TOML, JSONC and shell comments exclude strings, parameters and word-intern
   assert.deepEqual(texts('input.toml', '# top\n[table] # after\nk = 1 # trailing\ns = "a\\"# not" # real\n'), ['# top', '# after', '# trailing', '# real']);
   assert.deepEqual(texts('input.jsonc', '{ "a": "// x", /* real */ "b": 1 // tail\n}\n'), ['/* real */', '// tail']);
   assert.deepEqual(texts('.githooks/example', '#!/bin/sh\nset -eu\necho "# x" \'# y\' $# ${#1} a#b\nrun # real\n'), ['#!/bin/sh', '# real']);
+});
+
+test('admitted Kael manifests use comment grammars in every Git snapshot', () => {
+  const clean = {
+    'services/kael-core/Cargo.lock': 'version = 3\n',
+    'services/kael-core/Pipfile': '[packages]\nrequests = "*"\n',
+    'services/kael-core/requirements.txt': 'requests==2.32.0\nrequests @ https://example.invalid/archive.zip#egg=requests\n',
+    'services/kael-core/.python-version': '3.12.1\n',
+    'services/kael-core/go.mod': 'module example.com/kael\n\ngo 1.25\n',
+  };
+  const commented = {
+    'services/kael-core/Cargo.lock': 'version = 3\n# dependency note\n',
+    'services/kael-core/Pipfile': '[packages]\n# dependency note\nrequests = "*"\n',
+    'services/kael-core/requirements.txt': '# dependency note\nrequests==2.32.0\n',
+    'services/kael-core/.python-version': '3.12.1 # dependency note\n',
+    'services/kael-core/go.mod': 'module example.com/kael\n// dependency note\ngo 1.25\n',
+  };
+  for (const [file, source] of Object.entries(clean)) {
+    assert.equal(hasCommentGrammar(file), true, file);
+    assert.deepEqual(violations(file, source), [], file);
+    assert.equal(violations(file, commented[file]).length, 1, file);
+  }
+  const { repository, run, write } = repositoryFixture(clean);
+  assert.doesNotThrow(() => checkComments(repository));
+  for (const [file, source] of Object.entries(commented)) write(file, source);
+  assert.throws(() => checkWorkingComments(repository), error => Object.keys(clean).every(file => error.message.includes(file)));
+  run(['add', '.']);
+  for (const [file, source] of Object.entries(clean)) write(file, source);
+  assert.throws(() => checkStagedComments(repository), error => Object.keys(clean).every(file => error.message.includes(file)));
+  run(['commit', '--quiet', '-m', 'chore: add manifest comments']);
+  assert.throws(() => checkCommittedComments(repository), error => Object.keys(clean).every(file => error.message.includes(file)));
+});
+
+test('Python shebangs pass the comment gate while explanatory comments remain prohibited', () => {
+  const file = 'services/kael-core/bin/runner.py';
+  const clean = '#!/usr/bin/env python3\nprint("ready")\n';
+  assert.deepEqual(texts(file, clean), ['#!/usr/bin/env python3']);
+  assert.deepEqual(violations(file, clean), []);
+  const { repository, write } = repositoryFixture({ [file]: clean });
+  assert.doesNotThrow(() => checkComments(repository));
+  write(file, `${clean}# explain the runner\n`);
+  assert.throws(() => checkWorkingComments(repository), /runner\.py:3 inline: # explain the runner/);
 });
 
 test('ignore, attributes, editor and environment example files only comment at a line start or after whitespace', () => {
@@ -497,7 +540,7 @@ test('the delivered repository sources contain no prohibited comment and only th
 });
 
 const approvedMandatoryKinds = [
-  ['shebang', (file, text) => /^#!(?:\/[\w.-]+)+(?: [-\w=./]+){0,2}$/.test(text) && /\.(?:[cm]?js|[cm]?ts)$|^\.githooks\//.test(file)],
+  ['shebang', (file, text) => /^#!(?:\/[\w.-]+)+(?: [-\w=./]+){0,2}$/.test(text) && /\.(?:[cm]?js|[cm]?ts|py)$|^\.githooks\//.test(file)],
   ['triple-slash', (file, text) => /^\/\/\/\s*<(?:reference|amd-module|amd-dependency)\b[^<>]*\/>\s*$/.test(text) && /\.(?:[cm]?js|[cm]?ts|tsx)$/.test(file)],
   ['jsx-pragma', (file, text) => /^\/\*\*?\s*(?:@jsx(?:Frag|ImportSource|Runtime)? \S+\s*)+\*\/$/.test(text) && /\.(?:[cm]?js|[cm]?ts|tsx)$/.test(file)],
   ['dependabot-version', (file, text) => /^# v\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?$/.test(text) && /\.ya?ml$/.test(file)],
@@ -516,6 +559,7 @@ test('the repository-wide mandatory assertion accepts every approved category an
   const approved = [
     ['.githooks/pre-push', '#!/bin/sh'],
     ['scripts/tool.mjs', '#!/usr/bin/env node'],
+    ['services/kael-core/bin/runner.py', '#!/usr/bin/env python3'],
     ['.github/workflows/ci.yml', '# v7.1.2'],
     ['apps/mobile/env.d.ts', '/// <reference types="expo/types" />'],
     ['apps/mobile/src/view.tsx', '/** @jsxImportSource preact */'],
