@@ -1198,7 +1198,8 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         assert.equal(report.anthropic, 'credential_missing');
         assert.equal(report.web_search, 'requires PERPLEXITY_API_KEY and KAEL_WEB_SEARCH=enabled');
         assert.equal(report.effects, 'none');
-        assert.equal(report.paid_probe, 'not_run');
+        assert.equal(report.readiness_scope, 'configuration_only');
+        assert.equal(report.provider_probe, 'not_run');
         assert.ok(!JSON.stringify(report).includes(serviceKey));
       });
       await t.test('a real local Edge worker streams a provider fixture and preserves exact Markdown in history', async () => {
@@ -1269,38 +1270,32 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         traces.greeting = first.events;
         traces.restored = snapshot;
       });
-      await t.test('hosted verification allows one concurrent reservation and holds it until accounted', async () => {
-        const actor = await newUser();
-        const started = await request('/rest/v1/rpc/kael_start_run', serviceKey, {
-          p_actor: actor.id, p_request_id: randomUUID(), p_conversation_id: null, p_mode: 'client', p_user_text: 'Synthetic budget probe',
-        }, true);
-        assert.equal(started.status, 200);
-        const run = await started.json();
-        assert.equal(run.status, 'started');
-        const endpoint = '/rest/v1/rpc/kael_verification_charge';
-        const charge = { p_actor: actor.id, p_run: run.run_id, p_provider: 'anthropic', p_actual: null };
-        const denied = await request(endpoint, actor.token, { ...charge, p_call: randomUUID() });
-        assert.equal(denied.status, 403);
-        query(`insert into nestscout_private.kael_verification_budgets (provider, actors, expires_at)
-          values ('anthropic', array['${actor.id}'::uuid], clock_timestamp() + interval '5 minutes');`);
-        try {
-          const calls = Array.from({ length: 4 }, () => randomUUID());
-          const outcomes = await Promise.all(calls.map(async p_call => {
-            const response = await request(endpoint, serviceKey, { ...charge, p_call }, true);
-            assert.equal(response.status, 200);
-            return response.json();
-          }));
-          assert.equal(outcomes.filter(Boolean).length, 1);
-          assert.equal(query("select held_micro_usd from nestscout_private.kael_verification_budgets where provider='anthropic';"), '270480');
-          const settled = await request(endpoint, serviceKey, { ...charge, p_call: calls[outcomes.indexOf(true)], p_actual: 30000 }, true);
-          assert.equal(settled.status, 200);
-          assert.equal(await settled.json(), true);
-          const retry = await request(endpoint, serviceKey, { ...charge, p_call: randomUUID() }, true);
-          assert.equal(retry.status, 200);
-          assert.equal(await retry.json(), false);
-        } finally {
-          query(`delete from nestscout_private.kael_verification_budgets where provider='anthropic' and actors=array['${actor.id}'::uuid];`);
-        }
+      await t.test('authenticated users can use the configured DeepSeek primary and Anthropic fallback', async () => {
+        const owner = await newUser();
+        const other = await newUser();
+        const primary = scriptedProvider('deepseek', [
+          { error: 'overloaded' },
+          { text: ['DeepSeek primary reply.'] },
+        ]);
+        const fallback = scriptedProvider('anthropic', [{ text: ['Anthropic fallback reply.'] }]);
+        const handler = createKaelHandler({
+          env: { ...env, DEEPSEEK_API_KEY: 'fixture-deepseek', ANTHROPIC_API_KEY: 'fixture-anthropic',
+            KAEL_ANTHROPIC_MODEL: 'claude-sonnet-4-5', KAEL_MODEL_ROUTE: 'deepseek,anthropic' },
+          providers: () => [primary, fallback],
+          fetcher: async (url, init) => {
+            return fetch(url, init);
+          },
+          log: () => {},
+        });
+        const fallbackTurn = await send(handler, owner);
+        const primaryTurn = await send(handler, other);
+        assert.equal(end(fallbackTurn).type, 'run_completed');
+        assert.equal(end(fallbackTurn).text, 'Anthropic fallback reply.');
+        assert.equal(end(primaryTurn).type, 'run_completed');
+        assert.equal(end(primaryTurn).text, 'DeepSeek primary reply.');
+        assert.equal(primary.requests.length, 2);
+        assert.equal(fallback.requests.length, 1);
+        assert.equal(query("select to_regclass('nestscout_private.kael_provider_budgets') is null;"), 't');
       });
 
       await t.test('opted-in web search passes fixture sources through Kael with real Auth and PostgreSQL', async () => {

@@ -1,12 +1,20 @@
 import { loadKaelConversation, streamKaelTurn, type KaelTurnRequest } from './kael-runtime-repository';
 import type { KaelEvent } from './kael-events';
+import { ConfigError } from '@/lib/config';
 
 const mockGetSession = jest.fn();
+const mockLoadConfig = jest.fn(() => ({ supabaseUrl: 'http://127.0.0.1:54321', supabasePublishableKey: 'public-key' }));
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 jest.mock('@/lib/supabase-client', () => ({ getSupabaseClient: () => ({ auth: { getSession: mockGetSession } }) }));
-jest.mock('@/lib/config', () => ({
-  loadConfig: () => ({ supabaseUrl: 'http://127.0.0.1:54321', supabasePublishableKey: 'public-key' }),
-}));
+jest.mock('@/lib/config', () => {
+  class ConfigError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'ConfigError';
+    }
+  }
+  return { loadConfig: () => mockLoadConfig(), ConfigError };
+});
 
 const runId = '11111111-1111-4111-8111-111111111111';
 const conversation = '22222222-2222-4222-8222-222222222222';
@@ -24,6 +32,7 @@ function streamed(chunks: string[], status = 200) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockLoadConfig.mockReturnValue({ supabaseUrl: 'http://127.0.0.1:54321', supabasePublishableKey: 'public-key' });
   mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'customer-a' }, access_token: 'token-a' } }, error: null });
 });
 
@@ -91,12 +100,39 @@ test('server refusals surface the server message, and unreadable refusals stay h
     .resolves.toEqual({ kind: 'refused', code: 'busy', message: 'Kael vẫn đang xử lý.', retryable: true });
   const opaque = streamed(['<html>'], 502);
   await expect(streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, opaque.fetcher))
-    .resolves.toEqual(expect.objectContaining({ kind: 'refused', code: 'internal' }));
+    .resolves.toEqual(expect.objectContaining({ kind: 'refused', code: 'provider_unavailable', message: expect.stringContaining('HTTP 502') }));
+});
+
+test('invalid TestFlight config and Auth are definite refusals while network failures remain recoverable', async () => {
+  mockLoadConfig.mockImplementationOnce(() => { throw new ConfigError('EXPO_PUBLIC_TESTFLIGHT_SUPABASE_URL is required.'); });
+  const config = await streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, jest.fn());
+  expect(config).toEqual(expect.objectContaining({ kind: 'refused', code: 'provider_unavailable', message: expect.stringContaining('EXPO_PUBLIC_TESTFLIGHT_SUPABASE_URL') }));
+
+  mockGetSession.mockResolvedValueOnce({ data: { session: null }, error: null });
+  const auth = await streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, jest.fn());
+  expect(auth).toEqual(expect.objectContaining({ kind: 'refused', code: 'unauthenticated', message: expect.stringContaining('Supabase Auth') }));
+
+  const disconnected = await streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal,
+    jest.fn(async () => { throw new TypeError('Network request failed'); }));
+  expect(disconnected).toEqual({ kind: 'interrupted' });
+});
+
+test('a fetch failure before response headers is an unknown server outcome, not a refusal', async () => {
+  const fetcher = jest.fn(async () => { throw new TypeError('Network request failed'); });
+  await expect(streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, fetcher))
+    .resolves.toEqual({ kind: 'interrupted' });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+
+  const response = { ok: true, status: 200, body: null } as unknown as Response;
+  await expect(streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, jest.fn(async () => response)))
+    .resolves.toEqual({ kind: 'interrupted' });
 });
 
 test('a changed session or cancelled request never reports success', async () => {
   const { fetcher } = streamed([line(1, { type: 'run_completed', text: 'x' })]);
-  await expect(streamKaelTurn('customer-b', request, () => undefined, new AbortController().signal, fetcher)).resolves.toEqual({ kind: 'interrupted' });
+  await expect(streamKaelTurn('customer-b', request, () => undefined, new AbortController().signal, fetcher)).resolves.toMatchObject({
+    kind: 'refused', code: 'unauthenticated', message: expect.stringContaining('đăng nhập lại'), retryable: false,
+  });
   expect(fetcher).not.toHaveBeenCalled();
   const controller = new AbortController();
   controller.abort();

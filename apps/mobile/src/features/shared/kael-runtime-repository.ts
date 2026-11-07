@@ -1,4 +1,5 @@
-import { authenticatedFunctionRequest, authenticatedRequest, type FunctionFetch } from '@/lib/authenticated-rest';
+import { AuthSessionError, authenticatedFunctionRequest, authenticatedRequest, type FunctionFetch } from '@/lib/authenticated-rest';
+import { ConfigError } from '@/lib/config';
 
 import { createKaelSequence, kaelFailureCodes, parseKaelConversationSnapshot, parseKaelEvent, type KaelConversationSnapshot, type KaelEvent, type KaelFailureCode } from './kael-events';
 
@@ -16,7 +17,20 @@ export type KaelTurnOutcome =
   | { kind: 'interrupted' }
   | { kind: 'cancelled' };
 
-const unavailableMessage = 'Không kết nối được với Kael. Tin nhắn có thể chưa được gửi.';
+function refused(code: KaelFailureCode, message: string, retryable: boolean): KaelTurnOutcome {
+  return { kind: 'refused', code, message, retryable };
+}
+
+function requestFailure(error: unknown, signal: AbortSignal): KaelTurnOutcome {
+  if (signal.aborted) return { kind: 'cancelled' };
+  if (error instanceof ConfigError) {
+    return refused('provider_unavailable', `Cấu hình kết nối Kael trên bản TestFlight chưa hợp lệ: ${error.message}`, false);
+  }
+  if (error instanceof AuthSessionError) {
+    return refused('unauthenticated', 'Phiên Supabase Auth không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.', false);
+  }
+  return { kind: 'interrupted' };
+}
 
 const streamingFetch: FunctionFetch = async (url, init) => {
   const { fetch } = await import('expo/fetch');
@@ -28,12 +42,18 @@ async function refusalFrom(response: Response): Promise<KaelTurnOutcome> {
     const payload = (await response.json()) as { error?: { code?: unknown; message?: unknown; retryable?: unknown } };
     const code = payload.error?.code;
     if (typeof code === 'string' && (kaelFailureCodes as readonly string[]).includes(code) && typeof payload.error?.message === 'string') {
-      return { kind: 'refused', code: code as KaelFailureCode, message: payload.error.message, retryable: payload.error.retryable === true };
+      return refused(code as KaelFailureCode, payload.error.message, payload.error.retryable === true);
     }
-  } catch {
-    return { kind: 'refused', code: 'internal', message: unavailableMessage, retryable: true };
-  }
-  return { kind: 'refused', code: 'internal', message: unavailableMessage, retryable: true };
+  } catch { return refusalForStatus(response.status); }
+  return refusalForStatus(response.status);
+}
+
+function refusalForStatus(status: number): KaelTurnOutcome {
+  if (status === 401) return refused('unauthenticated', 'Phiên Supabase Auth không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.', false);
+  if (status === 403) return refused('invalid_request', 'Tài khoản này chưa được cấp quyền dùng Kael ở chế độ hiện tại.', false);
+  if (status === 429) return refused('rate_limited', 'Kael đang nhận quá nhiều yêu cầu từ tài khoản này. Vui lòng thử lại sau ít phút.', true);
+  if ([502, 503, 504].includes(status)) return refused('provider_unavailable', `Kael Backend hoặc AI Provider hiện không sẵn sàng (HTTP ${status}). Vui lòng thử lại sau.`, true);
+  return refused('provider_error', `Kael không nhận được phản hồi hợp lệ từ Backend (HTTP ${status}). Vui lòng thử lại.`, true);
 }
 
 export async function streamKaelTurn(
@@ -51,10 +71,11 @@ export async function streamKaelTurn(
       mode: request.mode,
       action: request.action,
     }, signal, fetcher);
-  } catch {
-    return signal.aborted ? { kind: 'cancelled' } : { kind: 'interrupted' };
+  } catch (error) {
+    return requestFailure(error, signal);
   }
-  if (!response.ok || !response.body) return refusalFrom(response);
+  if (!response.ok) return refusalFrom(response);
+  if (!response.body) return { kind: 'interrupted' };
 
   return readKaelStream(response.body.getReader(), onEvent, signal);
 }

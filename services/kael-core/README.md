@@ -197,11 +197,11 @@ state, not open connections.
 | Setting | Effect |
 | --- | --- |
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEYS`, `SUPABASE_SECRET_KEYS` | Hosted Edge receives the URL and default keys from Supabase. Local Edge supports `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`. The gateway uses the server key only for named internal RPCs and readiness |
-| `ANTHROPIC_API_KEY` + `KAEL_ANTHROPIC_MODEL` | Enables Anthropic (Messages API `2026-10-21`, streaming, server-side refusal fallback where supported); `KAEL_ANTHROPIC_EFFORT` = `low`, `medium` (default) or `high` |
+| `ANTHROPIC_API_KEY` + `KAEL_ANTHROPIC_MODEL` | Enables Anthropic (Messages API `2026-10-21`, streaming); `KAEL_ANTHROPIC_EFFORT` = `low`, `medium` (default) or `high` |
 | `DEEPSEEK_API_KEY` | Enables DeepSeek chat completions. `KAEL_DEEPSEEK_MODEL` overrides the default `deepseek-flash`; `KAEL_DEEPSEEK_THINKING=enabled` turns on thinking mode with in-run `reasoning_content` replay |
-| `KAEL_MODEL_ROUTE` | Provider order; defaults to `deepseek`. Unknown, duplicate or unconfigured entries fail closed |
+| `KAEL_MODEL_ROUTE` | Provider order; defaults to DeepSeek followed by Anthropic when configured. Unknown or duplicate entries fail closed |
 | `PERPLEXITY_API_KEY` + `KAEL_WEB_SEARCH=enabled` | Enables the `web_search` tool |
-| `KAEL_ANTHROPIC_SERVER_FALLBACK` | Optional explicit Anthropic-side fallback for supported models; off by default |
+| `KAEL_ANTHROPIC_SERVER_FALLBACK` | Enables Anthropic's provider-side fallback for supported configured models |
 | `KAEL_ENABLED_EFFECTS` | Owner opt-in for consequential effects; only `service_request_submit` exists |
 | `KAEL_KNOWLEDGE=disabled` | Removes both Intelligence tools; general conversation stays available |
 | `KAEL_ESTIMATE_PREVIEW=local_only` | Enables numeric synthetic preview only when the configured Supabase target is loopback; default disabled |
@@ -242,47 +242,36 @@ submission key. Test identities and their records are removed after the run.
 Live AI inference requires separately supplied authorized provider configuration
 and is not established by these tests.
 
-## Hosted provider verification
+## Hosted TestFlight Device Beta
 
 Supabase Dashboard Edge Functions Secrets is the only provider credential
 source. The deployed `kael` function reads `DEEPSEEK_API_KEY`,
 `ANTHROPIC_API_KEY`, and `PERPLEXITY_API_KEY` via `Deno.env.get` in the
-Supabase-managed environment. Kael reads provider credentials only with an
-HTTPS Supabase gateway and the platform's deployment marker. Keep the values
-in Dashboard Secrets. Clients use their publishable key and signed-in Auth
-session. [Supabase environment variables](https://supabase.com/docs/guides/functions/secrets)
+Supabase-managed environment. Keep provider values in Dashboard Secrets.
+TestFlight receives only the Supabase publishable key and uses the signed-in
+Supabase Auth session. [Supabase environment variables](https://supabase.com/docs/guides/functions/secrets)
 
-Hosted validation requires a separately authorized deployment of `kael` and
-the applicable Kael database migrations on the project holding the secrets.
-The hosted entrypoint restricts provider calls to bounded verification.
-Set `KAEL_MODEL_ROUTE=anthropic` and `KAEL_ANTHROPIC_MODEL=claude-haiku-4-5-20251001`
-for the priced chat route. Perplexity Search uses `web_search` when
-`KAEL_WEB_SEARCH=enabled`. Business effects and provider-side fallback are off.
+Hosted chat routes to DeepSeek first and includes Anthropic as fallback when
+its server key and model are configured. Set `KAEL_MODEL_ROUTE=deepseek` to
+disable that fallback, or `KAEL_MODEL_ROUTE=deepseek,anthropic` to state the
+full route explicitly. Both adapters accept the model identifier configured by
+the server and validate its provider-specific format. Perplexity Search is
+available to Kael when `PERPLEXITY_API_KEY` is configured and
+`KAEL_WEB_SEARCH=enabled`. Provider credentials stay in Supabase Edge Secrets.
 
-Use authenticated `GET /functions/v1/kael` with `x-kael-readiness: 1` for
-database and provider configuration status without a provider call. An operator
-must explicitly provision one private budget row per enabled provider, naming
-one or two disposable Auth actors and an expiry within one hour. Migrations
-create no budget rows. Never reset or replace a budget row for this verification.
-The browser Preview uses the normal signed-in Kael chat route. Provider
-configuration and authenticated readiness alone do not authorize paid traffic.
-Future normal-chat rollout needs its own approved actor eligibility, budget,
-and operational controls. An expired verification window confers no access.
+Every eligible authenticated account uses the same provider route. The hosted
+runtime retains JWT verification, caller-scoped REST/RLS, role permissions,
+approval checks, per-account rate limits and existing per-turn resource limits.
+Hosted inference has no actor whitelist, provider spend ledger, or fixed
+$0.30-per-provider hourly ceiling. Anonymous sessions do not receive Kael access.
 
-The database atomically reserves $0.270480 for Anthropic based on 200,000 input
-tokens at $1.25 per million (the five-minute cache-write rate) and 4,096 output
-tokens at $5 per million. Terminal usage settles conservatively at those rates
-and includes cache reads at $0.10 per million. Before reopening a paid window,
-reconcile any earlier usage that excluded cache reads against the provider's
-usage report and retain cumulative spend. Each Perplexity Search request
-holds $0.005. Failures with uncertain
-usage leave the hold in place and block that provider. Each provider has a
-strict $0.30 ceiling. [Anthropic prices](https://platform.claude.com/docs/en/models/haiku-4-5/overview) · [Perplexity prices](https://docs.perplexity.ai/docs/getting-started/pricing)
-
-DeepSeek remains closed to hosted paid verification. Its published peak price
-and full input context alone use the $0.30 ceiling. A verified smaller billed
-input bound or a hard provider-side spend limit is required before dispatch.
-Live Evaluation retains its own authorization and accounting gates.
+Authenticated `GET /functions/v1/kael` with `x-kael-readiness: 1` reports
+configuration and database status only. It does not call an AI provider or
+prove a streaming turn. A real chat verification must use a valid Auth session,
+receive a terminal completion event, and confirm the persisted conversation.
+This repository change does not deploy the Edge Function or create a TestFlight
+build; those steps follow PR approval. Device behavior remains unverified until
+a tester sends a real prompt in the new TestFlight build on iPhone.
 
 ## Not implemented
 

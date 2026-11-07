@@ -65,10 +65,11 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
       const signal = AbortSignal.any([request.signal, AbortSignal.timeout(config.timeoutMs)]);
       let started = false;
       try {
+        const body = JSON.stringify(deepseekRequestBody(config, request));
         const response = await fetcher(deepseekEndpoint, {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${config.apiKey}` },
-          body: JSON.stringify(deepseekRequestBody(config, request)),
+          body,
           signal,
           redirect: 'error',
         });
@@ -143,7 +144,8 @@ export function createDeepSeekProvider(config: DeepSeekConfig, fetcher: Fetcher 
               if (verifiedUsage || !fields.every(name => Number.isSafeInteger(usage[name]) && Number(usage[name]) >= 0)
                 || Number(usage.prompt_tokens) !== Number(usage.prompt_cache_hit_tokens) + Number(usage.prompt_cache_miss_tokens)
                 || Number(usage.total_tokens) !== Number(usage.prompt_tokens) + Number(usage.completion_tokens)
-                || Number(usage.completion_tokens) > request.maxOutputTokens || Number(usage.prompt_tokens) > 1_048_576) {
+                || Number(usage.completion_tokens) > request.maxOutputTokens
+                || Number(usage.prompt_tokens) > 1_048_576) {
                 throw new ProviderError('deepseek', 'incomplete', 'The final usage was missing or inconsistent.', started);
               }
             }

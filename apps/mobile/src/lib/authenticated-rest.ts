@@ -3,11 +3,18 @@ import { getSupabaseClient } from './supabase-client';
 
 export type StorageSource = { uri: string; headers: Record<string, string> };
 
+export class AuthSessionError extends Error {
+  constructor() {
+    super('Session changed or unavailable');
+    this.name = 'AuthSessionError';
+  }
+}
+
 async function sessionFor(userId: string, signal: AbortSignal | null | undefined) {
   const client = getSupabaseClient();
   const { data, error } = await client.auth.getSession();
   const session = data.session;
-  if (signal?.aborted || error || !session || session.user.id !== userId) throw new Error('Session changed or unavailable');
+  if (signal?.aborted || error || !session || session.user.id !== userId) throw new AuthSessionError();
   return { session, config: loadConfig() };
 }
 

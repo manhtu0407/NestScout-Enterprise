@@ -667,9 +667,6 @@ isOneToOne: false
 "kael_start_run":
 { Args: { "p_actor": string,"p_conversation_id": string,"p_mode": string,"p_request_id": string,"p_user_text": string }; Returns: Json
                            },
-"kael_verification_charge":
-{ Args: { "p_actor": string,"p_actual": number,"p_call": string,"p_provider": string,"p_run": string }; Returns: boolean
-                           },
 "mark_notifications_read":
 { Args: { "p_ids": (string)[] }; Returns: number
                            },
