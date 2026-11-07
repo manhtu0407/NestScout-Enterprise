@@ -274,7 +274,7 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     } catch {
       outcome = controller.signal.aborted
         ? { kind: 'cancelled' }
-        : { kind: 'refused', code: 'provider_error', message: 'Kael không thể hoàn tất yêu cầu do lỗi kết nối. Vui lòng thử lại.', retryable: true };
+        : { kind: 'interrupted' };
     }
     if (controllerRef.current !== controller) return;
     controllerRef.current = null;

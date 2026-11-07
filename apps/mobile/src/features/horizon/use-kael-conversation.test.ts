@@ -1,10 +1,20 @@
 import { act, renderHook } from '@testing-library/react-native';
 
 import type { KaelConversationSnapshot, KaelEvent, KaelMode, KaelTurnOutcome, KaelTurnRequest } from '@/features/shared';
+import { streamKaelTurn } from '@/features/shared/kael-runtime-repository';
 
 import { useKaelConversation } from './use-kael-conversation';
 
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
+jest.mock('@/lib/config', () => ({
+  loadConfig: () => ({ supabaseUrl: 'http://127.0.0.1:54321', supabasePublishableKey: 'public-key' }),
+  ConfigError: class ConfigError extends Error {},
+}));
+jest.mock('@/lib/supabase-client', () => ({
+  getSupabaseClient: () => ({
+    auth: { getSession: async () => ({ data: { session: { user: { id: 'customer-a' }, access_token: 'token-a' } }, error: null }) },
+  }),
+}));
 jest.mock('expo-crypto', () => {
   let counter = 0;
   return { randomUUID: () => `00000000-0000-4000-8000-${String(++counter).padStart(12, '0')}` };
@@ -79,7 +89,7 @@ test('a thrown stream failure is visible and releases the conversation for anoth
   const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader));
   await act(async () => { result.current.send('Xin chào'); });
   expect(result.current.running).toBe(false);
-  expect(result.current.notice).toMatch(/lỗi kết nối/);
+  expect(result.current.notice).toMatch(/chưa xác nhận được Kael đã trả lời xong/);
   await act(async () => { result.current.send('Thử lại'); });
   expect(streamer).toHaveBeenCalledTimes(2);
   expect(result.current.running).toBe(false);
@@ -578,6 +588,56 @@ describe('first turn interrupted before run_started', () => {
   const interruptedText = /trước khi Kael trả lời xong/;
   const unconfirmedText = /chưa xác nhận được/;
   const unverifiedText = /chưa tải lại được cuộc trò chuyện để xác minh/;
+
+  test('a backend-persisted first turn is rehydrated when the connection fails before response headers', async () => {
+    let snapshot: KaelConversationSnapshot = empty;
+    const fetcher = jest.fn(async () => {
+      snapshot = persisted(stored(2, 'assistant', 'Tôi đã nhận được yêu cầu.'));
+      throw new TypeError('Network request failed');
+    });
+    const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockImplementation(async () => snapshot);
+    const streamer = (userId: string, request: KaelTurnRequest, onEvent: (event: KaelEvent) => void, signal: AbortSignal) =>
+      streamKaelTurn(userId, request, onEvent, signal, fetcher);
+    const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+    await act(async () => { await Promise.resolve(); });
+
+    await act(async () => {
+      result.current.send(text);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(result.current.conversationId).toBe(conversation);
+    expect(result.current.messages.map(message => [message.role, message.text])).toEqual([
+      ['user', text],
+      ['assistant', 'Tôi đã nhận được yêu cầu.'],
+    ]);
+    expect(result.current.notice).toBeNull();
+    expect(result.current.running).toBe(false);
+  });
+
+  test('an ambiguous streamer exception rehydrates before it can be classified as refused', async () => {
+    const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>()
+      .mockResolvedValueOnce(empty)
+      .mockResolvedValue(persisted(stored(2, 'assistant', 'Yêu cầu đã được xử lý.')));
+    const streamer = jest.fn(async () => { throw new TypeError('Network request failed'); });
+    const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+    await act(async () => { await Promise.resolve(); });
+
+    await act(async () => {
+      result.current.send(text);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    expect(streamer).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(result.current.messages.map(message => [message.role, message.text])).toEqual([
+      ['user', text],
+      ['assistant', 'Yêu cầu đã được xử lý.'],
+    ]);
+    expect(result.current.notice).toBeNull();
+  });
 
   test('restores a first message that the backend stored and answered, without a retry', async () => {
     const { result, streamer, loader } = await firstTurn(async () => persisted(stored(2, 'assistant', 'Đã ghi nhận yêu cầu.')));

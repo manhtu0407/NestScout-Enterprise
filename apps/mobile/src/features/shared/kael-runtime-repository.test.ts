@@ -103,7 +103,7 @@ test('server refusals surface the server message, and unreadable refusals stay h
     .resolves.toEqual(expect.objectContaining({ kind: 'refused', code: 'provider_unavailable', message: expect.stringContaining('HTTP 502') }));
 });
 
-test('TestFlight config, Auth and connection failures each produce a visible diagnosis', async () => {
+test('invalid TestFlight config and Auth are definite refusals while network failures remain recoverable', async () => {
   mockLoadConfig.mockImplementationOnce(() => { throw new ConfigError('EXPO_PUBLIC_TESTFLIGHT_SUPABASE_URL is required.'); });
   const config = await streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, jest.fn());
   expect(config).toEqual(expect.objectContaining({ kind: 'refused', code: 'provider_unavailable', message: expect.stringContaining('EXPO_PUBLIC_TESTFLIGHT_SUPABASE_URL') }));
@@ -114,7 +114,18 @@ test('TestFlight config, Auth and connection failures each produce a visible dia
 
   const disconnected = await streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal,
     jest.fn(async () => { throw new TypeError('Network request failed'); }));
-  expect(disconnected).toEqual(expect.objectContaining({ kind: 'refused', code: 'provider_error', message: expect.stringContaining('Supabase Kael') }));
+  expect(disconnected).toEqual({ kind: 'interrupted' });
+});
+
+test('a fetch failure before response headers is an unknown server outcome, not a refusal', async () => {
+  const fetcher = jest.fn(async () => { throw new TypeError('Network request failed'); });
+  await expect(streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, fetcher))
+    .resolves.toEqual({ kind: 'interrupted' });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+
+  const response = { ok: true, status: 200, body: null } as unknown as Response;
+  await expect(streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, jest.fn(async () => response)))
+    .resolves.toEqual({ kind: 'interrupted' });
 });
 
 test('a changed session or cancelled request never reports success', async () => {
