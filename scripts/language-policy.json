@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "conditionalLanguages": ["python", "rust"],
+  "version": 2,
+  "conditionalLanguages": [],
   "languages": {
     "typescript": [".ts", ".tsx", ".mts", ".cts"],
     "javascript": [".js", ".jsx", ".mjs", ".cjs"],
@@ -80,17 +80,27 @@
   "modules": [
     {
       "path": "apps/mobile/",
-      "domain": "Mobile and frontend",
+      "domain": "NestScout mobile application and Kael UI/UX",
       "languages": ["typescript"]
     },
     {
       "path": "services/",
-      "domain": "Backend, API and Kael agent core",
+      "domain": "NestScout application services other than the Kael runtime",
       "languages": ["typescript"]
     },
     {
+      "path": "services/kael-core/",
+      "domain": "Kael Backend, AI Core, Agent Runtime, Memory, Reasoning and Tools",
+      "languages": ["rust", "python", "go"]
+    },
+    {
+      "path": "supabase/functions/kael/",
+      "domain": "Kael Backend, AI Core, Agent Runtime, Memory, Reasoning and Tools",
+      "languages": ["rust", "python", "go"]
+    },
+    {
       "path": "supabase/",
-      "domain": "Database, migrations and row-level security",
+      "domain": "Supabase integrations, database migrations and row-level security",
       "languages": ["sql", "typescript"]
     },
     {
@@ -104,6 +114,33 @@
       "languages": ["shell"]
     }
   ],
+  "kaelBackend": {
+    "paths": ["services/kael-core/", "supabase/functions/kael/"],
+    "priority": ["rust", "python", "go"],
+    "legacyTypeScript": [
+      "services/kael-core/src/anthropic.ts",
+      "services/kael-core/src/config.ts",
+      "services/kael-core/src/context.ts",
+      "services/kael-core/src/deepseek.ts",
+      "services/kael-core/src/developer-pilot.ts",
+      "services/kael-core/src/events.ts",
+      "services/kael-core/src/executor.ts",
+      "services/kael-core/src/gateway.ts",
+      "services/kael-core/src/intelligence.ts",
+      "services/kael-core/src/knowledge-cases.ts",
+      "services/kael-core/src/knowledge-contract.ts",
+      "services/kael-core/src/knowledge-sources.ts",
+      "services/kael-core/src/model.ts",
+      "services/kael-core/src/perplexity.ts",
+      "services/kael-core/src/policy.ts",
+      "services/kael-core/src/runtime.ts",
+      "services/kael-core/src/sse.ts",
+      "services/kael-core/src/store.ts",
+      "services/kael-core/src/tasks.ts",
+      "services/kael-core/src/tools.ts",
+      "supabase/functions/kael/index.ts"
+    ]
+  },
   "exceptions": [
     {
       "path": "apps/mobile/eslint.config.mjs",

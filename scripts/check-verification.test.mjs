@@ -27,7 +27,7 @@ test('hosted repository checks retain unconditional aggregate and negative verif
   assert.equal(job.name, 'Repository checks');
   assert.equal(job.if, undefined);
   assert.equal(job['continue-on-error'], undefined);
-  for (const command of ['npm run check', 'npm run verify:negative']) {
+  for (const command of ['npm run check:languages', 'npm run check', 'npm run verify:negative']) {
     const step = job.steps.find(step => step.run === command);
     assert.ok(step, `Required CI command missing or masked: ${command}`);
     assert.equal(step.if, undefined, `Required CI command is conditional: ${command}`);
