@@ -132,9 +132,11 @@ inline and multiline comments, including comments inside type-only declarations.
 Rust, Python and Go use token-aware lexical scanners that skip their escaped, raw,
 triple-quoted and character literal forms and recognize their line and block comment
 syntax, including nested Rust block comments and Python comments inside formatted
-string expressions. Unterminated literals and block comments fail closed. SQL, YAML,
+f-string and template-string replacement expressions. Unterminated literals and block
+comments fail closed. SQL, YAML,
 TOML and the admitted Cargo, Rust toolchain, Python and Go manifests use syntax-aware
-comment scanners; Python requirements files use a requirement-line scanner. JSONC and
+comment scanners; Python requirements files use pip's whitespace-delimited comment
+rules. JSONC and
 the `.githooks/` shell scripts use lexical comment scanners that skip quoted text,
 dollar-quoted delimiters, block scalars and URL fragments (YAML uses the `yaml` parser's
 syntax tree). JSON files receive line-leading checks; Markdown

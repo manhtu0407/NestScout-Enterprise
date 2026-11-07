@@ -365,8 +365,7 @@ function pythonStringToken(text, index) {
 
 function pythonFormatSpec(text, index, found) {
   for (let cursor = index; cursor < text.length;) {
-    if (text.startsWith('{{', cursor)) cursor += 2;
-    else if (text[cursor] === '{') cursor = pythonFExpression(text, cursor + 1, found);
+    if (text[cursor] === '{') cursor = pythonFExpression(text, cursor + 1, found);
     else if (text[cursor] === '}') return cursor + 1;
     else cursor++;
   }

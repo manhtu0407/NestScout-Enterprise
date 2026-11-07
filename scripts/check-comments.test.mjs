@@ -93,6 +93,7 @@ test('Rust, Python and Go comment extraction follows language string and comment
     'template = t"{value}"',
     'template_raw = tr"{value}"',
     'template_raw_reverse = rt"{value}"',
+    'template_dict_format = t"{42:{{1: 2}}}"',
     'def fragment():\n    return"#fragment"',
     "quote = '# not'",
   ].join('\n');
@@ -101,6 +102,7 @@ test('Rust, Python and Go comment extraction follows language string and comment
     '# field comment', '# module comment',
   ]);
   assert.deepEqual(texts('engine.py', 'message = t"""{1 # field comment\n}"""\n'), ['# field comment']);
+  assert.deepEqual(texts('engine.py', 'message = t"{42:{{1: # dict comment\n2}}}"\n'), ['# dict comment']);
   assert.throws(() => commentRecords('engine.py', 'value = "unterminated # text\n'), /Invalid Python syntax/);
 
   const go = [
