@@ -405,7 +405,8 @@ function pythonStringEnd(text, token, found) {
     if (text.startsWith(delimiter, cursor)) return cursor + delimiter.length;
     if (text[cursor] === '\\') {
       if (cursor + 1 >= text.length) break;
-      cursor += text[cursor + 1] === '\r' && text[cursor + 2] === '\n' ? 3 : 2;
+      if (formatted && ['{', '}'].includes(text[cursor + 1])) cursor++;
+      else cursor += text[cursor + 1] === '\r' && text[cursor + 2] === '\n' ? 3 : 2;
     } else if (!triple && /[\r\n]/.test(text[cursor])) {
       throw new Error('Invalid Python syntax: newline in single-quoted string.');
     } else if (formatted && text.startsWith('{{', cursor)) cursor += 2;

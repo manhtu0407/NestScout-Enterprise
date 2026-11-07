@@ -88,6 +88,7 @@ test('Rust, Python and Go comment extraction follows language string and comment
     'triple = """# not',
     '// not"""',
     'formatted = f"{url!r} # literal {2:#x}"',
+    'pattern = rf"\\{value}"',
     'def fragment():\n    return"#fragment"',
     "quote = '# not'",
   ].join('\n');
