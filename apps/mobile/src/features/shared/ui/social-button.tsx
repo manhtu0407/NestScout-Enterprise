@@ -1,12 +1,12 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle, Path, Polygon } from 'react-native-svg';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 const metrics = horizonLayout.designKit;
 const colors = horizonColors.designKit;
 
-export type SocialBrand = 'google' | 'apple' | 'facebook';
+export type SocialBrand = 'google' | 'apple' | 'facebook' | 'email';
 
 type Props = {
   brand: SocialBrand;
@@ -18,6 +18,7 @@ export const socialLabels: Readonly<Record<SocialBrand, string>> = {
   google: 'Tiếp tục với Google',
   apple: 'Tiếp tục với Apple',
   facebook: 'Tiếp tục với Facebook',
+  email: 'Tạo tài khoản bằng Email',
 };
 
 const googlePaths: readonly { d: string; fill: string }[] = [
@@ -50,7 +51,17 @@ function FacebookLogo() {
   </Svg>;
 }
 
-const logos: Readonly<Record<SocialBrand, () => React.JSX.Element>> = { google: GoogleLogo, apple: AppleLogo, facebook: FacebookLogo };
+function EmailLogo() {
+  return <Svg width={metrics.socialLogo} height={metrics.socialLogo} viewBox="0 0 48 48">
+    <Path d="M45 16.2l-5 2.75-5 4.75L35 40h7c1.657 0 3-1.343 3-3V16.2z" fill={colors.gmailGreen}/>
+    <Path d="M3 16.2l3.614 1.71L13 23.7V40H6c-1.657 0-3-1.343-3-3V16.2z" fill={colors.gmailBlue}/>
+    <Polygon points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17" fill={colors.gmailRed}/>
+    <Path d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859C9.132 8.301 8.228 8 7.298 8 4.924 8 3 9.924 3 12.298z" fill={colors.gmailDarkRed}/>
+    <Path d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341C38.868 8.301 39.772 8 40.702 8 43.076 8 45 9.924 45 12.298z" fill={colors.gmailYellow}/>
+  </Svg>;
+}
+
+const logos: Readonly<Record<SocialBrand, () => React.JSX.Element>> = { google: GoogleLogo, apple: AppleLogo, facebook: FacebookLogo, email: EmailLogo };
 
 export function SocialButton({ brand, onPress, disabled = false }: Props) {
   const Logo = logos[brand];

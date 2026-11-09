@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
 
-import type { AuthFailure, AuthGateway, AuthOutcome, SocialProvider, SocialSignIn } from '../auth/auth-gateway';
+import type { AuthFailure, AuthGateway, AuthOutcome, EmailCredentials, EmailSignUp, SocialProvider, SocialSignIn } from '../auth/auth-gateway';
 import type { CapabilityRepository } from '../capability/capability-repository';
 import type { AppMode } from '../mode/app-mode';
 import type { PreferredModeStore } from '../mode/preferred-mode-store';
@@ -19,6 +19,8 @@ export type AccessApi = AccessView & {
   verifyOtp(code: string): Promise<AuthOutcome>;
   cancelOtp(): void;
   signInWithProvider(provider: SocialProvider): Promise<AuthOutcome<SocialSignIn>>;
+  signUpWithEmail(credentials: EmailCredentials): Promise<AuthOutcome<EmailSignUp>>;
+  signInWithEmail(credentials: EmailCredentials): Promise<AuthOutcome>;
   redirectFailure: AuthFailure | null;
   dismissRedirectFailure(): void;
   signOut(): Promise<AuthOutcome>;
@@ -166,6 +168,24 @@ export function AccessProvider({ services, children }: { services: AccessService
     },
     [auth],
   );
+  const signUpWithEmail = useCallback(
+    async (credentials: EmailCredentials): Promise<AuthOutcome<EmailSignUp>> => {
+      const outcome = await auth.signUpWithEmail(credentials);
+      if (outcome.ok && outcome.value.status === 'signed_in') dispatch({ type: 'otp_verified', userId: outcome.value.identity.userId });
+      return outcome;
+    },
+    [auth],
+  );
+
+  const signInWithEmail = useCallback(
+    async (credentials: EmailCredentials): Promise<AuthOutcome> => {
+      const outcome = await auth.signInWithEmail(credentials);
+      if (!outcome.ok) return outcome;
+      dispatch({ type: 'otp_verified', userId: outcome.value.userId });
+      return { ok: true, value: undefined };
+    },
+    [auth],
+  );
   const dismissRedirectFailure = useCallback(() => setRedirectFailure(null), []);
   const signOut = useCallback(() => auth.signOut(), [auth]);
   const cancelHorizonTransfer = useCallback(() => dispatch({ type: 'horizon_transfer_cancelled' }), []);
@@ -178,6 +198,8 @@ export function AccessProvider({ services, children }: { services: AccessService
       verifyOtp,
       cancelOtp: () => dispatch({ type: 'otp_cleared' }),
       signInWithProvider,
+      signUpWithEmail,
+      signInWithEmail,
       redirectFailure,
       dismissRedirectFailure,
       signOut,
@@ -193,7 +215,7 @@ export function AccessProvider({ services, children }: { services: AccessService
       cancelHorizonTransfer,
       cancelModeRequest: () => dispatch({ type: 'mode_request_cancelled' }),
     }),
-    [view, requestOtp, verifyOtp, signInWithProvider, redirectFailure, dismissRedirectFailure, signOut, cancelHorizonTransfer],
+    [view, requestOtp, verifyOtp, signInWithProvider, signUpWithEmail, signInWithEmail, redirectFailure, dismissRedirectFailure, signOut, cancelHorizonTransfer],
   );
 
   return <AccessContext.Provider value={api}>{children}</AccessContext.Provider>;

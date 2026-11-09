@@ -51,6 +51,7 @@ export function PhoneEntryScreen() {
       resendSeconds={0}
       onSubmitPhone={submit}
       onSocialSignIn={(provider) => void social.signIn(provider)}
+      onEmailSignUp={() => router.push({ pathname: '/email', params: { role } })}
       onSubmitCode={() => undefined}
       onResend={() => undefined}
       onChangeNumber={() => undefined}

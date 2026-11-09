@@ -39,6 +39,7 @@ export type SignInGateProps = {
   resendSeconds: number;
   onSubmitPhone: () => void;
   onSocialSignIn: (provider: SocialProvider) => void;
+  onEmailSignUp?: () => void;
   onSubmitCode: () => void;
   onResend: () => void;
   onChangeNumber: () => void;
@@ -110,6 +111,7 @@ export function SignInGate(props: SignInGateProps) {
                     <View style={styles.social}>
                       <SocialButton brand="google" disabled={busy} onPress={() => props.onSocialSignIn('google')} />
                       <SocialButton brand="apple" disabled={busy} onPress={() => props.onSocialSignIn('apple')} />
+                      {props.onEmailSignUp && <SocialButton brand="email" disabled={busy} onPress={props.onEmailSignUp} />}
                     </View>
                   </>
                 ) : (

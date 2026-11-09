@@ -3,6 +3,7 @@ export { EntryRedirect } from './components/entry-redirect';
 export { ModeSwitchControl, SignOutControl, WorkerAccessNotice } from './components/session-controls';
 export { getDefaultAccessServices } from './default-services';
 export { OtpVerificationScreen } from './screens/otp-verification-screen';
+export { EmailSignUpScreen } from './screens/email-sign-up-screen';
 export { PhoneEntryScreen } from './screens/phone-entry-screen';
 export { AuthCallbackScreen } from './screens/auth-callback-screen';
 export { SignInGate, codeLength, type SignInGateProps } from './sign-in/sign-in-gate';

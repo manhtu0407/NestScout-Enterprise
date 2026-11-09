@@ -12,6 +12,33 @@ export function classifySocialError(error: ErrorLike): AuthFailure {
   return 'unknown';
 }
 
+export function classifyEmailError(error: ErrorLike): AuthFailure {
+  if (isAuthRetryableFetchError(error as never) || error.name === 'AuthRetryableFetchError') return 'network';
+  switch (error.code) {
+    case 'invalid_credentials':
+      return 'invalid_credentials';
+    case 'email_not_confirmed':
+      return 'email_not_confirmed';
+    case 'user_already_exists':
+    case 'email_exists':
+      return 'email_taken';
+    case 'weak_password':
+      return 'weak_password';
+    case 'signup_disabled':
+      return 'signup_disabled';
+    case 'email_provider_disabled':
+    case 'hook_timeout':
+    case 'hook_timeout_after_retry':
+      return 'provider_unavailable';
+    case 'over_request_rate_limit':
+    case 'over_email_send_rate_limit':
+      return 'rate_limited';
+    default:
+      break;
+  }
+  return error.status === 429 ? 'rate_limited' : 'unknown';
+}
+
 export function classifyAuthError(error: ErrorLike): AuthFailure {
   if (isAuthRetryableFetchError(error as never) || error.name === 'AuthRetryableFetchError') return 'network';
   switch (error.code) {

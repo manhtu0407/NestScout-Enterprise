@@ -122,7 +122,7 @@ export const horizonColors = {
     neutralFg: '#5B6672', neutralBg: '#EEF1F4', infoFg: '#2F6BFF', infoBg: 'rgba(47,107,255,0.12)',
     successFg: '#0B7A6D', successBg: 'rgba(14,158,142,0.14)', warnFg: '#9A5B00', warnBg: '#FFF1D6', dangerFg: '#C02B25', dangerBg: 'rgba(212,50,44,0.10)',
     solidFg: '#FFFFFF', solidBg: '#141820', ring: '#FFFFFF', qrDark: '#141820', qrLight: '#FFFFFF', overlay: 'rgba(20,24,32,0.55)',
-    googleBlue: '#4285F4', googleRed: '#EA4335', googleYellow: '#FBBC05', googleGreen: '#34A853', facebookBlue: '#1877F2',
+    googleBlue: '#4285F4', googleRed: '#EA4335', googleYellow: '#FBBC05', googleGreen: '#34A853', facebookBlue: '#1877F2', gmailGreen: '#4CAF50', gmailBlue: '#1E88E5', gmailRed: '#E53935', gmailDarkRed: '#C62828', gmailYellow: '#FBC02D',
     chipLime: { fg: '#2F6B12', bg: '#E4F4C8' }, chipRose: { fg: '#A8123E', bg: '#F8CBD6' }, chipYellow: { fg: '#7D5200', bg: '#FCEFB4' }, chipCyan: { fg: '#17617E', bg: '#C9ECF0' },
     chipNeutral: { fg: '#666666', bg: '#EBEBEB' }, chipGray: { fg: '#0B0B0B', bg: '#F7F7F7' }, chipSoft: { fg: '#666666', bg: '#F7F7F7' },
     dotGreen: '#22A06B', dotYellow: '#E8A317', dotIndigo: '#5B5BD6', dotRed: '#D4322C',
