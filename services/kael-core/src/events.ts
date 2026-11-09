@@ -30,7 +30,7 @@ export type KaelToolOutcome = 'succeeded' | 'failed' | 'denied' | 'approval_requ
 
 export const kaelFailureCodes = [
   'unauthenticated', 'invalid_request', 'rate_limited', 'busy', 'provider_unavailable', 'provider_error',
-  'incomplete_output', 'budget_exhausted', 'approval_invalid', 'cancelled', 'internal',
+  'incomplete_output', 'budget_exhausted', 'approval_invalid', 'consent_required', 'cancelled', 'internal',
 ] as const;
 
 export type KaelFailureCode = typeof kaelFailureCodes[number];

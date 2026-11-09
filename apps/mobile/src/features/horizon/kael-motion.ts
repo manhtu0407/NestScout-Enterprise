@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing } from 'react-native';
 
+import { usePreferences } from '@/lib/preferences-provider';
+
 export const kaelTransition = { duration: 740, delay: 735, easing: Easing.bezier(0.22, 1, 0.36, 1) } as const;
 export const kaelLanding = { duration: 690 } as const;
 export const kaelReaction = { duration: 660 } as const;
@@ -29,13 +31,14 @@ const nodStops = [0, 0.38, 0.7, 1] as const;
 
 export function useReduceMotion(): boolean {
   const [reduceMotion, setReduceMotion] = useState(false);
+  const preferred = usePreferences().reduceMotion;
   useEffect(() => {
     let live = true;
     AccessibilityInfo.isReduceMotionEnabled().then(value => { if (live) setReduceMotion(value); }).catch(() => undefined);
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
     return () => { live = false; subscription.remove(); };
   }, []);
-  return reduceMotion;
+  return reduceMotion || preferred;
 }
 
 export function useKaelMotion(chatActive: boolean, reduceMotion: boolean) {

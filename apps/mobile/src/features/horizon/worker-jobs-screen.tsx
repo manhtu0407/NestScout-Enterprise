@@ -15,6 +15,7 @@ import { ScreenHeader } from './support-shell';
 import { ActionButton } from './worker-action-button';
 import { workerJobStages, workerJobStepActions, workerJobSteps, type WorkerCommand, type WorkerJob, type WorkerJobStage, type WorkerPerform } from './worker-jobs';
 import { workflowMessage } from './workflow-messages';
+import { JobChangePanel, type JobChangesApi } from './job-change-panel';
 
 const webField = Platform.select({ web: { outlineStyle: 'solid', outlineWidth: 0 } as const, default: undefined });
 const metrics = horizonLayout.workerJobs;
@@ -26,6 +27,7 @@ type Props = {
   initialStage: WorkerJobStage;
   jobs: readonly WorkerJob[];
   perform: WorkerPerform;
+  jobChanges?: { userId: string; api: JobChangesApi };
   onBack: () => void;
   onAskKael?: () => void;
   sample?: boolean;
@@ -47,11 +49,11 @@ type Actions = {
 
 type FormProps = { job: WorkerJob; form: FormState; busy: boolean; error: string | null; onCancel: () => void; onRun: (command: WorkerCommand) => void; onInvalid: (message: string) => void };
 
-type CardProps = { job: WorkerJob; actions: Actions; form: FormState | null; busy: boolean; error: string | null; onCancelForm: () => void; onRun: (command: WorkerCommand) => void; onInvalid: (message: string) => void };
+type CardProps = { job: WorkerJob; actions: Actions; form: FormState | null; busy: boolean; error: string | null; onCancelForm: () => void; onRun: (command: WorkerCommand) => void; onInvalid: (message: string) => void; jobChanges?: { userId: string; api: JobChangesApi } };
 
 const maxText = 4000;
 
-export function WorkerJobsScreen({ initialStage, jobs, perform, onBack, onAskKael, sample = false }: Props) {
+export function WorkerJobsScreen({ initialStage, jobs, perform, jobChanges, onBack, onAskKael, sample = false }: Props) {
   const [stage, setStage] = useState(initialStage);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +157,7 @@ export function WorkerJobsScreen({ initialStage, jobs, perform, onBack, onAskKae
               onCancelForm={() => { setForm(null); setError(null); }}
               onRun={command => void run(job.id, command)}
               onInvalid={setError}
+              jobChanges={jobChanges}
             />
           ))
         ) : (
@@ -336,7 +339,7 @@ function JobActions({ job, actions }: { job: WorkerJob; actions: Actions }) {
   }
 }
 
-function JobCard({ job, actions, form, busy, error, onCancelForm, onRun, onInvalid }: CardProps) {
+function JobCard({ job, actions, form, busy, error, onCancelForm, onRun, onInvalid, jobChanges }: CardProps) {
   const { stage } = job;
   const step = job.step ?? 0;
   const amount = formatMoney(job.amountMinor, 'VND');
@@ -373,6 +376,7 @@ function JobCard({ job, actions, form, busy, error, onCancelForm, onRun, onInval
           <Fact icon="user" text={job.clientName} />
         </View>
       ) : null}
+      {(stage === 'assigned' || stage === 'active') && jobChanges ? <JobChangePanel jobId={job.id} userId={jobChanges.userId} api={jobChanges.api} /> : null}
       {stage === 'assigned' ? (
         <View style={styles.block}>
           <View accessibilityRole="progressbar" accessibilityLabel={caption} style={styles.segments}>

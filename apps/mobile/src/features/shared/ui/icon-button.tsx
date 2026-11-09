@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet } from 'react-native';
 
+import { usePreferences } from '@/lib/preferences-provider';
 import { layout } from '@/theme/layout';
 import { usePalette } from '@/theme/palette';
 
@@ -8,7 +9,9 @@ export function IconButton({ label, hint, children, onPress, disabled = false, s
   const palette = usePalette();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(true);
+  const [systemReduceMotion, setReduceMotion] = useState(true);
+  const preferredReduceMotion = usePreferences().reduceMotion;
+  const reduceMotion = systemReduceMotion || preferredReduceMotion;
   const [opacity] = useState(() => new Animated.Value(1));
   const [previousDisabled, setPreviousDisabled] = useState(disabled);
   if (disabled !== previousDisabled) {

@@ -142,6 +142,12 @@ export async function saveCustomerSettings(userId: string, settings: CustomerSet
   if (result !== userId) throw new Error('Invalid settings response');
 }
 
+export async function clearKaelHistory(userId: string, mode: 'client' | 'worker', signal: AbortSignal): Promise<number> {
+  const result = await callRpc(userId, 'clear_kael_history', { p_mode: mode }, signal);
+  if (typeof result !== 'number' || !Number.isSafeInteger(result) || result < 0) throw new Error('Invalid history response');
+  return result;
+}
+
 export async function readAccountPhone(userId: string, signal: AbortSignal): Promise<string> {
   const result = await callRpc(userId, 'account_phone', {}, signal);
   if (typeof result !== 'string') throw new Error('Invalid phone response');

@@ -1,3 +1,4 @@
+import { usePreferences } from '@/lib/preferences-provider';
 import { horizonLayout } from '@/theme/layout';
 import React, { useCallback, useEffect, useState } from 'react';
 import { AccessibilityInfo, Animated, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -8,6 +9,7 @@ import { horizonColors, horizonColors as colors } from '@/theme/palette';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ModePicker, type HorizonMode, type ModeNotice } from './mode-picker';
 import { AccountSheet } from './account-sheet';
+import { AvatarImage } from './avatar-image';
 import { WorkerSidebarBody, type WorkerSidebarState, type WorkerSidebarStats } from './worker-sidebar-body';
 import { CollapsibleGroup } from './sidebar-group';
 import { PopBadge } from './motion-count';
@@ -74,7 +76,9 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
   const [modeOpen, setModeOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountCloseRequest, setAccountCloseRequest] = useState(0);
-  const [reduceMotion, setReduceMotion] = useState(true);
+  const [systemReduceMotion, setReduceMotion] = useState(true);
+  const preferredReduceMotion = usePreferences().reduceMotion;
+  const reduceMotion = systemReduceMotion || preferredReduceMotion;
   useEffect(() => {
     let active = true;
     let changed = false;
@@ -86,6 +90,7 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
   const modeLabel = mode === 'worker' ? 'Thợ' : mode === 'guest' ? 'Khách' : 'Khách hàng';
   const accountName = profileName ?? (mode === 'guest' ? 'Khách' : 'của bạn');
   const initial = profileName?.trim().charAt(0).toLocaleUpperCase();
+  const avatarPlaceholder = initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={horizonLayout.sidebarList.accountAvatarIconSize} color={horizonColors.sidebarComponent.avatarForeground}/>;
   const pinnedSessions = recentSessions.filter(session => session.pinned);
   const unpinnedSessions = recentSessions.filter(session => !session.pinned);
   const renderSession = (session: RecentSession) => <RecentSessionRow key={session.id} session={session} active={session.id === activeSessionId} onPress={() => onOpenSession?.(session.id)} onMore={() => onSessionMore?.(session.id)} onTogglePin={() => onTogglePin?.(session.id)}/>;
@@ -139,7 +144,7 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
           </CollapsibleGroup>
         </ScrollView>
         <View pointerEvents="box-none" style={styles.floating}>
-          <GlassIconButton label={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} hint="Mở tài khoản và chuyển vai trò" onPress={() => { setAccountCloseRequest(0); setAccountOpen(true); }}><View style={styles.avatarDisc}>{profileAvatarUri ? <Image source={{ uri: profileAvatarUri, headers: profileAvatarHeaders ? { ...profileAvatarHeaders } : undefined }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện"/> : initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={horizonLayout.sidebarList.accountAvatarIconSize} color={horizonColors.sidebarComponent.avatarForeground}/>}</View></GlassIconButton>
+          <GlassIconButton label={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} hint="Mở tài khoản và chuyển vai trò" onPress={() => { setAccountCloseRequest(0); setAccountOpen(true); }}><View style={styles.avatarDisc}>{profileAvatarUri ? <AvatarImage uri={profileAvatarUri} headers={profileAvatarHeaders} fallback={avatarPlaceholder}/> : avatarPlaceholder}</View></GlassIconButton>
           <GlassCapsuleButton label="Chat" tone="light" radius={horizonLayout.sidebarList.floatingRadius} onPress={() => onNavigate('new')} style={styles.newChat}>
             <Icon name="plus" size={22} color={listColors.onAccent} strokeWidth={2}/><Text style={styles.newChatLabel}>Chat</Text>
           </GlassCapsuleButton>

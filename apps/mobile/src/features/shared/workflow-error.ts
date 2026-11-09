@@ -11,6 +11,7 @@ const byDomainMessage: Record<string, WorkflowFailure> = {
   'invitation unavailable': 'unavailable',
   'agreement unavailable': 'unavailable',
   'already assigned': 'unavailable',
+  'run active': 'unavailable',
   'invalid request': 'invalid',
   'invalid evidence': 'invalid',
   'invalid proposal': 'invalid',

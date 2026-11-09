@@ -183,6 +183,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
     }
     if (started.status === 'rate_limited') return failure(429, 'rate_limited');
     if (started.status === 'busy') return failure(409, 'busy');
+    if (started.status === 'consent_required') return failure(403, 'consent_required');
     if (started.status !== 'started' && started.status !== 'replay') return failure(400, 'invalid_request');
     const replay = started.status === 'replay' ? started : null;
 

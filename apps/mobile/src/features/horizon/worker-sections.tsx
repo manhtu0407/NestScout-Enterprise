@@ -11,6 +11,7 @@ import { toEarningsView } from './worker-earnings';
 import { WorkerEarningsScreen } from './worker-earnings-screen';
 import { workerJobStageForSidebarId } from './worker-jobs';
 import { WorkerJobsScreen } from './worker-jobs-screen';
+import { jobChangesApiFor } from './job-changes-api';
 import { workerProfileTabForSidebarId } from './worker-profile';
 import { WorkerProfileScreen } from './worker-profile-screen';
 import { toWorkerJobs, toWorkerNotificationItems, toWorkerProfileView } from './worker-views';
@@ -66,5 +67,5 @@ export function WorkerSection({ id, onBack, onNavigate }: Props) {
   if (earningsMode !== null) return <WorkerEarningsScreen key={earningsMode} initialMode={earningsMode} earnings={earnings} onBack={onBack} />;
   if (profileTab !== null) return <WorkerProfileScreen key={profileTab} initialTab={profileTab} profile={profile} fallbackName="" perform={worker.performProfile} onBack={onBack} />;
   if (stage === null) return null;
-  return <WorkerJobsScreen key={stage} initialStage={stage} jobs={jobs} perform={worker.perform} onBack={onBack} />;
+  return <WorkerJobsScreen key={stage} initialStage={stage} jobs={jobs} perform={worker.perform} jobChanges={{ userId, api: jobChangesApiFor(userId) }} onBack={onBack} />;
 }

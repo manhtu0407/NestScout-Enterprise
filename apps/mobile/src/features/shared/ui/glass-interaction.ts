@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AccessibilityInfo, Animated } from 'react-native';
+import { usePreferences } from '@/lib/preferences-provider';
 import { horizonLayout } from '@/theme/layout';
 
 const metrics = horizonLayout.glass;
@@ -7,7 +8,9 @@ const metrics = horizonLayout.glass;
 type TransparencyAccessibility = typeof AccessibilityInfo & { isReduceTransparencyEnabled?: () => Promise<boolean> };
 
 export function useGlassAccessibility() {
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const [systemReduceMotion, setReduceMotion] = useState(false);
+  const preferredReduceMotion = usePreferences().reduceMotion;
+  const reduceMotion = systemReduceMotion || preferredReduceMotion;
   const [reduceTransparency, setReduceTransparency] = useState(false);
   useEffect(() => {
     let live = true;

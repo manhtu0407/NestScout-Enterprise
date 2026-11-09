@@ -579,6 +579,39 @@ isOneToOne: false
 "accept_service_quote":
 { Args: { "p_quote_id": string,"p_version": number }; Returns: string
                            },
+"accept_terms":
+{ Args: { "p_document": string,"p_version": string }; Returns: string
+                           },
+"claim_push_deliveries":
+{ Args: { "p_limit": number }; Returns: Json
+                           },
+"decide_job_change":
+{ Args: { "p_change_id": string,"p_decision": string }; Returns: string
+                           },
+"export_my_data":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"finish_push_delivery":
+{ Args: { "p_error": string,"p_notification_id": string }; Returns: boolean
+                           },
+"process_account_deletions":
+{ Args: { "p_grace": string }; Returns: number
+                           },
+"purge_expired_data":
+{ Args: { "p_kael_messages_older_than": string,"p_read_notifications_older_than": string }; Returns: Json
+                           },
+"register_push_token":
+{ Args: { "p_platform": string,"p_token": string }; Returns: string
+                           },
+"request_job_change":
+{ Args: { "p_job_id": string,"p_kind": string,"p_proposed_for": string,"p_reason": string }; Returns: string
+                           },
+"set_consent":
+{ Args: { "p_granted": boolean,"p_purpose": string,"p_version": string }; Returns: string
+                           },
+"unregister_push_token":
+{ Args: { "p_token": string }; Returns: boolean
+                           },
 "account_phone":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
@@ -590,6 +623,12 @@ isOneToOne: false
                            },
 "advance_service_job":
 { Args: { "p_job_id": string,"p_next": string,"p_version": number }; Returns: number
+                           },
+"cancel_account_deletion":
+{ Args: Record<PropertyKey, never>; Returns: boolean
+                           },
+"clear_kael_history":
+{ Args: { "p_mode": string }; Returns: number
                            },
 "consent_service_resume":
 { Args: { "p_job_id": string,"p_version": number }; Returns: number
@@ -698,6 +737,9 @@ isOneToOne: false
                            },
 "review_job_worker":
 { Args: { "p_body": string,"p_job_id": string,"p_rating": number,"p_tags": (string)[] }; Returns: string
+                           },
+"request_account_deletion":
+{ Args: Record<PropertyKey, never>; Returns: string
                            },
 "save_customer_profile":
 { Args: { "p_address": string,"p_display_name": string,"p_email": string }; Returns: string

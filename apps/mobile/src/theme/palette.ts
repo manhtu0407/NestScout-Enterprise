@@ -1,4 +1,4 @@
-import { useColorScheme } from 'react-native';
+import { usePreferences } from '@/lib/preferences-provider';
 
 export type Palette = Readonly<{
   background: string;
@@ -33,7 +33,7 @@ export function paletteForAppearance(appearance: 'light' | 'dark' | null | undef
 }
 
 export function usePalette(): Palette {
-  return paletteForAppearance(useColorScheme());
+  return paletteForAppearance(usePreferences().resolvedAppearance);
 }
 
 export const horizonColors = {
