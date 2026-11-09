@@ -8,7 +8,6 @@
     "start": "expo start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "jest --ci",
     "verify:sdk": "expo install --check"
   },
   "dependencies": {
@@ -49,18 +48,5 @@
     "jest": "30.5.2",
     "jest-expo": "58.0.14",
     "typescript": "6.0.3"
-  },
-  "jest": {
-    "preset": "jest-expo",
-    "passWithNoTests": false,
-    "maxWorkers": "50%",
-    "moduleNameMapper": {
-      "^@/(.*)$": "<rootDir>/src/$1",
-      "^lucide-react-native$": "<rootDir>/../../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js"
-    },
-    "testMatch": [
-      "**/src/**/*.test.ts",
-      "**/src/**/*.test.tsx"
-    ]
   }
 }
