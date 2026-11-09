@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
   lineCopy: { flex: 1, gap: metrics.quarter, alignItems: 'flex-start' },
   lineQuestion: { color: colors.muted, fontSize: metrics.captionSize },
   lineAnswer: { color: colors.text, fontSize: metrics.bodySize, fontWeight: metrics.titleWeight },
-  edit: { paddingHorizontal: metrics.taskGap, height: metrics.selectionButtonHeight, justifyContent: 'center' },
+  edit: { paddingHorizontal: metrics.taskGap, minHeight: metrics.selectionButtonHeight, justifyContent: 'center' },
   editText: { color: colors.accent, fontSize: metrics.bodySize, fontWeight: metrics.titleWeight },
   doneRow: { flexDirection: 'row', alignItems: 'center', gap: metrics.rowGap },
   doneMark: { width: metrics.radioSize, height: metrics.radioSize, borderRadius: metrics.pillRadius, backgroundColor: colors.successFg, alignItems: 'center', justifyContent: 'center' },

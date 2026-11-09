@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
   root: { gap: metrics.gap },
   text: { minHeight: metrics.selectionMin, padding: metrics.taskPadding, borderRadius: metrics.radius, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, color: colors.text, fontSize: metrics.bodySize, lineHeight: metrics.bodyLine },
   bar: { flexDirection: 'row', flexWrap: 'wrap', alignSelf: 'flex-start', gap: metrics.quarter, padding: metrics.selectionPad, borderRadius: metrics.selectionBarRadius, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, boxShadow: metrics.selectionShadow },
-  action: { flexDirection: 'row', alignItems: 'center', gap: metrics.quarter, height: metrics.selectionButtonHeight, paddingHorizontal: metrics.taskGap, borderRadius: metrics.smallRadius },
+  action: { flexDirection: 'row', alignItems: 'center', gap: metrics.quarter, minHeight: metrics.selectionButtonHeight, paddingHorizontal: metrics.taskGap, borderRadius: metrics.smallRadius },
   actionText: { color: colors.text, fontSize: metrics.captionSize, fontWeight: metrics.titleWeight },
   sent: { color: colors.muted, fontSize: metrics.captionSize, lineHeight: metrics.captionLine },
 });

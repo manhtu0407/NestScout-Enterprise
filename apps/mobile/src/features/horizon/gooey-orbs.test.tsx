@@ -31,5 +31,10 @@ test('the plus button opens the gooey menu', async () => {
   await render(<ChatComposer value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
   await fireEvent.press(screen.getByLabelText('Đính kèm'));
   expect(screen.getByLabelText('Menu đính kèm')).toBeTruthy();
-  expect(screen.getByLabelText('Tìm kiếm web')).toBeTruthy();
+  expect(screen.getByLabelText('Thêm ảnh/tệp')).toBeTruthy();
+  expect(screen.getByLabelText('Chụp ảnh')).toBeTruthy();
+  expect(screen.queryByLabelText('Tìm kiếm web')).toBeNull();
+  expect(screen.queryByLabelText('Suy nghĩ sâu')).toBeNull();
+  expect(screen.getByText('Thêm ảnh/tệp').props.numberOfLines).toBe(1);
+  expect(screen.getByText('Sắp có').props.numberOfLines).toBe(1);
 });

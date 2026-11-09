@@ -114,7 +114,6 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
               <Image source={require('../../../assets/horizon/nestscout-lockup.png')} style={styles.lockupImage} resizeMode="contain"/>
             </View>
           </View>
-          <GlassIconButton label="Tìm kiếm cuộc trò chuyện" onPress={() => onNavigate('search')}><Icon name="search" size={horizonLayout.glass.iconSize}/></GlassIconButton>
         </View>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <CollapsibleGroup first title={sidebarGroups[0]?.title ?? ''} expanded={activityOpen} onToggle={() => setActivityOpen(open => !open)} badge={(sidebarGroups[0]?.items ?? []).reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>

@@ -2,7 +2,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { Badge } from './badge';
 
 const metrics = horizonLayout.designKit;
 const colors = horizonColors.designKit;
@@ -12,7 +11,7 @@ export type SocialBrand = 'google' | 'apple' | 'facebook';
 type Props = {
   brand: SocialBrand;
   onPress?: () => void;
-  comingSoon?: boolean;
+  disabled?: boolean;
 };
 
 export const socialLabels: Readonly<Record<SocialBrand, string>> = {
@@ -53,26 +52,25 @@ function FacebookLogo() {
 
 const logos: Readonly<Record<SocialBrand, () => React.JSX.Element>> = { google: GoogleLogo, apple: AppleLogo, facebook: FacebookLogo };
 
-export function SocialButton({ brand, onPress, comingSoon = false }: Props) {
+export function SocialButton({ brand, onPress, disabled = false }: Props) {
   const Logo = logos[brand];
   const label = socialLabels[brand];
   return <Pressable
     accessibilityRole="button"
     accessibilityLabel={label}
-    accessibilityState={{ disabled: comingSoon }}
-    disabled={comingSoon}
+    accessibilityState={{ disabled }}
+    disabled={disabled}
     onPress={onPress}
-    style={[styles.root, comingSoon && styles.soon]}
+    style={styles.root}
   >
     <View style={styles.logo}><Logo/></View>
     <Text style={styles.label}>{label}</Text>
-    {comingSoon ? <Badge label="Coming Soon" size="sm"/> : <View style={styles.spacer}/>}
+    <View style={styles.spacer}/>
   </Pressable>;
 }
 
 const styles = StyleSheet.create({
-  root: { flexDirection: 'row', alignItems: 'center', gap: metrics.socialGap, height: metrics.buttonHeight, paddingHorizontal: metrics.padding, borderRadius: metrics.smallRadius, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  soon: { opacity: metrics.socialSoonOpacity },
+  root: { flexDirection: 'row', alignItems: 'center', gap: metrics.socialGap, minHeight: metrics.buttonHeight, paddingHorizontal: metrics.padding, borderRadius: metrics.smallRadius, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   logo: { width: metrics.socialLogo, height: metrics.socialLogo },
   label: { flex: 1, color: colors.text, fontSize: metrics.bodySize, fontWeight: metrics.titleWeight, textAlign: 'center' },
   spacer: { width: metrics.socialLogo },

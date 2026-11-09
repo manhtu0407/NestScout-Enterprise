@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Share, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ComponentRef } from 'react';
+import { Animated, AppState, Easing, Keyboard, Platform, Share, StyleSheet, Text, View } from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent, ScrollViewInstance } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
@@ -85,6 +86,20 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [rootHeight, setRootHeight] = useState(0);
   const [footerHeight, setFooterHeight] = useState(0);
+  const rootRef = useRef<ComponentRef<typeof View>>(null);
+  const footerRef = useRef<ComponentRef<typeof View>>(null);
+  const remeasure = useCallback(() => {
+    rootRef.current?.measure((_x, _y, _width, height) => { if (height > 0) setRootHeight(height); });
+    footerRef.current?.measure((_x, _y, _width, height) => { if (height > 0) setFooterHeight(height); });
+  }, []);
+  useEffect(() => {
+    const subscriptions = [
+      Keyboard.addListener('keyboardDidShow', remeasure),
+      Keyboard.addListener('keyboardDidHide', remeasure),
+      AppState.addEventListener('change', state => { if (state === 'active') remeasure(); }),
+    ];
+    return () => subscriptions.forEach(subscription => subscription.remove());
+  }, [remeasure]);
   const { progress, landing, reaction, react } = useKaelMotion(chatActive, reduceMotion);
   const expression = expressionForPhase(kaelPhase);
   const previousExpression = useRef(expression);
@@ -104,6 +119,12 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
 
   useEffect(() => {
     if (chatActive) kaelIntroSession.markPlayed();
+  }, [chatActive]);
+
+  useEffect(() => {
+    if (chatActive) return undefined;
+    const timer = setTimeout(() => setChatActive(true), metrics.introAutoEnterDelay);
+    return () => clearTimeout(timer);
   }, [chatActive]);
 
   useEffect(() => {
@@ -141,7 +162,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
   const chatOpacity = progress.interpolate({ inputRange: [0, metrics.chatFadeStart, 1], outputRange: [0, 0, 1] });
   const chatShift = progress.interpolate({ inputRange: [0, 1], outputRange: [metrics.chatEnterOffset, 0] });
 
-  return <View testID="kael-home-layout" style={styles.root} onLayout={event => setRootHeight(event.nativeEvent.layout.height)}>
+  return <View ref={rootRef} testID="kael-home-layout" style={styles.root} onLayout={event => setRootHeight(event.nativeEvent.layout.height)}>
     <Animated.View pointerEvents={chatActive ? 'box-none' : 'none'} style={[styles.layer, { bottom: footerHeight, opacity: chatOpacity, transform: [{ translateY: chatShift }] }]}>
       <Animated.ScrollView ref={conversationRef} onContentSizeChange={followContent} onScroll={trackScroll} onScrollBeginDrag={() => { following.current = false; }} scrollEventThrottle={metrics.scrollThrottle} style={[styles.conversation, { top: Animated.add(inset, metrics.conversationTop) }]} contentContainerStyle={styles.conversationContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {messages.map(m => m.role === 'user'
@@ -159,8 +180,8 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
     </Animated.View>
     <KaelIntro progress={progress} footerHeight={footerHeight} interactive={!chatActive}/>
     <KaelStage progress={progress} landing={landing} reaction={reaction} expression={expression} nod={kaelPhase === 'completed'} seatTop={seatTop} navHeight={metrics.navHeight}/>
-    <View testID="kael-footer-layout" style={styles.footer} onLayout={event => setFooterHeight(event.nativeEvent.layout.height)}>
-      <ChatComposer key={conversationKey} value={input} onChange={value => { setMenuNotice(null); onInput(value); }} onSubmit={images => { enterChat(); onSubmit(images); }} error={composerError ?? menuNotice} onMediaChange={() => { setMenuNotice(null); onClearComposerError(); }} initialImages={draftImages} onImagesChange={onDraftImagesChange} mediaExternallyManaged={Boolean(onDraftImagesChange)} locked={draftLocked} onFocus={enterChat}/>
+    <View ref={footerRef} testID="kael-footer-layout" style={styles.footer} onLayout={event => setFooterHeight(event.nativeEvent.layout.height)}>
+      <ChatComposer key={conversationKey} value={input} onChange={value => { setMenuNotice(null); onInput(value); }} onSubmit={images => { enterChat(); onSubmit(images); }} error={composerError ?? menuNotice} onMediaChange={() => { setMenuNotice(null); onClearComposerError(); }} initialImages={draftImages} onImagesChange={onDraftImagesChange} mediaExternallyManaged={Boolean(onDraftImagesChange)} locked={draftLocked}/>
       <Text style={styles.disclaimer}>Kael có thể mắc sai sót. Hãy kiểm tra thông tin quan trọng.</Text>
     </View>
     {chatActive && <KaelChatNav onMenu={onMenu} onOptions={() => setMenuOpen(open => !open)}/>}

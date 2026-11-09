@@ -182,6 +182,6 @@ const styles = StyleSheet.create({
   resendText: { color: colors.muted, fontSize: metrics.captionSize },
   resendCount: { color: colors.faint, fontSize: metrics.captionSize },
   resendAction: { color: colors.accent, fontSize: metrics.captionSize, fontWeight: metrics.titleWeight },
-  chip: { height: metrics.chipHeight, borderRadius: metrics.chipRadius, paddingHorizontal: metrics.chipPaddingX, flexDirection: 'row', alignItems: 'center', gap: metrics.gapHalf, backgroundColor: colors.successFill },
+  chip: { minHeight: metrics.chipHeight, borderRadius: metrics.chipRadius, paddingHorizontal: metrics.chipPaddingX, flexDirection: 'row', alignItems: 'center', gap: metrics.gapHalf, backgroundColor: colors.successFill },
   chipText: { color: colors.success, fontSize: metrics.bodySize, fontWeight: metrics.titleWeight },
 });

@@ -89,6 +89,7 @@ describe('module ownership', () => {
       .sort();
     expect(touching).toEqual([
       'features/access/auth/auth-errors.ts',
+      'features/access/auth/social-sign-in.ts',
       'features/access/auth/supabase-auth-gateway.ts',
       'features/access/capability/capability-repository.ts',
       'lib/supabase-client.ts',

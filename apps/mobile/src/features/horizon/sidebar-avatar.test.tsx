@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AccountSheet } from './account-sheet';
@@ -29,6 +29,13 @@ test('the account sheet shows the stored avatar with its request headers', async
     </SafeAreaProvider>,
   );
   expect(screen.getByLabelText('Ảnh đại diện').props.source).toEqual({ uri, headers });
+});
+
+test('the customer sidebar has a single notifications row and no search button', async () => {
+  await renderSidebar({});
+  await fireEvent.press(screen.getByLabelText('Hỗ trợ'));
+  expect(screen.getAllByText('Thông báo')).toHaveLength(1);
+  expect(screen.queryByLabelText('Tìm kiếm cuộc trò chuyện')).toBeNull();
 });
 
 test('without an avatar the sidebar shows the initial of the profile name', async () => {

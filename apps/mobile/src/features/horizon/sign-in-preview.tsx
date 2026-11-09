@@ -65,6 +65,7 @@ export function SignInPreview({ initialRole, onDone, onClose }: Props) {
       <SignInGate
         role={role}
         onRoleChange={setRole}
+        onSocialSignIn={() => undefined}
         step={step}
         digits={digits}
         onDigitsChange={setDigits}

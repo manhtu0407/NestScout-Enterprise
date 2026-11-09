@@ -13,15 +13,16 @@ export const authMessages: Record<AuthFailure, string> = {
   expired_code: 'Mã không đúng hoặc đã hết hạn. Kiểm tra lại hoặc yêu cầu mã mới.',
   rate_limited: 'Bạn thử quá nhiều lần. Vui lòng chờ một lát.',
   signup_disabled: 'Môi trường này chưa cho phép tạo tài khoản mới.',
-  provider_unavailable: 'Đăng nhập bằng tin nhắn chưa khả dụng trong môi trường này.',
+  provider_unavailable: 'Cách đăng nhập này chưa khả dụng trong môi trường này.',
   network: 'Không thể kết nối dịch vụ đăng nhập. Kiểm tra mạng rồi thử lại.',
+  cancelled: 'Bạn đã hủy đăng nhập. Chọn lại một cách đăng nhập để tiếp tục.',
   unknown: 'Đăng nhập chưa thành công. Vui lòng thử lại.',
 };
 
 export const signInCopy = {
   roles: {
-    client: { label: 'Khách hàng', title: 'Chào mừng trở lại', subtitle: 'Đăng nhập để gửi yêu cầu và nhận báo giá từ thợ gần bạn.' },
-    worker: { label: 'Thợ', title: 'Sẵn sàng nhận việc', subtitle: 'Đăng nhập để xem việc mới và gửi báo giá cho khách.' },
+    client: { label: 'Khách hàng', title: 'Chào mừng trở lại' },
+    worker: { label: 'Thợ', title: 'Sẵn sàng nhận việc' },
   },
   switchLabel: 'Đăng nhập với vai trò',
   phoneLabel: 'Số điện thoại di động',

@@ -4,6 +4,14 @@ import type { AuthFailure } from './auth-gateway';
 
 type ErrorLike = { code?: string; status?: number; name?: string };
 
+export function classifySocialError(error: ErrorLike): AuthFailure {
+  if (isAuthRetryableFetchError(error as never) || error.name === 'AuthRetryableFetchError') return 'network';
+  if (error.code === 'over_request_rate_limit' || error.status === 429) return 'rate_limited';
+  if (error.code === 'signup_disabled') return 'signup_disabled';
+  if (error.code === 'validation_failed' || error.code === 'provider_disabled' || error.code === 'oauth_provider_not_supported' || error.code === 'bad_oauth_callback') return 'provider_unavailable';
+  return 'unknown';
+}
+
 export function classifyAuthError(error: ErrorLike): AuthFailure {
   if (isAuthRetryableFetchError(error as never) || error.name === 'AuthRetryableFetchError') return 'network';
   switch (error.code) {

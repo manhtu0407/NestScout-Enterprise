@@ -24,18 +24,24 @@ const base: SignInGateProps = {
   shakeKey: 0,
   resendSeconds: 0,
   onSubmitPhone: jest.fn(),
+  onSocialSignIn: jest.fn(),
   onSubmitCode: jest.fn(),
   onResend: jest.fn(),
   onChangeNumber: jest.fn(),
 };
 
 async function renderGate(overrides: Partial<SignInGateProps> = {}) {
-  const props = { ...base, onSubmitPhone: jest.fn(), onSubmitCode: jest.fn(), onRoleChange: jest.fn(), onResend: jest.fn(), onChangeNumber: jest.fn(), ...overrides };
+  const props = { ...base, onSubmitPhone: jest.fn(), onSubmitCode: jest.fn(), onRoleChange: jest.fn(), onSocialSignIn: jest.fn(), onResend: jest.fn(), onChangeNumber: jest.fn(), ...overrides };
   await render(<SignInGate {...props} />);
   return props;
 }
 
 describe('sign-in gate phone step', () => {
+  test.each(['client', 'worker'] as const)('shows no subtitle for the %s role', async role => {
+    await renderGate({ role });
+    expect(screen.queryByText(/^Đăng nhập để /)).toBeNull();
+  });
+
   test('keeps the send action disabled until the number is complete', async () => {
     const props = await renderGate({ digits: '91234' });
     const button = screen.getByRole('button', { name: 'Gửi mã xác thực' });
@@ -65,20 +71,28 @@ describe('sign-in gate phone step', () => {
 });
 
 describe('sign-in gate social sign-in', () => {
-  test('shows Google and Apple as locked Coming Soon and never submits from them', async () => {
+  test('shows Google and Apple as usable buttons without a badge', async () => {
     const props = await renderGate();
-    expect(screen.getAllByText('Coming Soon')).toHaveLength(2);
-    const google = screen.getByLabelText('Tiếp tục với Google');
-    expect(google.props.accessibilityState.disabled).toBe(true);
-    await fireEvent.press(google);
+    expect(screen.queryByText('Coming Soon')).toBeNull();
+    expect(screen.getByLabelText('Tiếp tục với Google').props.accessibilityState.disabled).toBe(false);
+    await fireEvent.press(screen.getByLabelText('Tiếp tục với Google'));
     await fireEvent.press(screen.getByLabelText('Tiếp tục với Apple'));
+    expect(props.onSocialSignIn).toHaveBeenNthCalledWith(1, 'google');
+    expect(props.onSocialSignIn).toHaveBeenNthCalledWith(2, 'apple');
     expect(props.onSubmitPhone).not.toHaveBeenCalled();
     expect(props.onSubmitCode).not.toHaveBeenCalled();
   });
 
+  test('locks both social buttons while a sign-in is busy', async () => {
+    const props = await renderGate({ busy: true });
+    await fireEvent.press(screen.getByLabelText('Tiếp tục với Google'));
+    expect(screen.getByLabelText('Tiếp tục với Apple').props.accessibilityState.disabled).toBe(true);
+    expect(props.onSocialSignIn).not.toHaveBeenCalled();
+  });
+
   test('keeps social buttons out of the code step', async () => {
     await renderGate({ step: 'code', code: '12' });
-    expect(screen.queryByText('Coming Soon')).toBeNull();
+    expect(screen.queryByLabelText('Tiếp tục với Google')).toBeNull();
   });
 });
 

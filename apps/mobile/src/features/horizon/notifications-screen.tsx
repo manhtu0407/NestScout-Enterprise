@@ -71,7 +71,7 @@ export function NotificationsScreen({ items = [], onBack, onMarkRead, onOpenRequ
 }
 
 const styles = StyleSheet.create({
-  action: { height: metrics.notificationActionHeight, paddingHorizontal: metrics.notificationActionPadding, alignItems: 'center', justifyContent: 'center' },
+  action: { minHeight: metrics.notificationActionHeight, paddingHorizontal: metrics.notificationActionPadding, alignItems: 'center', justifyContent: 'center' },
   actionLabel: { color: colors.actionLabel, fontSize: metrics.notificationActionSize, fontWeight: metrics.notificationActionWeight },
   dot: { width: metrics.notificationDot, height: metrics.notificationDot, borderRadius: metrics.notificationDotRadius, backgroundColor: colors.unreadDot },
   failure: { color: colors.actionLabel, fontSize: metrics.notificationActionSize, paddingBottom: metrics.notificationActionPadding },

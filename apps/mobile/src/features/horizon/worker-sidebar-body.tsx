@@ -207,7 +207,7 @@ const styles = StyleSheet.create({
   go: { alignSelf: 'stretch' },
   newChat: { height: list.floatingHeight, paddingHorizontal: list.floatingPaddingHorizontal, flexDirection: 'row', alignItems: 'center', gap: list.floatingGap },
   newChatLabel: { color: listColors.onAccent, fontSize: list.floatingFontSize, fontWeight: list.floatingFontWeight },
-  goPill: { height: metrics.goHeight, borderRadius: metrics.goRadius, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: metrics.goGap },
+  goPill: { minHeight: metrics.goHeight, borderRadius: metrics.goRadius, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: metrics.goGap },
   goOff: { backgroundColor: colors.goOffFill },
   goOn: { backgroundColor: colors.goOnFill },
   goOffLabel: { color: colors.goOffLabel, fontSize: metrics.goFontSize, fontWeight: list.floatingFontWeight },

@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   note: { color: horizonColors.muted, fontSize: requestMetrics.noteSize, marginLeft: metrics.noteGap },
   form: { gap: requestMetrics.infoGap },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: metrics.skillChipGap },
-  tag: { height: metrics.skillChipHeight, paddingHorizontal: metrics.skillChipPaddingHorizontal, borderRadius: metrics.skillChipRadius, justifyContent: 'center', backgroundColor: colors.chipFill },
+  tag: { minHeight: metrics.skillChipHeight, paddingHorizontal: metrics.skillChipPaddingHorizontal, borderRadius: metrics.skillChipRadius, justifyContent: 'center', backgroundColor: colors.chipFill },
   tagSelected: { backgroundColor: colors.primaryFill },
   tagLabel: { color: colors.chipText, fontSize: metrics.skillChipSize, fontWeight: metrics.heroChipWeight },
   tagLabelSelected: { color: colors.primaryLabel },

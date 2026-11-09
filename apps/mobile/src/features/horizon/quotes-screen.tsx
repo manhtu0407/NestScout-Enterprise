@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   card: { padding: metrics.workerCardPadding, gap: metrics.workerCardGap, borderRadius: metrics.workerCardRadius, backgroundColor: colors.cardFill },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: metrics.rowGap },
   requestTitle: { flex: 1, minWidth: 0, color: horizonColors.text, fontSize: metrics.workerNameSize, fontWeight: metrics.workerNameWeight },
-  versionChip: { height: metrics.quoteVersionHeight, paddingHorizontal: metrics.statusChipPaddingHorizontal, borderRadius: metrics.statusChipRadius, backgroundColor: colors.tileFill, justifyContent: 'center' },
+  versionChip: { minHeight: metrics.quoteVersionHeight, paddingHorizontal: metrics.statusChipPaddingHorizontal, borderRadius: metrics.statusChipRadius, backgroundColor: colors.tileFill, justifyContent: 'center' },
   versionText: { color: colors.sectionTitle, fontSize: metrics.quoteLabelSize, fontWeight: metrics.heroChipWeight },
   notice: { color: colors.sectionTitle, fontSize: metrics.quoteLabelSize, lineHeight: metrics.quoteNoteLineHeight },
   label: { color: colors.sectionTitle, fontSize: metrics.quoteLabelSize, fontWeight: metrics.fieldLabelWeight, marginBottom: metrics.rowDetailGap },

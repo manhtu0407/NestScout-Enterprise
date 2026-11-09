@@ -56,10 +56,8 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
   };
   const photoUnavailable = locked || media.images.length >= composerImageLimit;
   const menuItems: readonly ComposerMenuItem[] = [
-    { id: 'photos', label: 'Thêm ảnh/tệp', icon: 'attach', disabled: photoUnavailable, onPress: () => { onMediaChange?.(); void media.pick(); } },
+    { id: 'photos', label: 'Thêm ảnh/tệp', icon: 'attach', disabled: photoUnavailable, onPress: () => { onMediaChange?.(); setTimeout(() => { void media.pick(); }, menu.pickerLaunchDelay); } },
     { id: 'camera', label: 'Chụp ảnh', icon: 'camera', detail: 'Sắp có', disabled: true, onPress: () => undefined },
-    { id: 'web', label: 'Tìm kiếm web', icon: 'globe', detail: 'Sắp có', disabled: true, onPress: () => undefined },
-    { id: 'think', label: 'Suy nghĩ sâu', icon: 'bolt', detail: 'Sắp có', disabled: true, onPress: () => undefined },
   ];
   return <View>
     <Presence visible={Boolean(errorText)} style={styles.errorSlot}>

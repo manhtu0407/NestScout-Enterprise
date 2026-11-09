@@ -163,6 +163,7 @@ export const horizonLayout = {
       conversationBottomInset: 105,
       plushClearance: 16,
       followThreshold: 48,
+      introAutoEnterDelay: 2000,
       scrollThrottle: 16,
       conversationTop: 12,
       insetDuration: 220,
@@ -374,7 +375,7 @@ export const horizonLayout = {
       chipRadius: 6, chipPadX: 6, chipPadYBold: 2, chipPadY: 4, chipFontLg: 14, chipFontSm: 12, chipWeight: '500', chipGlyph: 12, statusDot: 8, statusDotLg: 10, statusDotGap: 6,
       calCell: 40, calGap: 2, calRadius: 10, calHeader: 36, calNav: 32, calWeekday: 11, calToday: 4, calDayFont: 14, calOffOpacity: 0.35, calStrike: 1, calMonths: 12, calWeeks: 6, calDays: 7,
       sourceLogo: 22, sourceOverlap: 8, sourceRing: 2, sourceMax: 6, sourceFont: 10, sourceStep: 28, searchGuide: 2, searchGutter: 18, searchRow: 28, searchRevealMs: 320, searchDwell: 1100, searchSourcesGap: 260,
-      socialLogo: 20, socialGap: 10, socialSoonOpacity: 0.6, socialStack: 10,
+      socialLogo: 20, socialGap: 10, socialStack: 10,
       morphSize: 56, morphIcon: 24, morphDuration: 240, morphScale: 0.5, morphPop: 1.25, morphShake: 14, morphGridGap: 10, morphTileMin: 76, historyJumpSize: 36, historyBottomGap: 24,
     },
     kaelWorkflowLab: {
@@ -426,8 +427,8 @@ export const horizonLayout = {
     },
     composerMenu: {
       bubbleSize: 44, bubbleRadius: 22, bubbleGap: 12, slotOffset: 1, neckWidth: 26, neckLeft: 9, neckBottom: 22, neckRadius: 13, bubbleInset: 2, fadeInput: [0, 0.3, 1], fadeOutput: [0, 1, 1], neckThin: [1, 0.55, 0], neckThinInput: [0, 0.6, 1], iconSize: 22, iconStroke: 2.2, closeRotation: '45deg',
-      labelHeight: 32, labelRadius: 16, labelPaddingHorizontal: 12, labelGap: 10, labelFontSize: 14, labelFontWeight: '500', detailFontSize: 11,
-      spring: { damping: 13, stiffness: 190, mass: 0.9 }, stagger: 45, exitDuration: 140, disabledOpacity: 0.5, anchorGap: 10, fallbackX: 16, fallbackBottom: 96,
+      labelMinHeight: 32, labelMinWidth: 132, labelRadius: 16, labelPaddingHorizontal: 12, labelGap: 10, labelFontSize: 14, labelFontWeight: '500', detailFontSize: 11,
+      spring: { damping: 13, stiffness: 190, mass: 0.9 }, stagger: 45, exitDuration: 140, pickerLaunchDelay: 350, disabledOpacity: 0.5, anchorGap: 10, fallbackX: 16, fallbackBottom: 96,
     },
     conversationMenu: {
       top: 62, width: 304, padding: 8,
