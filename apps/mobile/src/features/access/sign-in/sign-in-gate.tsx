@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { GlassSurface, Icon, PressScale, useGlassAccessibility } from '@/features/shared';
+import { GlassSurface, Icon, PressScale, SocialButton, useGlassAccessibility } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
+import type { SocialProvider } from '../auth/auth-gateway';
 import { signInCopy } from '../auth/auth-messages';
 import { AuroraBackdrop } from './aurora-backdrop';
 import { CodeCells } from './code-cells';
@@ -37,6 +38,8 @@ export type SignInGateProps = {
   shakeKey: number;
   resendSeconds: number;
   onSubmitPhone: () => void;
+  onSocialSignIn: (provider: SocialProvider) => void;
+  onEmailSignUp?: () => void;
   onSubmitCode: () => void;
   onResend: () => void;
   onChangeNumber: () => void;
@@ -79,7 +82,7 @@ export function SignInGate(props: SignInGateProps) {
   const ready = isReady(props);
   const error = step === 'phone' ? props.phoneError ?? props.failure : props.codeError ?? props.failure;
   const title = step === 'phone' ? copy.title : signInCopy.codeTitle;
-  const subtitle = step === 'phone' ? copy.subtitle : signInCopy.codeSent(props.maskedPhone);
+  const subtitle = step === 'phone' ? null : signInCopy.codeSent(props.maskedPhone);
   const ctaLabel = success ? signInCopy.verified : step === 'phone' ? signInCopy.sendCode : signInCopy.verify;
   const ctaDisabled = !ready || busy || success;
 
@@ -99,12 +102,17 @@ export function SignInGate(props: SignInGateProps) {
               <Animated.View style={[styles.sheetBody, entrance]}>
                 <View style={styles.copy}>
                   <Text accessibilityRole="header" style={styles.title}>{title}</Text>
-                  <Text style={styles.subtitle}>{subtitle}</Text>
+                  {subtitle !== null && <Text style={styles.subtitle}>{subtitle}</Text>}
                 </View>
                 {step === 'phone' ? (
                   <>
                     <RoleSwitch role={role} onChange={props.onRoleChange} disabled={busy} />
                     <PhoneField digits={props.digits} onChange={props.onDigitsChange} onSubmit={props.onSubmitPhone} role={role} invalid={props.phoneError !== null} disabled={busy} />
+                    <View style={styles.social}>
+                      <SocialButton brand="google" disabled={busy} onPress={() => props.onSocialSignIn('google')} />
+                      <SocialButton brand="apple" disabled={busy} onPress={() => props.onSocialSignIn('apple')} />
+                      {props.onEmailSignUp && <SocialButton brand="email" disabled={busy} onPress={props.onEmailSignUp} />}
+                    </View>
                   </>
                 ) : (
                   <CodeCells code={props.code} length={codeLength} onChange={props.onCodeChange} role={role} invalid={props.codeError !== null || props.failure !== null} disabled={busy || success} shakeKey={props.shakeKey} />
@@ -160,10 +168,11 @@ const styles = StyleSheet.create({
   sheet: { padding: metrics.sheetPadding },
   sheetBody: { gap: metrics.sheetGap },
   copy: { gap: metrics.copyGap },
+  social: { gap: metrics.copyGap },
   title: { fontSize: metrics.titleSize, lineHeight: metrics.titleLineHeight, fontWeight: metrics.titleWeight, letterSpacing: metrics.titleTracking, color: colors.title },
   subtitle: { fontSize: metrics.subtitleSize, lineHeight: metrics.subtitleLineHeight, color: colors.body },
   error: { fontSize: metrics.noteSize, lineHeight: metrics.noteLineHeight, color: colors.error },
-  cta: { height: metrics.ctaHeight, borderRadius: metrics.ctaRadius, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: metrics.ctaGap },
+  cta: { minHeight: metrics.ctaHeight, borderRadius: metrics.ctaRadius, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: metrics.ctaGap },
   ctaOn: { backgroundColor: colors.cta },
   ctaOff: { backgroundColor: colors.ctaOff },
   ctaLabel: { fontSize: metrics.ctaSize, fontWeight: metrics.ctaWeight, color: colors.ctaLabel },

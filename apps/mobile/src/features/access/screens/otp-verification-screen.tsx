@@ -63,6 +63,7 @@ export function OtpVerificationScreen() {
       shakeKey={shakeKey}
       resendSeconds={signIn.resendSeconds}
       onSubmitPhone={() => undefined}
+      onSocialSignIn={() => undefined}
       onSubmitCode={() => verify(code)}
       onResend={() => void signIn.resend()}
       onChangeNumber={changeNumber}

@@ -1,0 +1,88 @@
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, Path, Polygon } from 'react-native-svg';
+import { horizonLayout } from '@/theme/layout';
+import { horizonColors } from '@/theme/palette';
+
+const metrics = horizonLayout.designKit;
+const colors = horizonColors.designKit;
+
+export type SocialBrand = 'google' | 'apple' | 'facebook' | 'email';
+
+type Props = {
+  brand: SocialBrand;
+  onPress?: () => void;
+  disabled?: boolean;
+};
+
+export const socialLabels: Readonly<Record<SocialBrand, string>> = {
+  google: 'Tiếp tục với Google',
+  apple: 'Tiếp tục với Apple',
+  facebook: 'Tiếp tục với Facebook',
+  email: 'Tạo tài khoản bằng Email',
+};
+
+const googlePaths: readonly { d: string; fill: string }[] = [
+  { d: 'M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z', fill: colors.googleRed },
+  { d: 'M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z', fill: colors.googleBlue },
+  { d: 'M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z', fill: colors.googleYellow },
+  { d: 'M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z', fill: colors.googleGreen },
+];
+
+const applePath = 'M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701';
+
+const facebookPath = 'M13.5 21v-8h2.7l.4-3.2h-3.1V7.8c0-.9.3-1.5 1.6-1.5h1.7V3.4c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.5-4 4.1v2.4H7.7V13h2.7v8h3.1z';
+
+function GoogleLogo() {
+  return <Svg width={metrics.socialLogo} height={metrics.socialLogo} viewBox="0 0 48 48">
+    {googlePaths.map(path => <Path key={path.fill} d={path.d} fill={path.fill}/>)}
+  </Svg>;
+}
+
+function AppleLogo() {
+  return <Svg width={metrics.socialLogo} height={metrics.socialLogo} viewBox="0 0 24 24">
+    <Path d={applePath} fill={colors.text}/>
+  </Svg>;
+}
+
+function FacebookLogo() {
+  return <Svg width={metrics.socialLogo} height={metrics.socialLogo} viewBox="0 0 24 24">
+    <Circle cx="12" cy="12" r="12" fill={colors.facebookBlue}/>
+    <Path d={facebookPath} fill={colors.solidFg}/>
+  </Svg>;
+}
+
+function EmailLogo() {
+  return <Svg width={metrics.socialLogo} height={metrics.socialLogo} viewBox="0 0 48 48">
+    <Path d="M45 16.2l-5 2.75-5 4.75L35 40h7c1.657 0 3-1.343 3-3V16.2z" fill={colors.gmailGreen}/>
+    <Path d="M3 16.2l3.614 1.71L13 23.7V40H6c-1.657 0-3-1.343-3-3V16.2z" fill={colors.gmailBlue}/>
+    <Polygon points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17" fill={colors.gmailRed}/>
+    <Path d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859C9.132 8.301 8.228 8 7.298 8 4.924 8 3 9.924 3 12.298z" fill={colors.gmailDarkRed}/>
+    <Path d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341C38.868 8.301 39.772 8 40.702 8 43.076 8 45 9.924 45 12.298z" fill={colors.gmailYellow}/>
+  </Svg>;
+}
+
+const logos: Readonly<Record<SocialBrand, () => React.JSX.Element>> = { google: GoogleLogo, apple: AppleLogo, facebook: FacebookLogo, email: EmailLogo };
+
+export function SocialButton({ brand, onPress, disabled = false }: Props) {
+  const Logo = logos[brand];
+  const label = socialLabels[brand];
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={label}
+    accessibilityState={{ disabled }}
+    disabled={disabled}
+    onPress={onPress}
+    style={styles.root}
+  >
+    <View style={styles.logo}><Logo/></View>
+    <Text style={styles.label}>{label}</Text>
+    <View style={styles.spacer}/>
+  </Pressable>;
+}
+
+const styles = StyleSheet.create({
+  root: { flexDirection: 'row', alignItems: 'center', gap: metrics.socialGap, minHeight: metrics.buttonHeight, paddingHorizontal: metrics.padding, borderRadius: metrics.smallRadius, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  logo: { width: metrics.socialLogo, height: metrics.socialLogo },
+  label: { flex: 1, color: colors.text, fontSize: metrics.bodySize, fontWeight: metrics.titleWeight, textAlign: 'center' },
+  spacer: { width: metrics.socialLogo },
+});

@@ -24,7 +24,6 @@ export const sidebarGroups: readonly { title: string; items: readonly SidebarIte
     title: 'Hỗ trợ',
     items: [
       { id: 'notifications', title: 'Thông báo', icon: 'bell' },
-      { id: 'worker-notifications', title: 'Thông báo', icon: 'bell' },
       { id: 'help', title: 'Trợ giúp', icon: 'help' },
       { id: 'settings', title: 'Cài đặt', icon: 'gear' },
     ],

@@ -127,7 +127,7 @@ function Field({ label, value, onChangeText, placeholder, autoComplete, keyboard
 const styles = StyleSheet.create({
   avatarBlock: { alignItems: 'center', marginBottom: metrics.avatarBlockGap },
   avatarActions: { flexDirection: 'row', alignItems: 'center', gap: metrics.avatarActionGap, marginTop: metrics.avatarActionGap },
-  avatarAction: { height: metrics.avatarActionHeight, paddingHorizontal: metrics.avatarActionPadding, alignItems: 'center', justifyContent: 'center' },
+  avatarAction: { minHeight: metrics.avatarActionHeight, paddingHorizontal: metrics.avatarActionPadding, alignItems: 'center', justifyContent: 'center' },
   avatarActionLabel: { color: colors.actionLabel, fontSize: metrics.avatarActionSize, fontWeight: metrics.notificationActionWeight },
   avatarActionDanger: { color: colors.danger },
   field: { marginBottom: metrics.fieldGap },

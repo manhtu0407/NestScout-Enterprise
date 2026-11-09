@@ -1,7 +1,9 @@
 import { isAuthApiError, isAuthSessionMissingError, type SupabaseClient } from '@supabase/supabase-js';
 
-import { classifyAuthError } from './auth-errors';
+import { classifyAuthError, classifyEmailError } from './auth-errors';
 import type { AuthGateway, IdentityCheck, SessionIdentity } from './auth-gateway';
+import type { SocialRuntime } from './social-runtime';
+import { createSocialSignIn } from './social-sign-in';
 
 const eventTypes = {
   SIGNED_IN: 'signed_in',
@@ -30,7 +32,9 @@ function identityOf(user: unknown): SessionIdentity | null {
   return typeof id === 'string' && id.length > 0 ? { userId: id } : null;
 }
 
-export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
+export function createSupabaseAuthGateway(client: SupabaseClient, socialRuntime: SocialRuntime | null = null): AuthGateway {
+  const social = createSocialSignIn(client, socialRuntime);
+
   async function removeRefusedSession(refusedToken: string): Promise<IdentityCheck> {
     const { data, error } = await client.auth.getSession();
     if (error) return classifyIdentityError(error);
@@ -61,6 +65,31 @@ export function createSupabaseAuthGateway(client: SupabaseClient): AuthGateway {
         return { ok: false, failure: 'network' };
       }
     },
+
+    async signUpWithEmail({ email, password }) {
+      try {
+        const { data, error } = await client.auth.signUp({ email, password, options: { emailRedirectTo: socialRuntime?.redirectUrl() } });
+        if (error) return { ok: false, failure: classifyEmailError(error) };
+        const identity = identityOf(data?.session?.user);
+        return { ok: true, value: identity ? { status: 'signed_in', identity } : { status: 'confirmation_required' } };
+      } catch {
+        return { ok: false, failure: 'network' };
+      }
+    },
+
+    async signInWithEmail({ email, password }) {
+      try {
+        const { data, error } = await client.auth.signInWithPassword({ email, password });
+        if (error) return { ok: false, failure: classifyEmailError(error) };
+        const identity = identityOf(data?.session?.user);
+        return identity ? { ok: true, value: identity } : { ok: false, failure: 'unknown' };
+      } catch {
+        return { ok: false, failure: 'network' };
+      }
+    },
+
+    signInWithProvider: social.signInWithProvider,
+    completeRedirect: social.completeRedirect,
 
     async restoreSession() {
       const { data, error } = await client.auth.getSession();

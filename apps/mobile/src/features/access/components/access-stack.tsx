@@ -16,6 +16,7 @@ export function AccessStack() {
       <Stack.Protected guard={canEnterArea(access, 'auth')}>
         <Stack.Screen name="(auth)/phone" />
         <Stack.Screen name="(auth)/verify" />
+        <Stack.Screen name="(auth)/email" />
       </Stack.Protected>
       <Stack.Protected guard={canEnterArea(access, 'client')}>
         <Stack.Screen name="(client)/client-home" />

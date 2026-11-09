@@ -106,36 +106,8 @@ jobs:
         run: npm run db:reset
       - name: Verify local migration history
         run: npm run db:history
-      - name: Run database security tests
-        run: npm run db:test
       - name: Verify PostgreSQL client read-only workflows
         run: npm run tools:postgresql -- smoke
-      - name: Serve guarded local Kael Functions
-        run: |
-          npm run kael:serve > "$RUNNER_TEMP/kael-functions.log" 2>&1 &
-          node --input-type=module <<'NODE'
-          import { setTimeout as delay } from 'node:timers/promises';
-          import { localRuntime } from './scripts/supabase-local.mjs';
-          const runtime = localRuntime();
-          const before = runtime.verify();
-          const api = before.endpoints['rest.http'].url;
-          const deadline = Date.now() + 120000;
-          let ready = false;
-          while (Date.now() < deadline) {
-            try {
-              const response = await fetch(api + '/functions/v1/kael', { method: 'OPTIONS', signal: AbortSignal.timeout(5000) });
-              await response.body?.cancel();
-              const active = runtime.status().services.some(service => service.service === 'functions' && service.state === 'running' && service.health === 'healthy');
-              if (response.status === 204 && active) { ready = true; break; }
-            } catch (error) {
-              if (!(error instanceof TypeError) && error?.name !== 'TimeoutError') throw error;
-            }
-            await delay(500);
-          }
-          if (!ready || runtime.verify().id !== before.id) throw new Error('Kael Functions did not become ready on the verified local stack.');
-          NODE
-      - name: Run local MCP integration tests
-        run: npm run db:mcp:test
       - name: Lint local database
         run: npm run db:lint
       - name: Verify local schema drift

@@ -1,4 +1,4 @@
-import type { AuthEvent, AuthGateway, AuthOutcome, IdentityCheck, SessionIdentity } from '../auth/auth-gateway';
+import type { AuthEvent, AuthGateway, AuthOutcome, EmailCredentials, EmailSignUp, IdentityCheck, SessionIdentity, SocialProvider, SocialSignIn } from '../auth/auth-gateway';
 import type { CapabilityRepository, CapabilityRequest, CapabilityResult } from '../capability/capability-repository';
 import type { AppMode } from '../mode/app-mode';
 import type { PreferredModeStore } from '../mode/preferred-mode-store';
@@ -14,6 +14,10 @@ export type FakeOptions = {
   issuedCode?: string;
   signInIdentity?: SessionIdentity;
   requestOtp?: () => Promise<AuthOutcome>;
+  signInWithProvider?: (provider: SocialProvider) => Promise<AuthOutcome<SocialSignIn>>;
+  signUpWithEmail?: (credentials: EmailCredentials) => Promise<AuthOutcome<EmailSignUp>>;
+  signInWithEmail?: (credentials: EmailCredentials) => Promise<AuthOutcome<SessionIdentity>>;
+  completeRedirect?: () => Promise<AuthOutcome<SessionIdentity> | null>;
   signOut?: () => Promise<AuthOutcome>;
 };
 
@@ -22,7 +26,7 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
   let stored = options.storedMode ?? null;
   const issuedCode = options.issuedCode ?? '654321';
   const signInIdentity = options.signInIdentity ?? { userId: 'user-a' };
-  const calls = { requestOtp: [] as string[], verifyOtp: [] as string[], verifyIdentity: 0, signOut: 0, capability: 0, cleared: 0, signals: [] as AbortSignal[] };
+  const calls = { requestOtp: [] as string[], verifyOtp: [] as string[], providers: [] as SocialProvider[], emailSignUps: [] as string[], emailSignIns: [] as string[], verifyIdentity: 0, signOut: 0, capability: 0, cleared: 0, signals: [] as AbortSignal[] };
 
   let sequence = 0;
   let current: { userId: string; id: number } | null = options.session ? { userId: options.session.userId, id: ++sequence } : null;
@@ -42,6 +46,28 @@ export function createFakeAccessServices(options: FakeOptions = {}) {
       listener?.({ type: 'signed_in', identity: signInIdentity });
       return { ok: true, value: signInIdentity };
     },
+    async signInWithProvider(provider) {
+      calls.providers.push(provider);
+      if (options.signInWithProvider) return options.signInWithProvider(provider);
+      establish(signInIdentity.userId);
+      listener?.({ type: 'signed_in', identity: signInIdentity });
+      return { ok: true, value: { status: 'signed_in', identity: signInIdentity } };
+    },
+    async signUpWithEmail(credentials) {
+      calls.emailSignUps.push(credentials.email);
+      if (options.signUpWithEmail) return options.signUpWithEmail(credentials);
+      establish(signInIdentity.userId);
+      listener?.({ type: 'signed_in', identity: signInIdentity });
+      return { ok: true, value: { status: 'signed_in', identity: signInIdentity } };
+    },
+    async signInWithEmail(credentials) {
+      calls.emailSignIns.push(credentials.email);
+      if (options.signInWithEmail) return options.signInWithEmail(credentials);
+      establish(signInIdentity.userId);
+      listener?.({ type: 'signed_in', identity: signInIdentity });
+      return { ok: true, value: signInIdentity };
+    },
+    completeRedirect: options.completeRedirect ?? (async () => null),
     restoreSession: options.restore ?? (async () => options.session ?? null),
     async verifyIdentity() {
       calls.verifyIdentity += 1;

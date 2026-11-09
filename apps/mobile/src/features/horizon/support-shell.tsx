@@ -100,9 +100,9 @@ export function SupportEmpty({ icon, title, body }: { icon: IconName; title: str
 }
 
 export const supportStyles = StyleSheet.create({
-  primary: { height: metrics.primaryHeight, borderRadius: metrics.primaryRadius, backgroundColor: colors.primaryFill, alignItems: 'center', justifyContent: 'center' },
+  primary: { minHeight: metrics.primaryHeight, borderRadius: metrics.primaryRadius, backgroundColor: colors.primaryFill, alignItems: 'center', justifyContent: 'center' },
   primaryLabel: { color: colors.primaryLabel, fontSize: metrics.primarySize, fontWeight: metrics.primaryWeight },
-  secondary: { height: metrics.primaryHeight, borderRadius: metrics.primaryRadius, backgroundColor: colors.secondaryFill, alignItems: 'center', justifyContent: 'center' },
+  secondary: { minHeight: metrics.primaryHeight, borderRadius: metrics.primaryRadius, backgroundColor: colors.secondaryFill, alignItems: 'center', justifyContent: 'center' },
   secondaryLabel: { color: colors.secondaryLabel, fontSize: metrics.primarySize, fontWeight: metrics.primaryWeight },
 });
 

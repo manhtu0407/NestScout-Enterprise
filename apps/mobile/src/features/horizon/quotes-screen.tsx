@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Icon, isFixtureBasis, PressScale } from '@/features/shared';
+import { Badge, Icon, isFixtureBasis, PressScale } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
@@ -130,12 +130,12 @@ function QuoteCard({ entry, confirming, busy, failure, onReview, onCancelReview,
       {failure ? <Text accessibilityLiveRegion="polite" style={[styles.changeNote, styles.expiryExpired]}>{failure}</Text> : null}
       {status === 'accepted' ? (
         <View style={styles.resultBlock}>
-          <View style={[styles.statusChip, styles.statusAccepted]}><Text style={[styles.statusText, styles.statusTextAccepted]}>Đã chấp nhận</Text></View>
+          <Badge label="Đã chấp nhận" tone="success" dot />
           <Text style={styles.changeNote}>Chưa thu tiền và chưa có thợ được giao. Bước ghép thợ sẽ làm sau.</Text>
         </View>
       ) : null}
       {status === 'rejected' ? (
-        <View style={[styles.statusChip, styles.statusRejected]}><Text style={[styles.statusText, styles.statusTextRejected]}>Đã từ chối</Text></View>
+        <Badge label="Đã từ chối" tone="danger" dot />
       ) : null}
       {status === 'pending' && quote.expired ? (
         <PressScale accessibilityRole="button" accessibilityLabel="Nhờ Kael cập nhật báo giá" onPress={() => onAskKael?.()} style={supportStyles.secondary}>
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   card: { padding: metrics.workerCardPadding, gap: metrics.workerCardGap, borderRadius: metrics.workerCardRadius, backgroundColor: colors.cardFill },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: metrics.rowGap },
   requestTitle: { flex: 1, minWidth: 0, color: horizonColors.text, fontSize: metrics.workerNameSize, fontWeight: metrics.workerNameWeight },
-  versionChip: { height: metrics.quoteVersionHeight, paddingHorizontal: metrics.statusChipPaddingHorizontal, borderRadius: metrics.statusChipRadius, backgroundColor: colors.tileFill, justifyContent: 'center' },
+  versionChip: { minHeight: metrics.quoteVersionHeight, paddingHorizontal: metrics.statusChipPaddingHorizontal, borderRadius: metrics.statusChipRadius, backgroundColor: colors.tileFill, justifyContent: 'center' },
   versionText: { color: colors.sectionTitle, fontSize: metrics.quoteLabelSize, fontWeight: metrics.heroChipWeight },
   notice: { color: colors.sectionTitle, fontSize: metrics.quoteLabelSize, lineHeight: metrics.quoteNoteLineHeight },
   label: { color: colors.sectionTitle, fontSize: metrics.quoteLabelSize, fontWeight: metrics.fieldLabelWeight, marginBottom: metrics.rowDetailGap },
@@ -191,10 +191,4 @@ const styles = StyleSheet.create({
   consentTitle: { color: horizonColors.text, fontSize: metrics.quoteScopeSize, fontWeight: metrics.fieldLabelWeight },
   consentLine: { color: horizonColors.text, fontSize: metrics.noteSize, lineHeight: metrics.rowDetailLineHeight },
   resultBlock: { gap: metrics.consentGap },
-  statusChip: { alignSelf: 'flex-start', height: metrics.statusChipHeight, paddingHorizontal: metrics.statusChipPaddingHorizontal, borderRadius: metrics.statusChipRadius, justifyContent: 'center' },
-  statusAccepted: { backgroundColor: colors.quoteAcceptedFill },
-  statusRejected: { backgroundColor: colors.quoteDeclinedFill },
-  statusText: { fontSize: metrics.statusChipSize, fontWeight: metrics.heroChipWeight },
-  statusTextAccepted: { color: colors.quoteAccepted },
-  statusTextRejected: { color: colors.quoteDeclined },
 });

@@ -254,3 +254,31 @@ DDL only. If necessary, restore the exact prior ACL: the inspected snapshot had
 EXECUTE granted to PUBLIC, anon and authenticated. No function/trigger drop or
 SECURITY INVOKER conversion is proposed. This reduces excess privileges; it does
 not imply that the original event-trigger function was an exploitable RPC.
+
+## Google and Apple sign-in
+
+Phone OTP stays the primary method. Google and Apple use Supabase Auth on the
+hosted project `axpdymbusiwxfzurfclg`; no credential belongs in the repository,
+the app bundle or a log.
+
+- Google: one Web OAuth client in Google Auth Platform. Its authorized redirect
+  URI is `https://axpdymbusiwxfzurfclg.supabase.co/auth/v1/callback`. The client
+  ID and secret are entered only in Supabase Auth Providers. The secret cannot be
+  read back from Google; to rotate it, add a second secret in Google, update
+  Supabase, then disable the old one.
+- Apple, native iOS: the App ID `com.phanmanhtu.nestscout.horizon` has Sign In
+  with Apple enabled and Supabase lists that bundle ID as a client ID. The app
+  sends Apple's identity token with a hashed nonce through `signInWithIdToken`.
+  No secret key is needed for this path.
+- Apple, web: needs a Services ID with the Supabase domain and callback, plus a
+  JWT secret signed from a Sign in with Apple key. Apple limits that secret to six
+  months, so regenerate it and update Supabase before it expires, or web sign-in
+  stops while native sign-in continues.
+- Redirect allow list in Supabase URL Configuration: `nestscout://auth/callback`
+  for native and `http://localhost:8085/**` for the local web preview. Remove the
+  localhost entry before any public web release.
+- Identity linking: Supabase links OAuth identities only by a verified email.
+  Phone users have no email, so a Google or Apple sign-in creates a separate
+  account and never merges by name or unverified email. Adding a provider to an
+  existing phone account needs manual linking while signed in, which is not
+  enabled in the app.

@@ -53,7 +53,7 @@ export function ComposerMenu({ anchor, items, onClose }: Props) {
   return <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={() => dismiss()}>
     <View style={styles.overlay}>
       <Pressable accessibilityRole="button" accessibilityLabel="Đóng menu đính kèm" onPress={() => dismiss()} style={styles.scrim}/>
-      <View accessibilityRole="menu" accessibilityLabel="Menu đính kèm" style={[styles.stack, origin, styles.inset]}>
+      <View pointerEvents="box-none" accessibilityRole="menu" accessibilityLabel="Menu đính kèm" style={[styles.stack, origin, styles.inset]}>
         {pops.map((pop, index) => {
           const reach = (index + metrics.slotOffset) * step;
           const thin = ramp(pop, metrics.neckThinInput, metrics.neckThin);
@@ -72,8 +72,8 @@ export function ComposerMenu({ anchor, items, onClose }: Props) {
                 <Icon name={item.icon} size={metrics.iconSize} strokeWidth={metrics.iconStroke} color={colors.icon}/>
               </View>
               <View style={styles.label}>
-                <Text style={styles.labelText}>{item.label}</Text>
-                {item.detail && <Text style={styles.detail}>{item.detail}</Text>}
+                <Text numberOfLines={1} style={styles.labelText}>{item.label}</Text>
+                {item.detail && <Text numberOfLines={1} style={styles.detail}>{item.detail}</Text>}
               </View>
             </Pressable>
           </Animated.View>;
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: metrics.labelGap },
   disabled: { opacity: metrics.disabledOpacity },
   bubble: { width: metrics.bubbleSize, height: metrics.bubbleSize, borderRadius: metrics.bubbleRadius, backgroundColor: colors.fill, alignItems: 'center', justifyContent: 'center' },
-  label: { height: metrics.labelHeight, paddingHorizontal: metrics.labelPaddingHorizontal, borderRadius: metrics.labelRadius, backgroundColor: colors.labelSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.labelBorder, flexDirection: 'row', alignItems: 'center', gap: metrics.labelGap },
-  labelText: { color: horizonColors.text, fontSize: metrics.labelFontSize, fontWeight: metrics.labelFontWeight },
-  detail: { color: colors.detail, fontSize: metrics.detailFontSize },
+  label: { minHeight: metrics.labelMinHeight, minWidth: metrics.labelMinWidth, flexShrink: 0, paddingHorizontal: metrics.labelPaddingHorizontal, borderRadius: metrics.labelRadius, backgroundColor: colors.labelSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.labelBorder, flexDirection: 'row', alignItems: 'center', gap: metrics.labelGap },
+  labelText: { flexShrink: 0, color: horizonColors.text, fontSize: metrics.labelFontSize, fontWeight: metrics.labelFontWeight },
+  detail: { flexShrink: 0, color: colors.detail, fontSize: metrics.detailFontSize },
 });

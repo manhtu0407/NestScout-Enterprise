@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
   hero: { borderRadius: metrics.heroRadius, padding: metrics.heroPadding, gap: metrics.heroGap, backgroundColor: colors.heroFill, alignItems: 'center', marginBottom: metrics.sectionGap },
   heroName: { color: horizonColors.text, fontSize: metrics.heroNameSize, fontWeight: metrics.heroNameWeight, textAlign: 'center' },
   heroBody: { color: horizonColors.muted, fontSize: metrics.heroBodySize, lineHeight: metrics.heroBodyLineHeight, textAlign: 'center' },
-  chip: { height: metrics.heroChipHeight, paddingHorizontal: metrics.heroChipPaddingHorizontal, borderRadius: metrics.heroChipRadius, backgroundColor: colors.chipFill, justifyContent: 'center' },
+  chip: { minHeight: metrics.heroChipHeight, paddingHorizontal: metrics.heroChipPaddingHorizontal, borderRadius: metrics.heroChipRadius, backgroundColor: colors.chipFill, justifyContent: 'center' },
   chipText: { color: colors.chipText, fontSize: metrics.heroChipSize, fontWeight: metrics.heroChipWeight },
   actions: { alignSelf: 'stretch', gap: metrics.primaryGap, marginTop: metrics.primaryGap },
 });

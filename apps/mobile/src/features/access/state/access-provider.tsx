@@ -1,7 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
 
-import type { AuthGateway, AuthOutcome } from '../auth/auth-gateway';
+import type { AuthFailure, AuthGateway, AuthOutcome, EmailCredentials, EmailSignUp, SocialProvider, SocialSignIn } from '../auth/auth-gateway';
 import type { CapabilityRepository } from '../capability/capability-repository';
 import type { AppMode } from '../mode/app-mode';
 import type { PreferredModeStore } from '../mode/preferred-mode-store';
@@ -18,6 +18,11 @@ export type AccessApi = AccessView & {
   requestOtp(phoneE164: string): Promise<AuthOutcome>;
   verifyOtp(code: string): Promise<AuthOutcome>;
   cancelOtp(): void;
+  signInWithProvider(provider: SocialProvider): Promise<AuthOutcome<SocialSignIn>>;
+  signUpWithEmail(credentials: EmailCredentials): Promise<AuthOutcome<EmailSignUp>>;
+  signInWithEmail(credentials: EmailCredentials): Promise<AuthOutcome>;
+  redirectFailure: AuthFailure | null;
+  dismissRedirectFailure(): void;
   signOut(): Promise<AuthOutcome>;
   switchMode(mode: AppMode): void;
   recheck(): void;
@@ -40,6 +45,7 @@ const resendCooldownMs = 60_000;
 export function AccessProvider({ services, children }: { services: AccessServices; children: ReactNode }) {
   const { auth, capabilities, preferredMode } = services;
   const [state, dispatch] = useReducer(accessReducer, initialAccessState);
+  const [redirectFailure, setRedirectFailure] = useState<AuthFailure | null>(null);
   const ownedDraftUrls = useRef(new Set<string>());
   const { userId, requestId, bootstrapped, preferenceLoaded, selectedMode, otpPhone, identityPending, identityRequest } = state;
 
@@ -67,7 +73,12 @@ export function AccessProvider({ services, children }: { services: AccessService
       auth.setForeground(next === 'active');
       if (next === 'active') dispatch({ type: 'recheck_requested' });
     });
-    void withDeadline(() => auth.restoreSession(), accessTimeouts.restoreMs, null).then((restored) => {
+    const restoreAfterRedirect = async () => {
+      const completed = await auth.completeRedirect();
+      if (completed && !completed.ok && active) setRedirectFailure(completed.failure);
+      return auth.restoreSession();
+    };
+    void withDeadline(restoreAfterRedirect, accessTimeouts.restoreMs, null).then((restored) => {
       if (active) dispatch({ type: 'restore_settled', userId: restored?.userId ?? null });
     });
     return () => {
@@ -148,6 +159,34 @@ export function AccessProvider({ services, children }: { services: AccessService
     [auth, otpPhone],
   );
 
+  const signInWithProvider = useCallback(
+    async (provider: SocialProvider): Promise<AuthOutcome<SocialSignIn>> => {
+      setRedirectFailure(null);
+      const outcome = await auth.signInWithProvider(provider);
+      if (outcome.ok && outcome.value.status === 'signed_in') dispatch({ type: 'otp_verified', userId: outcome.value.identity.userId });
+      return outcome;
+    },
+    [auth],
+  );
+  const signUpWithEmail = useCallback(
+    async (credentials: EmailCredentials): Promise<AuthOutcome<EmailSignUp>> => {
+      const outcome = await auth.signUpWithEmail(credentials);
+      if (outcome.ok && outcome.value.status === 'signed_in') dispatch({ type: 'otp_verified', userId: outcome.value.identity.userId });
+      return outcome;
+    },
+    [auth],
+  );
+
+  const signInWithEmail = useCallback(
+    async (credentials: EmailCredentials): Promise<AuthOutcome> => {
+      const outcome = await auth.signInWithEmail(credentials);
+      if (!outcome.ok) return outcome;
+      dispatch({ type: 'otp_verified', userId: outcome.value.userId });
+      return { ok: true, value: undefined };
+    },
+    [auth],
+  );
+  const dismissRedirectFailure = useCallback(() => setRedirectFailure(null), []);
   const signOut = useCallback(() => auth.signOut(), [auth]);
   const cancelHorizonTransfer = useCallback(() => dispatch({ type: 'horizon_transfer_cancelled' }), []);
 
@@ -158,6 +197,11 @@ export function AccessProvider({ services, children }: { services: AccessService
       requestOtp,
       verifyOtp,
       cancelOtp: () => dispatch({ type: 'otp_cleared' }),
+      signInWithProvider,
+      signUpWithEmail,
+      signInWithEmail,
+      redirectFailure,
+      dismissRedirectFailure,
       signOut,
       switchMode: (mode) => dispatch({ type: 'mode_requested', mode }),
       recheck: () => dispatch({ type: 'recheck_requested' }),
@@ -171,7 +215,7 @@ export function AccessProvider({ services, children }: { services: AccessService
       cancelHorizonTransfer,
       cancelModeRequest: () => dispatch({ type: 'mode_request_cancelled' }),
     }),
-    [view, requestOtp, verifyOtp, signOut, cancelHorizonTransfer],
+    [view, requestOtp, verifyOtp, signInWithProvider, signUpWithEmail, signInWithEmail, redirectFailure, dismissRedirectFailure, signOut, cancelHorizonTransfer],
   );
 
   return <AccessContext.Provider value={api}>{children}</AccessContext.Provider>;

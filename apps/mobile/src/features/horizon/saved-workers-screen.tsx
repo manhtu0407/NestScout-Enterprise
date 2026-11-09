@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
   review: { gap: metrics.reviewGap },
   reviewMeta: { color: colors.sectionTitle, fontSize: metrics.reviewMetaSize },
   reviewText: { color: horizonColors.text, fontSize: metrics.reviewTextSize, lineHeight: metrics.reviewTextLineHeight },
-  toggle: { alignSelf: 'center', height: metrics.detailToggleHeight, paddingHorizontal: metrics.skillChipPaddingHorizontal, alignItems: 'center', justifyContent: 'center' },
+  toggle: { alignSelf: 'center', minHeight: metrics.detailToggleHeight, paddingHorizontal: metrics.skillChipPaddingHorizontal, alignItems: 'center', justifyContent: 'center' },
   toggleLabel: { color: colors.actionLabel, fontSize: metrics.buttonSize, fontWeight: metrics.workerSectionLabelWeight },
   footnote: { color: horizonColors.muted, fontSize: metrics.fieldHintSize, lineHeight: metrics.rowDetailLineHeight, textAlign: 'center', paddingHorizontal: metrics.emptyPaddingHorizontal },
 });
