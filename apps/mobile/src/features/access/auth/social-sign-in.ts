@@ -71,10 +71,10 @@ export function createSocialSignIn(client: SupabaseClient, runtime: SocialRuntim
 
     async completeRedirect() {
       if (runtime === null) return null;
-      const url = runtime.pendingCallback();
-      if (url === null) return null;
-      runtime.clearCallback();
       try {
+        const url = await runtime.pendingCallback();
+        if (url === null) return null;
+        runtime.clearCallback();
         return await exchange(url);
       } catch {
         return { ok: false, failure: 'unknown' };

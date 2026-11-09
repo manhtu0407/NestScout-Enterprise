@@ -143,11 +143,18 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
     const transcript = messages.map(m => `${m.role === 'user' ? 'Bạn' : 'Kael'}: ${m.text}`).join('\n\n');
     try { await Share.share({ message: transcript }); } catch { notify('Thiết bị này chưa mở được chia sẻ.'); }
   };
-  const copyText = async (text: string) => {
+  const copyText = async (text: string): Promise<boolean> => {
     try {
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) await navigator.clipboard.writeText(text);
-      else await Share.share({ message: text });
-    } catch { notify('Thiết bị này chưa sao chép được.'); }
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+      await Share.share({ message: text });
+      return false;
+    } catch {
+      notify('Thiết bị này chưa sao chép được.');
+      return false;
+    }
   };
   const menuItems: readonly ConversationMenuItem[] = [
     { id: 'new', label: 'Trò chuyện mới', icon: 'compose', onPress: startNew },

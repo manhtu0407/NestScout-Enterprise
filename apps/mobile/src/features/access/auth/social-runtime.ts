@@ -16,7 +16,7 @@ export type SocialRuntime = {
   navigatesPage: boolean;
   openBrowser(url: string, redirectUrl: string): Promise<BrowserResult>;
   appleCredential(): Promise<AppleCredential>;
-  pendingCallback(): string | null;
+  pendingCallback(): Promise<string | null>;
   clearCallback(): void;
 };
 
@@ -47,7 +47,7 @@ const webRuntime: SocialRuntime = {
   navigatesPage: true,
   openBrowser: async () => ({ type: 'cancel' }),
   appleCredential: async () => ({ status: 'unavailable' }),
-  pendingCallback: () => {
+  pendingCallback: async () => {
     const params = new URLSearchParams(window.location.search);
     return callbackParams.some((name) => params.has(name)) ? window.location.href : null;
   },
@@ -66,7 +66,11 @@ const nativeRuntime: SocialRuntime = {
     return result.type === 'success' ? { type: 'success', url: result.url } : { type: 'cancel' };
   },
   appleCredential: nativeAppleCredential,
-  pendingCallback: () => null,
+  pendingCallback: async () => {
+    const url = await Linking.getInitialURL();
+    const callback = Linking.createURL('auth/callback');
+    return url !== null && url.startsWith(callback) ? url : null;
+  },
   clearCallback: () => undefined,
 };
 

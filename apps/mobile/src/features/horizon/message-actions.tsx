@@ -22,7 +22,7 @@ type Props = {
   onRegenerate?: () => void;
   regenerating?: boolean;
   onFeedback?: (kind: FeedbackKind, reason: string | null) => void;
-  onCopy?: (text: string) => void;
+  onCopy?: (text: string) => void | boolean | Promise<boolean | void>;
   speaking?: boolean;
   onSpeak?: (play: boolean) => void;
   soon?: boolean;
@@ -100,8 +100,9 @@ export function MessageActions({ text, versions, version = 0, onVersionChange, o
   const [thanks, showThanks] = useTimedFlag(1800);
   const count = versions?.length ?? 1;
   const copy = () => {
-    onCopy?.(text);
-    markCopied();
+    void Promise.resolve(onCopy?.(text)).then((written) => {
+      if (written !== false) markCopied();
+    });
   };
   const rate = (kind: FeedbackKind) => {
     const next = feedback === kind ? null : kind;

@@ -16,7 +16,7 @@ function runtimeOf(overrides: Partial<SocialRuntime> = {}): SocialRuntime {
     navigatesPage: false,
     openBrowser: async (): Promise<BrowserResult> => ({ type: 'cancel' }),
     appleCredential: async (): Promise<AppleCredential> => ({ status: 'unavailable' }),
-    pendingCallback: () => null,
+    pendingCallback: async () => null,
     clearCallback: jest.fn(),
     ...overrides,
   };
@@ -138,7 +138,7 @@ describe('browser redirect sign-in on web', () => {
   test('returning with a code exchanges it once and clears the address bar', async () => {
     const exchangeCodeForSession = jest.fn(async () => session);
     const clearCallback = jest.fn();
-    const api = createSocialSignIn(stubClient({ exchangeCodeForSession }), web({ pendingCallback: () => 'http://localhost:8085/?code=back1', clearCallback }));
+    const api = createSocialSignIn(stubClient({ exchangeCodeForSession }), web({ pendingCallback: async () => 'http://localhost:8085/?code=back1', clearCallback }));
     expect(await api.completeRedirect()).toEqual({ ok: true, value: { userId: 'user-g' } });
     expect(exchangeCodeForSession).toHaveBeenCalledWith('back1');
     expect(clearCallback).toHaveBeenCalledTimes(1);
@@ -146,9 +146,17 @@ describe('browser redirect sign-in on web', () => {
 
   test('returning with an error reports it without creating a session', async () => {
     const exchangeCodeForSession = jest.fn();
-    const api = createSocialSignIn(stubClient({ exchangeCodeForSession }), web({ pendingCallback: () => 'http://localhost:8085/?error=access_denied&error_description=denied' }));
+    const api = createSocialSignIn(stubClient({ exchangeCodeForSession }), web({ pendingCallback: async () => 'http://localhost:8085/?error=access_denied&error_description=denied' }));
     expect(await api.completeRedirect()).toEqual({ ok: false, failure: 'cancelled' });
     expect(exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+
+  test('a cold start from the native return link exchanges the code once', async () => {
+    const exchangeCodeForSession = jest.fn(async () => session);
+    const api = createSocialSignIn(stubClient({ exchangeCodeForSession }), runtimeOf({ pendingCallback: async () => `${redirectUrl}?code=cold1` }));
+    expect(await api.completeRedirect()).toEqual({ ok: true, value: { userId: 'user-g' } });
+    expect(exchangeCodeForSession).toHaveBeenCalledTimes(1);
+    expect(exchangeCodeForSession).toHaveBeenCalledWith('cold1');
   });
 
   test('an ordinary page load has nothing to complete', async () => {

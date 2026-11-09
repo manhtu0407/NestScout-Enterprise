@@ -26,3 +26,18 @@ test('copy works while regenerate, feedback and read-aloud stay locked as Coming
   expect(onRegenerate).not.toHaveBeenCalled();
   expect(onFeedback).not.toHaveBeenCalled();
 });
+
+test('the copied state appears only after a successful write', async () => {
+  const failing = jest.fn(async () => false);
+  await render(<MessageActions text="Xin chào" onCopy={failing} soon />);
+  await fireEvent.press(screen.getByLabelText('Sao chép'));
+  expect(failing).toHaveBeenCalledWith('Xin chào');
+  expect(screen.queryByLabelText('Đã sao chép')).toBeNull();
+});
+
+test('a successful write shows the copied state', async () => {
+  const succeeding = jest.fn(async () => true);
+  await render(<MessageActions text="Xin chào" onCopy={succeeding} soon />);
+  await fireEvent.press(screen.getByLabelText('Sao chép'));
+  expect(await screen.findByLabelText('Đã sao chép')).toBeTruthy();
+});
