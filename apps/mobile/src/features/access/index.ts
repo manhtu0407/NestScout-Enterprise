@@ -4,6 +4,7 @@ export { ModeSwitchControl, SignOutControl, WorkerAccessNotice } from './compone
 export { getDefaultAccessServices } from './default-services';
 export { OtpVerificationScreen } from './screens/otp-verification-screen';
 export { EmailSignUpScreen } from './screens/email-sign-up-screen';
+export { EmailSignUpForm } from './screens/email-sign-up-form';
 export { PhoneEntryScreen } from './screens/phone-entry-screen';
 export { AuthCallbackScreen } from './screens/auth-callback-screen';
 export { SignInGate, codeLength, type SignInGateProps } from './sign-in/sign-in-gate';

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { useAccess } from '@/features/access';
+import { EmailSignUpForm, useAccess, type SignInRole } from '@/features/access';
 import { getSupabaseClient } from '@/lib/supabase-client';
 import { horizonLayout, layout, typography } from '@/theme/layout';
 import { horizonColors as colors } from '@/theme/palette';
@@ -15,9 +15,13 @@ export function HostedKaelPreview() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  const [signUp, setSignUp] = useState(false);
+  const [role, setRole] = useState<SignInRole>('client');
   const signedIn = (access.phase === 'client' || access.phase === 'worker') && access.identity === 'verified';
 
   const showAccount = () => { setError(false); setOpen(true); };
+  const openSignUp = () => { setOpen(false); setSignUp(true); };
+  const changeRole = (next: SignInRole) => { access.setIntent(next); setRole(next); };
   const closeAccount = () => { setPassword(''); setOpen(false); };
   async function signIn() {
     setBusy(true);
@@ -54,11 +58,17 @@ export function HostedKaelPreview() {
             <Pressable accessibilityRole="button" disabled={busy || !email.trim() || !password} onPress={() => { void signIn(); }} style={styles.control}>
               <Text style={styles.label}>{busy ? 'Đang đăng nhập…' : 'Đăng nhập Preview'}</Text>
             </Pressable>
+            <Pressable accessibilityRole="button" onPress={openSignUp} style={styles.control}>
+              <Text style={styles.label}>Tạo tài khoản bằng Email</Text>
+            </Pressable>
           </>}
           {error && <Text accessibilityRole="alert" style={styles.label}>Đăng nhập Preview không thành công.</Text>}
           <Pressable accessibilityRole="button" onPress={closeAccount} style={styles.control}><Text style={styles.label}>Đóng</Text></Pressable>
         </View>
       </View>
+    </Modal>
+    <Modal visible={signUp && !signedIn} animationType="slide" onRequestClose={() => setSignUp(false)}>
+      <EmailSignUpForm role={role} onRoleChange={changeRole} onBack={() => setSignUp(false)} />
     </Modal>
   </SafeAreaProvider>;
 }
