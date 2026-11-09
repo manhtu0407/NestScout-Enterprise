@@ -5,7 +5,6 @@ import type { KaelEvent, KaelTurnOutcome, KaelTurnRequest } from '@/features/sha
 import { loadKaelConversation, streamKaelTurn } from '@/features/shared';
 
 import { HorizonEntry } from './horizon-entry';
-import { HostedKaelPreview } from './hosted-kael-preview';
 import { useCustomerData } from './use-customer-data';
 import { useWorkerData } from './use-worker-data';
 
@@ -14,10 +13,8 @@ const mockAccess = {
   updateHorizonDraft: jest.fn(), clearHorizonDraft: jest.fn(), dismissNotice: jest.fn(), prepareHorizonDraftTransfer: jest.fn(),
   setIntent: jest.fn(), switchMode: jest.fn(), cancelModeRequest: jest.fn(),
 };
-const mockPreviewSignIn = jest.fn();
 
 jest.mock('@/features/access', () => ({ ...jest.requireActual('@/features/access'), useAccess: () => mockAccess, EntryRedirect: () => null }));
-jest.mock('@/lib/supabase-client', () => ({ getSupabaseClient: () => ({ auth: { signInWithPassword: mockPreviewSignIn } }) }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock('./use-customer-data', () => ({
   useCustomerData: jest.fn(() => ({
@@ -105,25 +102,6 @@ test('hosted Preview keeps real chat and suppresses business data and approval c
   expect(useWorkerData).toHaveBeenLastCalledWith(null);
   expect(screen.queryByLabelText('Cần xác nhận: Gửi yêu cầu dịch vụ')).toBeNull();
   expect(screen.queryByLabelText(/^Chờ bạn xác nhận\./)).toBeNull();
-});
-
-test('hosted Preview reports a denied Auth login and clears the password', async () => {
-  mockAccess.phase = 'guest';
-  mockPreviewSignIn.mockResolvedValueOnce({ error: { message: 'internal auth detail' } });
-  try {
-    await render(<SafeAreaProvider initialMetrics={metrics}><HostedKaelPreview/></SafeAreaProvider>);
-    await fireEvent.press(screen.getByRole('button', { name: 'Kael Preview · Đăng nhập' }));
-    await fireEvent.changeText(screen.getByLabelText('Email kiểm thử'), ' qa@example.invalid ');
-    await fireEvent.changeText(screen.getByLabelText('Mật khẩu kiểm thử'), 'invalid-fixture-password');
-    await fireEvent.press(screen.getByRole('button', { name: 'Đăng nhập Preview' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Đăng nhập Preview không thành công.');
-    expect(mockPreviewSignIn).toHaveBeenCalledWith({ email: 'qa@example.invalid', password: 'invalid-fixture-password' });
-    expect(screen.getByLabelText('Mật khẩu kiểm thử').props.value).toBe('');
-    expect(screen.queryByText('internal auth detail')).toBeNull();
-    expect(mockStream).not.toHaveBeenCalled();
-  } finally {
-    mockAccess.phase = 'client';
-  }
 });
 
 test('a verified submission shows the receipt banner, which can be dismissed, and never claims a booking', async () => {

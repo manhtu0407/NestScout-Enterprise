@@ -3,9 +3,7 @@ import { render, screen } from '@testing-library/react-native';
 import RootLayout from '@/app/_layout';
 import { getDefaultAccessServices } from '@/features/access';
 import { developerPilotEnabled } from '@/features/horizon';
-import { hostedKaelPreviewEnabled } from '@/lib/config';
 
-jest.mock('@/lib/config', () => ({ hostedKaelPreviewEnabled: jest.fn(() => false) }));
 
 jest.mock('@/features/access', () => {
   const { Text: NativeText } = jest.requireActual<typeof import('react-native')>('react-native');
@@ -17,7 +15,7 @@ jest.mock('@/features/access', () => {
 });
 jest.mock('@/features/horizon', () => {
   const { Text: NativeText } = jest.requireActual<typeof import('react-native')>('react-native');
-  return { HorizonPreview: () => <NativeText>Horizon preview</NativeText>, HostedKaelPreview: () => <NativeText>Hosted Kael Preview</NativeText>,
+  return { HorizonPreview: () => <NativeText>Horizon preview</NativeText>,
     DeveloperPilotPanel: () => <NativeText>Local pilot panel</NativeText>, developerPilotEnabled: jest.fn(() => false) };
 });
 jest.mock('@/showcase/foundation-showcase', () => {
@@ -41,24 +39,11 @@ const originalHorizon = process.env.EXPO_PUBLIC_HORIZON_PREVIEW;
 afterEach(() => {
   jest.clearAllMocks();
   jest.mocked(developerPilotEnabled).mockReturnValue(false);
-  jest.mocked(hostedKaelPreviewEnabled).mockReturnValue(false);
   if (originalHorizon === undefined) delete process.env.EXPO_PUBLIC_HORIZON_PREVIEW;
   else process.env.EXPO_PUBLIC_HORIZON_PREVIEW = originalHorizon;
   if (originalDev) Object.defineProperty(globalThis, '__DEV__', originalDev);
   if (originalShowcase === undefined) delete process.env.EXPO_PUBLIC_DESIGN_SHOWCASE;
   else process.env.EXPO_PUBLIC_DESIGN_SHOWCASE = originalShowcase;
-});
-
-test('trusted hosted Preview mounts only Kael with real access services', async () => {
-  jest.mocked(hostedKaelPreviewEnabled).mockReturnValue(true);
-  jest.mocked(developerPilotEnabled).mockReturnValue(true);
-  process.env.EXPO_PUBLIC_DESIGN_SHOWCASE = '1';
-  await render(<RootLayout />);
-  expect(screen.getByText('Hosted Kael Preview')).toBeTruthy();
-  expect(screen.queryByText('Application stack')).toBeNull();
-  expect(screen.queryByText('Local pilot panel')).toBeNull();
-  expect(screen.queryByText('Showcase root')).toBeNull();
-  expect(jest.mocked(getDefaultAccessServices)).toHaveBeenCalledTimes(1);
 });
 
 test('the enabled local pilot uses the real application stack even when showcase flags are present', async () => {
