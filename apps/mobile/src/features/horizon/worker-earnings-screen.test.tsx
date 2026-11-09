@@ -48,3 +48,10 @@ test('the mode tabs switch and back is forwarded', async () => {
   await fireEvent.press(screen.getByLabelText('Quay về'));
   expect(onBack).toHaveBeenCalledTimes(1);
 });
+
+test('payout tab shows the QR placeholder as Coming Soon and still offers no withdrawal action', async () => {
+  await render(<WorkerEarningsScreen initialMode="payout" earnings={emptyView} onBack={jest.fn()} />);
+  expect(screen.getByLabelText('Mã QR nhận tiền. Coming Soon')).toBeTruthy();
+  expect(screen.queryByLabelText(/Gửi yêu cầu rút tiền/)).toBeNull();
+  expect(screen.queryByLabelText(/Sao chép/)).toBeNull();
+});

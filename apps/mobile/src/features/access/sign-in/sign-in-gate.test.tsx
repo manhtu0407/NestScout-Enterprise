@@ -64,6 +64,24 @@ describe('sign-in gate phone step', () => {
   });
 });
 
+describe('sign-in gate social sign-in', () => {
+  test('shows Google and Apple as locked Coming Soon and never submits from them', async () => {
+    const props = await renderGate();
+    expect(screen.getAllByText('Coming Soon')).toHaveLength(2);
+    const google = screen.getByLabelText('Tiếp tục với Google');
+    expect(google.props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(google);
+    await fireEvent.press(screen.getByLabelText('Tiếp tục với Apple'));
+    expect(props.onSubmitPhone).not.toHaveBeenCalled();
+    expect(props.onSubmitCode).not.toHaveBeenCalled();
+  });
+
+  test('keeps social buttons out of the code step', async () => {
+    await renderGate({ step: 'code', code: '12' });
+    expect(screen.queryByText('Coming Soon')).toBeNull();
+  });
+});
+
 describe('sign-in gate code step', () => {
   test('names the masked destination and offers resend only after the cooldown', async () => {
     await renderGate({ step: 'code', resendSeconds: 42 });

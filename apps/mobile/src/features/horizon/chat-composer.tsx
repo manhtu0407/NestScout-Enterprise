@@ -2,9 +2,10 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 import { useEffect, useRef, useState } from 'react';
 import type { ComponentRef } from 'react';
-import { Animated, Dimensions, Image, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Dimensions, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { composerImageLimit, useComposerMedia, type ComposerImage } from './composer-media';
 import { Icon, PressScale, useGlassAccessibility, usePressFeedback } from '@/features/shared';
+import { AttachmentStrip } from './attachment-strip';
 import { ComposerMenu } from './composer-menu';
 import { Presence, useRetained } from './motion-presence';
 import { LiquidVoiceCapsule, useLiquidVoice } from './liquid-voice';
@@ -65,12 +66,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
       <Text accessibilityLiveRegion="polite" style={styles.error}>{retainedError}</Text>
     </Presence>
     <View style={styles.frame}>
-    {media.images.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageRail} contentContainerStyle={styles.imageContent} keyboardShouldPersistTaps="handled">
-      {media.images.map((item, index) => <View key={`${item.uri}-${index}`} style={styles.imageFrame}>
-        <Image source={{ uri: item.uri }} accessibilityLabel="Ảnh đã chọn" style={styles.image} />
-        <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ảnh ${index + 1}`} hitSlop={metrics.removeHitSlop} onPress={() => { media.remove(index); onMediaChange?.(); }} style={styles.removeImage}><Icon name="close" color={colors.inputText} size={metrics.removeIconSize}/></Pressable>
-      </View>)}
-    </ScrollView>}
+    <AttachmentStrip files={media.images.map((item, index) => ({ id: String(index), name: `Ảnh ${index + 1}`, kind: 'image', progress: undefined, uri: item.uri, removeLabel: `Xóa ảnh ${index + 1}` }))} onRemove={id => { media.remove(Number(id)); onMediaChange?.(); }}/>
     <View style={styles.controls}>
     <View ref={trigger} collapsable={false}>
       <PressScale accessibilityRole="button" accessibilityLabel="Đính kèm" accessibilityState={{ expanded: menuAnchor !== null }} onPress={openMenu} style={styles.media}>
@@ -131,11 +127,6 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
 const styles = StyleSheet.create({
   frame: { minHeight: metrics.frameMinHeight, padding: metrics.framePadding, borderRadius: metrics.frameRadius, borderWidth: metrics.frameBorderWidth, borderColor: colors.surfaceBorder, backgroundColor: colors.surface, boxShadow: colors.surfaceShadow },
   controls: { flexDirection: 'row', alignItems: 'flex-end', gap: metrics.controlGap },
-  imageRail: { flexGrow: 0 },
-  imageContent: { gap: metrics.imageGap, padding: metrics.imagePadding },
-  imageFrame: { width: metrics.imageSize, height: metrics.imageSize },
-  image: { width: metrics.imageSize, height: metrics.imageSize, borderRadius: metrics.imageRadius },
-  removeImage: { position: 'absolute', top: -metrics.removeOffset, right: -metrics.removeOffset, width: metrics.removeSize, height: metrics.removeSize, borderRadius: metrics.removeRadius, backgroundColor: colors.mediaRemoveSurface, alignItems: 'center', justifyContent: 'center' },
   errorSlot: { position: 'absolute', left: metrics.errorInsetLeft, right: 0, bottom: metrics.errorBottom, marginBottom: metrics.errorGap },
   error: { color: colors.noticeText, fontSize: metrics.errorSize, lineHeight: metrics.errorLineHeight, textAlign: 'right' },
   media: { height: metrics.mediaSize, width: metrics.mediaSize, borderRadius: metrics.mediaRadius, alignItems: 'center', justifyContent: 'center' },

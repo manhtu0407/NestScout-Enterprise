@@ -111,6 +111,29 @@ export const horizonColors = {
   kaelMotionLab: {
     title: '#5B6672', chip: '#F2F4F7', chipActive: '#141820', chipText: '#141820', chipTextActive: '#FFFFFF', card: '#F7F8FA',
   },
+  affectLab: {
+    accent: '#2F6BFF', accentSoft: 'rgba(47,107,255,0.14)', surface: '#FFFFFF', border: '#E3E7EC', text: '#141820', muted: '#5B6672', faint: '#9AA3AF',
+    error: '#D4322C', errorFill: 'rgba(212,50,44,0.08)', success: '#0E9E8E', successFill: 'rgba(14,158,142,0.12)', track: '#EEF1F4', chip: '#F2F4F7',
+    skeleton: '#E9ECF0', sweep: 'rgba(255,255,255,0.75)', shimmerBase: '#9AA3AF', shimmerHighlight: '#141820', page: '#F7F8FA',
+  },
+  designKit: {
+    page: '#F7F8FA', surface: '#FFFFFF', border: '#E3E7EC', text: '#141820', muted: '#5B6672', faint: '#9AA3AF',
+    kaelBubble: '#F2F4F7', userBubble: '#141820', userText: '#FFFFFF', accent: '#2F6BFF', accentSoft: 'rgba(47,107,255,0.12)',
+    neutralFg: '#5B6672', neutralBg: '#EEF1F4', infoFg: '#2F6BFF', infoBg: 'rgba(47,107,255,0.12)',
+    successFg: '#0B7A6D', successBg: 'rgba(14,158,142,0.14)', warnFg: '#9A5B00', warnBg: '#FFF1D6', dangerFg: '#C02B25', dangerBg: 'rgba(212,50,44,0.10)',
+    solidFg: '#FFFFFF', solidBg: '#141820', ring: '#FFFFFF', qrDark: '#141820', qrLight: '#FFFFFF', overlay: 'rgba(20,24,32,0.55)',
+    googleBlue: '#4285F4', googleRed: '#EA4335', googleYellow: '#FBBC05', googleGreen: '#34A853', facebookBlue: '#1877F2',
+    chipLime: { fg: '#2F6B12', bg: '#E4F4C8' }, chipRose: { fg: '#A8123E', bg: '#F8CBD6' }, chipYellow: { fg: '#7D5200', bg: '#FCEFB4' }, chipCyan: { fg: '#17617E', bg: '#C9ECF0' },
+    chipNeutral: { fg: '#666666', bg: '#EBEBEB' }, chipGray: { fg: '#0B0B0B', bg: '#F7F7F7' }, chipSoft: { fg: '#666666', bg: '#F7F7F7' },
+    dotGreen: '#22A06B', dotYellow: '#E8A317', dotIndigo: '#5B5BD6', dotRed: '#D4322C',
+    calendarToday: '#2F6BFF', calendarOff: '#C4CAD2',
+    sourceTints: ['#FFE1D6', '#DCE8FB', '#E8DFF8', '#DDF3E4', '#FFEFC9'],
+    avatars: ['#FDE2E4', '#DCE8FB', '#DDF3E4', '#FFEFC9', '#E8DFF8'],
+  },
+  kaelWorkflowLab: {
+    bg: '#EEF1F4', panel: '#FFFFFF', border: '#E3E7EC', text: '#141820', muted: '#5B6672', active: '#141820', activeText: '#FFFFFF',
+    ok: '#0E9E8E', error: '#D4322C', pending: '#9AA3AF', frame: '#0B0F14', logBg: '#0B0F14', logText: '#D5D9E0', logError: '#FF8A84', laneCustomer: '#0E9E8E', laneWorker: '#B26A00', laneDesign: '#2F6BFF', laneKobra: '#7A4DFF',
+  },
   kaelMotion: {
     shimmerBase: '#7C7C7C', shimmerHighlight: '#0D0D0D',
     matrixBase: '#D5D9E0', matrixActive: '#141820',
@@ -244,6 +267,8 @@ export const horizonColors = {
     serviceLabelColor: '#2A323B',
     profileBackgroundColor: '#F2F4F7',
     profileAvatarBackgroundColor: '#8A94A0',
+    avatarFill: '#D4D4D4',
+    avatarForeground: '#666666',
     pillBackgroundColor: '#0B0F14',
     pillTextColor: '#FFFFFF',
   },

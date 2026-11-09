@@ -3,8 +3,9 @@ import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View 
 import type { LayoutChangeEvent } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { Icon, type IconName, type JobReview, PressScale, useGlassAccessibility } from '@/features/shared';
+import { Chip, Icon, type IconName, type JobReview, PressScale, StatusDot, useGlassAccessibility, type StatusDotColor } from '@/features/shared';
 import { ScreenHeader } from './support-shell';
+import { LockedDatePicker } from './locked-date-picker';
 import { WorkerReviewPanel, type RequestWorker } from './worker-review-panel';
 
 const metrics = horizonLayout.requestsScreen;
@@ -12,6 +13,8 @@ const colors = horizonColors.requestsScreen;
 const easeOut = Easing.bezier(0.23, 1, 0.32, 1);
 
 export type RequestStage = 'waiting' | 'active' | 'done';
+
+const stageDots: Readonly<Record<RequestStage, StatusDotColor>> = { waiting: 'yellow', active: 'indigo', done: 'green' };
 
 export type PhotoSource = { uri: string; headers: Readonly<Record<string, string>> };
 
@@ -76,12 +79,11 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onT
         </View>
       </PressScale>
       <View style={styles.cardBottom}>
-        <Text style={styles.status}>{request.status}</Text>
-        {request.quoteCount ? (
-          <View style={styles.chip}>
-            <Text style={styles.chipText}>{request.quoteCount} báo giá</Text>
-          </View>
-        ) : null}
+        <View style={styles.statusRow}>
+          <StatusDot tone={stageDots[request.stage]} />
+          <Text style={styles.status}>{request.status}</Text>
+        </View>
+        {request.quoteCount ? <Chip label={`${request.quoteCount} báo giá`} variant="bold" hue="lime" /> : null}
       </View>
       <View style={styles.block}>
         <View accessibilityRole="progressbar" accessibilityLabel={caption} style={styles.segments}>
@@ -117,6 +119,7 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onT
           {request.worker && onToggleSaveWorker && onReviewWorker ? (
             <WorkerReviewPanel worker={request.worker} finished={request.stage === 'done'} onToggleSave={onToggleSaveWorker} onReview={onReviewWorker} />
           ) : null}
+          {request.stage === 'waiting' ? <LockedDatePicker /> : null}
           <Text style={styles.detailTitle}>Tiến trình</Text>
           <View>
             {workflowSteps.map((label, index) => {
@@ -335,15 +338,8 @@ const styles = StyleSheet.create({
   cardTitle: { color: horizonColors.text, fontSize: metrics.cardTitleSize, fontWeight: metrics.cardTitleWeight },
   cardMeta: { color: horizonColors.muted, fontSize: metrics.metaSize, marginTop: metrics.metaGap },
   cardBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: metrics.cardGap },
+  statusRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: horizonLayout.designKit.statusDotGap },
   status: { flex: 1, color: horizonColors.text, fontSize: metrics.statusSize, fontWeight: metrics.statusWeight },
-  chip: {
-    height: metrics.chipHeight,
-    paddingHorizontal: metrics.chipPaddingHorizontal,
-    borderRadius: metrics.chipRadius,
-    backgroundColor: colors.chipFill,
-    justifyContent: 'center',
-  },
-  chipText: { color: colors.chipText, fontSize: metrics.chipFontSize, fontWeight: metrics.chipFontWeight },
   empty: { alignItems: 'center', paddingTop: metrics.emptyPaddingTop, paddingHorizontal: metrics.emptyPaddingHorizontal, gap: metrics.emptyGap },
   emptyTitle: { color: horizonColors.text, fontSize: metrics.emptyTitleSize, fontWeight: metrics.emptyTitleWeight, textAlign: 'center' },
   emptyBody: { color: horizonColors.muted, fontSize: metrics.emptyBodySize, lineHeight: metrics.emptyBodyLineHeight, textAlign: 'center' },

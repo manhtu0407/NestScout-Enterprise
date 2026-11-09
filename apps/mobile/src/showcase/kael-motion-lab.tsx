@@ -2,8 +2,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { HeartToggle, PopBadge, Presence, useRetained, KaelMatrixLoader, KaelProgressSheet, KaelShimmerText, KaelSpinnerCheck, KaelStreamingText, KaelThinkingRow, isKaelThinking, kaelPhaseEntries, kaelPhaseIssueNotes } from '@/features/horizon';
-import type { KaelMatrixVariant, KaelPhase, KaelPhaseIssue } from '@/features/horizon';
+import { HeartToggle, KaelMatrixLoader, type KaelMatrixVariant, type KaelPhase, type KaelPhaseIssue, KaelProgressSheet, KaelShimmerText, KaelSpinnerCheck, KaelStreamingText, KaelThinkingRow, PopBadge, Presence, isKaelThinking, kaelPhaseEntries, kaelPhaseIssueNotes, useRetained } from '@/features/horizon';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 

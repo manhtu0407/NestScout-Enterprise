@@ -4,7 +4,7 @@ import type { KaelApproval, KaelTask, KaelTaskStatus } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
-import { KaelThinkingOrb } from './kael-thinking-orb';
+import { ThinkingStars } from './agent-thinking';
 import { KaelThinkingStatus } from './kael-thinking-status';
 import { SlideToConfirm } from './slide-to-confirm';
 
@@ -36,7 +36,7 @@ const dotColors: Readonly<Record<KaelTaskStatus, string>> = {
 
 export function KaelRunActivity({ label }: { label: string }) {
   return <View style={styles.activity}>
-    <View style={styles.activityOrb}><KaelThinkingOrb mode="thinking"/></View>
+    <View style={styles.activityOrb}><ThinkingStars/></View>
     <KaelThinkingStatus label={label}/>
   </View>;
 }

@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Share, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Platform, Share, StyleSheet, Text, View } from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent, ScrollViewInstance } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
 import type { KaelApproval, KaelTask } from '@/features/shared';
 import { ChatComposer } from './chat-composer';
+import { LockedChatExtras } from './locked-chat-extras';
+import { ChatMessage } from './chat-message';
+import { MessageActions } from './message-actions';
 import type { ComposerImage } from './composer-media';
 import { ConversationMenu } from './conversation-menu';
 import type { ConversationMenuItem } from './conversation-menu';
@@ -119,6 +122,12 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
     const transcript = messages.map(m => `${m.role === 'user' ? 'Bạn' : 'Kael'}: ${m.text}`).join('\n\n');
     try { await Share.share({ message: transcript }); } catch { notify('Thiết bị này chưa mở được chia sẻ.'); }
   };
+  const copyText = async (text: string) => {
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) await navigator.clipboard.writeText(text);
+      else await Share.share({ message: text });
+    } catch { notify('Thiết bị này chưa sao chép được.'); }
+  };
   const menuItems: readonly ConversationMenuItem[] = [
     { id: 'new', label: 'Trò chuyện mới', icon: 'compose', onPress: startNew },
     { id: 'share', label: 'Chia sẻ', icon: 'share', onPress: share },
@@ -136,12 +145,12 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
     <Animated.View pointerEvents={chatActive ? 'box-none' : 'none'} style={[styles.layer, { bottom: footerHeight, opacity: chatOpacity, transform: [{ translateY: chatShift }] }]}>
       <Animated.ScrollView ref={conversationRef} onContentSizeChange={followContent} onScroll={trackScroll} onScrollBeginDrag={() => { following.current = false; }} scrollEventThrottle={metrics.scrollThrottle} style={[styles.conversation, { top: Animated.add(inset, metrics.conversationTop) }]} contentContainerStyle={styles.conversationContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {messages.map(m => m.role === 'user'
-          ? <View key={m.id} style={styles.userBubble}>
-            <Text style={styles.userText}>{m.text}</Text>
-          </View>
+          ? <ChatMessage key={m.id} role="user" text={m.text}/>
           : <View key={m.id} style={styles.reply}>
             <KaelStreamingText text={m.text} style={styles.replyText} streaming={busy && m.id === lastMessage?.id && !m.incomplete} incomplete={m.incomplete}/>
             {m.incomplete && <KaelIncompleteNote/>}
+            {!m.incomplete && !(busy && m.id === lastMessage?.id) && <MessageActions text={m.text} onCopy={copyText} soon/>}
+            {m.id === lastMessage?.id && !busy && !m.incomplete && <LockedChatExtras/>}
           </View>)}
         <KaelTaskList tasks={tasks} processingTaskId={processingTaskId} processingLabel={busy ? activity : null}/>
         {onDecide && approvals.map(approval => <KaelApprovalCard key={approval.id} approval={approval} disabled={busy} onDecide={onDecide}/>)}
@@ -165,8 +174,6 @@ const styles = StyleSheet.create({
   layer: { position: 'absolute', top: metrics.navHeight, left: 0, right: 0 },
   conversation: { position: 'absolute', top: metrics.conversationTop, left: metrics.conversationSideInset, right: metrics.conversationSideInset, bottom: metrics.conversationBottomInset + metrics.plushClearance },
   conversationContent: { gap: metrics.chatGap, paddingBottom: bubbles.chatContentPaddingBottom },
-  userBubble: { alignSelf: 'flex-end', maxWidth: bubbles.userBubbleMaxWidth, borderRadius: bubbles.bubbleBorderRadius, borderBottomRightRadius: bubbles.userBubbleTailRadius, paddingVertical: bubbles.userBubblePaddingVertical, paddingHorizontal: bubbles.userBubblePaddingHorizontal, backgroundColor: bubbleColors.userBubbleBackgroundColor },
-  userText: { color: bubbleColors.userBubbleText, fontSize: bubbles.userTextSize, lineHeight: bubbles.userTextLineHeight },
   reply: { alignSelf: 'stretch', paddingHorizontal: bubbles.replyInset, gap: bubbles.replyGap },
   replyText: { color: colors.text, fontSize: bubbles.replyTextSize, lineHeight: bubbles.replyLineHeight },
   footer: { paddingHorizontal: metrics.composerSideInset, paddingBottom: metrics.footerBottomInset },

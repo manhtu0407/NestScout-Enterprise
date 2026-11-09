@@ -140,7 +140,7 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
           </CollapsibleGroup>
         </ScrollView>
         <View pointerEvents="box-none" style={styles.floating}>
-          <GlassIconButton label={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} hint="Mở tài khoản và chuyển vai trò" onPress={() => { setAccountCloseRequest(0); setAccountOpen(true); }}><View style={styles.avatarDisc}>{profileAvatarUri ? <Image source={{ uri: profileAvatarUri, headers: profileAvatarHeaders ? { ...profileAvatarHeaders } : undefined }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện"/> : initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={horizonLayout.sidebarList.avatarIconSize} color={horizonColors.accountSheet.avatarInitial}/>}</View></GlassIconButton>
+          <GlassIconButton label={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} hint="Mở tài khoản và chuyển vai trò" onPress={() => { setAccountCloseRequest(0); setAccountOpen(true); }}><View style={styles.avatarDisc}>{profileAvatarUri ? <Image source={{ uri: profileAvatarUri, headers: profileAvatarHeaders ? { ...profileAvatarHeaders } : undefined }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện"/> : initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={horizonLayout.sidebarList.accountAvatarIconSize} color={horizonColors.sidebarComponent.avatarForeground}/>}</View></GlassIconButton>
           <GlassCapsuleButton label="Chat" tone="light" radius={horizonLayout.sidebarList.floatingRadius} onPress={() => onNavigate('new')} style={styles.newChat}>
             <Icon name="plus" size={22} color={listColors.onAccent} strokeWidth={2}/><Text style={styles.newChatLabel}>Chat</Text>
           </GlassCapsuleButton>
@@ -188,8 +188,8 @@ const styles = StyleSheet.create({
   badgeText: { color: listColors.onBadge, fontSize: horizonLayout.sidebarList.badgeFontSize, fontWeight: horizonLayout.sidebarList.badgeFontWeight },
   itemPressed: { backgroundColor: listColors.pressed },
   itemTitle: { flex: 1, color: colors.text, fontSize: horizonLayout.sidebarList.rowFontSize, fontWeight: horizonLayout.sidebarList.rowFontWeight },
-  avatarDisc: { width: horizonLayout.sidebarList.avatarDiscSize, height: horizonLayout.sidebarList.avatarDiscSize, borderRadius: horizonLayout.sidebarList.avatarDiscRadius, backgroundColor: horizonColors.accountSheet.avatarFill, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  avatarInitial: { color: horizonColors.accountSheet.avatarInitial, fontSize: horizonLayout.sidebarList.avatarInitialSize, fontWeight: horizonLayout.sidebarList.avatarFontWeight },
+  avatarDisc: { width: horizonLayout.sidebarList.accountAvatarSize, height: horizonLayout.sidebarList.accountAvatarSize, borderRadius: horizonLayout.sidebarList.accountAvatarRadius, backgroundColor: horizonColors.sidebarComponent.avatarFill, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarInitial: { color: horizonColors.sidebarComponent.avatarForeground, fontSize: horizonLayout.sidebarList.accountAvatarInitialSize, fontWeight: horizonLayout.sidebarList.avatarFontWeight },
   newChat: { height: horizonLayout.sidebarList.floatingHeight, paddingHorizontal: horizonLayout.sidebarList.floatingPaddingHorizontal, flexDirection: 'row', alignItems: 'center', gap: horizonLayout.sidebarList.floatingGap },
   newChatLabel: { color: listColors.onAccent, fontSize: horizonLayout.sidebarList.floatingFontSize, fontWeight: horizonLayout.sidebarList.floatingFontWeight },
   emptyText: { color: colors.mutedSecondary, fontSize: horizonLayout.sidebar.searchTextFontSize, paddingHorizontal: horizonLayout.sidebarList.rowPadding, paddingVertical: horizonLayout.sidebar.sectionTitlePaddingVertical },

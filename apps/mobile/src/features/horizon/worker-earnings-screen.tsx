@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Icon } from '@/features/shared';
+import { Icon, QrFrame } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
@@ -98,6 +98,7 @@ function Payout() {
         <Text accessibilityLabel="Rút tiền, chưa mở" style={styles.heroAmount}>Chưa mở</Text>
         <Text style={styles.heroMeta}>Việc được khách nghiệm thu chưa tạo ra số dư.</Text>
       </View>
+      <QrFrame title="Mã QR nhận tiền" hint="Chỉ hiện khi thanh toán được xác nhận và quy trình chi trả được phê duyệt." />
       <SupportSection title="Điều kiện để rút tiền">
         <SupportCard>
           <SupportRow icon="receipt" title="Xác nhận thanh toán" detail="Chưa kết nối" />

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { GlassSurface, Icon, PressScale, useGlassAccessibility } from '@/features/shared';
+import { GlassSurface, Icon, PressScale, SocialButton, useGlassAccessibility } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
@@ -105,6 +105,10 @@ export function SignInGate(props: SignInGateProps) {
                   <>
                     <RoleSwitch role={role} onChange={props.onRoleChange} disabled={busy} />
                     <PhoneField digits={props.digits} onChange={props.onDigitsChange} onSubmit={props.onSubmitPhone} role={role} invalid={props.phoneError !== null} disabled={busy} />
+                    <View style={styles.social}>
+                      <SocialButton brand="google" comingSoon />
+                      <SocialButton brand="apple" comingSoon />
+                    </View>
                   </>
                 ) : (
                   <CodeCells code={props.code} length={codeLength} onChange={props.onCodeChange} role={role} invalid={props.codeError !== null || props.failure !== null} disabled={busy || success} shakeKey={props.shakeKey} />
@@ -160,6 +164,7 @@ const styles = StyleSheet.create({
   sheet: { padding: metrics.sheetPadding },
   sheetBody: { gap: metrics.sheetGap },
   copy: { gap: metrics.copyGap },
+  social: { gap: metrics.copyGap },
   title: { fontSize: metrics.titleSize, lineHeight: metrics.titleLineHeight, fontWeight: metrics.titleWeight, letterSpacing: metrics.titleTracking, color: colors.title },
   subtitle: { fontSize: metrics.subtitleSize, lineHeight: metrics.subtitleLineHeight, color: colors.body },
   error: { fontSize: metrics.noteSize, lineHeight: metrics.noteLineHeight, color: colors.error },
