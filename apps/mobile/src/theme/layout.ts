@@ -1,11 +1,19 @@
 export const horizonLayout = {
   lockup: { height: 52, aspect: 3.47 },
+  profileKit: {
+    sectionGap: 28, cardGap: 12, cardRadius: 20, cardPadding: 16, innerGap: 12, heroAvatar: 56, heroRadius: 28, heroNameSize: 20, heroMetaSize: 14,
+    pillHeight: 34, pillRadius: 17, pillPaddingHorizontal: 14, pillSize: 13, tagHeight: 26, tagRadius: 13, tagPaddingHorizontal: 10, tagSize: 12,
+    progressHeight: 6, progressRadius: 3, progressDuration: 240, stepHeight: 52, stepIcon: 22, stepGap: 12, stepTitleSize: 15, stepHintSize: 13,
+    slotTile: 40, slotTileRadius: 12, slotTitleSize: 16, slotBodySize: 13, slotBodyLineHeight: 18, fileRowHeight: 48, fileIcon: 18, fileTitleSize: 14,
+    dropHeight: 56, dropRadius: 16, dropBorder: 1.5, dropIcon: 20, dropLabelSize: 15, removeSize: 32, removeIcon: 16,
+  },
   workerSidebar: {
     avatarSize: 44, avatarRadius: 22, avatarInitialSize: 18, presenceSize: 14, presenceRing: 2.5,
     nameSize: 18, nameWeight: '600', nameTracking: -0.2, roleSize: 13, identityGap: 12, profileGap: 20,
     groupsTop: 14, cardRadius: 16, cardPadding: 14, statGap: 12, statPaddingVertical: 12, statDisc: 34, statDiscRadius: 17, statIconSize: 18, statCopyGap: 2, statCaptionSize: 12, statValueSize: 15, statValueWeight: '600',
-    goHeight: 44, goRadius: 22, goFontSize: 15, goIconSize: 18, dotSize: 8, pulseScale: 2.6, pulseDuration: 1600, stateDuration: 180, enterScale: 0.96, enterOpacity: 0.5,
-    contentTop: 8, hairlineWidth: 1, identityCopyGap: 1, goGap: 8, dotRadius: 4, presenceRadius: 7,
+    switchRowHeight: 64, switchGap: 12, switchWidth: 52, switchHeight: 32, switchThumb: 26, switchInset: 3, switchPressStretch: 4,
+    dotSize: 8, pulseScale: 2.6, pulseDuration: 1600, stateDuration: 220,
+    contentTop: 8, hairlineWidth: 1, identityCopyGap: 1, dotRadius: 4, presenceRadius: 7,
   },
   sidebarList: {
     titleFontSize: 20, titleFontWeight: '600',
@@ -194,6 +202,10 @@ export const horizonLayout = {
     sidebar: {
       drawerWidthRatio: 0.81,
       drawerMaxWidth: 345,
+      returnDelay: 380,
+      enterDuration: 320,
+      exitDuration: 220,
+      reducedDuration: 120,
       drawerMinimumBottom: 15,
       drawerPaddingHorizontal: 17,
       drawerBorderRightWidth: 1,
@@ -279,12 +291,39 @@ export const horizonLayout = {
       fieldFontSize: 17, fieldFontWeight: '600', fieldMultilineHeight: 96, removeHitSlop: 8, suffixSize: 15, fieldGap: 6, hintSize: 12, hintLineHeight: 17,
       disabledOpacity: 0.4, footnoteSize: 12, footnoteLineHeight: 17,
     },
+    confirmMorph: {
+      height: 48, radius: 16, gap: 8, labelSize: 15, labelWeight: '600', promptSize: 14,
+      faceDuration: 220, holdDuration: 900, doneHold: 1400, buttonRadius: 12, buttonPaddingHorizontal: 16, buttonHeight: 36,
+    },
+    rating: {
+      star: { sm: 14, md: 26, lg: 32 }, gap: 6, touch: 40, wordGap: 10, wordSize: 14, wordMinWidth: 72,
+      stagger: 40, sweepDuration: 180, popDuration: 110, popScale: 1.16, pressDuration: 120, pressScale: 0.86,
+    },
+    passwordStrength: {
+      gap: 10, segmentGap: 6, segmentHeight: 6, stagger: 50, fillDuration: 240, wordDuration: 200, wordOffset: 6, wordSize: 13,
+      ruleGap: 6, ruleInset: 8, ruleDot: 16, ruleIcon: 10, ruleSize: 13, ruleDuration: 180,
+    },
+    timePicker: {
+      gap: 8, labelSize: 13, fieldHeight: 48, fieldPadding: 14, radius: 14, edge: 1, valueSize: 16, descriptionSize: 12,
+      iconSize: 18, checkSize: 16, rowHeight: 44, listHeight: 220,
+    },
+    reactions: {
+      gap: 8, inner: 6, edge: 1, pillHeight: 32, pillPadding: 12, pillIcon: 15, iconSize: 17, countSize: 13,
+      trayPadding: 8, trayRadius: 18, enterScale: 0.8, enterDuration: 220, kickScale: 1.3, kickDuration: 110,
+    },
+    themeSwitch: {
+      height: 52, gap: 12, padding: 16, radius: 16, labelSize: 15, iconSize: 20, rise: 10, damping: 16, stiffness: 220,
+    },
     workerEarnings: {
       heroAmountSize: 34, heroAmountWeight: '700', heroAmountTracking: -0.8, heroLabelSize: 13, heroGap: 6, heroMetaSize: 13,
       chartHeight: 120, chartGap: 8, barRadius: 8, barMinHeight: 4, barLabelSize: 12, barLabelGap: 6, chartPadding: 16, chartTitleSize: 13, chartTitleWeight: '600', chartTitleGap: 14,
       listAmountSize: 15, listAmountWeight: '600', amountColumnGap: 2, pendingSize: 12,
       quickGap: 8, quickHeight: 34, quickRadius: 17, quickPaddingHorizontal: 14, quickSize: 13, quickWeight: '600',
       balanceLabelSize: 13, balanceSize: 28, errorSize: 12, errorLineHeight: 17,
+      cardRadius: 28, cardPadding: 20, cardGap: 18, deltaHeight: 26, deltaRadius: 13, deltaPaddingHorizontal: 10, deltaSize: 12,
+      segmentHeight: 38, segmentPadding: 4, segmentRadius: 19, segmentSize: 13, plotHeight: 156, axisWidth: 40, axisSize: 11, plotGap: 10, columnGap: 6, columnRadius: 10,
+      growDuration: 320, growStagger: 28, fadeDuration: 220, fadeOffset: 8, slideDuration: 220, slideReducedDuration: 120, pressScale: 0.9,
+      statGap: 10, statPadding: 12, statRadius: 16, statLabelSize: 11, statValueSize: 15, sectionGap: 28, payoutAmountSize: 28, stateHeight: 24, stateRadius: 12, statePaddingHorizontal: 10, stateSize: 12,
     },
     supportScreens: {
       paddingHorizontal: 22, backMarginTop: 14, backMarginLeft: 0, titleSize: 24, titleLineHeight: 30, headerGap: 12, subtitleInset: 56, titleWeight: '600', titleMarginBottom: 4,

@@ -3,7 +3,7 @@ const maxEmailLength = 254;
 const emailShape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type EmailRejection = 'email_empty' | 'email_invalid';
-export type PasswordRejection = 'password_empty' | 'password_too_short';
+export type PasswordRejection = 'password_empty' | 'password_too_short' | 'password_weak';
 export type ConfirmRejection = 'confirm_empty' | 'confirm_mismatch';
 
 export function normalizeEmail(raw: string): string {

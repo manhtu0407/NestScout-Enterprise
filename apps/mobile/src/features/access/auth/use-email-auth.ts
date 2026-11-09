@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAccess } from '../state/access-provider';
 import type { AuthFailure } from './auth-gateway';
 import { checkConfirmation, checkEmail, checkPassword, normalizeEmail, type ConfirmRejection, type EmailRejection, type PasswordRejection } from './email-credentials';
+import { minAcceptedLevel, scorePassword } from './password-strength';
 
 export const emailModes = { signUp: 'signup', signIn: 'signin' } as const;
 
@@ -28,7 +29,7 @@ const clean: EmailFieldErrors = { email: null, password: null, confirm: null };
 function judge(mode: EmailMode, fields: { email: string; password: string; confirm: string }): EmailFieldErrors {
   return {
     email: checkEmail(fields.email),
-    password: mode === 'signup' ? checkPassword(fields.password) : fields.password.length === 0 ? 'password_empty' : null,
+    password: mode === 'signup' ? checkPassword(fields.password) ?? (scorePassword(fields.password).level < minAcceptedLevel ? 'password_weak' : null) : fields.password.length === 0 ? 'password_empty' : null,
     confirm: mode === 'signup' ? checkConfirmation(fields.password, fields.confirm) : null,
   };
 }

@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { EntryRedirect, useAccess } from '@/features/access';
 import { Sidebar } from './sidebar';
 import { Icon } from '@/features/shared';
@@ -21,14 +21,13 @@ import { countActionableQuotes, countUnreadNotifications, toRecentSessions } fro
 import { useCustomerData } from './use-customer-data';
 import { useWorkerData } from './use-worker-data';
 import { workerBadgesFor } from './worker-jobs';
-import { formatMoney } from './content';
-import { earningsTodayMinor } from './worker-earnings';
-import { nextJobLabel, toWorkerJobs, toWorkerProfileView } from './worker-views';
+import { toWorkerJobs, toWorkerProfileView } from './worker-views';
 import { useKaelConversation } from './use-kael-conversation';
 import { useAiConsent } from './use-ai-consent';
 import { AiConsentSheet } from './ai-consent-sheet';
 import { settingsStrings } from './settings-strings';
 import { usePreferences } from '@/lib/preferences-provider';
+import { consumeSidebarReturn, markSidebarReturn } from './sidebar-return';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
@@ -83,22 +82,15 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     if (access.phase !== 'worker') return undefined;
     if (workerUserId === null || !worker.loaded) return 'loading' as const;
     const view = toWorkerProfileView(worker.data.profile, now);
-    return view === null ? null : { area: view.area, radiusKm: view.radiusKm, accepting: view.accepting };
+    return view === null ? null : { area: view.area, radiusKm: view.radiusKm, accepting: view.accepting, missing: view.missing };
   }, [access.phase, now, worker.data.profile, worker.loaded, workerUserId]);
-
-  const workerStats = useMemo(() => {
-    if (workerUserId === null || !worker.loaded) return undefined;
-    return {
-      acceptedToday: formatMoney(earningsTodayMinor(worker.data.earnings, now), 'VND'),
-      nextJob: nextJobLabel(toWorkerJobs(worker.data.snapshot, worker.data.cards, now)),
-    };
-  }, [now, worker.data, worker.loaded, workerUserId]);
 
   const setAccepting = useCallback(async (accepting: boolean) => {
     try {
       await worker.performProfile({ type: 'accepting', accepting });
     } catch {
       setDataNotice('Chưa lưu được trạng thái nhận việc. Vui lòng thử lại.');
+      throw new Error('accepting not saved');
     }
   }, [worker]);
 
@@ -109,8 +101,17 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     setDrawerOpen(true);
   }, [customer, worker]);
 
+  const openMenuRef = useRef(openMenu);
+  useEffect(() => { openMenuRef.current = openMenu; });
+  useFocusEffect(useCallback(() => {
+    if (!consumeSidebarReturn()) return undefined;
+    const timer = setTimeout(() => openMenuRef.current(), horizonLayout.sidebar.returnDelay);
+    return () => clearTimeout(timer);
+  }, []));
+
   const openRequest = useCallback((id: string) => {
     setDrawerOpen(false);
+    markSidebarReturn();
     router.push({ pathname: '/requests', params: { focus: id } });
   }, [router]);
 
@@ -180,17 +181,14 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
 
   const navigate = useCallback((id: string) => {
     setDrawerOpen(false);
-    if (id === 'profile') {
-      router.push(access.phase === 'worker' ? '/worker-home' : access.phase === 'client' ? '/client-home' : '/explore');
-      return;
-    }
     if (id === 'home' || id === 'new') {
       newConversation();
       return;
     }
+    markSidebarReturn();
     if (id === 'requests') router.push('/requests');
     else router.push({ pathname: '/section', params: { id } });
-  }, [access.phase, newConversation, router]);
+  }, [newConversation, router]);
 
   const accessMessage = access.notice === null ? null : access.notice === 'worker_unavailable'
     ? 'Không thể chuyển sang vai trò Thợ vì tài khoản chưa có quyền.'
@@ -219,7 +217,7 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     </SafeAreaView>
     <AiConsentSheet visible={consentOpen} onAllow={allowAiSharing} onDeny={denyAiSharing}/>
     {kaelUserId !== null && scope === memoryScope && <KaelMemorySettings key={scope} userId={kaelUserId} mode={kaelMode} onClose={() => setMemoryScope(null)}/>}
-    {!onPreviewMenu && <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
+    {!onPreviewMenu && <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
       if (access.phase === 'guest') {
         kaelIntroSession.markPlayed();
         access.prepareHorizonDraftTransfer({ text: inputRef.current, images: imagesRef.current });

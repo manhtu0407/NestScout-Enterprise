@@ -59,6 +59,7 @@ export const workerSidebarGroups: readonly { title: string; items: readonly Side
   {
     title: 'Hỗ trợ',
     items: [
+      { id: 'worker-notifications', title: 'Thông báo', icon: 'bell' },
       { id: 'worker-kael', title: 'Trợ lý Kael', icon: 'chat' },
       { id: 'help', title: 'Trợ giúp', icon: 'help' },
       { id: 'settings', title: 'Cài đặt', icon: 'gear' },

@@ -12,20 +12,22 @@ export type EarningsView = {
   periods: readonly EarningsPeriodInfo[];
   days: readonly EarningsDay[];
   entries: Readonly<Record<EarningsPeriod, readonly EarningsEntry[]>>;
+  activity: Readonly<Record<string, number>>;
+  todayKey: string;
 };
 
 const vietnamOffsetMs = 7 * 60 * 60 * 1000;
 const dayMs = 24 * 60 * 60 * 1000;
 const weekDays = 7;
-const shortWeekdays = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'] as const;
+const shortWeekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const longWeekdays = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'] as const;
 
-function dayNumber(key: string): number {
+export function dayNumber(key: string): number {
   const [year, month, day] = key.split('-').map(Number);
   return Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1) / dayMs;
 }
 
-function dayKey(number: number): string {
+export function dayKey(number: number): string {
   return new Date(number * dayMs).toISOString().slice(0, 10);
 }
 
@@ -33,7 +35,7 @@ export function vietnamDayKey(now: Date): string {
   return new Date(now.getTime() + vietnamOffsetMs).toISOString().slice(0, 10);
 }
 
-function weekdayOf(number: number): number {
+export function weekdayOf(number: number): number {
   return new Date(number * dayMs).getUTCDay();
 }
 
@@ -77,6 +79,11 @@ export function toEarningsView(records: readonly WorkerEarningRecord[], now: Dat
     dayLabel: dayLabelFor(today - item.number, item.number, item.record.completed_on),
     amountMinor: item.record.amount_minor,
   }));
+  const activity: Record<string, number> = {};
+  for (const record of records) {
+    if (dayNumber(record.completed_on) > today) continue;
+    activity[record.completed_on] = (activity[record.completed_on] ?? 0) + 1;
+  }
   return {
     periods: [
       info('today', 'Hôm nay', 'Đã nghiệm thu hôm nay'),
@@ -84,6 +91,8 @@ export function toEarningsView(records: readonly WorkerEarningRecord[], now: Dat
       info('month', 'Tháng này', 'Đã nghiệm thu tháng này'),
     ],
     days,
+    activity,
+    todayKey,
     entries: { today: entriesOf(selections.today), week: entriesOf(selections.week), month: entriesOf(selections.month) },
   };
 }

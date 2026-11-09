@@ -27,6 +27,8 @@ export type SettingsStrings = {
   languageNames: Record<Language, string>;
   languageNote: string;
   appearanceNote: string;
+  themeToDark: string;
+  themeToLight: string;
   selected: string;
   clearTitle: string;
   clearBody: string;
@@ -37,6 +39,10 @@ export type SettingsStrings = {
   clearFailed: string;
   clearActive: string;
   clearSignedOut: string;
+  holdPrompt: string;
+  holdConfirm: string;
+  holdCancel: string;
+  holdRetry: string;
   locationOpenFailed: string;
   legalSummary: string;
   back: string;
@@ -107,6 +113,8 @@ const vi: SettingsStrings = {
   languageNames: { vi: 'Tiếng Việt', en: 'English' },
   languageNote: 'Áp dụng cho màn Cài đặt và các văn bản pháp lý. Các màn khác sẽ được chuyển ngữ dần.',
   appearanceNote: 'Chế độ Tối áp dụng cho các thành phần dùng bảng màu chung. Các màn Horizon sẽ được bổ sung dần.',
+  themeToDark: 'Chuyển sang giao diện tối',
+  themeToLight: 'Chuyển sang giao diện sáng',
   selected: 'Đang chọn',
   clearTitle: 'Xoá lịch sử trò chuyện?',
   clearBody: 'Toàn bộ tin nhắn của bạn với Kael ở chế độ này sẽ bị xoá và không thể khôi phục. Một số bản ghi vận hành phục vụ an toàn có thể được giữ lại.',
@@ -117,6 +125,10 @@ const vi: SettingsStrings = {
   clearFailed: 'Chưa xoá được lịch sử. Kiểm tra kết nối rồi thử lại.',
   clearActive: 'Kael đang trả lời. Hãy thử lại sau khi hoàn tất.',
   clearSignedOut: 'Đăng nhập để xoá lịch sử trò chuyện.',
+  holdPrompt: 'Giữ nút để xác nhận',
+  holdConfirm: 'Giữ để xác nhận',
+  holdCancel: 'Huỷ',
+  holdRetry: 'Thử lại',
   locationOpenFailed: 'Không mở được cài đặt thiết bị.',
   legalSummary: 'Tóm tắt',
   back: 'Quay về',
@@ -192,6 +204,8 @@ const en: SettingsStrings = {
   languageNames: { vi: 'Tiếng Việt', en: 'English' },
   languageNote: 'Applies to Settings and the legal documents. Other screens will be translated over time.',
   appearanceNote: 'Dark mode applies to components that use the shared palette. Horizon screens will follow.',
+  themeToDark: 'Switch to dark appearance',
+  themeToLight: 'Switch to light appearance',
   selected: 'Selected',
   clearTitle: 'Clear chat history?',
   clearBody: 'All your messages with Kael in this mode will be deleted and cannot be restored. Some operational records kept for safety may remain.',
@@ -202,6 +216,10 @@ const en: SettingsStrings = {
   clearFailed: 'Could not clear history. Check your connection and try again.',
   clearActive: 'Kael is replying. Try again once it finishes.',
   clearSignedOut: 'Sign in to clear chat history.',
+  holdPrompt: 'Press and hold to confirm',
+  holdConfirm: 'Hold to confirm',
+  holdCancel: 'Cancel',
+  holdRetry: 'Retry',
   locationOpenFailed: 'Could not open device settings.',
   legalSummary: 'Summary',
   back: 'Back',

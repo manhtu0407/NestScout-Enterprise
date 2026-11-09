@@ -14,12 +14,16 @@ function fail(label, message) {
   throw new Error(`${label}: ${message}`);
 }
 
+const fencedCode = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n {0,3}\1[`~]*[ \t]*$/gm;
+const inlineCode = /`[^`\n]*`/g;
+
 function checkLinks(text, file, available, label) {
+  const prose = text.replace(fencedCode, '').replace(inlineCode, '``');
   const destinations = [
-    ...text.matchAll(/\]\(\s*(<[^>\n]*>|[^\s)]+)(?:\s+[^\n)]*)?\)/g),
-    ...text.matchAll(/^\s{0,3}\[[^\]\n]+\]:\s*(<[^>\n]*>|\S+)/gm),
-    ...text.matchAll(/\b(?:href|src)\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^\s>]+))/gi),
-    ...text.matchAll(/<((?:[a-z][a-z0-9+.-]*:|[./\\])[^<>\s]*)>/gi),
+    ...prose.matchAll(/\]\(\s*(<[^>\n]*>|[^\s)]+)(?:\s+[^\n)]*)?\)/g),
+    ...prose.matchAll(/^\s{0,3}\[[^\]\n]+\]:\s*(<[^>\n]*>|\S+)/gm),
+    ...prose.matchAll(/\b(?:href|src)\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^\s>]+))/gi),
+    ...prose.matchAll(/<((?:[a-z][a-z0-9+.-]*:|[./\\])[^<>\s]*)>/gi),
   ].map(match => match[1] ?? match[2] ?? match[3]);
   const targets = new Set();
   for (const value of destinations) {

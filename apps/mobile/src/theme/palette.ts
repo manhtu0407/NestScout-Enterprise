@@ -41,10 +41,17 @@ export const horizonColors = {
     groupChevron: '#6B7683',
     pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', accent: '#91E5D6', onAccent: '#0B0F14', badge: '#11161C', onBadge: '#FFFFFF',
   },
+  profileKit: {
+    cardFill: '#F4F6F8', warnFill: '#FFF1F3', warnText: '#9F1239', warnTrack: 'rgba(190,18,60,0.14)', warnBar: '#E11D48',
+    okFill: '#E3F5F1', okText: '#0A6F64', okBar: '#0E9E8E', tileFill: '#FFFFFF', tileIcon: '#11161C', required: '#9F1239', requiredFill: '#FFE4E9',
+    optional: '#6B7683', optionalFill: '#E7EAEE', pendingFill: '#EEF1F4', pendingText: '#4A5563', verifiedFill: '#DDF3EC', verifiedText: '#0A6F64',
+    rejectedFill: '#FDE6EA', rejectedText: '#C2294A', dropBorder: '#B8C0CA', dropFill: '#FFFFFF', dropText: '#11161C', dropMuted: '#6B7683',
+    separator: 'rgba(60,60,67,0.12)', removeFill: 'rgba(60,60,67,0.08)', removeIcon: '#4A5563',
+  },
   workerSidebar: {
     surface: '#FFFFFF', cardFill: '#F4F6F8', ink: '#11161C', muted: '#6B7683', hairline: 'rgba(60,60,67,0.12)',
     accentText: '#0A6F64', accentSoft: 'rgba(14,158,142,0.14)', online: '#0E9E8E', offline: '#9AA0AB',
-    statFill: '#FFFFFF', statIcon: '#11161C', goOffFill: '#0E9E8E', goOnFill: '#FDE6EA', goOffLabel: '#FFFFFF', goOnLabel: '#C2294A', badge: '#11161C', onBadge: '#FFFFFF',
+    statFill: '#FFFFFF', statIcon: '#11161C', switchOff: '#D3D8DF', switchThumb: '#FFFFFF', needsText: '#BE123C', badge: '#11161C', onBadge: '#FFFFFF',
   },
   kaelAvatar: { background: '#FFFFFF', border: '#E3E9EE', shadow: '#4F7482', ring: 'rgba(255,255,255,0.74)' },
   chatComposer: {
@@ -173,10 +180,32 @@ export const horizonColors = {
     stepFill: '#0E9E8E', stepTrack: 'rgba(118,118,128,0.18)', photoFill: 'rgba(118,118,128,0.18)', stepCaption: '#5B6672', nextFill: '#FFFFFF', nextAccent: '#0A6F64', nextAccentFill: 'rgba(14,158,142,0.12)', infoLabel: '#6B7683',
     timelineDone: '#0E9E8E', timelineDoneIcon: '#FFFFFF', timelineCurrent: '#11161C', timelinePending: 'rgba(118,118,128,0.22)', timelineLine: 'rgba(118,118,128,0.22)', timelinePendingText: '#8A8A90', actionFill: '#0B0F14', actionLabel: '#FFFFFF', actionSecondaryFill: 'rgba(118,118,128,0.12)', actionSecondaryLabel: '#11161C', chevron: '#9AA0AB', toggleFill: 'rgba(118,118,128,0.12)', toggleIcon: '#3C4650',
   },
+  confirmMorph: {
+    restFill: '#F4F5F7', restLabel: '#11161C', promptText: '#11161C', cancelLabel: '#11161C',
+    dangerFill: '#D4322C', dangerLabel: '#FFFFFF', neutralFill: '#0B0F14', neutralLabel: '#FFFFFF', holdTrack: 'rgba(255,255,255,0.34)',
+    pendingText: '#5B6672', doneFill: 'rgba(14,158,142,0.12)', doneText: '#0A6F64', errorFill: 'rgba(212,50,44,0.10)', errorText: '#C02B25', undoLabel: '#0A6F64',
+  },
+  rating: { on: '#E8A317', empty: '#D3D8DF', word: '#11161C', wordEmpty: '#8A8A90' },
+  passwordStrength: {
+    track: 'rgba(118,118,128,0.18)', levels: ['#D4322C', '#E8A317', '#0E9E8E', '#0A6F64'], word: '#5B6672', action: '#0A6F64',
+    ruleOff: 'rgba(118,118,128,0.28)', ruleOn: '#0E9E8E', checkIcon: '#FFFFFF', ruleText: '#6B7683', ruleTextOn: '#11161C',
+  },
+  timePicker: {
+    label: '#5B6672', surface: '#FFFFFF', border: '#E3E7EC', text: '#141820', placeholder: '#9AA3AF', icon: '#5B6672',
+    accent: '#2F6BFF', accentSoft: 'rgba(47,107,255,0.12)',
+  },
+  reactions: {
+    fill: '#FFFFFF', border: '#E3E7EC', text: '#11161C', icon: '#5B6672', trayFill: '#F4F5F7',
+    reactedFill: 'rgba(14,158,142,0.12)', reactedBorder: 'rgba(14,158,142,0.4)', reactedText: '#0A6F64',
+  },
+  themeSwitch: { fill: '#F4F5F7', text: '#11161C', sun: '#E8A317', moon: '#5B6672' },
   workerEarnings: {
     heroFill: '#E9EBEE', heroLabel: '#5B6672', heroAmount: '#11161C', heroMeta: '#5B6672',
     chartFill: '#F5F6F8', barFill: 'rgba(14,158,142,0.28)', barToday: '#0E9E8E', barLabel: '#6B7683', barLabelToday: '#11161C', chartTitle: '#6B7683',
     amount: '#0B7C70', quickFill: 'rgba(118,118,128,0.12)', quickText: '#11161C',
+    cardFill: '#F4F5F7', deltaFill: 'rgba(14,158,142,0.16)', deltaText: '#0A6F64', segmentTrack: 'rgba(118,118,128,0.12)', segmentActive: '#FFFFFF', segmentText: '#6B7683', segmentActiveText: '#11161C',
+    heat1: 'rgba(14,158,142,0.26)', heat2: 'rgba(14,158,142,0.5)', heat3: 'rgba(14,158,142,0.76)', heat4: '#0B7C70', plotTrack: '#E6E9ED', plotBar: 'rgba(14,158,142,0.38)', plotBarActive: '#0E9E8E', axisLabel: '#7A8491', statFill: '#FFFFFF', statLabel: '#6B7683', statValue: '#11161C',
+    stateFill: 'rgba(118,118,128,0.12)', stateText: '#4A5563', stateDoneFill: 'rgba(14,158,142,0.16)', stateDoneText: '#0A6F64', stepIndexFill: '#FFFFFF',
   },
   workerJobs: {
     chipFill: 'rgba(118,118,128,0.12)', chipClearFill: 'rgba(118,118,128,0)', chipText: '#3C4650', chipActiveFill: '#0B0F14', chipActiveText: '#FFFFFF',

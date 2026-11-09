@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Text } from 'react-native';
 
 import { formatNational, toNationalDigits, useAccess } from '@/features/access';
-import { PressScale, acceptTerms, acceptedImageTypes, cancelAccountDeletion, exportPersonalData, readDeletionRequest, readTermsAcceptance, recordConsent, requestAccountDeletion, submitSupportRequest, type CustomerSettings } from '@/features/shared';
+import { PressScale, acceptTerms, acceptedImageTypes, cancelAccountDeletion, exportPersonalData, readDeletionRequest, readReviewReactions, toggleReviewReaction, readTermsAcceptance, recordConsent, requestAccountDeletion, submitSupportRequest, type CustomerSettings, type ReviewReactionId } from '@/features/shared';
 
 import type { UserProfile } from './content';
 import { HelpScreen } from './help-screen';
@@ -47,6 +47,10 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
   const access = useAccess();
   const userId = access.identity === 'verified' ? access.userId : null;
   const customer = useCustomerData(userId);
+  const reviewReactions = useMemo(() => userId === null ? undefined : {
+    load: (reviewIds: readonly string[], signal: AbortSignal) => readReviewReactions(userId, reviewIds, signal),
+    toggle: (reviewId: string, reaction: ReviewReactionId, signal: AbortSignal) => toggleReviewReaction(userId, reviewId, reaction, signal),
+  }, [userId]);
   const [editing, setEditing] = useState(false);
   const aiConsent = useAiConsent(userId);
   const compliance = useMemo(() => userId === null ? null : {
@@ -140,6 +144,7 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
       items={toSavedWorkers(data.savedWorkers, now)}
       onBack={onBack}
       onRemove={worker => customer.removeSavedWorker(worker.id)}
+      reactions={reviewReactions}
     />;
   }
 

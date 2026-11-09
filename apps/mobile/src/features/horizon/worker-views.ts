@@ -122,6 +122,8 @@ export function toWorkerProfileView(record: WorkerProfileRecord | null, now: Dat
     serviceIds: record.service_ids,
     listed: record.listed,
     certificates: record.certificates.map(item => ({ id: item.id, title: item.title, status: item.status, statusLabel: certificateStatusLabels[item.status] })),
+    documents: record.documents.map(item => ({ id: item.id, kind: item.kind, title: item.title, status: item.status, statusLabel: certificateStatusLabels[item.status] })),
+    missing: record.missing_items,
     reviewCount: record.review_count,
     ratingAverage: record.rating_average,
     strengths: record.strengths,

@@ -14,7 +14,7 @@ The [Batch A record](skill-research-batch-a.md) is dated research, not adoption.
 The **NestScout Engineering Skills Library** (NESL) has machine ID
 `nestscout-engineering-skills` and semantic namespace `nestscout`.
 Its single canonical source is `.agents/skills/`: the existing lifecycle package
-plus the 17 specialist packages listed below. The namespace is library identity,
+plus the 24 specialist packages listed below. The namespace is library identity,
 not a name prefix, native routing field or replacement for the plugin namespace.
 
 | Consumer | Native project package | V1 inventory |
@@ -36,9 +36,9 @@ installation below; cloning alone installs nothing.
 Each package links its own source evidence, immutable upstream paths when
 applicable, legal notices, adaptation decision and individual quality assessment.
 Packages use string metadata identifying this library, domain, specialty,
-consumers and version. Fourteen specialists are `1.0.0`; `be-auth-rls` and
+consumers and version. Twenty-one specialists are `1.0.0`; `be-auth-rls` and
 `be-transaction-integrity` are `1.0.1`, and `be-edge-api` is `1.0.2`.
-There are 18 total packages including
+There are 25 total packages including
 `skill-lifecycle`, whose files are unchanged.
 
 | Package | Responsibility | Source mode |
@@ -60,6 +60,23 @@ There are 18 total packages including
 | [qa-impact-review](../.agents/skills/qa-impact-review/SKILL.md) | Spec/contracts and downstream change impact | ADAPTED, Matt Pocock/Lauren Tan MIT |
 | [thermo-nuclear-code-quality-review](../.agents/skills/thermo-nuclear-code-quality-review/SKILL.md) | Explicit diff-scoped structural maintainability review | ADAPTED, Cursor MIT |
 | [codebase-graph](../.agents/skills/codebase-graph/SKILL.md) | Graph-based cross-file navigation with an owner-installed graphify CLI; no install, hooks or provider calls | ADAPTED, graphify Apache-2.0/MIT |
+| [emil-design-eng](../.agents/skills/emil-design-eng/SKILL.md) | Interface polish, motion decisions and review format | ADAPTED, Emil Kowalski MIT |
+| [apple-design](../.agents/skills/apple-design/SKILL.md) | Apple interface principles: feedback, fluid motion, restraint | ADAPTED, Emil Kowalski MIT |
+| [animate-expo](../.agents/skills/animate-expo/SKILL.md) | Expo/React Native animation, gestures, sheets and haptics | ADAPTED, Emil Kowalski MIT |
+| [gestures](../.agents/skills/gestures/SKILL.md) | Drag, swipe and sheet interactions that track the finger | ADAPTED, Emil Kowalski MIT |
+| [choreograph](../.agents/skills/choreograph/SKILL.md) | Coordinating several elements that animate together | ADAPTED, Emil Kowalski MIT |
+| [review-animations](../.agents/skills/review-animations/SKILL.md) | Strict explicit review of animation and motion code | ADAPTED, Emil Kowalski MIT |
+| [break-ui](../.agents/skills/break-ui/SKILL.md) | Worst-case data stress test for a UI component | ADAPTED, Emil Kowalski MIT |
+
+The seven Emil Kowalski packages were adopted on 2026-11-09 from
+[emilkowalski/skills](https://github.com/emilkowalski/skills) at revision
+`715c1807e08c497cfd1dc4feb450a2a3300ef2a9`, at the owner's request for interface
+design work. Each links its own source evidence and MIT notice. Edits are packaging
+only (LF, portable frontmatter, lowercase `references/`, one moved section for the
+line limit). The remaining upstream skills (web-only, Swift, library-picking and
+prototype-picker skills, and the other motion audit skills) were not adopted. For
+fe-native-motion, which adapts a different Emil Kowalski distribution, these
+packages are complementary design references, not replacements.
 
 The owner's 2026-10-26 implementation request supersedes Batch A's proposed
 candidate-by-candidate pilot order: all 15 specialists are installed before
@@ -218,7 +235,8 @@ frontmatter using the locked YAML package without aliases/tags, checks portable
 fields, collisions, bounded descriptions, reference ownership/reachability and local
 destinations, and never executes or downloads package content. Inline links with
 nested labels, reference definitions, autolinks and quoted/unquoted HTML destinations
-receive path checks. This bounded destination scan is not a complete Markdown parser
+receive path checks; fenced code blocks and inline code spans are not scanned, since
+JSX closing tags and sample markup there are not resource destinations. This bounded destination scan is not a complete Markdown parser
 or semantic safety review. Existing hygiene/reserved/secrets guards still apply.
 Ignored untracked files are outside repository snapshot checks; review the complete
 external bundle before adoption, including ignored/hidden files.

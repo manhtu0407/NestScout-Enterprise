@@ -36,11 +36,11 @@ function useImageSource(uri: string, headers: Headers | undefined): Source | nul
   return resolved !== null && resolved.key === uri && resolved.uri !== null ? { uri: resolved.uri } : null;
 }
 
-type Props = { uri: string; headers?: Headers; fallback: ReactNode };
+type Props = { uri: string; headers?: Headers; fallback: ReactNode; resizeMode?: 'cover' | 'contain'; label?: string };
 
-export function AvatarImage({ uri, headers, fallback }: Props) {
+export function AvatarImage({ uri, headers, fallback, resizeMode = 'cover', label = 'Ảnh đại diện' }: Props) {
   const source = useImageSource(uri, headers);
   const [failedUri, setFailedUri] = useState<string | null>(null);
   if (source === null || failedUri === source.uri) return <>{fallback}</>;
-  return <Image source={source} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện" onError={() => setFailedUri(source.uri)} />;
+  return <Image source={source} style={StyleSheet.absoluteFill} resizeMode={resizeMode} accessibilityLabel={label} onError={() => setFailedUri(source.uri)} />;
 }

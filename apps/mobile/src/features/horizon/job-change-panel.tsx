@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { PressScale, type JobChange, type JobChangeKind } from '@/features/shared';
+import { DateCalendar, PressScale, type JobChange, type JobChangeKind } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
-import { parseProposedTime } from './job-change-time';
 import { supportStyles } from './support-shell';
+import { TimePicker } from './time-picker';
+import { combineDateAndTime } from './time-slots';
 
 const requestMetrics = horizonLayout.requestsScreen;
 const requestColors = horizonColors.requestsScreen;
@@ -34,7 +35,8 @@ export function JobChangePanel({ jobId, userId, api, now = () => new Date() }: P
   const [changes, setChanges] = useState<JobChange[] | null>(null);
   const [composing, setComposing] = useState<JobChangeKind | null>(null);
   const [reason, setReason] = useState('');
-  const [time, setTime] = useState('');
+  const [day, setDay] = useState<Date | null>(null);
+  const [time, setTime] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,7 +54,8 @@ export function JobChangePanel({ jobId, userId, api, now = () => new Date() }: P
       await action();
       setComposing(null);
       setReason('');
-      setTime('');
+      setDay(null);
+      setTime(null);
       load();
     } catch {
       setError(failure);
@@ -63,9 +66,10 @@ export function JobChangePanel({ jobId, userId, api, now = () => new Date() }: P
 
   const submit = () => {
     if (composing === null) return;
-    const proposedFor = composing === 'reschedule' ? parseProposedTime(time, now()) : null;
+    const when = day !== null && time !== null ? combineDateAndTime(day, time) : null;
+    const proposedFor = composing === 'reschedule' && when !== null && when.getTime() > now().getTime() ? when.toISOString() : null;
     if (composing === 'reschedule' && proposedFor === null) {
-      setError('Nhập thời gian mới theo dạng ngày/tháng/năm giờ:phút, ví dụ 20/11/2026 09:30, và phải ở tương lai.');
+      setError('Chọn ngày và giờ mới ở tương lai.');
       return;
     }
     const kind = composing;
@@ -115,8 +119,9 @@ export function JobChangePanel({ jobId, userId, api, now = () => new Date() }: P
       ) : (
         <View style={styles.form}>
           {composing === 'reschedule' ? (
-            <View style={styles.box}>
-              <TextInput accessibilityLabel="Thời gian mới" placeholder="Thời gian mới, ví dụ 20/11/2026 09:30" placeholderTextColor={horizonColors.muted} value={time} onChangeText={setTime} style={[styles.input, webInputStyle]} />
+            <View style={styles.schedule}>
+              <DateCalendar value={day} onChange={setDay} today={now()} label="Chọn ngày mới" />
+              <TimePicker label="Giờ mới" value={time} onChange={setTime} minuteStep={30} />
             </View>
           ) : null}
           <View style={styles.box}>
@@ -145,6 +150,7 @@ const styles = StyleSheet.create({
   note: { color: horizonColors.muted, fontSize: requestMetrics.noteSize },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: requestMetrics.cardGap },
   form: { gap: requestMetrics.infoGap },
+  schedule: { gap: requestMetrics.infoGap },
   box: { borderRadius: requestMetrics.actionRadius, backgroundColor: requestColors.actionSecondaryFill, paddingHorizontal: requestMetrics.cardPadding },
   input: { minHeight: requestMetrics.actionHeight, color: horizonColors.text, fontSize: requestMetrics.noteSize },
   action: {

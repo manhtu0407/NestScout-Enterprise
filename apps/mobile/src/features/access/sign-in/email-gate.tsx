@@ -9,9 +9,11 @@ import { horizonColors } from '@/theme/palette';
 import type { AuthFailure } from '../auth/auth-gateway';
 import { authMessages, emailCopy, emailMessages, signInCopy } from '../auth/auth-messages';
 import { minPasswordLength } from '../auth/email-credentials';
+import { suggestPassword } from '../auth/password-strength';
 import { emailModes, type EmailFieldErrors, type EmailMode } from '../auth/use-email-auth';
 import { AuroraBackdrop } from './aurora-backdrop';
 import { KaelCompanion } from './kael-companion';
+import { PasswordStrength } from './password-strength';
 import { RoleSwitch } from './role-switch';
 import type { CompanionState, SignInRole } from './sign-in-types';
 import { TextField } from './text-field';
@@ -125,6 +127,7 @@ export function EmailGate(props: EmailGateProps) {
                         returnKeyType={signUp ? 'next' : 'go'}
                         onSubmitEditing={signUp ? () => confirmRef.current?.focus() : props.onSubmit}
                       />
+                      {signUp && <PasswordStrength password={props.password} disabled={busy} onSuggest={() => { const next = suggestPassword(); props.onPasswordChange(next); props.onConfirmChange(next); }} />}
                       {signUp && (
                         <TextField
                           inputRef={confirmRef}

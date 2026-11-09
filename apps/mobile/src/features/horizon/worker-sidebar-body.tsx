@@ -1,15 +1,16 @@
 import * as Haptics from 'expo-haptics';
-import { useEffect, useState } from 'react';
-import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
+import { AvailabilitySwitch } from './availability-switch';
 import { workerPreviewSummary, workerSidebarGroups } from './content';
 import { CollapsibleGroup } from './sidebar-group';
 import { PopBadge } from './motion-count';
 import type { SidebarItem } from './content';
-import { GlassCapsuleButton, GlassIconButton, Icon, PressScale, useGlassAccessibility, usePressFeedback } from '@/features/shared';
+import { GlassCapsuleButton, GlassIconButton, Icon, useGlassAccessibility, usePressFeedback, type WorkerMissingItem } from '@/features/shared';
 
 type Props = {
   onNavigate: (id: string) => void;
@@ -19,13 +20,10 @@ type Props = {
   accountLabel: string;
   badges?: Readonly<Record<string, number>>;
   workerProfile?: WorkerSidebarState;
-  workerStats?: WorkerSidebarStats;
   onSetAccepting?: (accepting: boolean) => Promise<void>;
 };
 
-export type WorkerSidebarProfile = { area: string; radiusKm: number; accepting: boolean };
-
-export type WorkerSidebarStats = { acceptedToday: string; nextJob: string };
+export type WorkerSidebarProfile = { area: string; radiusKm: number; accepting: boolean; missing: readonly WorkerMissingItem[] };
 
 export type WorkerSidebarState = WorkerSidebarProfile | null | 'loading';
 
@@ -49,45 +47,7 @@ function WorkerRow({ item, badge = 0, onPress }: { item: SidebarItem; badge?: nu
   </Animated.View>;
 }
 
-function GoButton({ online, hint, onPress }: { online: boolean; hint?: string; onPress: () => void }) {
-  const { reduceMotion } = useGlassAccessibility();
-  const [enter] = useState(() => new Animated.Value(1));
-  useEffect(() => {
-    if (reduceMotion) { enter.setValue(1); return; }
-    enter.setValue(0);
-    const motion = Animated.timing(enter, { toValue: 1, duration: metrics.stateDuration, easing: Easing.bezier(0.23, 1, 0.32, 1), useNativeDriver: true });
-    motion.start();
-    return () => motion.stop();
-  }, [enter, online, reduceMotion]);
-  const scale = enter.interpolate({ inputRange: [0, 1], outputRange: [metrics.enterScale, 1] });
-  const opacity = enter.interpolate({ inputRange: [0, 1], outputRange: [metrics.enterOpacity, 1] });
-  return <Animated.View style={[styles.go, { opacity, transform: [{ scale }] }]}>
-    <PressScale
-      accessibilityRole="switch"
-      accessibilityLabel="Nhận việc mới"
-      accessibilityHint={hint ?? (online ? 'Đang nhận việc. Chạm để tắt nhận việc' : 'Đang tắt. Chạm để bắt đầu nhận việc')}
-      accessibilityState={{ checked: online }}
-      onPress={onPress}
-      style={[styles.goPill, online ? styles.goOn : styles.goOff]}
-    >
-      {online
-        ? <><Icon name="close" size={metrics.goIconSize} color={colors.goOnLabel} strokeWidth={2}/><Text style={styles.goOnLabel}>Tắt nhận việc</Text></>
-        : <><Icon name="bolt" size={metrics.goIconSize} color={colors.goOffLabel} strokeWidth={2}/><Text style={styles.goOffLabel}>Bật nhận việc</Text></>}
-    </PressScale>
-  </Animated.View>;
-}
-
-function Stat({ icon, caption, value }: { icon: SidebarItem['icon']; caption: string; value: string }) {
-  return <View style={styles.stat} accessible accessibilityLabel={`${caption}, ${value}`}>
-    <View style={styles.statDisc}><Icon name={icon} size={metrics.statIconSize} color={colors.statIcon} strokeWidth={1.8}/></View>
-    <View style={styles.statCopy}>
-      <Text style={styles.statCaption}>{caption}</Text>
-      <Text numberOfLines={1} style={styles.statValue}>{value}</Text>
-    </View>
-  </View>;
-}
-
-function Profile({ profileName, roleLine, online, stats, goHint, onToggle }: { profileName?: string; roleLine: string; online: boolean; stats: WorkerSidebarStats; goHint?: string; onToggle: () => void }) {
+function Profile({ profileName, roleLine, online, goHint, missingCount, onToggle }: { profileName?: string; roleLine: string; online: boolean; goHint?: string; missingCount: number; onToggle: () => void }) {
   const initial = profileName?.trim().charAt(0).toLocaleUpperCase();
   return <View style={styles.profile}>
     <View style={styles.identity}>
@@ -100,12 +60,7 @@ function Profile({ profileName, roleLine, online, stats, goHint, onToggle }: { p
         <Text numberOfLines={1} style={styles.role}>{roleLine}</Text>
       </View>
     </View>
-    <View style={styles.card}>
-      <Stat icon="wallet" caption="Đã nghiệm thu hôm nay" value={stats.acceptedToday}/>
-      <View style={styles.cardDivider}/>
-      <Stat icon="pin" caption="Việc kế tiếp" value={stats.nextJob}/>
-    </View>
-    <GoButton online={online} hint={goHint} onPress={onToggle}/>
+    <AvailabilitySwitch online={online} hint={goHint} missingCount={missingCount} onToggle={onToggle}/>
   </View>;
 }
 
@@ -115,30 +70,33 @@ function roleLineFor(profile: WorkerSidebarState | undefined): string {
   return profile === null ? 'Chưa có hồ sơ nghề' : `${profile.area} · bán kính ${profile.radiusKm} km`;
 }
 
-function statsFor(profile: WorkerSidebarState | undefined, stats: WorkerSidebarStats | undefined): WorkerSidebarStats {
-  if (stats !== undefined) return stats;
-  return profile === undefined ? workerPreviewSummary : { acceptedToday: '…', nextJob: '…' };
-}
-
 function onlineOf(profile: WorkerSidebarState | undefined, sampleOnline: boolean, requested: boolean | null): boolean {
   if (profile === undefined) return sampleOnline;
   if (requested !== null) return requested;
   return profile !== null && profile !== 'loading' && profile.accepting;
 }
 
-export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, profileName, accountLabel, badges = {}, workerProfile, workerStats, onSetAccepting }: Props) {
-  const stats = statsFor(workerProfile, workerStats);
+export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, profileName, accountLabel, badges = {}, workerProfile, onSetAccepting }: Props) {
   const [sampleOnline, setSampleOnline] = useState(true);
-  const [requested, setRequested] = useState<boolean | null>(null);
+  const [pending, setPending] = useState<{ value: boolean; from: boolean } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const loadedProfile = workerProfile !== undefined && workerProfile !== null && workerProfile !== 'loading' ? workerProfile : null;
+  const confirmed = loadedProfile === null ? null : loadedProfile.accepting;
+  const missingCount = loadedProfile === null ? 0 : loadedProfile.missing.length;
+  const requested = pending !== null && (saving || confirmed === pending.from) ? pending.value : null;
   const online = onlineOf(workerProfile, sampleOnline, requested);
   const toggle = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (workerProfile === undefined) return setSampleOnline(value => !value);
     if (workerProfile === 'loading') return;
     if (workerProfile === null) return onNavigate('worker-profile');
-    if (requested !== null || !onSetAccepting) return;
-    setRequested(!online);
-    void onSetAccepting(!online).finally(() => setRequested(null));
+    if (!online && missingCount > 0) return onNavigate('worker-profile');
+    if (saving || !onSetAccepting) return;
+    setPending({ value: !online, from: online });
+    setSaving(true);
+    onSetAccepting(!online)
+      .catch(() => setPending(null))
+      .finally(() => setSaving(false));
   };
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set(workerSidebarGroups.slice(0, 1).map(group => group.title)));
   const toggleGroup = (title: string) => setOpenGroups(current => { const next = new Set(current); if (!next.delete(title)) next.add(title); return next; });
@@ -150,10 +108,9 @@ export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, pro
           <Image source={require('../../../assets/horizon/nestscout-lockup.png')} style={styles.lockupImage} resizeMode="contain"/>
         </View>
       </View>
-      <GlassIconButton label="Thông báo" onPress={() => onNavigate('notifications')}><Icon name="bell" size={horizonLayout.glass.iconSize}/></GlassIconButton>
     </View>
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Profile profileName={profileName} roleLine={roleLineFor(workerProfile)} online={online} stats={stats} goHint={workerProfile === null ? 'Chưa có hồ sơ nghề. Chạm để tạo hồ sơ' : undefined} onToggle={toggle}/>
+      <Profile profileName={profileName} roleLine={roleLineFor(workerProfile)} online={online} goHint={workerProfile === null ? 'Chưa có hồ sơ nghề. Chạm để tạo hồ sơ' : undefined} missingCount={missingCount} onToggle={toggle}/>
       <View style={styles.groups}>{workerSidebarGroups.map((group, index) => <CollapsibleGroup first={index === 0} key={group.title} title={group.title} expanded={openGroups.has(group.title)} onToggle={() => toggleGroup(group.title)} badge={group.items.reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>
         {group.items.map(item => <WorkerRow key={item.id} item={item} badge={badges[item.id]} onPress={() => onNavigate(item.id)}/>)}
         {group.title === supportGroupTitle && <>
@@ -189,13 +146,6 @@ const styles = StyleSheet.create({
   name: { color: colors.ink, fontSize: metrics.nameSize, fontWeight: metrics.nameWeight, letterSpacing: metrics.nameTracking },
   role: { color: colors.muted, fontSize: metrics.roleSize },
   groups: { paddingTop: metrics.groupsTop },
-  card: { borderRadius: metrics.cardRadius, backgroundColor: colors.cardFill, paddingHorizontal: metrics.cardPadding },
-  cardDivider: { height: metrics.hairlineWidth, backgroundColor: colors.hairline },
-  stat: { flexDirection: 'row', alignItems: 'center', gap: metrics.statGap, paddingVertical: metrics.statPaddingVertical },
-  statDisc: { width: metrics.statDisc, height: metrics.statDisc, borderRadius: metrics.statDiscRadius, backgroundColor: colors.statFill, alignItems: 'center', justifyContent: 'center' },
-  statCopy: { flex: 1, gap: metrics.statCopyGap },
-  statCaption: { color: colors.muted, fontSize: metrics.statCaptionSize },
-  statValue: { color: colors.ink, fontSize: metrics.statValueSize, fontWeight: metrics.statValueWeight, fontVariant: ['tabular-nums'] },
   row: { minHeight: list.rowHeight, flexDirection: 'row', alignItems: 'center', gap: list.rowGap, paddingVertical: list.rowPaddingVertical },
   rowPressed: { backgroundColor: listColors.pressed },
   rowTitle: { flex: 1, color: colors.ink, fontSize: list.rowFontSize, fontWeight: list.rowFontWeight },
@@ -204,12 +154,6 @@ const styles = StyleSheet.create({
   floating: { position: 'absolute', left: horizonLayout.sidebar.drawerPaddingHorizontal, right: horizonLayout.sidebar.drawerPaddingHorizontal, bottom: list.floatingBottom, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   floatingAvatar: { width: list.avatarDiscSize, height: list.avatarDiscSize, borderRadius: list.avatarDiscRadius, backgroundColor: avatarColors.avatarFill, alignItems: 'center', justifyContent: 'center' },
   floatingInitial: { color: avatarColors.avatarInitial, fontSize: list.avatarInitialSize, fontWeight: list.avatarFontWeight },
-  go: { alignSelf: 'stretch' },
   newChat: { height: list.floatingHeight, paddingHorizontal: list.floatingPaddingHorizontal, flexDirection: 'row', alignItems: 'center', gap: list.floatingGap },
   newChatLabel: { color: listColors.onAccent, fontSize: list.floatingFontSize, fontWeight: list.floatingFontWeight },
-  goPill: { minHeight: metrics.goHeight, borderRadius: metrics.goRadius, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: metrics.goGap },
-  goOff: { backgroundColor: colors.goOffFill },
-  goOn: { backgroundColor: colors.goOnFill },
-  goOffLabel: { color: colors.goOffLabel, fontSize: metrics.goFontSize, fontWeight: list.floatingFontWeight },
-  goOnLabel: { color: colors.goOnLabel, fontSize: metrics.goFontSize, fontWeight: list.floatingFontWeight },
 });

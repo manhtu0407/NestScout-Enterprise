@@ -8,6 +8,8 @@ import { usePreferences } from '@/lib/preferences-provider';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
+import { ThemeSwitch } from './theme-switch';
+import { ConfirmMorph } from './confirm-morph';
 import { DataExportView, type DataExportApi } from './data-export-view';
 import type { AiConsent } from './use-ai-consent';
 import { AccountDeletionView, type AccountDeletionApi } from './account-deletion-view';
@@ -89,13 +91,16 @@ type ClearState = { status: 'idle' | 'busy' | 'done'; error: string | null };
 
 function ClearHistoryView({ strings, onClear, onBack }: { strings: SettingsStrings; onClear?: () => Promise<void>; onBack: () => void }) {
   const [state, setState] = useState<ClearState>({ status: 'idle', error: null });
-  const confirm = () => {
+  const confirm = async () => {
     if (!onClear || state.status === 'busy') return;
     setState({ status: 'busy', error: null });
-    onClear().then(
-      () => setState({ status: 'done', error: null }),
-      (error: unknown) => setState({ status: 'idle', error: error instanceof WorkflowError && error.failure === 'unavailable' ? strings.clearActive : strings.clearFailed }),
-    );
+    try {
+      await onClear();
+      setState({ status: 'done', error: null });
+    } catch (error) {
+      setState({ status: 'idle', error: error instanceof WorkflowError && error.failure === 'unavailable' ? strings.clearActive : strings.clearFailed });
+      throw error;
+    }
   };
   return (
     <SupportShell backLabel={strings.back} title={strings.clearTitle} onBack={onBack}>
@@ -107,9 +112,19 @@ function ClearHistoryView({ strings, onClear, onBack }: { strings: SettingsStrin
           {!onClear ? <Text accessibilityLiveRegion="polite" style={styles.error}>{strings.clearSignedOut}</Text> : null}
           {state.error ? <Text accessibilityLiveRegion="polite" style={styles.error}>{state.error}</Text> : null}
           <View style={styles.actions}>
-            <PressScale accessibilityRole="button" accessibilityLabel={strings.clearConfirm} accessibilityState={{ disabled: !onClear || state.status === 'busy', busy: state.status === 'busy' }} onPress={confirm} style={[supportStyles.primary, styles.danger]}>
-              <Text style={supportStyles.primaryLabel}>{state.status === 'busy' ? strings.clearBusy : strings.clearConfirm}</Text>
-            </PressScale>
+            <ConfirmMorph
+              mode="hold"
+              label={strings.clearConfirm}
+              accessibilityLabel={strings.clearConfirm}
+              prompt={strings.holdPrompt}
+              confirmLabel={strings.holdConfirm}
+              cancelLabel={strings.holdCancel}
+              pendingLabel={strings.clearBusy}
+              errorLabel={strings.clearFailed}
+              retryLabel={strings.holdRetry}
+              disabled={!onClear || state.status === 'busy'}
+              onConfirm={confirm}
+            />
             <PressScale accessibilityRole="button" accessibilityLabel={strings.clearCancel} onPress={onBack} style={supportStyles.secondary}>
               <Text style={supportStyles.secondaryLabel}>{strings.clearCancel}</Text>
             </PressScale>
@@ -129,7 +144,7 @@ export function SettingsScreen({ onBack, profile, onEditProfile, settings, onCha
   const [view, setView] = useState<ScreenView>('main');
   const [locationError, setLocationError] = useState(false);
   const syncedMotion = settings?.reduce_motion;
-  const { update } = preferences;
+  const { update, resolvedAppearance } = preferences;
 
   useEffect(() => {
     if (syncedMotion !== undefined) update({ reduceMotion: syncedMotion });
@@ -183,6 +198,7 @@ export function SettingsScreen({ onBack, profile, onEditProfile, settings, onCha
   if (view === 'appearance') {
     return (
       <SupportShell backLabel={strings.back} title={strings.appearance} onBack={toMain}>
+        <ThemeSwitch theme={resolvedAppearance} onThemeChange={appearance => update({ appearance })} label={resolvedAppearance === 'dark' ? strings.themeToLight : strings.themeToDark} accessibilityLabel={resolvedAppearance === 'dark' ? strings.themeToLight : strings.themeToDark} />
         <OptionList<Appearance> options={appearances} labels={strings.appearanceNames} value={preferences.appearance} onSelect={appearance => update({ appearance })} note={strings.appearanceNote} strings={strings} />
       </SupportShell>
     );

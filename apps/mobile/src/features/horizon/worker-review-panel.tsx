@@ -5,6 +5,7 @@ import { Icon, PressScale, type JobReview } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
+import { Rating } from './rating';
 import { supportStyles } from './support-shell';
 
 const metrics = horizonLayout.supportScreens;
@@ -17,7 +18,6 @@ export type RequestWorker = { jobId: string; profileId: string; name: string; sa
 
 export const reviewTags: readonly string[] = ['Đúng giờ', 'Gọn gàng', 'Giá hợp lý', 'Nhiệt tình', 'Làm kỹ'];
 export const maxReviewLength = 1000;
-const ratings: readonly number[] = [1, 2, 3, 4, 5];
 
 type Props = {
   worker: RequestWorker;
@@ -80,29 +80,11 @@ export function WorkerReviewPanel({ worker, finished, onToggleSave, onReview }: 
         </PressScale>
       </View>
       {worker.rating !== null ? (
-        <View accessibilityLabel={`Bạn đã đánh giá ${worker.rating} sao`} style={styles.stars}>
-          {ratings.map(value => (
-            <Icon key={value} name="star" size={metrics.noteIconSize} color={value <= (worker.rating ?? 0) ? colors.ratingStar : colors.emptyIcon} />
-          ))}
-          <Text style={styles.note}>Bạn đã đánh giá</Text>
-        </View>
+        <Rating label="Bạn đã đánh giá" value={worker.rating} readOnly size="md" />
       ) : finished ? (
         composing ? (
           <View style={styles.form}>
-            <View accessibilityRole="radiogroup" style={styles.stars}>
-              {ratings.map(value => (
-                <PressScale
-                  key={value}
-                  accessibilityRole="radio"
-                  accessibilityLabel={`${value} sao`}
-                  accessibilityState={{ selected: value === rating }}
-                  onPress={() => setRating(value)}
-                  style={styles.star}
-                >
-                  <Icon name="star" size={metrics.heartIconSize} color={value <= rating ? colors.ratingStar : colors.emptyIcon} />
-                </PressScale>
-              ))}
-            </View>
+            <Rating label="Đánh giá thợ" value={rating} onChange={setRating} size="lg" />
             <View style={styles.tags}>
               {reviewTags.map(tag => {
                 const selected = tags.includes(tag);
@@ -172,9 +154,6 @@ const styles = StyleSheet.create({
   },
   actionSelected: { backgroundColor: colors.quoteDeclinedFill },
   actionLabel: { color: requestColors.actionSecondaryLabel, fontSize: requestMetrics.actionSize, fontWeight: requestMetrics.actionWeight },
-  stars: { flexDirection: 'row', alignItems: 'center', gap: requestMetrics.metaGap },
-  star: { width: metrics.heartSize, height: metrics.heartSize, alignItems: 'center', justifyContent: 'center' },
-  note: { color: horizonColors.muted, fontSize: requestMetrics.noteSize, marginLeft: metrics.noteGap },
   form: { gap: requestMetrics.infoGap },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: metrics.skillChipGap },
   tag: { minHeight: metrics.skillChipHeight, paddingHorizontal: metrics.skillChipPaddingHorizontal, borderRadius: metrics.skillChipRadius, justifyContent: 'center', backgroundColor: colors.chipFill },

@@ -1,8 +1,8 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Text } from 'react-native';
 
 import { useAccess } from '@/features/access';
-import { PressScale } from '@/features/shared';
+import { PressScale, readPayoutQrSource } from '@/features/shared';
 
 import { NotificationsScreen } from './notifications-screen';
 import { SupportEmpty, SupportShell, supportStyles } from './support-shell';
@@ -12,6 +12,7 @@ import { WorkerEarningsScreen } from './worker-earnings-screen';
 import { workerJobStageForSidebarId } from './worker-jobs';
 import { WorkerJobsScreen } from './worker-jobs-screen';
 import { jobChangesApiFor } from './job-changes-api';
+import { toWorkerPayoutView } from './worker-payout';
 import { workerProfileTabForSidebarId } from './worker-profile';
 import { WorkerProfileScreen } from './worker-profile-screen';
 import { toWorkerJobs, toWorkerNotificationItems, toWorkerProfileView } from './worker-views';
@@ -38,9 +39,11 @@ export function WorkerSection({ id, onBack, onNavigate }: Props) {
   const profile = useMemo(() => toWorkerProfileView(data.profile, now), [data.profile, now]);
   const earningsMode = id === 'worker-earnings' ? 'overview' : id === 'worker-payout' ? 'payout' : null;
   const earnings = useMemo(() => toEarningsView(data.earnings, now), [data.earnings, now]);
+  const payout = useMemo(() => toWorkerPayoutView(data.payout), [data.payout]);
+  const loadQr = useCallback((path: string, version: string, signal: AbortSignal) => readPayoutQrSource(userId ?? '', path, version, signal), [userId]);
   const notices = id === 'worker-notifications';
   const notificationItems = useMemo(() => toWorkerNotificationItems(data.notifications, now), [data.notifications, now]);
-  const title = notices ? 'Thông báo' : earningsMode !== null ? 'Thu nhập' : profileTab === null ? 'Công việc' : 'Hồ sơ nghề';
+  const title = notices ? 'Thông báo' : earningsMode === 'payout' ? 'Rút tiền' : earningsMode !== null ? 'Thu nhập' : profileTab === null ? 'Công việc' : 'Hồ sơ nghề';
 
   if (userId === null || (stage === null && profileTab === null && earningsMode === null && !notices)) {
     return <StateShell title={title} onBack={onBack}>
@@ -64,7 +67,7 @@ export function WorkerSection({ id, onBack, onNavigate }: Props) {
   }
 
   if (notices) return <NotificationsScreen items={notificationItems} onBack={onBack} onMarkRead={worker.markRead} onOpenTarget={onNavigate} />;
-  if (earningsMode !== null) return <WorkerEarningsScreen key={earningsMode} initialMode={earningsMode} earnings={earnings} onBack={onBack} />;
+  if (earningsMode !== null) return <WorkerEarningsScreen key={earningsMode} initialMode={earningsMode} earnings={earnings} payout={payout} performPayout={worker.performPayout} loadQr={loadQr} onBack={onBack} />;
   if (profileTab !== null) return <WorkerProfileScreen key={profileTab} initialTab={profileTab} profile={profile} fallbackName="" perform={worker.performProfile} onBack={onBack} />;
   if (stage === null) return null;
   return <WorkerJobsScreen key={stage} initialStage={stage} jobs={jobs} perform={worker.perform} jobChanges={{ userId, api: jobChangesApiFor(userId) }} onBack={onBack} />;

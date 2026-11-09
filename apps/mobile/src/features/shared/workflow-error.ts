@@ -1,8 +1,11 @@
 export type WorkflowFailure = 'forbidden' | 'stale' | 'expired' | 'unavailable' | 'invalid' | 'rejected' | 'unknown';
 
 export class WorkflowError extends Error {
-  constructor(readonly failure: WorkflowFailure) {
+  readonly failure: WorkflowFailure;
+
+  constructor(failure: WorkflowFailure) {
     super(`Workflow operation ${failure}`);
+    this.failure = failure;
   }
 }
 

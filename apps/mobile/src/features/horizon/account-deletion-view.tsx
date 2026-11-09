@@ -6,6 +6,7 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 import type { SettingsStrings } from './settings-strings';
+import { ConfirmMorph } from './confirm-morph';
 import { SupportShell, supportStyles } from './support-shell';
 
 const metrics = horizonLayout.supportScreens;
@@ -35,14 +36,17 @@ export function AccountDeletionView({ api, strings, formatDate, onBack }: Props)
     return () => { active = false; };
   }, [api, reloadKey]);
 
-  const run = (action: () => Promise<string | null>) => {
+  const run = async (action: () => Promise<string | null>) => {
     if (state.status !== 'ready') return;
     const previous = state.requestedAt;
     setState({ status: 'busy', requestedAt: previous, error: null });
-    action().then(
-      requestedAt => setState({ status: 'ready', requestedAt, error: null }),
-      () => setState({ status: 'ready', requestedAt: previous, error: 'action' }),
-    );
+    try {
+      const requestedAt = await action();
+      setState({ status: 'ready', requestedAt, error: null });
+    } catch (error) {
+      setState({ status: 'ready', requestedAt: previous, error: 'action' });
+      throw error;
+    }
   };
 
   const busy = state.status === 'busy';
@@ -62,14 +66,24 @@ export function AccountDeletionView({ api, strings, formatDate, onBack }: Props)
               <Text style={supportStyles.secondaryLabel}>{strings.deleteLoading}</Text>
             </PressScale>
           ) : state.requestedAt ? (
-            <PressScale accessibilityRole="button" accessibilityLabel={strings.deleteCancel} accessibilityState={{ disabled: busy, busy }} onPress={() => run(() => api.cancel().then(() => null))} style={supportStyles.primary}>
+            <PressScale accessibilityRole="button" accessibilityLabel={strings.deleteCancel} accessibilityState={{ disabled: busy, busy }} onPress={() => void run(() => api.cancel().then(() => null)).catch(() => undefined)} style={supportStyles.primary}>
               <Text style={supportStyles.primaryLabel}>{busy ? strings.deleteBusy : strings.deleteCancel}</Text>
             </PressScale>
           ) : (
             <>
-              <PressScale accessibilityRole="button" accessibilityLabel={strings.deleteConfirm} accessibilityState={{ disabled: busy, busy }} onPress={() => run(() => api.request())} style={[supportStyles.primary, styles.danger]}>
-                <Text style={supportStyles.primaryLabel}>{busy ? strings.deleteBusy : strings.deleteConfirm}</Text>
-              </PressScale>
+              <ConfirmMorph
+                mode="hold"
+                label={strings.deleteConfirm}
+                accessibilityLabel={strings.deleteConfirm}
+                prompt={strings.holdPrompt}
+                confirmLabel={strings.holdConfirm}
+                cancelLabel={strings.holdCancel}
+                pendingLabel={strings.deleteBusy}
+                errorLabel={strings.deleteFailed}
+                retryLabel={strings.holdRetry}
+                disabled={busy}
+                onConfirm={() => run(() => api.request())}
+              />
               <PressScale accessibilityRole="button" accessibilityLabel={strings.deleteKeep} onPress={onBack} style={supportStyles.secondary}>
                 <Text style={supportStyles.secondaryLabel}>{strings.deleteKeep}</Text>
               </PressScale>

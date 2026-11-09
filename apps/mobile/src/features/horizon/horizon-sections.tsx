@@ -7,6 +7,7 @@ import { Icon } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
+import { AccountSection } from './account-section';
 import { screenTitles } from './content';
 import { CustomerSection, isCustomerSection, type CustomerSectionId } from './customer-sections';
 import { WorkerSection, isWorkerSection } from './worker-sections';
@@ -38,6 +39,14 @@ export function SectionRoute() {
   const navigate = useCustomerNavigation();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const title = (id && screenTitles[id]) ?? '';
+  if (id === 'profile') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <StatusBar style="dark" />
+        <AccountSection onBack={() => router.back()} />
+      </SafeAreaView>
+    );
+  }
   if (isCustomerSection(id)) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
