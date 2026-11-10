@@ -851,3 +851,30 @@ test('switching session mid-turn cancels only the local stream and does not leak
   expect(result.current.messages.map(message => message.text)).toEqual(['Vệ sinh sofa', 'Đã ghi nhận sofa']);
   expect(result.current.conversationId).toBe(conversationB);
 });
+
+test('a failed switch during a running turn leaves no running state, blocks sending, and retries into the chosen session', async () => {
+  let release: (outcome: KaelTurnOutcome) => void = () => undefined;
+  const gate = new Promise<KaelTurnOutcome>(resolve => { release = resolve; });
+  const streamer = jest.fn(async (_user: string, _request: KaelTurnRequest, onEvent: (event: KaelEvent) => void, signal: AbortSignal) => {
+    onEvent({ ...started, v: 1, run_id: runId, seq: 1 } as KaelEvent);
+    signal.addEventListener('abort', () => release({ kind: 'cancelled' }));
+    return gate;
+  });
+  const opener = jest.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(sessionB);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader, jest.fn(), opener));
+  await act(async () => { result.current.send('Đang chạy ở phiên A'); });
+  expect(result.current.running).toBe(true);
+  await act(async () => { await result.current.open(conversationB); });
+  expect(result.current.opening).toEqual({ id: conversationB, failed: true });
+  expect(result.current.running).toBe(false);
+  expect(result.current.messages).toEqual([]);
+  streamer.mockClear();
+  await act(async () => { result.current.send('Không gửi vào phiên nào'); });
+  expect(streamer).not.toHaveBeenCalled();
+  await act(async () => { result.current.retryOpen(); await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.opening).toBeNull();
+  expect(result.current.running).toBe(false);
+  expect(result.current.conversationId).toBe(conversationB);
+  expect(result.current.messages.map(message => message.text)).toEqual(['Vệ sinh sofa', 'Đã ghi nhận sofa']);
+});

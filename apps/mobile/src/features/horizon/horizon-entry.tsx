@@ -11,7 +11,7 @@ import { KaelHomeScreen } from './kael-home-screen';
 import { KaelMemorySettings } from './kael-memory-settings';
 import { kaelIntroSession } from './kael-intro-session';
 import type { ComposerImage } from './composer-media';
-import { createComposerDrafts, isEmptyDraft } from './composer-drafts';
+import { createComposerDrafts, emptyComposerDraft, isEmptyDraft } from './composer-drafts';
 import { KaelHomeLoading } from './skeleton-layouts';
 import { Presence, useRetained } from './motion-presence';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
@@ -111,8 +111,9 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   const adoptPromptRef = useRef<(prompt: string, fresh: boolean) => void>(() => undefined);
   useEffect(() => {
     adoptPromptRef.current = (prompt, fresh) => {
+      const carried = !fresh || kael.conversationId === null ? inputRef.current : '';
       if (fresh) newConversationRef.current();
-      const text = inputRef.current.trim() === '' ? prompt : `${inputRef.current.trimEnd()}\n\n${prompt}`;
+      const text = carried.trim() === '' ? prompt : `${carried.trimEnd()}\n\n${prompt}`;
       inputRef.current = text;
       setInput(text);
       access.updateHorizonDraft(access.userId, { text, images: imagesRef.current });
@@ -124,8 +125,8 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   const activeConversationId = kael.conversationId;
   const switchDraft = useCallback((targetId: string | null) => {
     const owner = scope ?? 'guest';
-    parkedDrafts.park(owner, activeConversationId, { text: inputRef.current, images: imagesRef.current });
-    const next = parkedDrafts.recall(owner, targetId);
+    if (activeConversationId !== null) parkedDrafts.park(owner, activeConversationId, { text: inputRef.current, images: imagesRef.current });
+    const next = targetId === null ? emptyComposerDraft : parkedDrafts.recall(owner, targetId);
     inputRef.current = next.text;
     imagesRef.current = next.images;
     setInput(next.text);

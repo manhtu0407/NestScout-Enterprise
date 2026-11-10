@@ -7,15 +7,6 @@ test('a parked draft returns only to its own session with its attachments', () =
   drafts.park('user-a:client', 'session-a', { text: 'Nháp của A', images: [image] });
   expect(drafts.recall('user-a:client', 'session-a')).toEqual({ text: 'Nháp của A', images: [image] });
   expect(drafts.recall('user-a:client', 'session-b')).toBe(emptyComposerDraft);
-  expect(drafts.recall('user-a:client', null)).toBe(emptyComposerDraft);
-});
-
-test('the new-chat draft is separate from every session draft', () => {
-  const drafts = createComposerDrafts();
-  drafts.park('user-a:client', null, { text: 'Nháp chat mới', images: [] });
-  drafts.park('user-a:client', 'session-a', { text: 'Nháp A', images: [] });
-  expect(drafts.recall('user-a:client', null).text).toBe('Nháp chat mới');
-  expect(drafts.recall('user-a:client', 'session-a').text).toBe('Nháp A');
 });
 
 test('another account or mode never sees a parked draft', () => {

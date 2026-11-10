@@ -153,6 +153,25 @@ security definer
 set search_path = ''
 as $$ select nestscout_private.kael_conversation_snapshot(p_mode, null); $$;
 
+create or replace function nestscout_private.kael_context_tasks(p_conversation_id uuid, p_mode text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(nestscout_private.kael_task_json(t) order by t.updated_at desc), '[]'::jsonb)
+  from (
+    select t.* from public.kael_tasks t
+    join public.kael_conversations c on c.id = t.conversation_id
+    where t.owner_id = nestscout_private.kael_actor() and t.conversation_id = p_conversation_id
+      and c.mode = p_mode and c.deleted_at is null
+      and (t.status not in ('completed', 'failed', 'cancelled') or t.updated_at > clock_timestamp() - interval '1 day')
+    order by t.updated_at desc
+    limit 12
+  ) t;
+$$;
+
 create function nestscout_private.kael_list_conversations(p_mode text, p_search text default null, p_archived boolean default false,
   p_limit integer default 30, p_before timestamptz default null)
 returns jsonb

@@ -127,7 +127,7 @@ test('a new session starts blank, creates its conversation only when a message i
   expect(requests).toHaveLength(1);
 });
 
-test('an unsent draft stays with its own session when moving to a new chat, another session and back', async () => {
+test('an unsent draft stays with its own session across another session and back, and every new chat is blank', async () => {
   await renderEntry();
   await act(async () => { await Promise.resolve(); });
   await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Nháp của phiên A');
@@ -147,7 +147,22 @@ test('an unsent draft stays with its own session when moving to a new chat, anot
   expect(screen.getByDisplayValue('Nháp của phiên A')).toBeTruthy();
   await openSidebar();
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
-  expect(screen.getByDisplayValue('Nháp chat mới')).toBeTruthy();
+  expect(screen.queryByDisplayValue('Nháp chat mới')).toBeNull();
+  expect(screen.queryByDisplayValue('Nháp của phiên A')).toBeNull();
+  expect(screen.getByPlaceholderText('Nhắn Kael...').props.value).toBe('');
+});
+
+test('tapping New in a chat that is already new clears its unsent text instead of restoring it', async () => {
+  await renderEntry();
+  await act(async () => { await Promise.resolve(); });
+  await openSidebar();
+  await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
+  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Chưa gửi trong chat mới');
+  await openSidebar();
+  await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
+  expect(screen.queryByDisplayValue('Chưa gửi trong chat mới')).toBeNull();
+  expect(screen.getByPlaceholderText('Nhắn Kael...').props.value).toBe('');
+  expect(mockAccess.clearHorizonDraft).toHaveBeenCalled();
 });
 
 test('a service handoff lands in a fresh session instead of the open conversation', async () => {

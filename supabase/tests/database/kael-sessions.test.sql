@@ -68,6 +68,9 @@ select is(public.kael_list_conversations('client', null, true) #>> '{0,pinned}',
 select is(jsonb_array_length(public.kael_open_conversation(current_setting('test.a_conv')::uuid, 'client') -> 'messages'), 2, 'Archiving keeps the content');
 select is(public.kael_set_conversation_archived(current_setting('test.a_conv')::uuid, false) ->> 'archived', 'false', 'A conversation is unarchived');
 select is(jsonb_array_length(public.kael_list_conversations('client')), 2, 'Unarchived conversations return to the main list');
+select is(public.kael_set_conversation_archived(current_setting('test.b_conv')::uuid, true) ->> 'archived', 'true', 'The newest conversation is archived');
+select is(public.kael_conversation_state('client') ->> 'conversation_id', current_setting('test.a_conv'), 'Restoring skips archived sessions');
+select is(public.kael_set_conversation_archived(current_setting('test.b_conv')::uuid, false) ->> 'archived', 'false', 'The newest conversation is unarchived');
 
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}', true);
 select is(jsonb_array_length(public.kael_list_conversations('client')), 1, 'Another owner lists only their own conversation');
@@ -91,8 +94,19 @@ insert into nestscout_private.kael_approvals (id, owner_id, task_id, run_id, too
   values ('30000000-0000-4000-8000-0000000000e2', '00000000-0000-4000-8000-0000000000a1', '30000000-0000-4000-8000-0000000000e1', (current_setting('test.a')::jsonb ->> 'run_id')::uuid,
     'service_request_submit', '{}'::jsonb, repeat('a', 64), 'Gửi yêu cầu', 1, 'consumed', 'uncertain', clock_timestamp() + interval '1 hour', clock_timestamp(), (current_setting('test.a')::jsonb ->> 'run_id')::uuid, 1);
 
+insert into public.kael_tasks (id, conversation_id, owner_id, title, kind, status) values
+  ('30000000-0000-4000-8000-0000000000e3', current_setting('test.b_conv')::uuid, '00000000-0000-4000-8000-0000000000a1', 'Vệ sinh sofa', 'general', 'running');
+
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
+select is(public.kael_context_tasks(current_setting('test.a_conv')::uuid, 'client') #>> '{0,id}', '30000000-0000-4000-8000-0000000000e1', 'Session A task context holds its own active task');
+select is(jsonb_array_length(public.kael_context_tasks(current_setting('test.a_conv')::uuid, 'client')), 1, 'Session A task context excludes the active task of session B');
+select is(public.kael_context_tasks(current_setting('test.b_conv')::uuid, 'client') #>> '{0,id}', '30000000-0000-4000-8000-0000000000e3', 'Session B task context holds its own active task');
+select is(jsonb_array_length(public.kael_context_tasks(current_setting('test.b_conv')::uuid, 'client')), 1, 'Session B task context excludes the active task of session A');
+select is(jsonb_array_length(public.kael_context_tasks(current_setting('test.a_conv')::uuid, 'worker')), 0, 'Task context is scoped to the mode');
+select is(public.kael_open_conversation(current_setting('test.b_conv')::uuid, 'client') #>> '{tasks,0,id}', '30000000-0000-4000-8000-0000000000e3', 'Opening session B shows only its own tasks');
+select is(jsonb_array_length(public.kael_open_conversation(current_setting('test.b_conv')::uuid, 'client') -> 'tasks'), 1, 'Opening session B hides the tasks of session A');
+select is(public.kael_open_conversation(current_setting('test.b_conv')::uuid, 'client') #>> '{approvals,0,kind}', 'reconcile', 'An unreconciled account check stays visible from every session');
 select throws_ok(format($$ select public.kael_delete_conversation(%L) $$, current_setting('test.a_conv')), '22023', null, 'A conversation with an unreconciled effect cannot be deleted');
 select is(jsonb_array_length(public.kael_open_conversation(current_setting('test.a_conv')::uuid, 'client') -> 'messages'), 2, 'A refused delete leaves the conversation intact');
 select is(jsonb_array_length(public.kael_conversation_state('client') -> 'approvals'), 1, 'The unresolved check stays reconcilable');
@@ -103,6 +117,8 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
 select is(public.kael_delete_conversation(current_setting('test.a_conv')::uuid) ->> 'deleted', 'true', 'A reconciled conversation is deleted');
 select is(jsonb_array_length(public.kael_list_conversations('client')), 1, 'A deleted conversation leaves the list');
+select is(public.kael_conversation_state('client') ->> 'conversation_id', current_setting('test.b_conv'), 'Restoring skips deleted sessions');
+select is((select count(*)::integer from public.kael_conversations where id = current_setting('test.a_conv')::uuid), 0, 'Row security hides the deleted conversation');
 select is(jsonb_array_length(public.kael_list_conversations('client', null, true)), 0, 'A deleted conversation is not in the archive either');
 select throws_ok(format($$ select public.kael_open_conversation(%L, 'client') $$, current_setting('test.a_conv')), '22023', null, 'A deleted conversation cannot be opened');
 select throws_ok(format($$ select public.kael_rename_conversation(%L, 'Lại') $$, current_setting('test.a_conv')), '22023', null, 'A deleted conversation cannot be renamed');
