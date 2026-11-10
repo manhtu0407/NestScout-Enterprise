@@ -303,6 +303,7 @@ begin
   end if;
   delete from public.kael_task_events e using public.kael_tasks t where e.task_id = t.id and t.conversation_id = v_id;
   delete from nestscout_private.kael_approvals a using public.kael_tasks t where a.task_id = t.id and t.conversation_id = v_id;
+  delete from nestscout_private.kael_tool_executions x using public.kael_tasks t where x.task_id = t.id and t.conversation_id = v_id;
   delete from nestscout_private.kael_tool_executions x using public.kael_runs r where x.run_id = r.id and r.conversation_id = v_id;
   delete from public.kael_messages where conversation_id = v_id;
   delete from public.kael_tasks where conversation_id = v_id;

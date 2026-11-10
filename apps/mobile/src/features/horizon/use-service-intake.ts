@@ -47,10 +47,11 @@ type State = {
   requestId: string | null;
   pending: PendingRequest | null;
   storage: IntakeStorage;
+  clearsDraft: boolean;
 };
 
 export function useServiceIntake(userId: string, category: ServiceCategory, deps: IntakeDeps = defaultDeps) {
-  const [state, setState] = useState<State>(() => ({ phase: 'form', answers: readIntakeDraft(userId, category.id), errors: {}, message: null, requestId: null, pending: null, storage: 'loading' }));
+  const [state, setState] = useState<State>(() => ({ phase: 'form', answers: readIntakeDraft(userId, category.id), errors: {}, message: null, requestId: null, pending: null, storage: 'loading', clearsDraft: true }));
   const [attempt, setAttempt] = useState(0);
   const inFlight = useRef(false);
   const controllerRef = useRef<AbortController | null>(null);
@@ -75,11 +76,11 @@ export function useServiceIntake(userId: string, category: ServiceCategory, deps
     };
   }, [attempt, deps, userId]);
 
-  const { answers, phase } = state;
+  const { answers, phase, clearsDraft } = state;
   useEffect(() => {
-    if (phase === 'submitted') clearIntakeDraft(userId, category.id);
-    else writeIntakeDraft(userId, category.id, answers);
-  }, [answers, category.id, phase, userId]);
+    if (phase !== 'submitted') writeIntakeDraft(userId, category.id, answers);
+    else if (clearsDraft) clearIntakeDraft(userId, category.id);
+  }, [answers, category.id, clearsDraft, phase, userId]);
 
   const setAnswer = useCallback((id: string, value: string) => {
     setState(current => {
@@ -129,7 +130,9 @@ export function useServiceIntake(userId: string, category: ServiceCategory, deps
       setState(current => ({ ...current, pending: item }));
       const requestId = await deps.submit(userId, item.key, item.description, controller.signal, item.location);
       await deps.clear(userId).catch(() => undefined);
-      if (mounted.current) setState(current => ({ ...current, phase: 'submitted', requestId, pending: null, message: null }));
+      const own = composeSubmission(category, snapshot.answers);
+      const clearsDraft = snapshot.pending === null || (snapshot.pending.description === own.description && snapshot.pending.location === own.location);
+      if (mounted.current) setState(current => ({ ...current, phase: 'submitted', requestId, pending: null, message: null, clearsDraft }));
     } catch (error) {
       if (controller.signal.aborted || !mounted.current) return;
       const message = definitiveMessage(error);
@@ -157,8 +160,8 @@ export function useServiceIntake(userId: string, category: ServiceCategory, deps
   }, [deps, userId]);
 
   const startAnother = useCallback(() => {
-    setState({ phase: 'form', answers: {}, errors: {}, message: null, requestId: null, pending: null, storage: 'ready' });
-  }, []);
+    setState({ phase: 'form', answers: readIntakeDraft(userId, category.id), errors: {}, message: null, requestId: null, pending: null, storage: 'ready', clearsDraft: true });
+  }, [category.id, userId]);
 
   return { ...state, setAnswer, review, edit, submit, retryStorage, discardUnreadable, startAnother };
 }

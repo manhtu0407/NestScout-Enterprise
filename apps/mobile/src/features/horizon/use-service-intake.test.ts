@@ -4,6 +4,7 @@ import { WorkflowError } from '@/features/shared';
 import { AuthSessionError } from '@/lib/authenticated-rest';
 
 import { serviceCategoryFor, type ServiceCategory } from './service-catalog';
+import { clearIntakeDraft, readIntakeDraft, writeIntakeDraft } from './service-intake-drafts';
 import { intakeMessages, useServiceIntake, type IntakeDeps } from './use-service-intake';
 
 jest.mock('expo-crypto', () => ({ randomUUID: () => 'unused' }));
@@ -42,6 +43,10 @@ async function mount(deps: IntakeDeps) {
   await act(async () => { await Promise.resolve(); });
   return hook;
 }
+
+beforeEach(() => {
+  clearIntakeDraft('user-a', category.id);
+});
 
 test('manual intake: fill, review, confirm submits once through the existing submission function', async () => {
   const deps = depsWith();
@@ -197,4 +202,26 @@ test('start another request resets the form after a confirmed submission', async
   expect(result.current.phase).toBe('form');
   expect(result.current.answers).toEqual({});
   expect(result.current.requestId).toBeNull();
+});
+
+test('reconciling a pending request of another category keeps this category draft', async () => {
+  const foreign = { key: keyOne, description: 'Sửa điện — Mất điện cục bộ', location: '5 Lê Lợi, Quận 1' };
+  const { result } = await mount(depsWith({}, foreign));
+  expect(result.current.phase).toBe('uncertain');
+  await act(async () => { await result.current.submit(); });
+  expect(result.current.phase).toBe('submitted');
+  expect(readIntakeDraft('user-a', category.id)).toEqual({});
+  await act(async () => { result.current.startAnother(); });
+  expect(result.current.phase).toBe('form');
+});
+
+test('a draft typed before a foreign pending request resolves survives it and returns to the form', async () => {
+  writeIntakeDraft('user-a', category.id, { description: 'Vòi bồn rửa bị rò', location: '12 Nguyễn Huệ, Quận 1', area: 'Bếp' });
+  const foreign = { key: keyOne, description: 'Sửa điện — Mất điện cục bộ', location: '5 Lê Lợi, Quận 1' };
+  const { result } = await mount(depsWith({}, foreign));
+  await act(async () => { await result.current.submit(); });
+  expect(result.current.phase).toBe('submitted');
+  expect(readIntakeDraft('user-a', category.id).description).toBe('Vòi bồn rửa bị rò');
+  await act(async () => { result.current.startAnother(); });
+  expect(result.current.answers.description).toBe('Vòi bồn rửa bị rò');
 });

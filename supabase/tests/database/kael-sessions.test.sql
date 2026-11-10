@@ -112,6 +112,8 @@ select is(jsonb_array_length(public.kael_open_conversation(current_setting('test
 select is(jsonb_array_length(public.kael_conversation_state('client') -> 'approvals'), 1, 'The unresolved check stays reconcilable');
 reset role;
 update nestscout_private.kael_approvals set outcome = 'succeeded', result = '{}'::jsonb where id = '30000000-0000-4000-8000-0000000000e2';
+insert into nestscout_private.kael_tool_executions (run_id, owner_id, call_id, task_id, tool, side_effect, outcome, fingerprint)
+  values ((current_setting('test.b')::jsonb ->> 'run_id')::uuid, '00000000-0000-4000-8000-0000000000a1', 'approval:cross', '30000000-0000-4000-8000-0000000000e1', 'service_request_submit', 'consequential', 'succeeded', repeat('a', 64));
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
@@ -128,6 +130,7 @@ reset role;
 select is((select count(*)::integer from public.kael_messages where conversation_id = current_setting('test.a_conv')::uuid), 0, 'Deleting removes the message content');
 select is((select count(*)::integer from public.kael_tasks where conversation_id = current_setting('test.a_conv')::uuid), 0, 'Deleting removes the conversation''s tasks');
 select is((select count(*)::integer from nestscout_private.kael_approvals where task_id = '30000000-0000-4000-8000-0000000000e1'), 0, 'Deleting removes the reconciled approvals');
+select is((select count(*)::integer from nestscout_private.kael_tool_executions where task_id = '30000000-0000-4000-8000-0000000000e1'), 0, 'Deleting removes tool executions that another session recorded for its tasks');
 select is((select count(*)::integer from public.kael_runs where conversation_id = current_setting('test.a_conv')::uuid), 1, 'Deleting keeps the run ledger');
 select is((select count(*)::integer from public.service_requests where owner_id = '00000000-0000-4000-8000-0000000000a1'), 1, 'The request is unchanged for its owner');
 
