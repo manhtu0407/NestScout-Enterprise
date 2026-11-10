@@ -629,6 +629,17 @@ synthesis. A Kael question event shows tappable answers that are sent as the nex
 message. A Worker whose public profile is not listed cannot be saved, and the screen
 says so instead of reporting a connection failure.
 
+### Agreement to share data with AI providers
+
+Kael does not open a consent dialog. The disclosure of what is sent to the AI model
+providers is shown with the agreement button of the Terms, and agreeing there records
+the `ai_sharing` agreement together with the Terms acceptance. The same agreement can be
+turned on or withdrawn in Settings › Privacy. The Kael backend still refuses every message
+with `consent_required` until an `ai_sharing` agreement exists, so Kael tells the user
+where to agree instead of sending the message. The Terms agreement button stays disabled
+while the Terms text contains unresolved `[Chờ cung cấp…]` placeholders, so until the legal
+details are supplied the Settings switch is the way to turn Kael on.
+
 ### Local Preview verification
 
 The Preview runs the real app against Supabase Local with

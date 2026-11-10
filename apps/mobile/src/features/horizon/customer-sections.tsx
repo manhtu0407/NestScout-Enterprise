@@ -62,7 +62,11 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
     },
     termsAcceptance: {
       read: (versionId: string) => readTermsAcceptance(userId, 'terms', versionId, new AbortController().signal),
-      accept: (versionId: string) => acceptTerms(userId, 'terms', versionId, new AbortController().signal),
+      accept: async (versionId: string) => {
+        const acceptedAt = await acceptTerms(userId, 'terms', versionId, new AbortController().signal);
+        await recordConsent(userId, 'ai_sharing', true, legalDocument('vi', 'privacy').versionId, new AbortController().signal);
+        return acceptedAt;
+      },
     },
   }, [userId]);
   const dataExport = useMemo(() => userId === null ? undefined : () => exportPersonalData(userId, new AbortController().signal), [userId]);

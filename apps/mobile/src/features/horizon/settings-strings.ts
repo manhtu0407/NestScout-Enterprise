@@ -79,9 +79,7 @@ export type SettingsStrings = {
   exportShare: string;
   consentTitle: string;
   consentBody: readonly string[];
-  consentAllow: string;
-  consentDeny: string;
-  consentDenied: string;
+  consentNeeded: string;
   consentFailed: string;
   consentChecking: string;
 };
@@ -170,10 +168,8 @@ const vi: SettingsStrings = {
     'Đừng gửi thông tin nhạy cảm như số thẻ hoặc mật khẩu trong tin nhắn. Bạn có thể rút lại đồng ý bất cứ lúc nào trong Cài đặt › Quyền riêng tư; khi đó Kael sẽ dừng trả lời.',
     'Chi tiết xem tại Cài đặt › Chính sách quyền riêng tư.',
   ],
-  consentAllow: 'Đồng ý và tiếp tục',
-  consentDeny: 'Không đồng ý',
-  consentDenied: 'Bạn chưa đồng ý chia sẻ dữ liệu với AI nên tin nhắn chưa được gửi. Bạn có thể đổi trong Cài đặt › Quyền riêng tư.',
-  consentFailed: 'Chưa ghi nhận được lựa chọn. Kiểm tra kết nối rồi thử lại.',
+  consentNeeded: 'Tin nhắn chưa được gửi. Hãy đồng ý Điều khoản trong Cài đặt › Điều khoản, hoặc bật “Chia sẻ dữ liệu với AI” trong Cài đặt › Quyền riêng tư, để dùng Kael.',
+  consentFailed: 'Chưa kiểm tra được trạng thái đồng ý. Kiểm tra kết nối rồi thử lại.',
   consentChecking: 'Đang kiểm tra lựa chọn chia sẻ dữ liệu. Hãy thử gửi lại trong giây lát.',
 };
 
@@ -261,10 +257,8 @@ const en: SettingsStrings = {
     'Do not send sensitive details such as card numbers or passwords in messages. You can withdraw consent at any time in Settings › Privacy; Kael will then stop replying.',
     'See Settings › Privacy Policy for details.',
   ],
-  consentAllow: 'Agree and continue',
-  consentDeny: 'Do not agree',
-  consentDenied: 'You have not agreed to share data with AI, so your message was not sent. You can change this in Settings › Privacy.',
-  consentFailed: 'Could not record your choice. Check your connection and try again.',
+  consentNeeded: 'Your message was not sent. Agree to the Terms in Settings › Terms, or turn on “Share data with AI” in Settings › Privacy, to use Kael.',
+  consentFailed: 'Could not check your agreement. Check your connection and try again.',
   consentChecking: 'Checking your data-sharing choice. Try sending again in a moment.',
 };
 

@@ -48,6 +48,8 @@ export function TermsAcceptance({ document, api, strings, formatDate }: Props) {
   return (
     <View style={styles.box}>
       {state.error ? <Text accessibilityLiveRegion="polite" style={styles.error}>{state.error}</Text> : null}
+      <Text style={styles.heading}>{strings.consentTitle}</Text>
+      {strings.consentBody.map(paragraph => <Text key={paragraph} style={styles.text}>{paragraph}</Text>)}
       {open ? null : <Text style={styles.text}>{strings.termsNotOpen}</Text>}
       <PressScale accessibilityRole="button" accessibilityLabel={strings.termsAccept} accessibilityState={{ disabled: !open || state.status === 'busy' }} onPress={open ? accept : () => undefined} style={[supportStyles.primary, !open && styles.disabled]}>
         <Text style={supportStyles.primaryLabel}>{strings.termsAccept}</Text>
@@ -59,6 +61,7 @@ export function TermsAcceptance({ document, api, strings, formatDate }: Props) {
 const styles = StyleSheet.create({
   box: { gap: metrics.rowGap },
   text: { color: horizonColors.muted, fontSize: metrics.rowDetailSize, lineHeight: metrics.rowDetailLineHeight, marginLeft: metrics.sectionTitleInset },
+  heading: { color: horizonColors.text, fontSize: metrics.rowDetailSize, lineHeight: metrics.rowDetailLineHeight, fontWeight: metrics.rowTitleWeight, marginLeft: metrics.sectionTitleInset },
   error: { color: horizonColors.supportScreens.danger, fontSize: metrics.rowDetailSize, lineHeight: metrics.rowDetailLineHeight, marginLeft: metrics.sectionTitleInset },
   disabled: { opacity: horizonLayout.termsAcceptanceStyle.disabledOpacity },
 });

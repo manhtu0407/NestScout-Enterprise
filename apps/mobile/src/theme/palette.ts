@@ -330,6 +330,5 @@ export const horizonColors = {
   scrim: 'rgba(0,0,0,0.36)',
   earningsContributionsCardStyle: { cellTextOnColor: '#FFFFFF' },
   workerPayoutSectionStyle: { propColor: "#FFFFFF", optionActiveBackgroundColor: '#0B0F14', optionTextActiveColor: '#FFFFFF', qrPreviewBackgroundColor: '#FFFFFF', boxOnBackgroundColor: '#0E9E8E', boxOnBorderColor: '#0E9E8E', qrThumbBackgroundColor: '#FFFFFF' },
-  workerReadinessCardStyle: { propColor: "#FFFFFF" },
-  aiConsentSheetStyle: { backdropBackgroundColor: 'rgba(0,0,0,0.45)' }
+  workerReadinessCardStyle: { propColor: "#FFFFFF" }
 } as const;

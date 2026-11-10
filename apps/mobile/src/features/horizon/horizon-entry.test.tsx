@@ -17,7 +17,8 @@ const mockAccess = {
 jest.mock('@/features/access', () => ({ ...jest.requireActual('@/features/access'), useAccess: () => mockAccess, EntryRedirect: () => null }));
 jest.mock('@/lib/supabase-client', () => ({ getSupabaseClient: () => ({ auth: {} }) }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }), useFocusEffect: jest.requireActual<typeof import('react')>('react').useEffect }));
-jest.mock('./use-ai-consent', () => ({ useAiConsent: () => ({ status: 'ready', granted: true, set: jest.fn() }) }));
+const mockConsent = { status: 'ready', granted: true };
+jest.mock('./use-ai-consent', () => ({ useAiConsent: () => ({ ...mockConsent, set: jest.fn() }) }));
 jest.mock('./use-customer-data', () => ({
   useCustomerData: jest.fn(() => ({
     data: { requests: [], quotes: [], pinnedIds: new Set(), notifications: [], profile: null, avatar: null, activity: { jobs: [], submissions: [], cases: [], changes: [], reports: [], pauses: [] } },
@@ -80,6 +81,8 @@ async function say(text: string) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockConsent.status = 'ready';
+  mockConsent.granted = true;
   mockLoad.mockResolvedValue({ conversationId: null, busy: false, messages: [], tasks: [], approvals: [] });
 });
 
@@ -90,6 +93,17 @@ test('a pending confirmation shows the gray attention banner with the approval c
   expect(screen.getByLabelText(/^Chờ bạn xác nhận\. Yêu cầu này chưa được gửi cho đến khi bạn trượt để xác nhận/)).toBeTruthy();
   expect(screen.getByLabelText('Cần xác nhận: Gửi yêu cầu dịch vụ')).toBeTruthy();
   expect(screen.queryByText('Đã gửi yêu cầu')).toBeNull();
+});
+
+test('without a recorded agreement the message is not sent and no consent dialog opens', async () => {
+  mockConsent.granted = false;
+  const requests = script([started, completed('unused')]);
+  await renderEntry();
+  await say('Nhờ Kael giúp tôi');
+  expect(requests).toHaveLength(0);
+  expect(screen.getByText(/Tin nhắn chưa được gửi. Hãy đồng ý Điều khoản/)).toBeTruthy();
+  expect(screen.queryByText('Đồng ý và tiếp tục')).toBeNull();
+  expect(screen.queryByText('Không đồng ý')).toBeNull();
 });
 
 test('hosted Preview keeps real chat and suppresses business data and approval controls', async () => {
