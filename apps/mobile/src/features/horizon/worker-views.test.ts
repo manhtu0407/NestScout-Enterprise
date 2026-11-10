@@ -129,3 +129,10 @@ test('worker notifications point at the tab where the news can be acted on', () 
   expect(items.map(item => item.target)).toEqual(['worker-offers', 'worker-history', 'worker-review', 'worker-review', 'worker-active', 'worker-active', 'worker-active', 'worker-reviews']);
   expect(items.every(item => item.requestId === undefined && item.unread)).toBe(true);
 });
+
+test('an offer shows the customer preferred visit time without presenting it as an appointment', () => {
+  const [view] = toWorkerJobs({ ...empty, offers: [offer] }, [card('offer', 'invite-1', { preferred_visit_at: '2026-11-11T08:00:00.000Z' })], now);
+  expect(view?.preferredVisitLabel).toMatch(/15:00/);
+  const [plain] = toWorkerJobs({ ...empty, offers: [offer] }, [card('offer', 'invite-1')], now);
+  expect(plain?.preferredVisitLabel).toBeUndefined();
+});

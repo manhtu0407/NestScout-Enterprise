@@ -123,6 +123,7 @@ export function toRequestViews(records: Records, now: Date): ServiceRequest[] {
       photoCount: records.photos ? (records.photos.get(request.id)?.length ?? 0) : undefined,
       photos: records.photos ? (records.photos.get(request.id) ?? []) : undefined,
       createdLabel: sent,
+      preferredVisitAt: request.preferred_visit_at ?? null,
       worker: card ? { jobId: card.job_id, profileId: card.profile_id, name: card.display_name, saved: card.saved, rating: card.review_rating } : undefined,
     };
   });

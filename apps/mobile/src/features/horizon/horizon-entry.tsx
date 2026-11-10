@@ -28,6 +28,7 @@ import { AiConsentSheet } from './ai-consent-sheet';
 import { settingsStrings } from './settings-strings';
 import { usePreferences } from '@/lib/preferences-provider';
 import { consumeSidebarReturn, markSidebarReturn } from './sidebar-return';
+import { consumeKaelHandoff } from './kael-handoff';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
@@ -103,7 +104,21 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
 
   const openMenuRef = useRef(openMenu);
   useEffect(() => { openMenuRef.current = openMenu; });
+  const adoptPromptRef = useRef((prompt: string) => { inputRef.current = prompt; setInput(prompt); });
+  useEffect(() => {
+    adoptPromptRef.current = prompt => {
+      inputRef.current = prompt;
+      setInput(prompt);
+      access.updateHorizonDraft(access.userId, { text: prompt, images: imagesRef.current });
+    };
+  });
   useFocusEffect(useCallback(() => {
+    const prompt = consumeKaelHandoff();
+    if (prompt !== null) {
+      consumeSidebarReturn();
+      adoptPromptRef.current(prompt);
+      return undefined;
+    }
     if (!consumeSidebarReturn()) return undefined;
     const timer = setTimeout(() => openMenuRef.current(), horizonLayout.sidebar.returnDelay);
     return () => clearTimeout(timer);

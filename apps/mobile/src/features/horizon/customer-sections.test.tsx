@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import { submitSupportRequest } from '@/features/shared';
+import { setPreferredVisit, submitSupportRequest } from '@/features/shared';
 
 import type { CustomerData, CustomerDataController } from './use-customer-data';
 import { CustomerSection } from './customer-sections';
@@ -13,7 +13,7 @@ jest.mock('./use-ai-consent', () => ({ useAiConsent: () => ({ status: 'ready', g
 jest.mock('expo-crypto', () => ({ randomUUID: () => '00000000-0000-4000-8000-000000000123' }));
 const mockPick = jest.fn();
 jest.mock('expo-image-picker', () => ({ launchImageLibraryAsync: (...args: unknown[]) => mockPick(...args) }));
-jest.mock('@/features/shared', () => ({ ...jest.requireActual('@/features/shared'), submitSupportRequest: jest.fn() }));
+jest.mock('@/features/shared', () => ({ ...jest.requireActual('@/features/shared'), submitSupportRequest: jest.fn(), setPreferredVisit: jest.fn() }));
 
 const empty: CustomerData = {
   requests: [], quotes: [], pinnedIds: new Set(), notifications: [], profile: null, avatar: null, photos: new Map(), savedWorkers: [], settings: null, phone: '', jobWorkers: [],
@@ -223,4 +223,30 @@ test('saving text only leaves the stored avatar alone', async () => {
   await waitFor(() => expect(saveProfile).toHaveBeenCalled());
   expect(changeAvatar).not.toHaveBeenCalled();
   expect(clearAvatar).not.toHaveBeenCalled();
+});
+
+test('Hỏi Kael hands the request context to Kael', async () => {
+  const onAskKael = jest.fn();
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request] } }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} onAskKael={onAskKael} />);
+  await fireEvent.press(screen.getByLabelText('Hỏi Kael về Sửa vòi nước'));
+  expect(onAskKael).toHaveBeenCalledWith(expect.stringContaining('"Sửa vòi nước"'));
+});
+
+test('without a Kael connection no Hỏi Kael button is offered', async () => {
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request] } }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  expect(screen.queryByLabelText('Hỏi Kael về Sửa vòi nước')).toBeNull();
+});
+
+test('a waiting request saves the preferred visit time through the owner command and reloads', async () => {
+  const refresh = jest.fn();
+  jest.mocked(setPreferredVisit).mockResolvedValue(null);
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [{ ...request, preferred_visit_at: '2099-01-02T08:00:00.000Z' }] }, refresh }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByRole('button', { name: /^Sửa vòi nước,/ }));
+  expect(screen.getByText(/^Đã lưu: /)).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('Bỏ thời gian mong muốn'));
+  await waitFor(() => expect(refresh).toHaveBeenCalled());
+  expect(jest.mocked(setPreferredVisit).mock.calls[0]?.slice(0, 3)).toEqual(['user-1', 'r1', null]);
 });

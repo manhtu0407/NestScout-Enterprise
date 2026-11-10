@@ -14,7 +14,7 @@ const colors = horizonColors.supportScreens;
 
 type Decision = Exclude<QuoteStatus, 'pending'>;
 
-type Props = { items?: readonly QuoteItem[]; onBack: () => void; onAskKael?: () => void; onDecide?: (quote: QuoteItem, status: Decision) => Promise<void> };
+type Props = { items?: readonly QuoteItem[]; onBack: () => void; onAskKael?: (quote: QuoteItem) => void; onDecide?: (quote: QuoteItem, status: Decision) => Promise<void> };
 
 type Entry = { quote: QuoteItem; status: QuoteStatus; earlier?: QuoteItem };
 
@@ -95,7 +95,7 @@ type CardProps = {
   onReview: () => void;
   onCancelReview: () => void;
   onDecide: (id: string, status: Decision) => void;
-  onAskKael?: () => void;
+  onAskKael?: (quote: QuoteItem) => void;
 };
 
 function QuoteCard({ entry, confirming, busy, failure, onReview, onCancelReview, onDecide, onAskKael }: CardProps) {
@@ -137,9 +137,9 @@ function QuoteCard({ entry, confirming, busy, failure, onReview, onCancelReview,
       {status === 'rejected' ? (
         <Badge label="Đã từ chối" tone="danger" dot />
       ) : null}
-      {status === 'pending' && quote.expired ? (
-        <PressScale accessibilityRole="button" accessibilityLabel="Nhờ Kael cập nhật báo giá" onPress={() => onAskKael?.()} style={supportStyles.secondary}>
-          <Text style={supportStyles.secondaryLabel}>Nhờ Kael cập nhật báo giá</Text>
+      {status === 'pending' && quote.expired && onAskKael ? (
+        <PressScale accessibilityRole="button" accessibilityLabel="Hỏi Kael về báo giá đã hết hạn" onPress={() => onAskKael(quote)} style={supportStyles.secondary}>
+          <Text style={supportStyles.secondaryLabel}>Hỏi Kael về báo giá mới</Text>
         </PressScale>
       ) : null}
       {status === 'pending' && !quote.expired && !confirming ? (

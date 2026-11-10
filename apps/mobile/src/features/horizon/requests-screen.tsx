@@ -6,7 +6,7 @@ import { horizonColors } from '@/theme/palette';
 import { Chip, Icon, type IconName, type JobReview, PressScale, StatusDot, useGlassAccessibility, type StatusDotColor } from '@/features/shared';
 import { ScreenHeader } from './support-shell';
 import { JobChangePanel, type JobChangesApi } from './job-change-panel';
-import { LockedDatePicker } from './locked-date-picker';
+import { formatVisit, PreferredVisitPicker } from './preferred-visit-picker';
 import { WorkerReviewPanel, type RequestWorker } from './worker-review-panel';
 
 const metrics = horizonLayout.requestsScreen;
@@ -35,6 +35,7 @@ export type ServiceRequest = {
   photoCount?: number;
   photos?: readonly PhotoSource[];
   worker?: RequestWorker;
+  preferredVisitAt?: string | null;
 };
 
 export const workflowSteps: readonly string[] = ['Đã gửi', 'Có báo giá', 'Chấp nhận', 'Ghép thợ', 'Thực hiện', 'Nghiệm thu'];
@@ -50,13 +51,14 @@ type Props = {
   onBack: () => void;
   onViewQuotes?: () => void;
   onAskKael?: (request: ServiceRequest) => void;
+  onSetPreferredVisit?: (request: ServiceRequest, at: Date | null) => Promise<void>;
   onToggleSaveWorker?: (worker: RequestWorker) => Promise<void>;
   onReviewWorker?: (worker: RequestWorker, review: JobReview) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
   focusId?: string;
 };
 
-function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onToggleSaveWorker, onReviewWorker, jobChanges }: CardProps) {
+function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onSetPreferredVisit, onToggleSaveWorker, onReviewWorker, jobChanges }: CardProps) {
   const finished = request.step >= workflowSteps.length;
   const caption = finished ? `Đủ ${workflowSteps.length}/${workflowSteps.length} bước` : `Bước ${request.step + 1}/${workflowSteps.length} · ${workflowSteps[request.step]}`;
   const needsYou = Boolean(request.quoteCount);
@@ -122,7 +124,9 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onT
             <WorkerReviewPanel worker={request.worker} finished={request.stage === 'done'} onToggleSave={onToggleSaveWorker} onReview={onReviewWorker} />
           ) : null}
           {request.worker && jobChanges && request.stage !== 'done' ? <JobChangePanel jobId={request.worker.jobId} userId={jobChanges.userId} api={jobChanges.api} /> : null}
-          {request.stage === 'waiting' ? <LockedDatePicker /> : null}
+          {request.stage === 'waiting' && !request.worker && onSetPreferredVisit
+            ? <PreferredVisitPicker value={request.preferredVisitAt ?? null} onSave={at => onSetPreferredVisit(request, at)} />
+            : request.preferredVisitAt ? <Info label="Thời gian bạn mong muốn" value={`${formatVisit(request.preferredVisitAt)} · chưa phải lịch hẹn đã xác nhận`} /> : null}
           <Text style={styles.detailTitle}>Tiến trình</Text>
           <View>
             {workflowSteps.map((label, index) => {
@@ -151,9 +155,9 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onT
             <Text style={styles.actionLabel}>Xem báo giá</Text>
           </PressScale>
         ) : null}
-        <PressScale accessibilityRole="button" accessibilityLabel={`Hỏi Kael về ${request.title}`} onPress={() => onAskKael?.(request)} style={[styles.action, styles.actionSecondary]} wrapperStyle={styles.actionWrap}>
+        {onAskKael ? <PressScale accessibilityRole="button" accessibilityLabel={`Hỏi Kael về ${request.title}`} onPress={() => onAskKael(request)} style={[styles.action, styles.actionSecondary]} wrapperStyle={styles.actionWrap}>
           <Text style={[styles.actionLabel, styles.actionSecondaryLabel]}>Hỏi Kael</Text>
-        </PressScale>
+        </PressScale> : null}
       </View>
     </View>
   );
@@ -174,12 +178,13 @@ type CardProps = {
   onToggle: () => void;
   onViewQuotes?: () => void;
   onAskKael?: (request: ServiceRequest) => void;
+  onSetPreferredVisit?: (request: ServiceRequest, at: Date | null) => Promise<void>;
   onToggleSaveWorker?: (worker: RequestWorker) => Promise<void>;
   onReviewWorker?: (worker: RequestWorker, review: JobReview) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
 };
 
-export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onToggleSaveWorker, onReviewWorker, jobChanges, focusId }: Props) {
+export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onSetPreferredVisit, onToggleSaveWorker, onReviewWorker, jobChanges, focusId }: Props) {
   const focused = requests.find(request => request.id === focusId);
   const [expandedIds, setExpandedIds] = useState<readonly string[]>(focused ? [focused.id] : []);
   const { reduceMotion } = useGlassAccessibility();
@@ -258,6 +263,7 @@ export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael,
               onToggle={() => setExpandedIds(current => (current.includes(request.id) ? current.filter(id => id !== request.id) : [...current, request.id]))}
               onViewQuotes={onViewQuotes}
               onAskKael={onAskKael}
+              onSetPreferredVisit={onSetPreferredVisit}
               onToggleSaveWorker={onToggleSaveWorker}
               onReviewWorker={onReviewWorker}
               jobChanges={jobChanges}

@@ -167,9 +167,6 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
   const menuItems: readonly ConversationMenuItem[] = [
     { id: 'new', label: 'Trò chuyện mới', icon: 'compose', onPress: startNew },
     { id: 'share', label: 'Chia sẻ', icon: 'share', onPress: share },
-    { id: 'pin', label: 'Ghim', icon: 'pin', onPress: () => notify('Ghim cuộc trò chuyện chưa được kết nối.') },
-    { id: 'find', label: 'Tìm trong cuộc trò chuyện', icon: 'search', onPress: () => notify('Tìm trong cuộc trò chuyện chưa được kết nối.') },
-    { id: 'archive', label: 'Lưu trữ', icon: 'archive', onPress: () => notify('Lưu trữ cuộc trò chuyện chưa được kết nối.') },
     { id: 'timeline', label: 'Tiến độ', icon: 'clock', onPress: () => setTimelineOpen(true) },
     ...(onMemory ? [{ id: 'memory', label: 'Bộ nhớ Kael', icon: 'clock' as const, onPress: () => { setMenuOpen(false); onMemory(); } }] : []),
   ];

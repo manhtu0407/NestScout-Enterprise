@@ -714,3 +714,38 @@ describe('first turn interrupted before run_started', () => {
     expect(requests[1]?.conversationId).toBe(conversation);
   });
 });
+
+test('a Kael question is shown until the user answers, and the answer is sent as an ordinary message', async () => {
+  const question = { id: '77777777-7777-4777-8777-777777777777', prompt: 'Thợ nên đến khi nào?', options: ['Sáng mai', 'Chiều mai'], date: true };
+  const { streamer, requests } = scriptedStreamer([
+    { events: [started, { type: 'question', question }, { type: 'run_completed', text: 'Bạn chọn giúp Kael nhé.' }] },
+    { events: [started, { type: 'run_completed', text: 'Đã ghi nhận.' }] },
+  ]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader));
+  await act(async () => { result.current.send('Máy lạnh không mát'); });
+  expect(result.current.question).toEqual(question);
+  await act(async () => { result.current.send('Chiều mai'); });
+  expect(requests[1]?.action).toEqual({ type: 'message', text: 'Chiều mai' });
+  expect(result.current.question).toBeNull();
+});
+
+test('feedback targets a streamed reply by its run and a restored reply by its stored id', async () => {
+  const feedback = jest.fn(async () => undefined);
+  const storedId = '88888888-8888-4888-8888-888888888888';
+  const loader = jest.fn(async () => ({ ...empty, conversationId: conversation, messages: [{ id: storedId, role: 'assistant' as const, text: 'Trước đó', incomplete: false }] }));
+  const { streamer } = scriptedStreamer([{ events: [started, { type: 'message_delta', text: 'Mới' }, { type: 'run_completed', text: 'Mới' }] }]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader, feedback));
+  await act(async () => { await Promise.resolve(); });
+  const restored = result.current.messages.find(message => message.text === 'Trước đó');
+  expect(restored?.storedId).toBe(storedId);
+  await act(async () => { expect(await result.current.rate(restored!, 'up', null)).toBe(true); });
+  expect(feedback).toHaveBeenLastCalledWith('customer-a', { messageId: storedId }, 'up', null, expect.anything());
+  await act(async () => { result.current.send('Hỏi tiếp'); });
+  const fresh = result.current.messages.at(-1)!;
+  await act(async () => { await result.current.rate(fresh, 'down', 'too_long'); });
+  expect(feedback).toHaveBeenLastCalledWith('customer-a', { runId }, 'down', 'too_long', expect.anything());
+  const user = result.current.messages.find(message => message.role === 'user')!;
+  await act(async () => { expect(await result.current.rate(user, 'up', null)).toBe(false); });
+  feedback.mockRejectedValueOnce(new Error('offline'));
+  await act(async () => { expect(await result.current.rate(fresh, 'up', null)).toBe(false); });
+});

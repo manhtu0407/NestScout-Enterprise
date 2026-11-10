@@ -22,6 +22,7 @@ export type WorkerJob = {
   delayReported?: boolean;
   correctionNote?: string;
   canPropose?: boolean;
+  preferredVisitLabel?: string;
 };
 
 export type WorkerJobStageInfo = {
