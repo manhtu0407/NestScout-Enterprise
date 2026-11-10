@@ -109,8 +109,7 @@ export function ConfirmMorph({
     setFace('confirm');
   };
 
-  const fill = tone === 'danger' ? colors.dangerFill : colors.neutralFill;
-  const ink = tone === 'danger' ? colors.dangerLabel : colors.neutralLabel;
+  const [fill, ink] = toneColors(tone);
 
   return (
     <View style={styles.frame}>
@@ -194,7 +193,7 @@ function HoldButton({ label, fill, ink, onComplete }: HoldProps) {
     Animated.timing(progress, { toValue: 0, duration: metrics.faceDuration, easing: easeOut, useNativeDriver: false }).start();
   };
 
-  const width = progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
+  const width = fillWidth(progress);
 
   return (
     <Pressable
@@ -211,27 +210,35 @@ function HoldButton({ label, fill, ink, onComplete }: HoldProps) {
   );
 }
 
+function fillWidth(progress: Animated.Value): Animated.AnimatedInterpolation<string> {
+  return progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
+}
+
+function toneColors(tone: 'danger' | 'neutral'): readonly [string, string] {
+  return tone === 'danger' ? [colors.dangerFill, colors.dangerLabel] : [colors.neutralFill, colors.neutralLabel];
+}
+
 const styles = StyleSheet.create({
   frame: { minHeight: metrics.height },
   face: { minHeight: metrics.height, justifyContent: 'center' },
   fill: { flex: 1 },
-  disabled: { opacity: 0.5 },
+  disabled: { opacity: horizonLayout.confirmMorphStyle.disabledOpacity },
   rest: { minHeight: metrics.height, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: metrics.gap, borderRadius: metrics.radius, backgroundColor: colors.restFill },
   restLabel: { color: colors.restLabel, fontSize: metrics.labelSize, fontWeight: metrics.labelWeight },
   row: { minHeight: metrics.height, flexDirection: 'row', alignItems: 'center', gap: metrics.gap },
-  prompt: { flex: 1, minWidth: 0, color: colors.promptText, fontSize: metrics.promptSize, fontWeight: '500' },
+  prompt: { flex: 1, minWidth: 0, color: colors.promptText, fontSize: metrics.promptSize, fontWeight: horizonLayout.confirmMorphStyle.promptFontWeight },
   cancel: { height: metrics.buttonHeight, paddingHorizontal: metrics.buttonPaddingHorizontal, borderRadius: metrics.buttonRadius, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.restFill },
-  cancelLabel: { color: colors.cancelLabel, fontSize: metrics.promptSize, fontWeight: '600' },
+  cancelLabel: { color: colors.cancelLabel, fontSize: metrics.promptSize, fontWeight: horizonLayout.confirmMorphStyle.cancelLabelFontWeight },
   confirm: { height: metrics.buttonHeight, paddingHorizontal: metrics.buttonPaddingHorizontal, borderRadius: metrics.buttonRadius, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  confirmLabel: { fontSize: metrics.promptSize, fontWeight: '600' },
-  hold: { minWidth: 76 },
+  confirmLabel: { fontSize: metrics.promptSize, fontWeight: horizonLayout.confirmMorphStyle.confirmLabelFontWeight },
+  hold: { minWidth: horizonLayout.confirmMorphStyle.holdMinWidth },
   holdFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.holdTrack },
   status: { minHeight: metrics.height, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: metrics.gap, borderRadius: metrics.radius, backgroundColor: colors.restFill },
   done: { backgroundColor: colors.doneFill },
   failed: { backgroundColor: colors.errorFill },
-  pending: { color: colors.pendingText, fontSize: metrics.promptSize, fontWeight: '600' },
-  doneText: { color: colors.doneText, fontSize: metrics.promptSize, fontWeight: '600' },
-  undo: { color: colors.undoLabel, fontSize: metrics.promptSize, fontWeight: '700' },
-  errorText: { color: colors.errorText, fontSize: metrics.promptSize, fontWeight: '600' },
-  retry: { color: colors.errorText, fontSize: metrics.promptSize, fontWeight: '700', textDecorationLine: 'underline' },
+  pending: { color: colors.pendingText, fontSize: metrics.promptSize, fontWeight: horizonLayout.confirmMorphStyle.pendingFontWeight },
+  doneText: { color: colors.doneText, fontSize: metrics.promptSize, fontWeight: horizonLayout.confirmMorphStyle.doneTextFontWeight },
+  undo: { color: colors.undoLabel, fontSize: metrics.promptSize, fontWeight: horizonLayout.confirmMorphStyle.undoFontWeight },
+  errorText: { color: colors.errorText, fontSize: metrics.promptSize, fontWeight: horizonLayout.confirmMorphStyle.errorTextFontWeight },
+  retry: { color: colors.errorText, fontSize: metrics.promptSize, fontWeight: horizonLayout.confirmMorphStyle.retryFontWeight, textDecorationLine: 'underline' },
 });

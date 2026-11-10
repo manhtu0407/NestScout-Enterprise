@@ -52,6 +52,10 @@ export function AvailabilitySwitch({ online, onToggle, hint, missingCount = 0 }:
   </Pressable>;
 }
 
+function half(size: number): number {
+  return size / 2;
+}
+
 const styles = StyleSheet.create({
   row: { minHeight: metrics.switchRowHeight, flexDirection: 'row', alignItems: 'center', gap: metrics.switchGap, paddingHorizontal: metrics.cardPadding, borderRadius: metrics.cardRadius, backgroundColor: colors.cardFill },
   copy: { flex: 1, gap: metrics.statCopyGap },
@@ -59,6 +63,6 @@ const styles = StyleSheet.create({
   status: { color: colors.muted, fontSize: metrics.statCaptionSize },
   statusOn: { color: colors.accentText },
   statusNeeds: { color: colors.needsText },
-  track: { width: metrics.switchWidth, height: metrics.switchHeight, borderRadius: metrics.switchHeight / 2, padding: metrics.switchInset, justifyContent: 'center' },
-  thumb: { height: metrics.switchThumb, borderRadius: metrics.switchThumb / 2, backgroundColor: colors.switchThumb, shadowColor: colors.ink, shadowOpacity: 0.22, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  track: { width: metrics.switchWidth, height: metrics.switchHeight, borderRadius: half(metrics.switchHeight), padding: metrics.switchInset, justifyContent: 'center' },
+  thumb: { height: metrics.switchThumb, borderRadius: half(metrics.switchThumb), backgroundColor: colors.switchThumb, shadowColor: colors.ink, shadowOpacity: horizonLayout.availabilitySwitchStyle.thumbShadowOpacity, shadowRadius: horizonLayout.availabilitySwitchStyle.thumbShadowRadius, shadowOffset: { width: 0, height: horizonLayout.availabilitySwitchStyle.thumbShadowOffsetHeight }, elevation: horizonLayout.availabilitySwitchStyle.thumbElevation },
 });

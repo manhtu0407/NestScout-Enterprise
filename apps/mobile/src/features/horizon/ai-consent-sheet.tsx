@@ -51,7 +51,7 @@ export function AiConsentSheet({ visible, onAllow, onDeny }: Props) {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: metrics.rowPaddingHorizontal },
+  backdrop: { flex: 1, backgroundColor: horizonColors.aiConsentSheetStyle.backdropBackgroundColor, justifyContent: 'center', padding: metrics.rowPaddingHorizontal },
   card: { backgroundColor: horizonColors.bg, borderRadius: metrics.cardRadius, padding: metrics.rowPaddingHorizontal, gap: metrics.sectionTitleGap },
   title: { color: horizonColors.text, fontSize: metrics.profileNameSize, fontWeight: metrics.rowTitleWeight },
   paragraph: { color: horizonColors.text, fontSize: metrics.rowDetailSize, lineHeight: metrics.rowDetailLineHeight },

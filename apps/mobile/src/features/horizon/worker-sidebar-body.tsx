@@ -70,6 +70,10 @@ function roleLineFor(profile: WorkerSidebarState | undefined): string {
   return profile === null ? 'Chưa có hồ sơ nghề' : `${profile.area} · bán kính ${profile.radiusKm} km`;
 }
 
+function loadedWorkerProfile(profile: WorkerSidebarState | undefined): WorkerSidebarProfile | null {
+  return profile !== undefined && profile !== null && profile !== 'loading' ? profile : null;
+}
+
 function onlineOf(profile: WorkerSidebarState | undefined, sampleOnline: boolean, requested: boolean | null): boolean {
   if (profile === undefined) return sampleOnline;
   if (requested !== null) return requested;
@@ -80,7 +84,7 @@ export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, pro
   const [sampleOnline, setSampleOnline] = useState(true);
   const [pending, setPending] = useState<{ value: boolean; from: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
-  const loadedProfile = workerProfile !== undefined && workerProfile !== null && workerProfile !== 'loading' ? workerProfile : null;
+  const loadedProfile = loadedWorkerProfile(workerProfile);
   const confirmed = loadedProfile === null ? null : loadedProfile.accepting;
   const missingCount = loadedProfile === null ? 0 : loadedProfile.missing.length;
   const requested = pending !== null && (saving || confirmed === pending.from) ? pending.value : null;

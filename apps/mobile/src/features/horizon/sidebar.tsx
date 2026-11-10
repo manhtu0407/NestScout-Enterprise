@@ -126,7 +126,7 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
   const drawerWidth = Math.min(width * horizonLayout.sidebar.drawerWidthRatio, horizonLayout.sidebar.drawerMaxWidth);
   const drawerMotion = reduceMotion
     ? { opacity: progress }
-    : { opacity: progress.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1] }), transform: [{ translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [-drawerWidth, 0] }) }] };
+    : { opacity: drawerOpacity(progress), transform: [{ translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [-drawerWidth, 0] }) }] };
   return <Modal visible={mounted} transparent animationType="none" onRequestClose={pickerVisible ? closePicker : accountOpen ? () => setAccountCloseRequest(value => value + 1) : closeSidebar} statusBarTranslucent>
     <View pointerEvents={visible ? 'auto' : 'none'} style={styles.full}>
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dim, { opacity: progress }]}/>
@@ -175,6 +175,10 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
       {pickerVisible && <ModePicker mode={mode} pending={requestedWorker && !modeNotice} notice={modeNotice} onSelect={selectMode} onClose={closePicker}/>}
     </View>
   </Modal>;
+}
+
+function drawerOpacity(progress: Animated.Value): Animated.AnimatedInterpolation<number> {
+  return progress.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1] });
 }
 
 const styles = StyleSheet.create({

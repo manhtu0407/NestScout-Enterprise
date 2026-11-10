@@ -19,7 +19,7 @@ export type EarningsView = {
 const vietnamOffsetMs = 7 * 60 * 60 * 1000;
 const dayMs = 24 * 60 * 60 * 1000;
 const weekDays = 7;
-const shortWeekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const shortWeekdays = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'] as const;
 const longWeekdays = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'] as const;
 
 export function dayNumber(key: string): number {

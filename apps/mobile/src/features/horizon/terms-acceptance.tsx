@@ -60,5 +60,5 @@ const styles = StyleSheet.create({
   box: { gap: metrics.rowGap },
   text: { color: horizonColors.muted, fontSize: metrics.rowDetailSize, lineHeight: metrics.rowDetailLineHeight, marginLeft: metrics.sectionTitleInset },
   error: { color: horizonColors.supportScreens.danger, fontSize: metrics.rowDetailSize, lineHeight: metrics.rowDetailLineHeight, marginLeft: metrics.sectionTitleInset },
-  disabled: { opacity: 0.4 },
+  disabled: { opacity: horizonLayout.termsAcceptanceStyle.disabledOpacity },
 });

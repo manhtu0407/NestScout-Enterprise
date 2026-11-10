@@ -54,7 +54,7 @@ function Label({ children }: { children: string }) {
 }
 
 function StatusTag({ view }: { view: WorkerPayoutView }) {
-  const tone = view.status === 'verified' ? [kitColors.verifiedFill, kitColors.verifiedText] : view.status === 'rejected' ? [kitColors.rejectedFill, kitColors.rejectedText] : [kitColors.pendingFill, kitColors.pendingText];
+  const tone = statusTone(view.status);
   return (
     <View style={[styles.tag, { backgroundColor: tone[0] }]}>
       <Text style={[styles.tagText, { color: tone[1] }]}>{view.statusLabel}</Text>
@@ -236,7 +236,7 @@ export function WorkerPayoutSection({ payout, perform, loadQr }: Props) {
           <Text style={styles.hint}>Xuất mã QR nhận tiền từ ứng dụng ngân hàng của chính bạn. Tên và số tài khoản trong QR phải khớp với thông tin đã nhập, nếu không hồ sơ sẽ bị từ chối.</Text>
         </View>
         <PressScale accessibilityRole="checkbox" accessibilityState={{ checked: fields.confirmed }} disabled={busy} onPress={() => setFields(current => ({ ...current, confirmed: !current.confirmed }))} style={styles.confirm}>
-          <View style={[styles.box, fields.confirmed && styles.boxOn]}>{fields.confirmed ? <Icon name="check" size={14} color="#FFFFFF" strokeWidth={2.6} /> : null}</View>
+          <View style={[styles.box, fields.confirmed && styles.boxOn]}>{fields.confirmed ? <Icon name="check" size={14} color={horizonColors.workerPayoutSectionStyle.propColor} strokeWidth={2.6} /> : null}</View>
           <Text style={styles.confirmText}>Tôi xác nhận đây là tài khoản chính chủ của tôi và thông tin trên là đúng.</Text>
         </PressScale>
         {error !== null ? <FadeIn><View accessibilityRole="alert" style={styles.problem}><Text style={styles.problemText}>{error}</Text></View></FadeIn> : null}
@@ -249,9 +249,15 @@ export function WorkerPayoutSection({ payout, perform, loadQr }: Props) {
   );
 }
 
+function statusTone(status: WorkerPayoutView['status']): readonly [string, string] {
+  if (status === 'verified') return [kitColors.verifiedFill, kitColors.verifiedText];
+  if (status === 'rejected') return [kitColors.rejectedFill, kitColors.rejectedText];
+  return [kitColors.pendingFill, kitColors.pendingText];
+}
+
 const styles = StyleSheet.create({
   stack: { gap: kit.cardGap },
-  form: { gap: kit.sectionGap - 12 },
+  form: { gap: horizonLayout.workerPayoutSectionStyle.formGap },
   fieldBlock: { gap: jobs.noticeGap },
   label: { color: supportColors.sectionTitle, fontSize: support.sectionTitleSize, fontWeight: support.sectionTitleWeight, marginLeft: support.sectionTitleInset },
   field: { ...webField, minHeight: jobs.fieldHeight, paddingHorizontal: jobs.fieldPaddingHorizontal, paddingVertical: jobs.composerPadding, borderRadius: jobs.fieldRadius, backgroundColor: jobColors.fieldFill, color: jobColors.fieldText, fontSize: jobs.fieldFontSize },
@@ -259,41 +265,41 @@ const styles = StyleSheet.create({
   select: { minHeight: jobs.fieldHeight, paddingHorizontal: jobs.fieldPaddingHorizontal, borderRadius: jobs.fieldRadius, backgroundColor: jobColors.fieldFill, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   selectText: { color: jobColors.fieldText, fontSize: jobs.fieldFontSize },
   selectPlaceholder: { color: jobColors.placeholder },
-  picker: { borderRadius: jobs.fieldRadius, backgroundColor: kitColors.cardFill, padding: 10, gap: 10 },
-  search: { ...webField, minHeight: 42, paddingHorizontal: 14, borderRadius: 14, backgroundColor: kitColors.tileFill, color: jobColors.fieldText, fontSize: jobs.fieldFontSize },
-  options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  option: { minHeight: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: kitColors.tileFill, justifyContent: 'center' },
-  optionActive: { backgroundColor: '#0B0F14' },
-  optionText: { color: horizonColors.text, fontSize: 14, fontWeight: '500' },
-  optionTextActive: { color: '#FFFFFF' },
-  empty: { color: horizonColors.muted, fontSize: 14 },
-  drop: { minHeight: kit.dropHeight + 24, borderRadius: kit.dropRadius, borderWidth: kit.dropBorder, borderStyle: 'dashed', borderColor: kitColors.dropBorder, backgroundColor: kitColors.dropFill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  dropLabel: { color: kitColors.dropText, fontSize: kit.dropLabelSize, fontWeight: '600' },
-  qrPreviewCard: { borderRadius: kit.cardRadius, backgroundColor: kitColors.cardFill, padding: 12, gap: 12, alignItems: 'center' },
-  qrPreview: { width: '100%', aspectRatio: 1, maxWidth: 240, borderRadius: 16, backgroundColor: '#FFFFFF', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  picker: { borderRadius: jobs.fieldRadius, backgroundColor: kitColors.cardFill, padding: horizonLayout.workerPayoutSectionStyle.pickerPadding, gap: horizonLayout.workerPayoutSectionStyle.pickerGap },
+  search: { ...webField, minHeight: horizonLayout.workerPayoutSectionStyle.searchMinHeight, paddingHorizontal: horizonLayout.workerPayoutSectionStyle.searchPaddingHorizontal, borderRadius: horizonLayout.workerPayoutSectionStyle.searchBorderRadius, backgroundColor: kitColors.tileFill, color: jobColors.fieldText, fontSize: jobs.fieldFontSize },
+  options: { flexDirection: 'row', flexWrap: 'wrap', gap: horizonLayout.workerPayoutSectionStyle.optionsGap },
+  option: { minHeight: horizonLayout.workerPayoutSectionStyle.optionMinHeight, paddingHorizontal: horizonLayout.workerPayoutSectionStyle.optionPaddingHorizontal, borderRadius: horizonLayout.workerPayoutSectionStyle.optionBorderRadius, backgroundColor: kitColors.tileFill, justifyContent: 'center' },
+  optionActive: { backgroundColor: horizonColors.workerPayoutSectionStyle.optionActiveBackgroundColor },
+  optionText: { color: horizonColors.text, fontSize: horizonLayout.workerPayoutSectionStyle.optionTextFontSize, fontWeight: horizonLayout.workerPayoutSectionStyle.optionTextFontWeight },
+  optionTextActive: { color: horizonColors.workerPayoutSectionStyle.optionTextActiveColor },
+  empty: { color: horizonColors.muted, fontSize: horizonLayout.workerPayoutSectionStyle.emptyFontSize },
+  drop: { minHeight: horizonLayout.workerPayoutSectionStyle.dropMinHeight, borderRadius: kit.dropRadius, borderWidth: kit.dropBorder, borderStyle: 'dashed', borderColor: kitColors.dropBorder, backgroundColor: kitColors.dropFill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: horizonLayout.workerPayoutSectionStyle.dropGap },
+  dropLabel: { color: kitColors.dropText, fontSize: kit.dropLabelSize, fontWeight: horizonLayout.workerPayoutSectionStyle.dropLabelFontWeight },
+  qrPreviewCard: { borderRadius: kit.cardRadius, backgroundColor: kitColors.cardFill, padding: horizonLayout.workerPayoutSectionStyle.qrPreviewCardPadding, gap: horizonLayout.workerPayoutSectionStyle.qrPreviewCardGap, alignItems: 'center' },
+  qrPreview: { width: horizonLayout.workerPayoutSectionStyle.qrPreviewWidth, aspectRatio: 1, maxWidth: horizonLayout.workerPayoutSectionStyle.qrPreviewMaxWidth, borderRadius: horizonLayout.workerPayoutSectionStyle.qrPreviewBorderRadius, backgroundColor: horizonColors.workerPayoutSectionStyle.qrPreviewBackgroundColor, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   swap: { height: kit.pillHeight, borderRadius: kit.pillRadius, paddingHorizontal: kit.pillPaddingHorizontal, backgroundColor: kitColors.tileFill, justifyContent: 'center' },
-  swapText: { color: horizonColors.text, fontSize: kit.pillSize, fontWeight: '600' },
-  confirm: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 4 },
-  box: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, borderColor: kitColors.dropBorder, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  boxOn: { backgroundColor: '#0E9E8E', borderColor: '#0E9E8E' },
-  confirmText: { flex: 1, minWidth: 0, color: horizonColors.text, fontSize: 14, lineHeight: 20 },
+  swapText: { color: horizonColors.text, fontSize: kit.pillSize, fontWeight: horizonLayout.workerPayoutSectionStyle.swapTextFontWeight },
+  confirm: { flexDirection: 'row', alignItems: 'flex-start', gap: horizonLayout.workerPayoutSectionStyle.confirmGap, paddingVertical: horizonLayout.workerPayoutSectionStyle.confirmPaddingVertical },
+  box: { width: horizonLayout.workerPayoutSectionStyle.boxWidth, height: horizonLayout.workerPayoutSectionStyle.boxHeight, borderRadius: horizonLayout.workerPayoutSectionStyle.boxBorderRadius, borderWidth: horizonLayout.workerPayoutSectionStyle.boxBorderWidth, borderColor: kitColors.dropBorder, alignItems: 'center', justifyContent: 'center', marginTop: horizonLayout.workerPayoutSectionStyle.boxMarginTop },
+  boxOn: { backgroundColor: horizonColors.workerPayoutSectionStyle.boxOnBackgroundColor, borderColor: horizonColors.workerPayoutSectionStyle.boxOnBorderColor },
+  confirmText: { flex: 1, minWidth: 0, color: horizonColors.text, fontSize: horizonLayout.workerPayoutSectionStyle.confirmTextFontSize, lineHeight: horizonLayout.workerPayoutSectionStyle.confirmTextLineHeight },
   problem: { padding: jobs.noticePadding, borderRadius: jobs.noticeRadius, backgroundColor: jobColors.waitingFill },
   problemText: { color: jobColors.waitingText, fontSize: jobs.noticeSize, lineHeight: jobs.noticeLineHeight },
   notice: { flexDirection: 'row', alignItems: 'center', gap: jobs.noticeGap, padding: jobs.noticePadding, borderRadius: jobs.noticeRadius, backgroundColor: jobColors.noticeFill },
   noticeText: { flex: 1, minWidth: 0, color: jobColors.noticeText, fontSize: jobs.noticeSize, lineHeight: jobs.noticeLineHeight },
-  card: { borderRadius: kit.cardRadius, backgroundColor: kitColors.cardFill, padding: kit.cardPadding, gap: kit.innerGap + 4 },
+  card: { borderRadius: kit.cardRadius, backgroundColor: kitColors.cardFill, padding: kit.cardPadding, gap: horizonLayout.workerPayoutSectionStyle.cardGap },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: kit.innerGap },
   bankTile: { width: kit.slotTile, height: kit.slotTile, borderRadius: kit.slotTileRadius, backgroundColor: kitColors.tileFill, alignItems: 'center', justifyContent: 'center' },
-  cardCopy: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 4 },
-  bankName: { color: horizonColors.text, fontSize: kit.slotTitleSize, fontWeight: '600' },
+  cardCopy: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: horizonLayout.workerPayoutSectionStyle.cardCopyGap },
+  bankName: { color: horizonColors.text, fontSize: kit.slotTitleSize, fontWeight: horizonLayout.workerPayoutSectionStyle.bankNameFontWeight },
   tag: { height: kit.tagHeight, borderRadius: kit.tagRadius, paddingHorizontal: kit.tagPaddingHorizontal, justifyContent: 'center' },
-  tagText: { fontSize: kit.tagSize, fontWeight: '600' },
-  facts: { gap: 10, padding: 12, borderRadius: 14, backgroundColor: kitColors.tileFill },
-  fact: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
-  factLabel: { color: horizonColors.muted, fontSize: 13 },
-  factValue: { color: horizonColors.text, fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'], flexShrink: 1, textAlign: 'right' },
-  qrRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  qrThumb: { width: 56, height: 56, borderRadius: 12, backgroundColor: '#FFFFFF', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  qrNote: { flex: 1, minWidth: 0, color: horizonColors.muted, fontSize: 13, lineHeight: 18 },
-  rejected: { color: kitColors.rejectedText, fontSize: 13, lineHeight: 18 },
+  tagText: { fontSize: kit.tagSize, fontWeight: horizonLayout.workerPayoutSectionStyle.tagTextFontWeight },
+  facts: { gap: horizonLayout.workerPayoutSectionStyle.factsGap, padding: horizonLayout.workerPayoutSectionStyle.factsPadding, borderRadius: horizonLayout.workerPayoutSectionStyle.factsBorderRadius, backgroundColor: kitColors.tileFill },
+  fact: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: horizonLayout.workerPayoutSectionStyle.factGap },
+  factLabel: { color: horizonColors.muted, fontSize: horizonLayout.workerPayoutSectionStyle.factLabelFontSize },
+  factValue: { color: horizonColors.text, fontSize: horizonLayout.workerPayoutSectionStyle.factValueFontSize, fontWeight: horizonLayout.workerPayoutSectionStyle.factValueFontWeight, fontVariant: ['tabular-nums'], flexShrink: 1, textAlign: 'right' },
+  qrRow: { flexDirection: 'row', alignItems: 'center', gap: horizonLayout.workerPayoutSectionStyle.qrRowGap },
+  qrThumb: { width: horizonLayout.workerPayoutSectionStyle.qrThumbWidth, height: horizonLayout.workerPayoutSectionStyle.qrThumbHeight, borderRadius: horizonLayout.workerPayoutSectionStyle.qrThumbBorderRadius, backgroundColor: horizonColors.workerPayoutSectionStyle.qrThumbBackgroundColor, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  qrNote: { flex: 1, minWidth: 0, color: horizonColors.muted, fontSize: horizonLayout.workerPayoutSectionStyle.qrNoteFontSize, lineHeight: horizonLayout.workerPayoutSectionStyle.qrNoteLineHeight },
+  rejected: { color: kitColors.rejectedText, fontSize: horizonLayout.workerPayoutSectionStyle.rejectedFontSize, lineHeight: horizonLayout.workerPayoutSectionStyle.rejectedLineHeight },
 });

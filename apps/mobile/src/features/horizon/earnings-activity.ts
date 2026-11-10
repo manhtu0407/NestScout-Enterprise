@@ -12,7 +12,7 @@ export const activityRanges: readonly { range: ActivityRange; label: string; wee
   { range: 'year', label: 'Năm', weeks: 53 },
 ];
 
-const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+const weekdayLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] as const;
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
 export function weekdayLabelOf(key: string): string {

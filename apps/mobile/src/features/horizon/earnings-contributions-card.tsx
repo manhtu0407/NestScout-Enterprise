@@ -11,33 +11,46 @@ import type { EarningsView } from './worker-earnings';
 
 const metrics = horizonLayout.workerEarnings;
 const colors = horizonColors.workerEarnings;
-const maxCell = 40;
-const monthLabelSpan = 40;
-const minScrollCell = 12;
-const rowLabelWidth = 32;
-const rowLabels = ['Mon', '', 'Wed', '', 'Fri', '', 'Sun'] as const;
+const grid = horizonLayout.earningsContributionsCardStyle;
+const rowLabels = ['T2', '', 'T4', '', 'T6', '', 'CN'] as const;
 const levelColors = [colors.plotTrack, colors.heat1, colors.heat2, colors.heat3, colors.heat4] as const;
 
 type Props = { earnings: EarningsView };
+
+function rowLabelsVisible(range: ActivityRange): boolean {
+  return range !== 'year';
+}
+
+function gridGap(weeks: number): number {
+  return weeks > grid.gridDenseWeeks ? grid.gridGapDense : weeks > grid.gridMediumWeeks ? grid.gridGapMedium : grid.gridGapWide;
+}
+
+function gridCell(width: number, weeks: number, showRows: boolean): number {
+  const available = Math.max(0, width - (showRows ? grid.gridRowLabelWidth + grid.gridRowLabelGutter : 0));
+  const fit = Math.floor((available - (weeks - 1) * gridGap(weeks)) / weeks);
+  return Math.max(grid.gridMinScrollCell, Math.min(grid.gridMaxCell, fit));
+}
+
+function cellRadius(cell: number): number {
+  return Math.max(grid.gridCellRadiusMin, Math.round(cell / grid.gridCellRadiusDivisor));
+}
 
 export function EarningsContributionsCard({ earnings }: Props) {
   const [range, setRange] = useState<ActivityRange>('quarter');
   const [picked, setPicked] = useState<string | null>(null);
   const [width, setWidth] = useState(0);
-  const weeks = activityRanges.find(item => item.range === range)?.weeks ?? 13;
+  const weeks = activityRanges.find(item => item.range === range)?.weeks ?? grid.gridDefaultWeeks;
   const columns = activityGrid(earnings.activity, earnings.todayKey, weeks);
   const stats = activityStats(earnings.activity, earnings.todayKey);
   const total = activityTotal(columns);
-  const showRows = range !== 'year';
-  const gap = weeks > 20 ? 2 : weeks > 8 ? 4 : 6;
-  const available = Math.max(0, width - (showRows ? rowLabelWidth + 8 : 0));
-  const fitCell = Math.floor((available - (weeks - 1) * gap) / weeks);
-  const cell = Math.max(minScrollCell, Math.min(maxCell, fitCell));
+  const showRows = rowLabelsVisible(range);
+  const gap = gridGap(weeks);
+  const cell = gridCell(width, weeks, showRows);
   const scroller = useRef<ScrollViewInstance>(null);
   const selectedKey = picked ?? earnings.todayKey;
   const selectedCount = earnings.activity[selectedKey] ?? 0;
-  const showNumbers = cell >= 26;
-  const monthLabels = spacedMonthLabels(columns, Math.ceil(monthLabelSpan / (cell + gap)) - 1, Math.ceil(monthLabelSpan / (cell + gap)));
+  const showNumbers = cell >= grid.gridNumbersMinCell;
+  const monthLabels = spacedMonthLabels(columns, Math.ceil(grid.gridMonthLabelSpan / (cell + gap)) - 1, Math.ceil(grid.gridMonthLabelSpan / (cell + gap)));
 
   return (
     <View style={styles.card}>
@@ -64,7 +77,7 @@ export function EarningsContributionsCard({ earnings }: Props) {
         {width > 0 ? (
           <FadeIn key={range} style={styles.gridRow}>
             {showRows ? (
-              <View style={[styles.rowLabels, { width: rowLabelWidth, marginTop: 18, gap }]}>
+              <View style={[styles.rowLabels, { width: grid.gridRowLabelWidth, marginTop: horizonLayout.earningsContributionsCardStyle.inlineMarginTop, gap }]}>
                 {rowLabels.map((label, index) => (
                   <View key={index} style={{ height: cell, justifyContent: 'center' }}>
                     <Text style={styles.rowLabel}>{label}</Text>
@@ -93,7 +106,7 @@ export function EarningsContributionsCard({ earnings }: Props) {
                           accessibilityLabel={`${formatDayKey(item.key)}, ${item.count} việc`}
                           accessibilityState={{ selected: active }}
                           onPress={() => setPicked(item.key)}
-                          style={({ pressed }) => [{ width: cell, height: cell, borderRadius: Math.max(2, Math.round(cell / 4)), backgroundColor: levelColors[level], alignItems: 'center', justifyContent: 'center' }, active && styles.cellActive, pressed && styles.cellPressed]}
+                          style={({ pressed }) => [{ width: cell, height: cell, borderRadius: cellRadius(cell), backgroundColor: levelColors[level], alignItems: 'center', justifyContent: 'center' }, active && styles.cellActive, pressed && styles.cellPressed]}
                         >
                           {showNumbers && item.count > 0 ? <Text style={[styles.cellText, level >= 3 && styles.cellTextOn]}>{item.count}</Text> : null}
                         </Pressable>
@@ -128,30 +141,30 @@ function Stat({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   card: { gap: metrics.cardGap, padding: metrics.cardPadding, borderRadius: metrics.cardRadius, backgroundColor: colors.cardFill },
   head: { gap: metrics.heroGap },
-  caption: { color: colors.heroLabel, fontSize: metrics.heroLabelSize, fontWeight: '600' },
-  amountRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
+  caption: { color: colors.heroLabel, fontSize: metrics.heroLabelSize, fontWeight: horizonLayout.earningsContributionsCardStyle.captionFontWeight },
+  amountRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: horizonLayout.earningsContributionsCardStyle.amountRowGap },
   amount: { color: colors.heroAmount, fontSize: metrics.heroAmountSize, fontWeight: metrics.heroAmountWeight, letterSpacing: metrics.heroAmountTracking, fontVariant: ['tabular-nums'] },
   pill: { height: metrics.deltaHeight, borderRadius: metrics.deltaRadius, paddingHorizontal: metrics.deltaPaddingHorizontal, backgroundColor: colors.deltaFill, justifyContent: 'center' },
-  pillText: { color: colors.deltaText, fontSize: metrics.deltaSize, fontWeight: '600' },
+  pillText: { color: colors.deltaText, fontSize: metrics.deltaSize, fontWeight: horizonLayout.earningsContributionsCardStyle.pillTextFontWeight },
   stats: { flexDirection: 'row', gap: metrics.statGap },
-  stat: { flex: 1, minWidth: 0, gap: 4, alignItems: 'center', justifyContent: 'center', padding: metrics.statPadding, borderRadius: metrics.statRadius, backgroundColor: colors.statFill },
+  stat: { flex: 1, minWidth: 0, gap: horizonLayout.earningsContributionsCardStyle.statGap, alignItems: 'center', justifyContent: 'center', padding: metrics.statPadding, borderRadius: metrics.statRadius, backgroundColor: colors.statFill },
   statLabel: { color: colors.statLabel, fontSize: metrics.statLabelSize, textAlign: 'center' },
-  statValue: { color: colors.statValue, fontSize: metrics.statValueSize, fontWeight: '600', fontVariant: ['tabular-nums'], textAlign: 'center' },
-  readout: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
+  statValue: { color: colors.statValue, fontSize: metrics.statValueSize, fontWeight: horizonLayout.earningsContributionsCardStyle.statValueFontWeight, fontVariant: ['tabular-nums'], textAlign: 'center' },
+  readout: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: horizonLayout.earningsContributionsCardStyle.readoutGap },
   readoutLabel: { color: colors.axisLabel, fontSize: metrics.axisSize },
-  readoutValue: { color: colors.heroAmount, fontSize: metrics.statValueSize, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  readoutValue: { color: colors.heroAmount, fontSize: metrics.statValueSize, fontWeight: horizonLayout.earningsContributionsCardStyle.readoutValueFontWeight, fontVariant: ['tabular-nums'] },
   gridWrap: { alignItems: 'center' },
-  gridRow: { flexDirection: 'row', gap: 8, alignSelf: 'stretch' },
+  gridRow: { flexDirection: 'row', gap: horizonLayout.earningsContributionsCardStyle.gridRowGap, alignSelf: 'stretch' },
   scroller: { flex: 1 },
   rowLabels: { justifyContent: 'flex-start' },
-  rowLabel: { color: colors.axisLabel, fontSize: 10 },
-  months: { height: 18, position: 'relative' },
-  month: { position: 'absolute', top: 0, color: colors.axisLabel, fontSize: 10 },
+  rowLabel: { color: colors.axisLabel, fontSize: horizonLayout.earningsContributionsCardStyle.rowLabelFontSize },
+  months: { height: horizonLayout.earningsContributionsCardStyle.monthsHeight, position: 'relative' },
+  month: { position: 'absolute', top: 0, color: colors.axisLabel, fontSize: horizonLayout.earningsContributionsCardStyle.monthFontSize },
   cellPressed: { transform: [{ scale: metrics.pressScale }] },
-  cellActive: { borderWidth: 2, borderColor: colors.heroAmount },
-  cellText: { color: colors.heroAmount, fontSize: 12, fontWeight: '600' },
-  cellTextOn: { color: '#FFFFFF' },
-  legend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
-  legendText: { color: colors.axisLabel, fontSize: 10 },
-  legendCell: { width: 12, height: 12, borderRadius: 3 },
+  cellActive: { borderWidth: horizonLayout.earningsContributionsCardStyle.cellActiveBorderWidth, borderColor: colors.heroAmount },
+  cellText: { color: colors.heroAmount, fontSize: horizonLayout.earningsContributionsCardStyle.cellTextFontSize, fontWeight: horizonLayout.earningsContributionsCardStyle.cellTextFontWeight },
+  cellTextOn: { color: horizonColors.earningsContributionsCardStyle.cellTextOnColor },
+  legend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: horizonLayout.earningsContributionsCardStyle.legendGap },
+  legendText: { color: colors.axisLabel, fontSize: horizonLayout.earningsContributionsCardStyle.legendTextFontSize },
+  legendCell: { width: horizonLayout.earningsContributionsCardStyle.legendCellWidth, height: horizonLayout.earningsContributionsCardStyle.legendCellHeight, borderRadius: horizonLayout.earningsContributionsCardStyle.legendCellBorderRadius },
 });

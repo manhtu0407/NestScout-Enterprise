@@ -183,24 +183,28 @@ export function WorkerDocumentsSection({ documents, certificates, busy, onError,
   );
 }
 
+function half(size: number): number {
+  return size / 2;
+}
+
 const styles = StyleSheet.create({
   list: { gap: metrics.cardGap },
   slot: { borderRadius: metrics.cardRadius, backgroundColor: colors.cardFill, padding: metrics.cardPadding, gap: metrics.innerGap },
   slotHead: { flexDirection: 'row', alignItems: 'center', gap: metrics.innerGap },
   tile: { width: metrics.slotTile, height: metrics.slotTile, borderRadius: metrics.slotTileRadius, backgroundColor: colors.tileFill, alignItems: 'center', justifyContent: 'center' },
-  slotCopy: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 4 },
-  slotTitle: { color: horizonColors.text, fontSize: metrics.slotTitleSize, fontWeight: '600' },
+  slotCopy: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: horizonLayout.workerDocumentsSectionStyle.slotCopyGap },
+  slotTitle: { color: horizonColors.text, fontSize: metrics.slotTitleSize, fontWeight: horizonLayout.workerDocumentsSectionStyle.slotTitleFontWeight },
   slotBody: { color: horizonColors.muted, fontSize: metrics.slotBodySize, lineHeight: metrics.slotBodyLineHeight },
-  files: { borderRadius: 14, backgroundColor: colors.tileFill, paddingHorizontal: 12 },
-  fileRow: { minHeight: metrics.fileRowHeight, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  fileCopy: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 4 },
-  fileTitle: { color: horizonColors.text, fontSize: metrics.fileTitleSize, fontWeight: '500' },
-  remove: { width: metrics.removeSize, height: metrics.removeSize, borderRadius: metrics.removeSize / 2, backgroundColor: colors.removeFill, alignItems: 'center', justifyContent: 'center' },
+  files: { borderRadius: horizonLayout.workerDocumentsSectionStyle.filesBorderRadius, backgroundColor: colors.tileFill, paddingHorizontal: horizonLayout.workerDocumentsSectionStyle.filesPaddingHorizontal },
+  fileRow: { minHeight: metrics.fileRowHeight, flexDirection: 'row', alignItems: 'center', gap: horizonLayout.workerDocumentsSectionStyle.fileRowGap, paddingVertical: horizonLayout.workerDocumentsSectionStyle.fileRowPaddingVertical },
+  fileCopy: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: horizonLayout.workerDocumentsSectionStyle.fileCopyGap },
+  fileTitle: { color: horizonColors.text, fontSize: metrics.fileTitleSize, fontWeight: horizonLayout.workerDocumentsSectionStyle.fileTitleFontWeight },
+  remove: { width: metrics.removeSize, height: metrics.removeSize, borderRadius: half(metrics.removeSize), backgroundColor: colors.removeFill, alignItems: 'center', justifyContent: 'center' },
   tag: { height: metrics.tagHeight, borderRadius: metrics.tagRadius, paddingHorizontal: metrics.tagPaddingHorizontal, justifyContent: 'center' },
-  tagText: { fontSize: metrics.tagSize, fontWeight: '600' },
-  drop: { minHeight: metrics.dropHeight, borderRadius: metrics.dropRadius, borderWidth: metrics.dropBorder, borderStyle: 'dashed', borderColor: colors.dropBorder, backgroundColor: colors.dropFill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16 },
-  dropLabel: { color: colors.dropText, fontSize: metrics.dropLabelSize, fontWeight: '600' },
-  dropCount: { color: colors.dropMuted, fontSize: 13, fontVariant: ['tabular-nums'] },
-  limit: { color: colors.dropMuted, fontSize: 13 },
-  disabled: { opacity: 0.5 },
+  tagText: { fontSize: metrics.tagSize, fontWeight: horizonLayout.workerDocumentsSectionStyle.tagTextFontWeight },
+  drop: { minHeight: metrics.dropHeight, borderRadius: metrics.dropRadius, borderWidth: metrics.dropBorder, borderStyle: 'dashed', borderColor: colors.dropBorder, backgroundColor: colors.dropFill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: horizonLayout.workerDocumentsSectionStyle.dropGap, paddingHorizontal: horizonLayout.workerDocumentsSectionStyle.dropPaddingHorizontal },
+  dropLabel: { color: colors.dropText, fontSize: metrics.dropLabelSize, fontWeight: horizonLayout.workerDocumentsSectionStyle.dropLabelFontWeight },
+  dropCount: { color: colors.dropMuted, fontSize: horizonLayout.workerDocumentsSectionStyle.dropCountFontSize, fontVariant: ['tabular-nums'] },
+  limit: { color: colors.dropMuted, fontSize: horizonLayout.workerDocumentsSectionStyle.limitFontSize },
+  disabled: { opacity: horizonLayout.workerDocumentsSectionStyle.disabledOpacity },
 });
