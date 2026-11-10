@@ -104,7 +104,7 @@ test('without AI sharing consent an inline card, not a dialog, asks once and the
   expect(screen.getByTestId('kael-consent-card')).toBeTruthy();
   await say('Nhờ Kael giúp tôi');
   expect(requests).toHaveLength(0);
-  expect(screen.getByText(/Tin nhắn chưa được gửi. Bật “Chia sẻ dữ liệu với AI”/)).toBeTruthy();
+  expect(screen.getByText(/Tin nhắn chưa được gửi. Chọn “Cho phép và bắt đầu”/)).toBeTruthy();
   expect(screen.queryByText('Đồng ý và tiếp tục')).toBeNull();
   expect(screen.queryByText('Không đồng ý')).toBeNull();
 });
@@ -115,6 +115,12 @@ test('allowing AI sharing from the inline card records the choice explicitly', a
   await act(async () => { fireEvent.press(screen.getByLabelText('Cho phép và bắt đầu')); });
   expect(mockSetConsent).toHaveBeenCalledTimes(1);
   expect(mockSetConsent).toHaveBeenCalledWith(true);
+});
+
+test('the hosted Preview target shows the same consent card instead of an unreachable instruction', async () => {
+  mockConsent.granted = false;
+  await render(<SafeAreaProvider initialMetrics={metrics}><HorizonEntry onPreviewMenu={jest.fn()}/></SafeAreaProvider>);
+  expect(screen.getByTestId('kael-consent-card')).toBeTruthy();
 });
 
 test('a failed consent save keeps the card and reports the failure', async () => {

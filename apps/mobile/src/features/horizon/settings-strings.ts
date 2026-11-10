@@ -160,7 +160,7 @@ const vi: SettingsStrings = {
     'Đừng gửi thông tin nhạy cảm như số thẻ hoặc mật khẩu trong tin nhắn. Bạn có thể rút lại đồng ý bất cứ lúc nào trong Cài đặt › Quyền riêng tư; khi đó Kael sẽ dừng trả lời.',
     'Chi tiết xem tại Cài đặt › Chính sách quyền riêng tư.',
   ],
-  consentNeeded: 'Tin nhắn chưa được gửi. Bật “Chia sẻ dữ liệu với AI” trong Cài đặt › Quyền riêng tư nếu bạn muốn gửi dữ liệu đã mô tả tới nhà cung cấp AI.',
+  consentNeeded: 'Tin nhắn chưa được gửi. Chọn “Cho phép và bắt đầu” nếu bạn muốn gửi dữ liệu đã mô tả tới nhà cung cấp AI.',
   consentFailed: 'Chưa kiểm tra được trạng thái đồng ý. Kiểm tra kết nối rồi thử lại.',
   consentChecking: 'Đang kiểm tra lựa chọn chia sẻ dữ liệu. Hãy thử gửi lại trong giây lát.',
 };
@@ -245,7 +245,7 @@ const en: SettingsStrings = {
     'Do not send sensitive details such as card numbers or passwords in messages. You can withdraw consent at any time in Settings › Privacy; Kael will then stop replying.',
     'See Settings › Privacy Policy for details.',
   ],
-  consentNeeded: 'Your message was not sent. Turn on “Share data with AI” in Settings › Privacy if you want the described data sent to an AI provider.',
+  consentNeeded: 'Your message was not sent. Choose “Allow and start” if you want the described data sent to an AI provider.',
   consentFailed: 'Could not check your agreement. Check your connection and try again.',
   consentChecking: 'Checking your data-sharing choice. Try sending again in a moment.',
 };

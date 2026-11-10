@@ -156,6 +156,7 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   const deliver = useCallback(() => {
     const text = inputRef.current.trim();
     if (!text) return;
+    setComposerError(null);
     sendToKael(text);
     setInput('');
     inputRef.current = '';
@@ -165,9 +166,9 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   const setAiConsent = aiConsent.set;
   const allowAi = useCallback(() => {
     setConsentBusy(true);
-    setAiConsent(true).catch(() => setComposerError(consentFailedMessage)).finally(() => setConsentBusy(false));
+    setAiConsent(true).then(() => setComposerError(null), () => setComposerError(consentFailedMessage)).finally(() => setConsentBusy(false));
   }, [consentFailedMessage, setAiConsent]);
-  const consentCard = !onPreviewMenu && kaelAvailable && aiConsentStatus === 'ready' && !aiConsentGranted
+  const consentCard = kaelAvailable && aiConsentStatus === 'ready' && !aiConsentGranted
     ? { lead: consentStrings.consentCardLead, action: consentStrings.consentCardAction, busy: consentBusy, onAllow: allowAi }
     : null;
   const refuseWithoutConsent = useCallback(() => {
