@@ -365,6 +365,10 @@ a test and refuse to accept any other basis.
 | Accept, request correction or dispute | Owner; pending submission, job version and required reason | One decision and event; dispute creates a separate case; exact replay is safe; only the correction note is Worker-readable and the private reason is not exposed to any client; the Worker screen shows the note while the newest submission of the job is the correction request |
 | Open aftercare | Owner; completed job and case key | Linked case created once without changing the job or event history |
 | Read Kael context | Owner of request or currently eligible assigned Worker | Redacted deterministic projection; allowed and unavailable calls audited within a per-minute budget; the first rate-limited call in each minute is audited |
+| Issue fixture quote | Active `local_fixture` operator in `nestscout_private.fixture_operators`; no accepted quote and no job for the request | Next quote version with server expiry (5 minutes to 7 days); the issue key binds scope and amount; a newer version makes older ones stale |
+| Invite fixture worker | Same operator; accepted quote; no job; a Worker the operator names who holds an active grant, fixture eligibility, complete readiness and open availability and is not the requester | One open invitation per Worker and request under the request lock; inviting again returns it; no automatic selection |
+| Set preferred visit | Owner; one hour to sixty days ahead; no job yet | Stored on the request as the customer's wish and shown on offers; never an appointment; clearing is allowed |
+| Rate a Kael reply | Owner of the assistant message, addressed by message id or run id | One rating per reply with a closed set of reasons; clearing deletes it; included in the data export and erased with the messages |
 
 A pause carries its category, the stage it interrupted and the job version it
 was made from. An ordinary interruption can be resumed only when the Worker
@@ -412,6 +416,15 @@ or status explanation cannot establish settlement. No model provider,
 notification delivery, automatic dispute resolution, real dispatch or Worker
 qualification process is configured. Manual controls remain available when the
 status tool is unavailable.
+
+Quotes and invitations are created only by the fixture operator commands above,
+for local and test use. There is no operator screen, no pricing model and no
+automatic dispatch; a commercial pricing or dispatch policy is still an owner
+decision. PostgREST reports SQLSTATE `40001` (a stale version or an
+already-assigned request) with HTTP 500 and the code in the body. Kael and the
+mobile client treat such a response as a definitive refusal, because the
+transaction rolled back, while a 5xx response without a recognised code stays an
+uncertain outcome.
 
 ## Kael capability boundary
 

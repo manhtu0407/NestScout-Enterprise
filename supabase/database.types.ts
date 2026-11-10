@@ -794,7 +794,7 @@ isOneToOne: false
                            },
 "job_worker_cards":
 { Args: Record<PropertyKey, never>; Returns: {
-              "display_name": string,"job_id": string,"profile_id": string,"request_id": string,"review_rating": number,"saved": boolean
+              "display_name": string,"job_id": string,"listed": boolean,"profile_id": string,"request_id": string,"review_rating": number,"saved": boolean
             }[]
                            },
 "kael_actor_capabilities":

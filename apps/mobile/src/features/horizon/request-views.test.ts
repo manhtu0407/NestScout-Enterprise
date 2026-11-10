@@ -94,12 +94,12 @@ test('request views carry the attached photos and their count when photos are kn
 test('request views carry the stored location and the worker of the job', () => {
   const located: ServiceRequest = { ...request, location: '12 Nguyễn Huệ, Quận 1' };
   const workers = [
-    { job_id: 'j1', request_id: 'r1', profile_id: 'p1', display_name: 'Thợ Minh', saved: true, review_rating: 4 },
-    { job_id: 'j9', request_id: 'other', profile_id: 'p9', display_name: 'Thợ khác', saved: false, review_rating: null },
+    { job_id: 'j1', request_id: 'r1', profile_id: 'p1', display_name: 'Thợ Minh', saved: true, review_rating: 4, listed: true },
+    { job_id: 'j9', request_id: 'other', profile_id: 'p9', display_name: 'Thợ khác', saved: false, review_rating: null, listed: true },
   ];
   const [view] = toRequestViews({ requests: [located], quotes: [], activity: emptyActivity, workers }, now);
   expect(view?.location).toBe('12 Nguyễn Huệ, Quận 1');
-  expect(view?.worker).toEqual({ jobId: 'j1', profileId: 'p1', name: 'Thợ Minh', saved: true, rating: 4 });
+  expect(view?.worker).toEqual({ jobId: 'j1', profileId: 'p1', name: 'Thợ Minh', saved: true, rating: 4, listed: true });
 });
 
 test('recent sessions mark pinned requests and keep server order', () => {

@@ -174,11 +174,13 @@ test('the account phone is read as text and anything else is rejected', async ()
   await expect(readAccountPhone('u1', signal)).rejects.toThrow('Invalid phone response');
 });
 
-const card = { job_id: 'j1', request_id: 'r1', profile_id: 'p1', display_name: 'Thợ Minh', saved: false, review_rating: null };
+const card = { job_id: 'j1', request_id: 'r1', profile_id: 'p1', display_name: 'Thợ Minh', saved: false, review_rating: null, listed: true };
 
 test('job worker cards are validated', async () => {
   respond([card, { ...card, job_id: 'j2', review_rating: 4 }]);
   await expect(readJobWorkerCards('u1', signal)).resolves.toHaveLength(2);
+  respond([{ ...card, listed: undefined }]);
+  await expect(readJobWorkerCards('u1', signal)).rejects.toThrow('Invalid job worker response');
   respond([{ ...card, review_rating: 9 }]);
   await expect(readJobWorkerCards('u1', signal)).rejects.toThrow('Invalid job worker response');
   respond([{ ...card, saved: 'no' }]);

@@ -19,5 +19,6 @@ export function AccountSection({ onBack }: { onBack: () => void }) {
     onChangeMode={onBack}
     onSignIn={role => { access.setIntent(role); router.push({ pathname: '/phone', params: { role } }); }}
     onSignOut={() => { void access.signOut(); }}
+    onEditProfile={userId === null ? undefined : () => router.push({ pathname: '/section', params: { id: 'settings' } })}
   />;
 }

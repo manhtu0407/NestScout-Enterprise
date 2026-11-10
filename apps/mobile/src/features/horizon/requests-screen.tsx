@@ -7,6 +7,7 @@ import { Chip, Icon, type IconName, type JobReview, PressScale, StatusDot, useGl
 import { ScreenHeader } from './support-shell';
 import { JobChangePanel, type JobChangesApi } from './job-change-panel';
 import { formatVisit, PreferredVisitPicker } from './preferred-visit-picker';
+import { SubmissionDecisionPanel, type SubmissionDecision } from './submission-decision-panel';
 import { WorkerReviewPanel, type RequestWorker } from './worker-review-panel';
 
 const metrics = horizonLayout.requestsScreen;
@@ -36,6 +37,7 @@ export type ServiceRequest = {
   photos?: readonly PhotoSource[];
   worker?: RequestWorker;
   preferredVisitAt?: string | null;
+  pendingSubmission?: { id: string; evidence: string; jobVersion: number };
 };
 
 export const workflowSteps: readonly string[] = ['Đã gửi', 'Có báo giá', 'Chấp nhận', 'Ghép thợ', 'Thực hiện', 'Nghiệm thu'];
@@ -52,13 +54,14 @@ type Props = {
   onViewQuotes?: () => void;
   onAskKael?: (request: ServiceRequest) => void;
   onSetPreferredVisit?: (request: ServiceRequest, at: Date | null) => Promise<void>;
+  onDecideSubmission?: (request: ServiceRequest, decision: SubmissionDecision, reason: string | null) => Promise<void>;
   onToggleSaveWorker?: (worker: RequestWorker) => Promise<void>;
   onReviewWorker?: (worker: RequestWorker, review: JobReview) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
   focusId?: string;
 };
 
-function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onSetPreferredVisit, onToggleSaveWorker, onReviewWorker, jobChanges }: CardProps) {
+function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, jobChanges }: CardProps) {
   const finished = request.step >= workflowSteps.length;
   const caption = finished ? `Đủ ${workflowSteps.length}/${workflowSteps.length} bước` : `Bước ${request.step + 1}/${workflowSteps.length} · ${workflowSteps[request.step]}`;
   const needsYou = Boolean(request.quoteCount);
@@ -120,6 +123,7 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onS
               ))}
             </ScrollView>
           ) : null}
+          {request.pendingSubmission && onDecideSubmission ? <SubmissionDecisionPanel key={request.pendingSubmission.id} evidence={request.pendingSubmission.evidence} onDecide={(decision, reason) => onDecideSubmission(request, decision, reason)} /> : null}
           {request.worker && onToggleSaveWorker && onReviewWorker ? (
             <WorkerReviewPanel worker={request.worker} finished={request.stage === 'done'} onToggleSave={onToggleSaveWorker} onReview={onReviewWorker} />
           ) : null}
@@ -179,12 +183,13 @@ type CardProps = {
   onViewQuotes?: () => void;
   onAskKael?: (request: ServiceRequest) => void;
   onSetPreferredVisit?: (request: ServiceRequest, at: Date | null) => Promise<void>;
+  onDecideSubmission?: (request: ServiceRequest, decision: SubmissionDecision, reason: string | null) => Promise<void>;
   onToggleSaveWorker?: (worker: RequestWorker) => Promise<void>;
   onReviewWorker?: (worker: RequestWorker, review: JobReview) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
 };
 
-export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onSetPreferredVisit, onToggleSaveWorker, onReviewWorker, jobChanges, focusId }: Props) {
+export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, jobChanges, focusId }: Props) {
   const focused = requests.find(request => request.id === focusId);
   const [expandedIds, setExpandedIds] = useState<readonly string[]>(focused ? [focused.id] : []);
   const { reduceMotion } = useGlassAccessibility();
@@ -264,6 +269,7 @@ export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael,
               onViewQuotes={onViewQuotes}
               onAskKael={onAskKael}
               onSetPreferredVisit={onSetPreferredVisit}
+              onDecideSubmission={onDecideSubmission}
               onToggleSaveWorker={onToggleSaveWorker}
               onReviewWorker={onReviewWorker}
               jobChanges={jobChanges}

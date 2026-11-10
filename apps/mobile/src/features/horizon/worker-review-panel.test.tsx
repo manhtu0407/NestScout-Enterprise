@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 
 import { WorkerReviewPanel, type RequestWorker } from './worker-review-panel';
 
-const worker: RequestWorker = { jobId: 'j1', profileId: 'p1', name: 'Thợ Minh', saved: false, rating: null };
+const worker: RequestWorker = { jobId: 'j1', profileId: 'p1', name: 'Thợ Minh', saved: false, rating: null, listed: true };
 
 type Overrides = Partial<{ worker: RequestWorker; finished: boolean; onToggleSave: jest.Mock; onReview: jest.Mock }>;
 
@@ -67,4 +67,17 @@ test('a reviewed job shows the rating and no review form', async () => {
   await setup({ worker: { ...worker, rating: 4 } });
   expect(screen.getByLabelText('Bạn đã đánh giá: 4.0 trên 5 sao')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Đánh giá Thợ Minh' })).toBeNull();
+});
+
+test('an unlisted worker cannot be saved and the screen says why', async () => {
+  await setup({ worker: { ...worker, listed: false } });
+  expect(screen.queryByLabelText('Lưu Thợ Minh')).toBeNull();
+  expect(screen.getByText(/chưa được công khai nên chưa thể lưu/)).toBeTruthy();
+});
+
+test('a definitive refusal to save is not blamed on the connection', async () => {
+  const { WorkflowError } = jest.requireActual<typeof import('@/features/shared')>('@/features/shared');
+  await setup({ onToggleSave: jest.fn().mockRejectedValue(new WorkflowError('forbidden')) });
+  await fireEvent.press(screen.getByLabelText('Lưu Thợ Minh'));
+  expect(await screen.findByText('Không lưu được thợ này. Tải lại để xem trạng thái mới nhất.')).toBeTruthy();
 });

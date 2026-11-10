@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Text } from 'react-native';
 
 import { formatNational, toNationalDigits, useAccess } from '@/features/access';
-import { PressScale, setPreferredVisit, acceptTerms, acceptedImageTypes, cancelAccountDeletion, exportPersonalData, readDeletionRequest, readReviewReactions, toggleReviewReaction, readTermsAcceptance, recordConsent, requestAccountDeletion, submitSupportRequest, type CustomerSettings, type ReviewReactionId } from '@/features/shared';
+import { PressScale, decideSubmission, setPreferredVisit, acceptTerms, acceptedImageTypes, cancelAccountDeletion, exportPersonalData, readDeletionRequest, readReviewReactions, toggleReviewReaction, readTermsAcceptance, recordConsent, requestAccountDeletion, submitSupportRequest, type CustomerSettings, type ReviewReactionId } from '@/features/shared';
 
 import type { UserProfile } from './content';
 import { HelpScreen } from './help-screen';
@@ -125,6 +125,16 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
       onSetPreferredVisit={async (request, at) => {
         try {
           await setPreferredVisit(userId, request.id, at, new AbortController().signal);
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+        customer.refresh();
+      }}
+      onDecideSubmission={async (request, decision, reason) => {
+        const pending = request.pendingSubmission;
+        if (!pending) return;
+        try {
+          await decideSubmission(userId, pending.id, pending.jobVersion, decision, reason, new AbortController().signal);
         } catch (error) {
           throw new Error(workflowMessage(error));
         }

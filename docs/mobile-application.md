@@ -605,5 +605,40 @@ sees customer notices as a customer and worker notices as a worker. The Notifica
 entry of the Worker sidebar shows an unread badge; opening a notice marks it read and moves
 to the matching tab (new offers, history, awaiting customer, in progress or reviews).
 Notices for a job being offered, resumed or reviewed depend on those events existing, and
-offers still arrive only through fixtures until the matching executor exists. The preview
+offers arrive only through the fixture operator commands described in the service workflow. The preview
 does not simulate worker notifications. Native device behavior is NOT VERIFIED.
+
+## Customer, Kael and Worker lifecycle
+
+The Requests screen lets the owner store a preferred visit time for a request that
+has no assigned Worker yet: a day from the calendar and a time slot, saved through
+`set_request_preferred_visit` and labelled as a wish, not a confirmed appointment.
+Workers see that time on the offer and the job. When the Worker submits work, the
+request card shows the evidence with three decisions: accept (a second confirmation
+states that acceptance is not payment), request a correction and open a dispute, each
+with a reason where required, all through `decide_service_submission`.
+
+"Hỏi Kael" on requests, quotes, saved workers and Worker jobs returns to the Kael chat
+with a prompt about that item placed in the composer. Nothing is sent until the user
+sends it, so consent and confirmation rules are unchanged. The button appears only
+where the screen is connected to Kael. Kael replies offer copy, a rating with a closed
+set of reasons stored through `set_kael_feedback`, regenerate for the latest reply
+when no confirmation is pending (it resends the previous user message as a new turn;
+approvals cannot be replayed), and read-aloud only where the runtime provides speech
+synthesis. A Kael question event shows tappable answers that are sent as the next
+message. A Worker whose public profile is not listed cannot be saved, and the screen
+says so instead of reporting a connection failure.
+
+### Local Preview verification
+
+The Preview runs the real app against Supabase Local with
+`EXPO_PUBLIC_NESTSCOUT_TARGET=local`, the local API URL and the local publishable key,
+on port 8085. Disposable accounts are created through the local Auth admin API with
+email and password and signed in through the Email path. Worker grant, fixture
+eligibility, readiness documents and the fixture operator row are inserted in the local
+database because no client can grant them. Locally the Kael Edge function has no model
+credential, so a chat turn ends with `provider_unavailable`; the Kael-coordinated
+effects are verified by the real-gateway integration test in
+`scripts/supabase-mcp.integration.test.mjs`, where only the model turns are scripted.
+On web, the slide-to-confirm control needs a pointer drag with intermediate moves, and
+its accessibility action is available only to native assistive technologies.

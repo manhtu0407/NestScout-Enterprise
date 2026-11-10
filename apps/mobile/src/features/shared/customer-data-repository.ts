@@ -11,7 +11,7 @@ export type CustomerNotification = { id: string; kind: NotificationKind; request
 export type CustomerProfile = { display_name: string; email: string; address: string };
 export type StoredCustomerProfile = CustomerProfile & { avatar_path: string; updated_at: string };
 export type CustomerSettings = { push: boolean; quotes: boolean; messages: boolean; promotions: boolean; reduce_motion: boolean };
-export type JobWorkerCard = { job_id: string; request_id: string; profile_id: string; display_name: string; saved: boolean; review_rating: number | null };
+export type JobWorkerCard = { job_id: string; request_id: string; profile_id: string; display_name: string; saved: boolean; review_rating: number | null; listed: boolean };
 export type JobReview = { rating: number; body: string; tags: readonly string[] };
 
 export type SavedWorkerStrength = { label: string; count: number };
@@ -68,7 +68,7 @@ const settingKeys: readonly (keyof CustomerSettings)[] = ['push', 'quotes', 'mes
 
 function isJobWorkerCard(value: unknown): value is JobWorkerCard {
   return isRecord(value) && typeof value.job_id === 'string' && typeof value.request_id === 'string' && typeof value.profile_id === 'string'
-    && typeof value.display_name === 'string' && typeof value.saved === 'boolean'
+    && typeof value.display_name === 'string' && typeof value.saved === 'boolean' && typeof value.listed === 'boolean'
     && (value.review_rating === null || (Number.isSafeInteger(value.review_rating) && (value.review_rating as number) >= 1 && (value.review_rating as number) <= 5));
 }
 
