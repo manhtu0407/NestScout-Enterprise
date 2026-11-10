@@ -1,29 +1,7 @@
-import { authenticatedRequest } from '@/lib/authenticated-rest';
-
 import { callRpc, readRows } from './customer-data-repository';
-
-export type TermsDocument = 'terms';
 
 function isTimestamp(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
-}
-
-export async function readTermsAcceptance(userId: string, document: TermsDocument, version: string, signal: AbortSignal): Promise<string | null> {
-  const query = `terms_acceptances?select=accepted_at&document=eq.${document}&version=eq.${encodeURIComponent(version)}`;
-  const response = await authenticatedRequest(userId, query, { signal });
-  if (!response.ok) throw new Error('Could not read terms acceptance');
-  const rows: unknown = await response.json();
-  if (!Array.isArray(rows) || rows.length > 1) throw new Error('Invalid terms acceptance response');
-  if (rows.length === 0) return null;
-  const row: unknown = rows[0];
-  if (typeof row !== 'object' || row === null || !isTimestamp((row as Record<string, unknown>).accepted_at)) throw new Error('Invalid terms acceptance response');
-  return (row as { accepted_at: string }).accepted_at;
-}
-
-export async function acceptTerms(userId: string, document: TermsDocument, version: string, signal: AbortSignal): Promise<string> {
-  const result = await callRpc(userId, 'accept_terms', { p_document: document, p_version: version }, signal);
-  if (!isTimestamp(result)) throw new Error('Invalid terms acceptance response');
-  return result;
 }
 
 export async function readDeletionRequest(userId: string, signal: AbortSignal): Promise<string | null> {

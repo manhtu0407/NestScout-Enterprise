@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Icon, PressScale, type JobReview } from '@/features/shared';
+import { Icon, isDefinitiveFailure, PressScale, type JobReview } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
@@ -14,7 +14,7 @@ const colors = horizonColors.supportScreens;
 const requestColors = horizonColors.requestsScreen;
 const webInputStyle = { outlineStyle: 'solid', outlineWidth: 0 } as const;
 
-export type RequestWorker = { jobId: string; profileId: string; name: string; saved: boolean; rating: number | null };
+export type RequestWorker = { jobId: string; profileId: string; name: string; saved: boolean; rating: number | null; listed: boolean };
 
 export const reviewTags: readonly string[] = ['Đúng giờ', 'Gọn gàng', 'Giá hợp lý', 'Nhiệt tình', 'Làm kỹ'];
 export const maxReviewLength = 1000;
@@ -40,8 +40,8 @@ export function WorkerReviewPanel({ worker, finished, onToggleSave, onReview }: 
     setError(null);
     try {
       await onToggleSave(worker);
-    } catch {
-      setError('Chưa lưu được thợ. Kiểm tra kết nối rồi thử lại.');
+    } catch (failure) {
+      setError(isDefinitiveFailure(failure) ? 'Không lưu được thợ này. Tải lại để xem trạng thái mới nhất.' : 'Chưa lưu được thợ. Kiểm tra kết nối rồi thử lại.');
     } finally {
       setBusy(false);
     }
@@ -68,7 +68,7 @@ export function WorkerReviewPanel({ worker, finished, onToggleSave, onReview }: 
       <Text style={styles.title}>Thợ thực hiện</Text>
       <View style={styles.row}>
         <Text numberOfLines={1} style={styles.name}>{worker.name}</Text>
-        <PressScale
+        {worker.saved || worker.listed ? <PressScale
           accessibilityRole="button"
           accessibilityLabel={worker.saved ? `Bỏ lưu ${worker.name}` : `Lưu ${worker.name}`}
           accessibilityState={{ selected: worker.saved, busy }}
@@ -77,8 +77,9 @@ export function WorkerReviewPanel({ worker, finished, onToggleSave, onReview }: 
         >
           <Icon name="heart" size={requestMetrics.nextIconSize} color={worker.saved ? colors.heartFilled : requestColors.actionSecondaryLabel} />
           <Text style={styles.actionLabel}>{worker.saved ? 'Đã lưu' : 'Lưu thợ'}</Text>
-        </PressScale>
+        </PressScale> : null}
       </View>
+      {!worker.saved && !worker.listed ? <Text style={styles.note}>Hồ sơ của thợ chưa được công khai nên chưa thể lưu vào danh sách thợ đã lưu.</Text> : null}
       {worker.rating !== null ? (
         <Rating label="Bạn đã đánh giá" value={worker.rating} readOnly size="md" />
       ) : finished ? (
@@ -164,4 +165,5 @@ const styles = StyleSheet.create({
   input: { color: horizonColors.text, fontSize: metrics.fieldFontSize, minHeight: metrics.supportBodyMinHeight, textAlignVertical: 'top' },
   disabled: { opacity: metrics.saveDisabledOpacity },
   error: { color: colors.danger, fontSize: requestMetrics.noteSize, lineHeight: requestMetrics.noteLineHeight },
+  note: { color: requestColors.infoLabel, fontSize: requestMetrics.noteSize, lineHeight: requestMetrics.noteLineHeight },
 });

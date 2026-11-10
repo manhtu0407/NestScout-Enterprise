@@ -13,6 +13,7 @@ import { workerJobStageForSidebarId } from './worker-jobs';
 import { WorkerJobsScreen } from './worker-jobs-screen';
 import { jobChangesApiFor } from './job-changes-api';
 import { toWorkerPayoutView } from './worker-payout';
+import { workerJobPrompt } from './kael-handoff';
 import { workerProfileTabForSidebarId } from './worker-profile';
 import { WorkerProfileScreen } from './worker-profile-screen';
 import { toWorkerJobs, toWorkerNotificationItems, toWorkerProfileView } from './worker-views';
@@ -21,13 +22,13 @@ export function isWorkerSection(id: string | undefined): id is string {
   return id !== undefined && (workerJobStageForSidebarId(id) !== null || workerProfileTabForSidebarId(id) !== null || id === 'worker-earnings' || id === 'worker-payout' || id === 'worker-notifications');
 }
 
-type Props = { id: string; onBack: () => void; onNavigate?: (id: string) => void };
+type Props = { id: string; onBack: () => void; onNavigate?: (id: string) => void; onAskKael?: (prompt: string) => void };
 
 function StateShell({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
   return <SupportShell title={title} onBack={onBack}>{children}</SupportShell>;
 }
 
-export function WorkerSection({ id, onBack, onNavigate }: Props) {
+export function WorkerSection({ id, onBack, onNavigate, onAskKael }: Props) {
   const access = useAccess();
   const userId = access.phase === 'worker' && access.identity === 'verified' ? access.userId : null;
   const worker = useWorkerData(userId);
@@ -70,5 +71,5 @@ export function WorkerSection({ id, onBack, onNavigate }: Props) {
   if (earningsMode !== null) return <WorkerEarningsScreen key={earningsMode} initialMode={earningsMode} earnings={earnings} payout={payout} performPayout={worker.performPayout} loadQr={loadQr} onBack={onBack} />;
   if (profileTab !== null) return <WorkerProfileScreen key={profileTab} initialTab={profileTab} profile={profile} fallbackName="" perform={worker.performProfile} onBack={onBack} />;
   if (stage === null) return null;
-  return <WorkerJobsScreen key={stage} initialStage={stage} jobs={jobs} perform={worker.perform} jobChanges={{ userId, api: jobChangesApiFor(userId) }} onBack={onBack} />;
+  return <WorkerJobsScreen key={stage} initialStage={stage} jobs={jobs} perform={worker.perform} jobChanges={{ userId, api: jobChangesApiFor(userId) }} onBack={onBack} onAskKael={onAskKael ? job => onAskKael(workerJobPrompt(job)) : undefined} />;
 }

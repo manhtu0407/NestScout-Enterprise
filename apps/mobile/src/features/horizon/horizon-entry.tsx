@@ -22,12 +22,12 @@ import { useCustomerData } from './use-customer-data';
 import { useWorkerData } from './use-worker-data';
 import { workerBadgesFor } from './worker-jobs';
 import { toWorkerJobs, toWorkerProfileView } from './worker-views';
-import { useKaelConversation } from './use-kael-conversation';
+import { useKaelConversation, type KaelChatMessage } from './use-kael-conversation';
 import { useAiConsent } from './use-ai-consent';
-import { AiConsentSheet } from './ai-consent-sheet';
 import { settingsStrings } from './settings-strings';
 import { usePreferences } from '@/lib/preferences-provider';
 import { consumeSidebarReturn, markSidebarReturn } from './sidebar-return';
+import { consumeKaelHandoff } from './kael-handoff';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
@@ -53,7 +53,6 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   const kaelMode = access.phase === 'worker' ? 'worker' : 'client';
   const kael = useKaelConversation(kaelUserId, kaelMode);
   const aiConsent = useAiConsent(kaelUserId);
-  const [consentOpen, setConsentOpen] = useState(false);
   const consentStrings = settingsStrings(usePreferences().language);
   const scope = kaelUserId === null ? null : `${kaelUserId}:${kaelMode}`;
   const [previousScope, setPreviousScope] = useState(scope);
@@ -103,7 +102,21 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
 
   const openMenuRef = useRef(openMenu);
   useEffect(() => { openMenuRef.current = openMenu; });
+  const adoptPromptRef = useRef((prompt: string) => { inputRef.current = prompt; setInput(prompt); });
+  useEffect(() => {
+    adoptPromptRef.current = prompt => {
+      inputRef.current = prompt;
+      setInput(prompt);
+      access.updateHorizonDraft(access.userId, { text: prompt, images: imagesRef.current });
+    };
+  });
   useFocusEffect(useCallback(() => {
+    const prompt = consumeKaelHandoff();
+    if (prompt !== null) {
+      consumeSidebarReturn();
+      adoptPromptRef.current(prompt);
+      return undefined;
+    }
     if (!consumeSidebarReturn()) return undefined;
     const timer = setTimeout(() => openMenuRef.current(), horizonLayout.sidebar.returnDelay);
     return () => clearTimeout(timer);
@@ -137,27 +150,44 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   const kaelRunning = kael.running;
   const aiConsentGranted = aiConsent.granted;
   const aiConsentStatus = aiConsent.status;
-  const setAiConsent = aiConsent.set;
   const consentCheckingMessage = consentStrings.consentChecking;
   const consentFailedMessage = consentStrings.consentFailed;
-  const consentDeniedMessage = consentStrings.consentDenied;
+  const consentNeededMessage = consentStrings.consentNeeded;
   const deliver = useCallback(() => {
     const text = inputRef.current.trim();
     if (!text) return;
+    setComposerError(null);
     sendToKael(text);
     setInput('');
     inputRef.current = '';
     access.clearHorizonDraft(access.userId);
   }, [access, sendToKael]);
-  const allowAiSharing = useCallback(async () => {
-    await setAiConsent(true);
-    setConsentOpen(false);
-    deliver();
-  }, [deliver, setAiConsent]);
-  const denyAiSharing = useCallback(() => {
-    setConsentOpen(false);
-    setComposerError(consentDeniedMessage);
-  }, [consentDeniedMessage]);
+  const [consentBusy, setConsentBusy] = useState(false);
+  const setAiConsent = aiConsent.set;
+  const allowAi = useCallback(() => {
+    setConsentBusy(true);
+    setAiConsent(true).then(() => setComposerError(null), () => setComposerError(consentFailedMessage)).finally(() => setConsentBusy(false));
+  }, [consentFailedMessage, setAiConsent]);
+  const consentCard = kaelAvailable && aiConsentStatus === 'ready' && !aiConsentGranted
+    ? { lead: consentStrings.consentCardLead, action: consentStrings.consentCardAction, busy: consentBusy, onAllow: allowAi }
+    : null;
+  const refuseWithoutConsent = useCallback(() => {
+    if (aiConsentStatus === 'ready') setComposerError(consentNeededMessage);
+    else setComposerError(aiConsentStatus === 'error' ? consentFailedMessage : consentCheckingMessage);
+  }, [aiConsentStatus, consentCheckingMessage, consentFailedMessage, consentNeededMessage]);
+  const sendText = useCallback((text: string) => {
+    if (!kaelAvailable || kaelRunning) return;
+    if (!aiConsentGranted) {
+      refuseWithoutConsent();
+      return;
+    }
+    sendToKael(text);
+  }, [aiConsentGranted, kaelAvailable, kaelRunning, refuseWithoutConsent, sendToKael]);
+  const regenerate = useCallback((message: KaelChatMessage) => {
+    const index = kael.messages.findIndex(item => item.id === message.id);
+    const prompt = kael.messages.slice(0, index).reverse().find(item => item.role === 'user');
+    if (prompt && !/^(Xác nhận|Không thực hiện|Kiểm tra lại): /.test(prompt.text)) sendText(prompt.text);
+  }, [kael.messages, sendText]);
   const sendMessage = useCallback((images: readonly ComposerImage[]) => {
     if (images.length > 0) {
       setComposerError('Ảnh chưa được gửi vì chức năng phân tích ảnh chưa được kết nối.');
@@ -172,12 +202,11 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
       return;
     }
     if (!aiConsentGranted) {
-      if (aiConsentStatus === 'ready') setConsentOpen(true);
-      else setComposerError(aiConsentStatus === 'error' ? consentFailedMessage : consentCheckingMessage);
+      refuseWithoutConsent();
       return;
     }
     deliver();
-  }, [aiConsentGranted, aiConsentStatus, consentCheckingMessage, consentFailedMessage, deliver, kaelAvailable, kaelRunning]);
+  }, [aiConsentGranted, deliver, kaelAvailable, kaelRunning, refuseWithoutConsent]);
 
   const navigate = useCallback((id: string) => {
     setDrawerOpen(false);
@@ -212,10 +241,9 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
           </View>
         </Presence>
         <KaelAttentionCard attention={attention} onAction={onAttentionAction} onHeight={setAttentionHeight}/>
-        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
+        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} question={onPreviewMenu ? null : kael.question} onAnswer={sendText} onRate={onPreviewMenu ? undefined : kael.rate} onRegenerate={regenerate} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} consent={consentCard} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
-    <AiConsentSheet visible={consentOpen} onAllow={allowAiSharing} onDeny={denyAiSharing}/>
     {kaelUserId !== null && scope === memoryScope && <KaelMemorySettings key={scope} userId={kaelUserId} mode={kaelMode} onClose={() => setMemoryScope(null)}/>}
     {!onPreviewMenu && <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
       if (access.phase === 'guest') {

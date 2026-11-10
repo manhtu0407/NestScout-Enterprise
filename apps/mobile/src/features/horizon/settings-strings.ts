@@ -58,14 +58,10 @@ export type SettingsStrings = {
   deleteLoadFailed: string;
   deleteSignedOut: string;
   deleteRequestedOn: (date: string) => string;
-  termsAccept: string;
-  termsAcceptedOn: (date: string) => string;
-  termsNotOpen: string;
-  termsAcceptFailed: string;
-  termsLoadFailed: string;
-  termsChecking: string;
   aiShare: string;
   aiShareDetail: string;
+  consentCardLead: string;
+  consentCardAction: string;
   aiShareFailed: string;
   aiShareLoading: string;
   exportData: string;
@@ -79,9 +75,7 @@ export type SettingsStrings = {
   exportShare: string;
   consentTitle: string;
   consentBody: readonly string[];
-  consentAllow: string;
-  consentDeny: string;
-  consentDenied: string;
+  consentNeeded: string;
   consentFailed: string;
   consentChecking: string;
 };
@@ -144,14 +138,10 @@ const vi: SettingsStrings = {
   deleteLoadFailed: 'Chưa kiểm tra được trạng thái yêu cầu xoá. Kiểm tra kết nối rồi thử lại.',
   deleteSignedOut: 'Đăng nhập để gửi yêu cầu xoá tài khoản.',
   deleteRequestedOn: date => `Đã gửi yêu cầu xoá tài khoản ngày ${date}. Chúng tôi sẽ xử lý theo pháp luật và bạn có thể huỷ yêu cầu bất cứ lúc nào trước đó.`,
-  termsAccept: 'Tôi đồng ý với phiên bản này',
-  termsAcceptedOn: date => `Bạn đã đồng ý phiên bản này ngày ${date}.`,
-  termsNotOpen: 'Chưa mở chấp nhận: văn bản đang là bản dự thảo.',
-  termsAcceptFailed: 'Chưa ghi nhận được sự đồng ý. Kiểm tra kết nối rồi thử lại.',
-  termsLoadFailed: 'Chưa kiểm tra được trạng thái đồng ý.',
-  termsChecking: 'Đang kiểm tra…',
   aiShare: 'Chia sẻ dữ liệu với AI',
   aiShareDetail: 'Cho phép Kael gửi nội dung trò chuyện tới nhà cung cấp mô hình AI',
+  consentCardLead: 'Để trả lời, Kael gửi tin nhắn và thông tin yêu cầu liên quan của bạn tới nhà cung cấp AI. Đừng gửi số thẻ hay mật khẩu. Bạn có thể tắt bất cứ lúc nào trong Cài đặt › Quyền riêng tư.',
+  consentCardAction: 'Cho phép và bắt đầu',
   aiShareFailed: 'Chưa lưu được lựa chọn. Kiểm tra kết nối rồi thử lại.',
   aiShareLoading: 'Đang kiểm tra…',
   exportData: 'Tải dữ liệu của tôi',
@@ -166,14 +156,12 @@ const vi: SettingsStrings = {
   consentTitle: 'Kael gửi dữ liệu cho nhà cung cấp AI',
   consentBody: [
     'Khi bạn nhắn với Kael, NestScout gửi nội dung tin nhắn của bạn, các tin nhắn trước trong cuộc trò chuyện, thông tin yêu cầu và công việc liên quan, cùng tuỳ chọn trả lời bạn đã bật, tới nhà cung cấp mô hình AI để tạo câu trả lời.',
-    'Các nhà cung cấp mô hình AI hiện được cấu hình: Anthropic và DeepSeek.',
+    'Bản beta hỗ trợ nhà cung cấp mô hình Anthropic và DeepSeek. Nếu tìm kiếm web được bật, Kael cũng gửi truy vấn tìm kiếm tới Perplexity. Cấu hình có thể khác theo bản triển khai.',
     'Đừng gửi thông tin nhạy cảm như số thẻ hoặc mật khẩu trong tin nhắn. Bạn có thể rút lại đồng ý bất cứ lúc nào trong Cài đặt › Quyền riêng tư; khi đó Kael sẽ dừng trả lời.',
     'Chi tiết xem tại Cài đặt › Chính sách quyền riêng tư.',
   ],
-  consentAllow: 'Đồng ý và tiếp tục',
-  consentDeny: 'Không đồng ý',
-  consentDenied: 'Bạn chưa đồng ý chia sẻ dữ liệu với AI nên tin nhắn chưa được gửi. Bạn có thể đổi trong Cài đặt › Quyền riêng tư.',
-  consentFailed: 'Chưa ghi nhận được lựa chọn. Kiểm tra kết nối rồi thử lại.',
+  consentNeeded: 'Tin nhắn chưa được gửi. Chọn “Cho phép và bắt đầu” nếu bạn muốn gửi dữ liệu đã mô tả tới nhà cung cấp AI.',
+  consentFailed: 'Chưa kiểm tra được trạng thái đồng ý. Kiểm tra kết nối rồi thử lại.',
   consentChecking: 'Đang kiểm tra lựa chọn chia sẻ dữ liệu. Hãy thử gửi lại trong giây lát.',
 };
 
@@ -235,14 +223,10 @@ const en: SettingsStrings = {
   deleteLoadFailed: 'Could not check the deletion request status. Check your connection and try again.',
   deleteSignedOut: 'Sign in to request account deletion.',
   deleteRequestedOn: date => `Account deletion requested on ${date}. We will handle it in line with the law and you can cancel before then.`,
-  termsAccept: 'I agree to this version',
-  termsAcceptedOn: date => `You agreed to this version on ${date}.`,
-  termsNotOpen: 'Acceptance is not open yet: the text is still a draft.',
-  termsAcceptFailed: 'Could not record your agreement. Check your connection and try again.',
-  termsLoadFailed: 'Could not check your agreement status.',
-  termsChecking: 'Checking…',
   aiShare: 'Share data with AI',
   aiShareDetail: 'Let Kael send conversation content to AI model providers',
+  consentCardLead: 'To reply, Kael sends your messages and related request details to an AI provider. Do not send card numbers or passwords. You can turn this off any time in Settings › Privacy.',
+  consentCardAction: 'Allow and start',
   aiShareFailed: 'Could not save your choice. Check your connection and try again.',
   aiShareLoading: 'Checking…',
   exportData: 'Download my data',
@@ -257,14 +241,12 @@ const en: SettingsStrings = {
   consentTitle: 'Kael sends data to AI providers',
   consentBody: [
     'When you message Kael, NestScout sends your message, earlier messages in the conversation, related request and job details, and the reply preferences you turned on to an AI model provider to produce the answer.',
-    'AI model providers currently configured: Anthropic and DeepSeek.',
+    'The beta supports Anthropic and DeepSeek model providers. If web search is enabled, Kael also sends its search query to Perplexity. Provider configuration can vary by deployment.',
     'Do not send sensitive details such as card numbers or passwords in messages. You can withdraw consent at any time in Settings › Privacy; Kael will then stop replying.',
     'See Settings › Privacy Policy for details.',
   ],
-  consentAllow: 'Agree and continue',
-  consentDeny: 'Do not agree',
-  consentDenied: 'You have not agreed to share data with AI, so your message was not sent. You can change this in Settings › Privacy.',
-  consentFailed: 'Could not record your choice. Check your connection and try again.',
+  consentNeeded: 'Your message was not sent. Choose “Allow and start” if you want the described data sent to an AI provider.',
+  consentFailed: 'Could not check your agreement. Check your connection and try again.',
   consentChecking: 'Checking your data-sharing choice. Try sending again in a moment.',
 };
 

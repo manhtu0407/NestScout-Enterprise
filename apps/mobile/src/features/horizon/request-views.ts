@@ -101,6 +101,12 @@ function progressByRequest({ requests, quotes, activity }: Records, now: Date): 
   return new Map(requests.map(request => [request.id, deriveRequestProgress(quotesByRequest.get(request.id) ?? [], jobByRequest.get(request.id), now)]));
 }
 
+function pendingSubmissionFor(activity: Records['activity'], requestId: string): { id: string; evidence: string; jobVersion: number } | undefined {
+  const job = activity.jobs.find(item => item.request_id === requestId && item.stage === 'submitted');
+  const submission = job ? activity.submissions.find(item => item.job_id === job.id && item.decision === 'pending') : undefined;
+  return job && submission ? { id: submission.id, evidence: submission.evidence, jobVersion: job.version } : undefined;
+}
+
 export function toRequestViews(records: Records, now: Date): ServiceRequest[] {
   const progress = progressByRequest(records, now);
   const workerByRequest = new Map((records.workers ?? []).map(card => [card.request_id, card]));
@@ -123,7 +129,9 @@ export function toRequestViews(records: Records, now: Date): ServiceRequest[] {
       photoCount: records.photos ? (records.photos.get(request.id)?.length ?? 0) : undefined,
       photos: records.photos ? (records.photos.get(request.id) ?? []) : undefined,
       createdLabel: sent,
-      worker: card ? { jobId: card.job_id, profileId: card.profile_id, name: card.display_name, saved: card.saved, rating: card.review_rating } : undefined,
+      preferredVisitAt: request.preferred_visit_at ?? null,
+      worker: card ? { jobId: card.job_id, profileId: card.profile_id, name: card.display_name, saved: card.saved, rating: card.review_rating, listed: card.listed } : undefined,
+      pendingSubmission: pendingSubmissionFor(records.activity, request.id),
     };
   });
 }

@@ -82,18 +82,18 @@ export function TimePicker({ label, value, onChange, minuteStep = 15, format = '
 
 const styles = StyleSheet.create({
   root: { gap: metrics.gap },
-  label: { color: colors.label, fontSize: metrics.labelSize, fontWeight: '600' },
+  label: { color: colors.label, fontSize: metrics.labelSize, fontWeight: horizonLayout.timePickerStyle.labelFontWeight },
   field: { minHeight: metrics.fieldHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: metrics.gap, paddingHorizontal: metrics.fieldPadding, borderRadius: metrics.radius, borderWidth: metrics.edge, borderColor: colors.border, backgroundColor: colors.surface },
   fieldOpen: { borderColor: colors.accent },
-  disabled: { opacity: 0.5 },
+  disabled: { opacity: horizonLayout.timePickerStyle.disabledOpacity },
   valueWrap: { flex: 1, minWidth: 0 },
-  value: { color: colors.text, fontSize: metrics.valueSize, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  placeholder: { color: colors.placeholder, fontWeight: '400' },
+  value: { color: colors.text, fontSize: metrics.valueSize, fontWeight: horizonLayout.timePickerStyle.valueFontWeight, fontVariant: ['tabular-nums'] },
+  placeholder: { color: colors.placeholder, fontWeight: horizonLayout.timePickerStyle.placeholderFontWeight },
   description: { color: colors.label, fontSize: metrics.descriptionSize },
   menu: { borderRadius: metrics.radius, borderWidth: metrics.edge, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
   list: { maxHeight: metrics.listHeight },
   row: { height: metrics.rowHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: metrics.fieldPadding },
   rowOn: { backgroundColor: colors.accentSoft },
   rowText: { color: colors.text, fontSize: metrics.valueSize, fontVariant: ['tabular-nums'] },
-  rowTextOn: { fontWeight: '700' },
+  rowTextOn: { fontWeight: horizonLayout.timePickerStyle.rowTextOnFontWeight },
 });

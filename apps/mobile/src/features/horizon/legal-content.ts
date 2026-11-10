@@ -7,10 +7,6 @@ export type LegalDocumentId = 'terms' | 'privacy';
 export type LegalSection = { heading: string; paragraphs: readonly string[] };
 export type LegalDocument = { title: string; version: string; versionId: string; notice: string; summary: readonly string[]; sections: readonly LegalSection[] };
 
-export function isAcceptable(document: LegalDocument): boolean {
-  return !document.version.includes('[Chờ cung cấp') && document.sections.every(section => section.paragraphs.every(paragraph => !paragraph.includes('[Chờ cung cấp')));
-}
-
 const termsEn: LegalDocument = {
   ...termsVi,
   title: 'Terms of Service',

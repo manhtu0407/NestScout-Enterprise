@@ -60,9 +60,8 @@ export function AccountScreen({ mode, profileName, avatarUri, phoneLabel, onBack
       </View>
       <SupportSection title="Tài khoản">
         <SupportCard>
-          <SupportRow icon="user" title="Thông tin cá nhân" detail="Tên, email, địa chỉ" onPress={onEditProfile ?? (() => undefined)} />
-          <SupportRow icon="home" title="Địa chỉ đã lưu" onPress={() => undefined} />
-          <SupportRow icon="login" title="Đăng nhập và bảo mật" detail="Số điện thoại, mã xác thực" onPress={() => undefined} />
+          <SupportRow icon="user" title="Thông tin cá nhân" detail="Tên, email, địa chỉ" onPress={onEditProfile} />
+          <SupportRow icon="login" title="Đăng nhập" detail={phoneLabel ? `Đăng nhập bằng ${phoneLabel}` : 'Đăng nhập bằng số điện thoại, Google, Apple hoặc email'} />
         </SupportCard>
       </SupportSection>
       <SupportSection title="Vai trò">
@@ -72,7 +71,7 @@ export function AccountScreen({ mode, profileName, avatarUri, phoneLabel, onBack
       </SupportSection>
       <SupportSection>
         <SupportCard>
-          <SupportRow icon="login" title="Đăng xuất" danger onPress={onSignOut ?? (() => undefined)} />
+          <SupportRow icon="login" title="Đăng xuất" danger onPress={onSignOut} />
         </SupportCard>
       </SupportSection>
     </SupportShell>

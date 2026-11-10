@@ -365,6 +365,10 @@ a test and refuse to accept any other basis.
 | Accept, request correction or dispute | Owner; pending submission, job version and required reason | One decision and event; dispute creates a separate case; exact replay is safe; only the correction note is Worker-readable and the private reason is not exposed to any client; the Worker screen shows the note while the newest submission of the job is the correction request |
 | Open aftercare | Owner; completed job and case key | Linked case created once without changing the job or event history |
 | Read Kael context | Owner of request or currently eligible assigned Worker | Redacted deterministic projection; allowed and unavailable calls audited within a per-minute budget; the first rate-limited call in each minute is audited |
+| Issue fixture quote | Active `local_fixture` operator in `nestscout_private.fixture_operators`; no accepted quote and no job for the request | Next quote version with server expiry (5 minutes to 7 days); the issue key binds scope and amount; a newer version makes older ones stale |
+| Invite fixture worker | Same operator; accepted quote; no job; a Worker the operator names who holds an active grant, fixture eligibility, a complete basic profile and open availability and is not the requester | One open invitation per Worker and request under the request lock; inviting again returns it; no automatic selection. A local fixture Worker does not need to upload identity documents; public listing still does |
+| Set preferred visit | Owner; one hour to sixty days ahead; no job yet | Stored on the request as the customer's wish and shown on offers; never an appointment; clearing is allowed |
+| Rate a Kael reply | Owner of the assistant message, addressed by message id or run id | One rating per reply with a closed set of reasons; clearing deletes it; included in the data export and erased with the messages |
 
 A pause carries its category, the stage it interrupted and the job version it
 was made from. An ordinary interruption can be resumed only when the Worker
@@ -413,6 +417,17 @@ notification delivery, automatic dispute resolution, real dispatch or Worker
 qualification process is configured. Manual controls remain available when the
 status tool is unavailable.
 
+The operator queue and candidate lists are read-only calls, so they check the operator
+without taking a lock and work inside PostgREST's read-only transactions; the issue and
+invite commands keep the locking check. Quotes and invitations are created only by the fixture operator commands above,
+for local and test use. There is no operator screen, no pricing model and no
+automatic dispatch; a commercial pricing or dispatch policy is still an owner
+decision. PostgREST reports SQLSTATE `40001` (a stale version or an
+already-assigned request) with HTTP 500 and the code in the body. Kael and the
+mobile client treat such a response as a definitive refusal, because the
+transaction rolled back, while a 5xx response without a recognised code stays an
+uncertain outcome.
+
 ## Kael capability boundary
 
 Kael separates three things that must never be merged. What the user wants
@@ -441,8 +456,13 @@ negative tests, not by this table.
 | `task_update` | internal_prepare | kael_task | Same account; current task version | None; agent work state only | Any phase: pause, resume, switch | Completion without an observed effect is refused; a business record is never cancelled; closing a task keeps any unresolved submission checkable |
 | `service_request_draft` | internal_prepare | kael_task | Customer capability; client mode | None; the draft stays in the task | B intake: prepare request | Missing essentials keep the task waiting for input (B01) |
 | `service_request_submit` | explicit_confirmation | service_request | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `submit_service_request` with the approval id as submission key | B intake: submitRequest | Rejected keeps the draft; approving or rejecting from another conversation, with another fingerprint, after expiry or a second time changes nothing; an unverified, contradictory or concurrently changed result is reported as uncertain, pauses or keeps the task and is offered as a "Kiểm tra lại" check that reconciles the original approval with the same key, from any conversation of the account, also after a restart or after the Kael task was closed; no confirmation can be opened or used for the account meanwhile; disabled gate is unavailable |
-| `customer_requests` | authorized_read | service_request | Customer capability; client mode; row-level security | Reads of `service_requests`, `service_quotes` and `service_jobs` | B–E: own request, quote and job stage | Backend error is reported; other accounts' rows are never returned |
-| `worker_jobs` | authorized_read | worker_job | Worker capability (grant and eligibility); worker mode | `worker_job_cards` | C–D: Worker offers and assigned jobs | Empty for an account without Worker access |
+| `ask_user_choice` | internal_prepare | kael_task | Signed-in non-anonymous account | None; emits one question with tappable answers | Any phase: collect a missing detail | The answer arrives as the user's next message; no business record changes and the question is never a confirmation |
+| `service_quote_decision` | explicit_confirmation | service_quote | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `accept_service_quote` or `reject_service_quote` with the exact quote version, after a read of `service_quotes` | B agreement: acceptQuote, rejectQuote | A newer, expired, accepted or rejected quote is refused before and after confirmation; success is recorded only when the quote row shows this account's decision; an accepted quote is never reported as a booking |
+| `work_submission_decision` | explicit_confirmation | service_submission | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `decide_service_submission` with the exact job version, after reads of `service_submissions` and `service_jobs` | D acceptance: acceptWork, requestCorrection | Only a pending submission of the account's own submitted job; a correction needs the user's reason; acceptance is reported without implying payment |
+| `worker_offer_decision` | explicit_confirmation | worker_offer | Worker capability (grant and eligibility); worker mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `accept_service_invitation` or `decline_service_invitation` with the exact quote version, after a read of `worker_offers` | C assignment: acceptInvitation, declineInvitation | An expired, changed or already assigned offer is refused; success is recorded only when this Worker's job or declined invitation is observed |
+| `worker_job_advance` | explicit_confirmation | worker_job | Worker capability (grant and eligibility); worker mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `advance_service_job` with the exact job version, after a read of `worker_jobs` | D execution: markEnRoute, confirmArrival, startWork | Only the next legal stage of the Worker's own job; pauses, scope and submission stay in the Jobs screen; success is recorded only when the versioned job event is observed |
+| `customer_requests` | authorized_read | service_request | Customer capability; client mode; row-level security | Reads of `service_requests`, `service_quotes`, `service_jobs` and `service_submissions` | B–E: own request, quote, job stage and pending submission | Backend error is reported; other accounts' rows are never returned |
+| `worker_jobs` | authorized_read | worker_job | Worker capability (grant and eligibility); worker mode | `worker_job_cards`, `worker_offers` and `worker_jobs` | C–D: Worker offers and assigned jobs with versions | Empty for an account without Worker access |
 | `worker_earnings` | authorized_read | worker_earnings | Worker capability; worker mode | `worker_earnings` | F: recorded earnings, not settlement | Empty for an account without Worker access |
 | `worker_job_status` | authorized_read | worker_job | Worker capability; worker mode; assigned job | `kael_read_context` | D: kaelReadContext | Unavailable or rate limited; no other Worker's job |
 | `web_search` | authorized_read | public_web | Owner enabled `KAEL_WEB_SEARCH` with a key | Perplexity Search API, query only | Any phase: research | Unavailable; Kael says the answer may be outdated |
@@ -483,7 +503,13 @@ conflict, a failed verification call or an HTTP refusal the database did not
 record, is reported as uncertain, never as a definite failure when the request may
 exist.
 
-An uncertain outcome is reconciled, never retried as a new operation. The app
+An uncertain outcome is reconciled, never retried as a new operation. When the check
+itself is refused by the database or the gateway (a timeout, a serialization failure, a
+conflict or a permission refusal), the executor reads the row the effect would have
+written and reports success only when that row proves the operation (the quote
+decision, the submission decision, the accepted or declined invitation, the advanced job
+stage); otherwise the outcome stays uncertain. A first attempt that the database refuses
+remains a definite failure. The app
 shows it as a separate "Kiểm tra lại" card with no slide-to-confirm and no
 decline, and sends a `reconcile` action carrying the original approval id and
 fingerprint. `kael_consume_approval` with the `reconcile` intent accepts only an

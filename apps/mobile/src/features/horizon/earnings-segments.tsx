@@ -17,9 +17,9 @@ export function EarningsSegments<Key extends string>({ items, selected, onSelect
   const [width, setWidth] = useState(0);
   const [left] = useState(() => new Animated.Value(0));
   const placed = useRef(false);
-  const count = Math.max(items.length, 1);
+  const count = segmentCount(items.length);
   const index = Math.max(0, items.findIndex(item => item.key === selected));
-  const thumb = Math.max(0, (width - metrics.segmentPadding * 2) / count);
+  const thumb = Math.max(0, innerSpan(width, metrics.segmentPadding) / count);
 
   useEffect(() => {
     if (thumb <= 0) return undefined;
@@ -59,10 +59,18 @@ export function EarningsSegments<Key extends string>({ items, selected, onSelect
   );
 }
 
+function innerSpan(size: number, padding: number): number {
+  return size - padding * 2;
+}
+
+function segmentCount(items: number): number {
+  return Math.max(items, 1);
+}
+
 const styles = StyleSheet.create({
   segments: { flexDirection: 'row', padding: metrics.segmentPadding, borderRadius: metrics.segmentRadius, backgroundColor: colors.segmentTrack },
   thumb: { position: 'absolute', top: metrics.segmentPadding, bottom: metrics.segmentPadding, borderRadius: metrics.segmentRadius - metrics.segmentPadding, backgroundColor: colors.segmentActive, boxShadow: '0 1px 3px rgba(17,22,28,0.12)' },
-  segment: { flex: 1, height: metrics.segmentHeight - metrics.segmentPadding * 2, alignItems: 'center', justifyContent: 'center' },
-  segmentText: { color: colors.segmentText, fontSize: metrics.segmentSize, fontWeight: '600' },
+  segment: { flex: 1, height: innerSpan(metrics.segmentHeight, metrics.segmentPadding), alignItems: 'center', justifyContent: 'center' },
+  segmentText: { color: colors.segmentText, fontSize: metrics.segmentSize, fontWeight: horizonLayout.earningsSegmentsStyle.segmentTextFontWeight },
   segmentTextActive: { color: colors.segmentActiveText },
 });

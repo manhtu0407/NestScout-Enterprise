@@ -21,7 +21,7 @@ export type WorkerDocument = { id: string; kind: WorkerDocumentKind; title: stri
 export type WorkerDocumentSlot = { kind: WorkerDocumentKind; title: string; body: string; icon: IconName; required: boolean; limit: number; action: string };
 
 export const workerDocumentSlots: readonly WorkerDocumentSlot[] = [
-  { kind: 'identity', title: 'Giấy tờ tùy thân', body: 'Ảnh CCCD hoặc CMND, rõ cả 4 góc. Chỉ nhân viên xác minh xem được, khách không thấy.', icon: 'user', required: true, limit: 2, action: 'Tải ảnh giấy tờ' },
+  { kind: 'identity', title: 'Giấy tờ tùy thân', body: 'Ảnh CCCD hoặc CMND, rõ cả 4 góc. Chỉ nhân viên xác minh xem được, khách không thấy. Cần có để niêm yết hồ sơ công khai.', icon: 'user', required: true, limit: 2, action: 'Tải ảnh giấy tờ' },
   { kind: 'qualification', title: 'Chứng chỉ và giấy xác nhận tay nghề', body: 'Chứng chỉ nghề, giấy xác nhận từ đơn vị cũ hoặc thẻ an toàn lao động.', icon: 'receipt', required: false, limit: 10, action: 'Tải chứng chỉ' },
   { kind: 'portfolio', title: 'Ảnh công việc đã làm', body: 'Ảnh trước và sau khi làm giúp khách tin tưởng hồ sơ của bạn.', icon: 'image', required: false, limit: 6, action: 'Tải ảnh công việc' },
 ];
@@ -38,7 +38,7 @@ export const readinessSteps: readonly ReadinessStep[] = [
   { key: 'about', label: 'Giới thiệu bản thân', hint: 'Viết vài câu về nghề và cách làm việc', target: 'edit' },
   { key: 'skills', label: 'Kỹ năng', hint: 'Thêm ít nhất 1 kỹ năng', target: 'edit' },
   { key: 'services', label: 'Dịch vụ nhận', hint: 'Chọn ít nhất 1 dịch vụ ở tab Khu vực', target: 'areas' },
-  { key: 'identity', label: 'Giấy tờ tùy thân', hint: 'Tải ảnh CCCD hoặc CMND để xác minh', target: 'documents' },
+  { key: 'identity', label: 'Giấy tờ tùy thân', hint: 'Tải ảnh CCCD hoặc CMND để niêm yết hồ sơ công khai', target: 'documents' },
 ];
 
 export type WorkerReadiness = { total: number; done: number; pending: readonly ReadinessStep[]; ready: boolean };
@@ -59,7 +59,7 @@ export function workerReadiness(missing: readonly WorkerMissingItem[]): WorkerRe
 
 export function readinessSummary(missing: readonly WorkerMissingItem[]): string {
   const { pending } = workerReadiness(missing);
-  return pending.length === 0 ? 'Hồ sơ đã đủ để nhận việc' : `Cần bổ sung ${pending.length} mục để nhận việc`;
+  return pending.length === 0 ? 'Hồ sơ công khai đã hoàn thiện' : `Cần bổ sung ${pending.length} mục để niêm yết hồ sơ công khai`;
 }
 
 export type WorkerProfileView = {

@@ -75,18 +75,23 @@ function knownTask(ctx: ToolContext, id: unknown): TaskRecord | null {
   return typeof id === 'string' ? ctx.tasks.get(id) ?? null : null;
 }
 
+const fixtureNotice = 'A quote or offer whose basis is local_fixture is controlled test data, never a real commercial price or dispatch.';
+
 async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolExecution> {
-  const requests = await getJson(ctx, `service_requests?select=id,description,location,created_at&order=created_at.desc&limit=${limit}`) as Record<string, unknown>[];
+  const requests = await getJson(ctx, `service_requests?select=id,description,location,created_at,preferred_visit_at&order=created_at.desc&limit=${limit}`) as Record<string, unknown>[];
   if (requests.length === 0) return ok({ requests: [], notice: dataNotice });
   const ids = requests.map(row => String(row.id)).join(',');
-  const quotes = await getJson(ctx, `service_quotes?select=request_id,version,amount_minor,currency,expires_at,basis,accepted_at,rejected_at&request_id=in.(${ids})&order=version.desc`) as Record<string, unknown>[];
-  const jobs = await getJson(ctx, `service_jobs?select=request_id,stage&request_id=in.(${ids})`) as Record<string, unknown>[];
+  const quotes = await getJson(ctx, `service_quotes?select=id,request_id,version,scope,amount_minor,currency,expires_at,basis,accepted_at,rejected_at&request_id=in.(${ids})&order=version.desc`) as Record<string, unknown>[];
+  const jobs = await getJson(ctx, `service_jobs?select=id,request_id,stage,version&request_id=in.(${ids})`) as Record<string, unknown>[];
+  const jobIds = jobs.map(row => String(row.id)).join(',');
+  const submissions = jobIds ? await getJson(ctx, `service_submissions?select=id,job_id,evidence,decision&job_id=in.(${jobIds})&decision=eq.pending`) as Record<string, unknown>[] : [];
   const now = Date.now();
   return ok({
-    notice: dataNotice,
+    notice: `${dataNotice} ${fixtureNotice} A preferred visit time is the customer's wish, not a confirmed appointment.`,
     requests: requests.map(request => {
       const quote = quotes.find(row => row.request_id === request.id);
       const job = jobs.find(row => row.request_id === request.id);
+      const submission = job ? submissions.find(row => row.job_id === job.id) : undefined;
       const quoteStatus = !quote ? 'no_quote'
         : quote.accepted_at ? 'quote_accepted'
         : quote.rejected_at ? 'quote_rejected'
@@ -96,23 +101,155 @@ async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolEx
         description: clip(request.description, 300),
         location: clip(request.location, 200),
         created_at: request.created_at,
+        preferred_visit_at: request.preferred_visit_at ?? null,
         quote_status: quoteStatus,
-        quote: quote ? { version: quote.version, amount_minor: quote.amount_minor, currency: quote.currency, expires_at: quote.expires_at, basis: quote.basis } : null,
-        job_stage: job ? job.stage : null,
+        quote: quote ? {
+          quote_id: quote.id, version: quote.version, scope: clip(quote.scope, 300), amount_minor: quote.amount_minor, currency: quote.currency,
+          expires_at: quote.expires_at, basis: quote.basis,
+        } : null,
+        job: job ? { job_id: job.id, stage: job.stage, version: job.version } : null,
+        pending_submission: submission ? { submission_id: submission.id, evidence: clip(submission.evidence, 300) } : null,
       };
     }),
   });
 }
 
 async function workerJobs(ctx: ToolContext): Promise<ToolExecution> {
-  const rows = await getJson(ctx, 'rpc/worker_job_cards', { method: 'POST', body: {} }) as Record<string, unknown>[];
+  const [cards, offers, jobs] = await Promise.all([
+    getJson(ctx, 'rpc/worker_job_cards', { method: 'POST', body: {} }),
+    getJson(ctx, 'rpc/worker_offers', { method: 'POST', body: {} }),
+    getJson(ctx, 'rpc/worker_jobs', { method: 'POST', body: {} }),
+  ]) as [Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[]];
+  const card = (kind: string, id: unknown) => cards.find(row => row.kind === kind && row.ref_id === id);
   return ok({
-    notice: dataNotice,
-    items: rows.slice(0, 20).map(row => ({
+    notice: `${dataNotice} ${fixtureNotice} A preferred visit time is the customer's wish, not a confirmed appointment.`,
+    items: cards.slice(0, 20).map(row => ({
       kind: row.kind, ref_id: row.ref_id, title: clip(row.title, 80), description: clip(row.description, 300),
       location: clip(row.location, 200), customer_label: clip(row.customer_label, 40), updated_at: row.updated_at,
     })),
+    offers: offers.slice(0, 20).map(row => ({
+      invitation_id: row.invitation_id, quote_id: row.quote_id, quote_version: row.quote_version, scope: clip(row.scope, 300),
+      amount_minor: row.amount_minor, currency: row.currency, expires_at: row.expires_at, basis: row.basis,
+      title: clip(card('offer', row.invitation_id)?.title, 80), preferred_visit_at: card('offer', row.invitation_id)?.preferred_visit_at ?? null,
+    })),
+    jobs: jobs.slice(0, 20).map(row => ({
+      job_id: row.job_id, stage: row.stage, version: row.version, scope: clip(row.scope, 300),
+      title: clip(card('job', row.job_id)?.title, 80), location: clip(card('job', row.job_id)?.location, 200),
+      customer_label: clip(card('job', row.job_id)?.customer_label, 40), preferred_visit_at: card('job', row.job_id)?.preferred_visit_at ?? null,
+    })),
   });
+}
+
+function money(minor: unknown): string {
+  return `${Number(minor).toLocaleString('vi-VN')} ₫`;
+}
+
+function vietnamTime(value: unknown): string {
+  const time = Date.parse(String(value));
+  return Number.isNaN(time) ? 'Không rõ' : new Date(time).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function basisLabel(basis: unknown): string {
+  return basis === 'local_fixture' ? 'Dữ liệu thử nghiệm, không phải giao dịch thật' : 'Không rõ';
+}
+
+const stageLabels: Record<string, string> = { assigned: 'Đã nhận việc', en_route: 'Đang đi tới', arrived: 'Đã đến nơi', working: 'Đang làm việc' };
+const nextStage: Record<string, string> = { assigned: 'en_route', en_route: 'arrived', arrived: 'working' };
+const advanceSummaries: Record<string, string> = { en_route: 'Báo đang đi tới nhà khách', arrived: 'Báo đã đến nơi', working: 'Bắt đầu làm việc' };
+
+type WorkflowPlan = { summary: string; details: Record<string, string>; approvalArgs: Record<string, unknown> } | { error: string };
+
+async function planWorkflowApproval(ctx: ToolContext, tool: string, task: TaskRecord, args: Record<string, unknown>): Promise<WorkflowPlan> {
+  if (tool === 'service_quote_decision') {
+    const rows = await getJson(ctx, `service_quotes?select=id,request_id,version,scope,amount_minor,expires_at,basis,accepted_at,rejected_at&id=eq.${String(args.quote_id)}`) as Record<string, unknown>[];
+    const quote = rows[0];
+    if (!quote || quote.version !== args.quote_version || quote.accepted_at || quote.rejected_at || Date.parse(String(quote.expires_at)) <= Date.now()) return { error: 'quote_not_current' };
+    const latest = await getJson(ctx, `service_quotes?select=version,accepted_at&request_id=eq.${String(quote.request_id)}&order=version.desc&limit=1`) as Record<string, unknown>[];
+    if (latest[0]?.version !== quote.version) return { error: 'quote_not_current' };
+    const accept = args.decision === 'accepted';
+    return {
+      summary: accept ? 'Chấp nhận báo giá' : 'Từ chối báo giá',
+      details: {
+        'Phạm vi': clip(quote.scope, 300), 'Giá': money(quote.amount_minor), 'Phiên bản': String(quote.version), 'Hết hạn': vietnamTime(quote.expires_at),
+        'Cơ sở báo giá': basisLabel(quote.basis),
+        'Sau khi xác nhận': accept ? 'Chưa có thợ, lịch hẹn hay thanh toán nào được xác nhận.' : 'Báo giá này không còn được dùng; yêu cầu vẫn được giữ.',
+      },
+      approvalArgs: { task_id: task.id, quote_id: quote.id, quote_version: quote.version, decision: args.decision },
+    };
+  }
+  if (tool === 'work_submission_decision') {
+    const accept = args.decision === 'accepted';
+    const reason = String(args.reason).trim();
+    if (accept ? reason !== '' : reason === '') return { error: accept ? 'acceptance_takes_no_reason' : 'correction_needs_reason' };
+    const rows = await getJson(ctx, `service_submissions?select=id,job_id,evidence,decision&id=eq.${String(args.submission_id)}`) as Record<string, unknown>[];
+    const submission = rows[0];
+    if (!submission || submission.decision !== 'pending') return { error: 'submission_not_pending' };
+    const jobs = await getJson(ctx, `service_jobs?select=id,stage,version&id=eq.${String(submission.job_id)}`) as Record<string, unknown>[];
+    const job = jobs[0];
+    if (!job || job.stage !== 'submitted' || job.version !== args.job_version) return { error: 'job_changed' };
+    return {
+      summary: accept ? 'Nghiệm thu công việc' : 'Yêu cầu thợ sửa lại',
+      details: {
+        'Kết quả thợ gửi': clip(submission.evidence, 300),
+        ...(accept ? { 'Sau khi xác nhận': 'Công việc được ghi nhận hoàn tất. Thanh toán chưa được xác nhận trong ứng dụng.' } : { 'Lý do': reason }),
+      },
+      approvalArgs: { task_id: task.id, submission_id: submission.id, job_version: job.version, decision: args.decision, reason: accept ? '' : reason },
+    };
+  }
+  if (tool === 'worker_offer_decision') {
+    const offers = await getJson(ctx, 'rpc/worker_offers', { method: 'POST', body: {} }) as Record<string, unknown>[];
+    const offer = offers.find(row => row.invitation_id === args.invitation_id);
+    if (!offer || offer.quote_id !== args.quote_id || offer.quote_version !== args.quote_version) return { error: 'offer_not_open' };
+    const accept = args.decision === 'accept';
+    return {
+      summary: accept ? 'Nhận việc' : 'Từ chối lời mời',
+      details: {
+        'Phạm vi': clip(offer.scope, 300), 'Giá đã thỏa thuận': money(offer.amount_minor), 'Lời mời hết hạn': vietnamTime(offer.expires_at),
+        'Cơ sở báo giá': basisLabel(offer.basis),
+        ...(accept ? { 'Sau khi xác nhận': 'Công việc được giao cho bạn nếu chưa có thợ khác nhận trước.' } : {}),
+      },
+      approvalArgs: { task_id: task.id, invitation_id: offer.invitation_id, quote_id: offer.quote_id, quote_version: offer.quote_version, decision: args.decision },
+    };
+  }
+  const jobs = await getJson(ctx, 'rpc/worker_jobs', { method: 'POST', body: {} }) as Record<string, unknown>[];
+  const job = jobs.find(row => row.job_id === args.job_id);
+  if (!job || job.version !== args.version || nextStage[String(job.stage)] !== args.next) return { error: 'job_changed' };
+  return {
+    summary: advanceSummaries[String(args.next)] ?? 'Cập nhật tiến độ',
+    details: { 'Công việc': clip(job.scope, 300), 'Trạng thái hiện tại': stageLabels[String(job.stage)] ?? String(job.stage), 'Bước tiếp theo': stageLabels[String(args.next)] ?? String(args.next) },
+    approvalArgs: { task_id: task.id, job_id: job.job_id, version: job.version, next: args.next },
+  };
+}
+
+const unresolvedNotice = 'An operation of this kind that this account already confirmed has an unknown result. Do not ask for a new confirmation; tell the user to use "Kiểm tra lại" on the earlier operation first. That check reuses the original confirmed operation and never performs it twice.';
+
+async function requestWorkflowApproval(ctx: ToolContext, args: Record<string, unknown>, tool: string): Promise<ToolExecution> {
+  const task = knownTask(ctx, args.task_id);
+  if (!task) return failed('unknown_task');
+  if (task.kind !== 'workflow_action' || isTerminal(task.status)) return failed('task_not_open_workflow_action', task.id);
+  const plan = await planWorkflowApproval(ctx, tool, task, args);
+  if ('error' in plan) return failed(plan.error, task.id);
+  const bound = await fingerprint({ tool, actor: ctx.actor.userId, task_id: task.id, base_version: task.version, args: plan.approvalArgs });
+  const result = await ctx.store.requestApproval({
+    runId: ctx.runId, taskId: task.id, expectedVersion: task.version, tool, args: plan.approvalArgs, fingerprint: bound,
+    summary: plan.summary, details: plan.details, ttlSeconds: ctx.config.limits.approvalTtlSeconds,
+  });
+  if (result.status === 'unresolved') return { outcome: 'failed', content: { error: 'previous_operation_unresolved', notice: unresolvedNotice }, taskId: task.id };
+  if (result.status !== 'ok') return failed(result.status === 'stale' ? 'task_changed_elsewhere' : 'target_not_current', task.id);
+  rememberTask(ctx, result.task);
+  const approval: KaelApprovalView = {
+    id: result.approval_id, task_id: task.id, tool, summary: plan.summary, details: plan.details, fingerprint: bound, kind: 'confirm', expires_at: result.expires_at,
+  };
+  ctx.emit({ type: 'approval_required', approval });
+  return { outcome: 'approval_required', content: { status: 'waiting_for_user_approval', performed: false, approval_id: approval.id }, taskId: task.id };
+}
+
+function askUserChoice(ctx: ToolContext, args: Record<string, unknown>): ToolExecution {
+  const options = (args.options as string[]).map(option => option.trim()).filter(Boolean);
+  const date = args.allow_date === true;
+  if (options.length === 0 && !date) return failed('question_needs_options');
+  ctx.emit({ type: 'question', question: { id: crypto.randomUUID(), prompt: String(args.question).trim(), options, date } });
+  return ok({ status: 'shown_to_user', notice: 'The question is shown with tappable answers. End this reply now and wait for the answer in the next user message.' });
 }
 
 async function workerEarnings(ctx: ToolContext): Promise<ToolExecution> {
@@ -211,6 +348,13 @@ export async function executeDecision(decision: Extract<Decision, { kind: 'execu
         return await draftServiceRequest(ctx, args);
       case 'service_request_submit':
         return await requestSubmitApproval(ctx, args, tool.id);
+      case 'service_quote_decision':
+      case 'work_submission_decision':
+      case 'worker_offer_decision':
+      case 'worker_job_advance':
+        return await requestWorkflowApproval(ctx, args, tool.id);
+      case 'ask_user_choice':
+        return askUserChoice(ctx, args);
       case 'customer_requests':
         return await customerRequests(ctx, Number(args.limit));
       case 'worker_jobs':
@@ -246,32 +390,104 @@ export async function executeDecision(decision: Extract<Decision, { kind: 'execu
 
 export type EffectOutcome = { status: 'succeeded'; resourceId: string } | { status: 'failed' | 'uncertain'; reason: string };
 
+type Evidence = { path: string; observed: (row: Record<string, unknown>) => string | null };
+
+type EffectCall = { path: string; body: Record<string, unknown>; refusals: readonly number[]; sqlstateRefuses: boolean; resource: (value: unknown) => string | null; evidence: Evidence | null };
+
+const rowRead = (table: string, columns: string, key: string, value: unknown): string => `${table}?select=${columns}&${key}=eq.${encodeURIComponent(String(value))}`;
+
+async function observedEffect(evidence: Evidence, rest: Rest, signal: AbortSignal): Promise<string | null> {
+  try {
+    const response = await rest(evidence.path, { signal });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return null;
+    }
+    const rows: unknown = await response.json();
+    const row = Array.isArray(rows) && rows.length === 1 ? rows[0] as unknown : null;
+    return typeof row === 'object' && row !== null ? evidence.observed(row as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function databaseRefused(response: Response): Promise<boolean> {
+  try {
+    const body = await response.json() as { code?: unknown } | null;
+    return typeof body?.code === 'string' && /^[0-9A-Z]{5}$/.test(body.code);
+  } catch {
+    return false;
+  }
+}
+
+const textId = (value: unknown): string | null => typeof value === 'string' ? value : null;
+
+function effectCall(approvalId: string, tool: string, args: Record<string, unknown>): EffectCall | null {
+  if (tool === 'service_request_submit') {
+    const description = String(args.description ?? '');
+    const preferred = String(args.preferred_time ?? '');
+    return {
+      path: 'rpc/submit_service_request', refusals: [400, 422], sqlstateRefuses: false, resource: textId, evidence: null,
+      body: { p_submission_key: approvalId, p_description: preferred ? `${description}\nThời gian mong muốn: ${preferred}` : description, p_location: String(args.location ?? '') },
+    };
+  }
+  const refusals = [400, 403, 409, 422];
+  const sqlstateRefuses = true;
+  if (tool === 'service_quote_decision') {
+    const accepting = args.decision === 'accepted';
+    return { path: accepting ? 'rpc/accept_service_quote' : 'rpc/reject_service_quote', refusals, sqlstateRefuses, resource: textId,
+      evidence: { path: rowRead('service_quotes', 'id,accepted_at,rejected_at', 'id', args.quote_id), observed: row => typeof (accepting ? row.accepted_at : row.rejected_at) === 'string' ? textId(row.id) : null },
+      body: { p_quote_id: args.quote_id, p_version: args.quote_version } };
+  }
+  if (tool === 'work_submission_decision') {
+    return { path: 'rpc/decide_service_submission', refusals, sqlstateRefuses, resource: textId,
+      evidence: { path: rowRead('service_submissions', 'id,decision', 'id', args.submission_id), observed: row => row.decision === args.decision ? textId(row.id) : null },
+      body: { p_submission_id: args.submission_id, p_version: args.job_version, p_decision: args.decision, p_reason: args.decision === 'accepted' ? null : args.reason } };
+  }
+  if (tool === 'worker_offer_decision') {
+    const accepting = args.decision === 'accept';
+    return { path: accepting ? 'rpc/accept_service_invitation' : 'rpc/decline_service_invitation', refusals, sqlstateRefuses, resource: textId,
+      evidence: accepting
+        ? { path: rowRead('service_jobs', 'id', 'invitation_id', args.invitation_id), observed: row => textId(row.id) }
+        : { path: rowRead('service_invitations', 'id,state', 'id', args.invitation_id), observed: row => row.state === 'declined' ? textId(row.id) : null },
+      body: { p_invitation_id: args.invitation_id, p_quote_id: args.quote_id, p_quote_version: args.quote_version } };
+  }
+  if (tool === 'worker_job_advance') {
+    return { path: 'rpc/advance_service_job', refusals, sqlstateRefuses, resource: value => Number.isSafeInteger(value) ? String(args.job_id) : null,
+      evidence: { path: rowRead('service_jobs', 'id,stage,version', 'id', args.job_id), observed: row => row.stage === args.next && typeof row.version === 'number' && row.version > Number(args.version) ? textId(row.id) : null },
+      body: { p_job_id: args.job_id, p_version: args.version, p_next: args.next } };
+  }
+  return null;
+}
+
 export async function executeApprovedEffect(approvalId: string, approval: Extract<ApprovalConsume, { status: 'ok' | 'reconcile' }>, rest: Rest, signal: AbortSignal): Promise<EffectOutcome> {
-  if (approval.tool !== 'service_request_submit') return { status: 'failed', reason: 'unknown_effect' };
-  const description = String(approval.args.description ?? '');
-  const preferred = String(approval.args.preferred_time ?? '');
+  const call = effectCall(approvalId, approval.tool, approval.args);
+  if (!call) return { status: 'failed', reason: 'unknown_effect' };
   let response: Response;
   try {
-    response = await rest('rpc/submit_service_request', {
-      method: 'POST',
-      signal,
-      body: {
-        p_submission_key: approvalId,
-        p_description: preferred ? `${description}\nThời gian mong muốn: ${preferred}` : description,
-        p_location: String(approval.args.location ?? ''),
-      },
-    });
+    response = await rest(call.path, { method: 'POST', signal, body: call.body });
   } catch {
     return { status: 'uncertain', reason: 'backend_unreachable' };
   }
   if (!response.ok) {
-    await response.body?.cancel();
-    const rejected = response.status === 400 || response.status === 422;
-    return { status: rejected ? 'failed' : 'uncertain', reason: `backend_http_${response.status}` };
+    if (approval.status === 'reconcile' && call.evidence) {
+      await response.body?.cancel();
+      const resourceId = await observedEffect(call.evidence, rest, signal);
+      return resourceId ? { status: 'succeeded', resourceId } : { status: 'uncertain', reason: `backend_http_${response.status}` };
+    }
+    if (call.refusals.includes(response.status)) {
+      await response.body?.cancel();
+      return { status: 'failed', reason: `backend_http_${response.status}` };
+    }
+    if (!call.sqlstateRefuses) {
+      await response.body?.cancel();
+      return { status: 'uncertain', reason: `backend_http_${response.status}` };
+    }
+    return { status: await databaseRefused(response) ? 'failed' : 'uncertain', reason: `backend_http_${response.status}` };
   }
   try {
-    const id = await response.json();
-    return typeof id === 'string' ? { status: 'succeeded', resourceId: id } : { status: 'uncertain', reason: 'invalid_backend_response' };
+    const resource = call.resource(await response.json());
+    return resource ? { status: 'succeeded', resourceId: resource } : { status: 'uncertain', reason: 'invalid_backend_response' };
   } catch {
     return { status: 'uncertain', reason: 'invalid_backend_response' };
   }

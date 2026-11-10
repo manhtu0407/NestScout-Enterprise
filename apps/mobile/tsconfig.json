@@ -5,7 +5,7 @@
     "noUncheckedIndexedAccess": true,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
-    "types": ["expo/types", "node"],
+    "types": ["expo/types", "jest", "node"],
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]

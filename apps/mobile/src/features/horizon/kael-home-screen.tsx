@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentRef } from 'react';
-import { Animated, AppState, Easing, Keyboard, Platform, Share, StyleSheet, Text, View } from 'react-native';
+import { Animated, AppState, Easing, Keyboard, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent, ScrollViewInstance } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
-import type { KaelApproval, KaelTask } from '@/features/shared';
+import type { KaelApproval, KaelQuestion, KaelTask } from '@/features/shared';
 import { ChatComposer } from './chat-composer';
-import { LockedChatExtras } from './locked-chat-extras';
 import { ChatMessage } from './chat-message';
-import { MessageActions } from './message-actions';
+import { MessageActions, type FeedbackKind, type FeedbackReason } from './message-actions';
+import { QuestionCard } from './question-card';
+import { useKaelSpeech } from './kael-speech';
+import type { KaelChatMessage } from './use-kael-conversation';
 import type { ComposerImage } from './composer-media';
 import { ConversationMenu } from './conversation-menu';
 import type { ConversationMenuItem } from './conversation-menu';
@@ -43,7 +45,11 @@ type Props = {
   onMenu: () => void;
   onMemory?: () => void;
   onNew: () => void;
-  messages: { id: string; role: 'user' | 'assistant'; text: string; incomplete?: boolean }[];
+  messages: KaelChatMessage[];
+  question?: KaelQuestion | null;
+  onAnswer?: (answer: string) => void;
+  onRate?: (message: KaelChatMessage, rating: FeedbackKind | null, reason: FeedbackReason | null) => Promise<boolean>;
+  onRegenerate?: (message: KaelChatMessage) => void;
   activity?: string | null;
   tasks?: readonly KaelTask[];
   approvals?: readonly KaelApproval[];
@@ -51,12 +57,17 @@ type Props = {
   onDecide?: (approval: KaelApproval, approve: boolean) => void;
   topInset?: number;
   processingTaskId?: string | null;
+  consent?: KaelConsentCard | null;
 };
+
+export type KaelConsentCard = { lead: string; action: string; busy: boolean; onAllow: () => void };
 
 const noTasks: readonly KaelTask[] = [];
 const noApprovals: readonly KaelApproval[] = [];
 
-export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, draftImages, onDraftImagesChange, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null }: Props) {
+export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, question = null, onAnswer, onRate, onRegenerate, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, draftImages, onDraftImagesChange, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null, consent = null }: Props) {
+  const speech = useKaelSpeech();
+  const pendingConfirmation = approvals.some(approval => approval.kind === 'confirm');
   const reduceMotion = useReduceMotion();
   const [inset] = useState(() => new Animated.Value(topInset));
   const conversationRef = useRef<ScrollViewInstance>(null);
@@ -159,9 +170,6 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
   const menuItems: readonly ConversationMenuItem[] = [
     { id: 'new', label: 'Trò chuyện mới', icon: 'compose', onPress: startNew },
     { id: 'share', label: 'Chia sẻ', icon: 'share', onPress: share },
-    { id: 'pin', label: 'Ghim', icon: 'pin', onPress: () => notify('Ghim cuộc trò chuyện chưa được kết nối.') },
-    { id: 'find', label: 'Tìm trong cuộc trò chuyện', icon: 'search', onPress: () => notify('Tìm trong cuộc trò chuyện chưa được kết nối.') },
-    { id: 'archive', label: 'Lưu trữ', icon: 'archive', onPress: () => notify('Lưu trữ cuộc trò chuyện chưa được kết nối.') },
     { id: 'timeline', label: 'Tiến độ', icon: 'clock', onPress: () => setTimelineOpen(true) },
     ...(onMemory ? [{ id: 'memory', label: 'Bộ nhớ Kael', icon: 'clock' as const, onPress: () => { setMenuOpen(false); onMemory(); } }] : []),
   ];
@@ -177,8 +185,20 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
           : <View key={m.id} style={styles.reply}>
             <KaelStreamingText text={m.text} style={styles.replyText} streaming={busy && m.id === lastMessage?.id && !m.incomplete} incomplete={m.incomplete}/>
             {m.incomplete && <KaelIncompleteNote/>}
-            {!m.incomplete && !(busy && m.id === lastMessage?.id) && <MessageActions text={m.text} onCopy={copyText} soon/>}
-            {m.id === lastMessage?.id && !busy && !m.incomplete && <LockedChatExtras/>}
+            {!m.incomplete && !(busy && m.id === lastMessage?.id) && <MessageActions
+              text={m.text}
+              onCopy={copyText}
+              onFeedback={onRate && (m.runId !== undefined || m.storedId !== undefined) ? (rating, reason) => onRate(m, rating, reason) : undefined}
+              onRegenerate={onRegenerate && m.id === lastMessage?.id && !busy && !pendingConfirmation ? () => onRegenerate(m) : undefined}
+              speaking={speech.speakingId === m.id}
+              speechFailed={speech.failed && speech.speakingId === null}
+              onSpeak={speech.available ? () => speech.toggle(m.id, m.text) : undefined}/>}
+            {m.id === lastMessage?.id && !busy && question !== null && onAnswer && <QuestionCard
+              key={question.id}
+              question={question.prompt}
+              options={question.options.map((label, index) => ({ id: String(index), label }))}
+              date={question.date ? {} : undefined}
+              onAnswer={onAnswer}/>}
           </View>)}
         <KaelTaskList tasks={tasks} processingTaskId={processingTaskId} processingLabel={busy ? activity : null}/>
         {onDecide && approvals.map(approval => <KaelApprovalCard key={approval.id} approval={approval} disabled={busy} onDecide={onDecide}/>)}
@@ -188,6 +208,12 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
     <KaelIntro progress={progress} footerHeight={footerHeight} interactive={!chatActive}/>
     <KaelStage progress={progress} landing={landing} reaction={reaction} expression={expression} nod={kaelPhase === 'completed'} seatTop={seatTop} navHeight={metrics.navHeight}/>
     <View ref={footerRef} testID="kael-footer-layout" style={styles.footer} onLayout={event => setFooterHeight(event.nativeEvent.layout.height)}>
+      {consent !== null && <View testID="kael-consent-card" style={styles.consent}>
+        <Text style={styles.consentText}>{consent.lead}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={consent.action} accessibilityState={{ disabled: consent.busy, busy: consent.busy }} disabled={consent.busy} onPress={consent.onAllow} style={styles.consentAction}>
+          <Text style={styles.consentActionText}>{consent.action}</Text>
+        </Pressable>
+      </View>}
       <ChatComposer key={conversationKey} value={input} onChange={value => { setMenuNotice(null); onInput(value); }} onSubmit={images => { enterChat(); onSubmit(images); }} error={composerError ?? menuNotice} onMediaChange={() => { setMenuNotice(null); onClearComposerError(); }} initialImages={draftImages} onImagesChange={onDraftImagesChange} mediaExternallyManaged={Boolean(onDraftImagesChange)} locked={draftLocked}/>
       <Text style={styles.disclaimer}>Kael có thể mắc sai sót. Hãy kiểm tra thông tin quan trọng.</Text>
     </View>
@@ -205,5 +231,9 @@ const styles = StyleSheet.create({
   reply: { alignSelf: 'stretch', paddingHorizontal: bubbles.replyInset, gap: bubbles.replyGap },
   replyText: { color: colors.text, fontSize: bubbles.replyTextSize, lineHeight: bubbles.replyLineHeight },
   footer: { paddingHorizontal: metrics.composerSideInset, paddingBottom: metrics.footerBottomInset },
+  consent: { backgroundColor: bubbleColors.consentSurface, borderRadius: bubbles.consentRadius, padding: bubbles.consentPadding, gap: bubbles.consentGap, marginBottom: bubbles.consentMarginBottom },
+  consentText: { color: bubbleColors.consentText, fontSize: bubbles.consentTextSize, lineHeight: bubbles.consentLineHeight },
+  consentAction: { minHeight: bubbles.consentActionHeight, borderRadius: bubbles.consentActionRadius, paddingHorizontal: bubbles.consentActionPadding, backgroundColor: bubbleColors.consentActionSurface, alignItems: 'center', justifyContent: 'center' },
+  consentActionText: { color: bubbleColors.consentActionText, fontSize: bubbles.consentTextSize, lineHeight: bubbles.consentLineHeight, fontWeight: bubbles.consentActionWeight },
   disclaimer: { color: bubbleColors.disclaimerColor, fontSize: bubbles.disclaimerFontSize, lineHeight: bubbles.disclaimerLineHeight, textAlign: 'center', marginTop: metrics.disclaimerTop },
 });

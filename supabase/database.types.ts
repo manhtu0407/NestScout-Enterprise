@@ -163,6 +163,26 @@ isOneToOne: false
       referencedColumns: ["owner_id","mode"]
     }
                   ]
+                },"kael_message_feedback": {
+                  Row: {
+                    "message_id": string,"owner_id": string,"rating": string,"reason": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "message_id": string,"owner_id": string,"rating": string,"reason"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "message_id"?: string,"owner_id"?: string,"rating"?: string,"reason"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "kael_message_feedback_message_id_fkey"
+      columns: ["message_id"]
+isOneToOne: true
+      referencedRelation: "kael_messages"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"kael_messages": {
                   Row: {
                     "content": string,"conversation_id": string,"created_at": string,"id": string,"owner_id": string,"role": string,"run_id": string,"seq": number,"status": string
@@ -377,14 +397,14 @@ isOneToOne: false
                   ]
                 },"service_invitations": {
                   Row: {
-                    "basis": string,"expires_at": string,"id": string,"quote_id": string,"request_id": string,"state": string,"worker_id": string
+                    "basis": string,"created_at": string,"expires_at": string,"id": string,"invited_by": string | null,"quote_id": string,"request_id": string,"state": string,"worker_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "basis"?: string,"expires_at": string,"id"?: string,"quote_id": string,"request_id": string,"state"?: string,"worker_id": string
+                    "basis"?: string,"created_at"?: string,"expires_at": string,"id"?: string,"invited_by"?: string | null,"quote_id": string,"request_id": string,"state"?: string,"worker_id": string
                   }
                   Update: {
-                    "basis"?: string,"expires_at"?: string,"id"?: string,"quote_id"?: string,"request_id"?: string,"state"?: string,"worker_id"?: string
+                    "basis"?: string,"created_at"?: string,"expires_at"?: string,"id"?: string,"invited_by"?: string | null,"quote_id"?: string,"request_id"?: string,"state"?: string,"worker_id"?: string
                   }
                   Relationships: [
                     {
@@ -495,14 +515,14 @@ isOneToOne: true
                   ]
                 },"service_quotes": {
                   Row: {
-                    "accepted_at": string | null,"accepted_by": string | null,"amount_minor": number,"basis": string,"currency": string,"expires_at": string,"id": string,"rejected_at": string | null,"rejected_by": string | null,"request_id": string,"scope": string,"version": number
+                    "accepted_at": string | null,"accepted_by": string | null,"amount_minor": number,"basis": string,"currency": string,"expires_at": string,"id": string,"issue_key": string | null,"issued_by": string | null,"rejected_at": string | null,"rejected_by": string | null,"request_id": string,"scope": string,"version": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "accepted_at"?: string | null,"accepted_by"?: string | null,"amount_minor": number,"basis"?: string,"currency": string,"expires_at": string,"id"?: string,"rejected_at"?: string | null,"rejected_by"?: string | null,"request_id": string,"scope": string,"version": number
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"amount_minor": number,"basis"?: string,"currency": string,"expires_at": string,"id"?: string,"issue_key"?: string | null,"issued_by"?: string | null,"rejected_at"?: string | null,"rejected_by"?: string | null,"request_id": string,"scope": string,"version": number
                   }
                   Update: {
-                    "accepted_at"?: string | null,"accepted_by"?: string | null,"amount_minor"?: number,"basis"?: string,"currency"?: string,"expires_at"?: string,"id"?: string,"rejected_at"?: string | null,"rejected_by"?: string | null,"request_id"?: string,"scope"?: string,"version"?: number
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"amount_minor"?: number,"basis"?: string,"currency"?: string,"expires_at"?: string,"id"?: string,"issue_key"?: string | null,"issued_by"?: string | null,"rejected_at"?: string | null,"rejected_by"?: string | null,"request_id"?: string,"scope"?: string,"version"?: number
                   }
                   Relationships: [
                     {
@@ -515,14 +535,14 @@ isOneToOne: false
                   ]
                 },"service_requests": {
                   Row: {
-                    "created_at": string,"description": string,"id": string,"location": string,"owner_id": string,"submission_key": string
+                    "created_at": string,"description": string,"id": string,"location": string,"owner_id": string,"preferred_visit_at": string | null,"submission_key": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"description": string,"id"?: string,"location"?: string,"owner_id"?: string,"submission_key": string
+                    "created_at"?: string,"description": string,"id"?: string,"location"?: string,"owner_id"?: string,"preferred_visit_at"?: string | null,"submission_key": string
                   }
                   Update: {
-                    "created_at"?: string,"description"?: string,"id"?: string,"location"?: string,"owner_id"?: string,"submission_key"?: string
+                    "created_at"?: string,"description"?: string,"id"?: string,"location"?: string,"owner_id"?: string,"preferred_visit_at"?: string | null,"submission_key"?: string
                   }
                   Relationships: [
 
@@ -756,9 +776,25 @@ isOneToOne: false
 "finish_push_delivery":
 { Args: { "p_error": string,"p_notification_id": string }; Returns: boolean
                            },
+"fixture_dispatch_candidates":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "area": string,"display_name": string,"trade": string,"worker_id": string
+            }[]
+                           },
+"fixture_dispatch_queue":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "accepted_quote_id": string,"created_at": string,"description": string,"job_id": string,"latest_quote_id": string,"latest_quote_version": number,"location": string,"open_invitations": number,"quote_state": string,"request_id": string
+            }[]
+                           },
+"invite_fixture_worker":
+{ Args: { "p_request_id": string,"p_valid_minutes": number,"p_worker_id": string }; Returns: string
+                           },
+"issue_fixture_quote":
+{ Args: { "p_amount_minor": number,"p_key": string,"p_request_id": string,"p_scope": string,"p_valid_minutes": number }; Returns: string
+                           },
 "job_worker_cards":
 { Args: Record<PropertyKey, never>; Returns: {
-              "display_name": string,"job_id": string,"profile_id": string,"request_id": string,"review_rating": number,"saved": boolean
+              "display_name": string,"job_id": string,"listed": boolean,"profile_id": string,"request_id": string,"review_rating": number,"saved": boolean
             }[]
                            },
 "kael_actor_capabilities":
@@ -904,8 +940,14 @@ isOneToOne: false
 "set_customer_avatar":
 { Args: { "p_has_avatar": boolean }; Returns: string
                            },
+"set_kael_feedback":
+{ Args: { "p_message_id": string,"p_rating": string,"p_reason": string,"p_run_id": string }; Returns: string
+                           },
 "set_request_pinned":
 { Args: { "p_pinned": boolean,"p_request_id": string }; Returns: boolean
+                           },
+"set_request_preferred_visit":
+{ Args: { "p_at": string,"p_request_id": string }; Returns: string
                            },
 "set_worker_accepting":
 { Args: { "p_accepting": boolean }; Returns: boolean
@@ -943,7 +985,7 @@ isOneToOne: false
                            },
 "worker_job_cards":
 { Args: Record<PropertyKey, never>; Returns: {
-              "customer_label": string,"description": string,"kind": string,"location": string,"photo_count": number,"ref_id": string,"title": string,"updated_at": string
+              "customer_label": string,"description": string,"kind": string,"location": string,"photo_count": number,"preferred_visit_at": string,"ref_id": string,"title": string,"updated_at": string
             }[]
                            },
 "worker_jobs":

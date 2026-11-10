@@ -119,18 +119,22 @@ function Pill({ option, count, reacted, disabled, onPress }: PillProps) {
   );
 }
 
+function half(size: number): number {
+  return size / 2;
+}
+
 const styles = StyleSheet.create({
   root: { gap: metrics.gap },
   bar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: metrics.gap },
-  pill: { height: metrics.pillHeight, flexDirection: 'row', alignItems: 'center', gap: metrics.inner, paddingHorizontal: metrics.pillPadding, borderRadius: metrics.pillHeight / 2, borderWidth: metrics.edge, borderColor: colors.border, backgroundColor: colors.fill },
+  pill: { height: metrics.pillHeight, flexDirection: 'row', alignItems: 'center', gap: metrics.inner, paddingHorizontal: metrics.pillPadding, borderRadius: half(metrics.pillHeight), borderWidth: metrics.edge, borderColor: colors.border, backgroundColor: colors.fill },
   pillOn: { borderColor: colors.reactedBorder, backgroundColor: colors.reactedFill },
-  count: { color: colors.text, fontSize: metrics.countSize, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  count: { color: colors.text, fontSize: metrics.countSize, fontWeight: horizonLayout.reactionsStyle.countFontWeight, fontVariant: ['tabular-nums'] },
   countOn: { color: colors.reactedText },
-  add: { width: metrics.pillHeight, height: metrics.pillHeight, borderRadius: metrics.pillHeight / 2, alignItems: 'center', justifyContent: 'center', borderWidth: metrics.edge, borderColor: colors.border, backgroundColor: colors.fill },
+  add: { width: metrics.pillHeight, height: metrics.pillHeight, borderRadius: half(metrics.pillHeight), alignItems: 'center', justifyContent: 'center', borderWidth: metrics.edge, borderColor: colors.border, backgroundColor: colors.fill },
   addOpen: { backgroundColor: colors.reactedFill, borderColor: colors.reactedBorder },
   tray: { flexDirection: 'row', flexWrap: 'wrap', gap: metrics.gap, padding: metrics.trayPadding, borderRadius: metrics.trayRadius, backgroundColor: colors.trayFill },
-  choice: { height: metrics.pillHeight, flexDirection: 'row', alignItems: 'center', gap: metrics.inner, paddingHorizontal: metrics.pillPadding, borderRadius: metrics.pillHeight / 2, backgroundColor: colors.fill },
+  choice: { height: metrics.pillHeight, flexDirection: 'row', alignItems: 'center', gap: metrics.inner, paddingHorizontal: metrics.pillPadding, borderRadius: half(metrics.pillHeight), backgroundColor: colors.fill },
   choiceOn: { backgroundColor: colors.reactedFill },
-  choiceText: { color: colors.text, fontSize: metrics.countSize, fontWeight: '500' },
-  choiceTextOn: { color: colors.reactedText, fontWeight: '700' },
+  choiceText: { color: colors.text, fontSize: metrics.countSize, fontWeight: horizonLayout.reactionsStyle.choiceTextFontWeight },
+  choiceTextOn: { color: colors.reactedText, fontWeight: horizonLayout.reactionsStyle.choiceTextOnFontWeight },
 });

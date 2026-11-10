@@ -2,6 +2,7 @@
 set -eu
 npm run check:reserved
 npm run check:hygiene -- --hook
+node scripts/check-test-selection.mjs
 node scripts/check-comments.mjs --staged
 node scripts/check-format.mjs --staged
 node scripts/check-yaml.mjs

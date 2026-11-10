@@ -39,7 +39,7 @@ export function WorkerReadinessCard({ missing, onStep }: Props) {
         <View style={styles.head}>
           <Icon name="check" size={metrics.stepIcon} color={colors.okText} strokeWidth={2.2} />
           <View style={styles.headCopy}>
-            <Text style={[styles.title, styles.titleOk]}>Hồ sơ đã đủ để nhận việc</Text>
+            <Text style={[styles.title, styles.titleOk]}>Hồ sơ công khai đã hoàn thiện</Text>
             <Text style={[styles.caption, styles.titleOk]}>Bạn có thể bật nhận việc ở menu bên trái.</Text>
           </View>
         </View>
@@ -50,8 +50,8 @@ export function WorkerReadinessCard({ missing, onStep }: Props) {
     <View accessibilityRole="summary" style={[styles.card, styles.cardWarn]}>
       <View style={styles.head}>
         <View style={styles.headCopy}>
-          <Text style={[styles.title, styles.titleWarn]}>Hoàn thiện hồ sơ để nhận việc</Text>
-          <Text style={[styles.caption, styles.titleWarn]}>Cần đủ {total} mục trước khi bật nhận việc. Đã xong {done}/{total}.</Text>
+          <Text style={[styles.title, styles.titleWarn]}>Hoàn thiện hồ sơ công khai</Text>
+          <Text style={[styles.caption, styles.titleWarn]}>Cần đủ {total} mục để niêm yết hồ sơ. Đã xong {done}/{total}.</Text>
         </View>
       </View>
       <ProgressBar fraction={done / total} ready={false} />
@@ -61,7 +61,7 @@ export function WorkerReadinessCard({ missing, onStep }: Props) {
           if (!pending) {
             return (
               <View key={step.key} accessibilityLabel={`${step.label}, đã xong`} style={styles.step}>
-                <View style={[styles.mark, styles.markDone]}><Icon name="check" size={14} color="#FFFFFF" strokeWidth={2.6} /></View>
+                <View style={[styles.mark, styles.markDone]}><Icon name="check" size={14} color={horizonColors.workerReadinessCardStyle.propColor} strokeWidth={2.6} /></View>
                 <Text style={[styles.stepTitle, styles.stepDone]}>{step.label}</Text>
               </View>
             );
@@ -82,14 +82,18 @@ export function WorkerReadinessCard({ missing, onStep }: Props) {
   );
 }
 
+function half(size: number): number {
+  return size / 2;
+}
+
 const styles = StyleSheet.create({
   card: { borderRadius: metrics.cardRadius, padding: metrics.cardPadding, gap: metrics.innerGap, marginBottom: metrics.cardGap },
   cardWarn: { backgroundColor: colors.warnFill },
   cardOk: { backgroundColor: colors.okFill },
   head: { flexDirection: 'row', alignItems: 'center', gap: metrics.stepGap },
-  headCopy: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: 16, fontWeight: '600' },
-  caption: { fontSize: 13, lineHeight: 18 },
+  headCopy: { flex: 1, minWidth: 0, gap: horizonLayout.workerReadinessCardStyle.headCopyGap },
+  title: { fontSize: horizonLayout.workerReadinessCardStyle.titleFontSize, fontWeight: horizonLayout.workerReadinessCardStyle.titleFontWeight },
+  caption: { fontSize: horizonLayout.workerReadinessCardStyle.captionFontSize, lineHeight: horizonLayout.workerReadinessCardStyle.captionLineHeight },
   titleWarn: { color: colors.warnText },
   titleOk: { color: colors.okText },
   track: { height: metrics.progressHeight, borderRadius: metrics.progressRadius, overflow: 'hidden' },
@@ -98,13 +102,13 @@ const styles = StyleSheet.create({
   bar: { flex: 1, borderRadius: metrics.progressRadius },
   barWarn: { backgroundColor: colors.warnBar },
   barOk: { backgroundColor: colors.okBar },
-  steps: { marginTop: 4 },
+  steps: { marginTop: horizonLayout.workerReadinessCardStyle.stepsMarginTop },
   step: { minHeight: metrics.stepHeight, flexDirection: 'row', alignItems: 'center', gap: metrics.stepGap },
-  stepCopy: { flex: 1, minWidth: 0, gap: 1 },
-  stepTitle: { color: colors.warnText, fontSize: metrics.stepTitleSize, fontWeight: '600' },
-  stepHint: { color: colors.warnText, fontSize: metrics.stepHintSize, opacity: 0.8 },
-  stepDone: { opacity: 0.6, fontWeight: '500' },
-  mark: { width: metrics.stepIcon, height: metrics.stepIcon, borderRadius: metrics.stepIcon / 2, alignItems: 'center', justifyContent: 'center' },
-  markTodo: { borderWidth: 2, borderColor: colors.warnBar },
+  stepCopy: { flex: 1, minWidth: 0, gap: horizonLayout.workerReadinessCardStyle.stepCopyGap },
+  stepTitle: { color: colors.warnText, fontSize: metrics.stepTitleSize, fontWeight: horizonLayout.workerReadinessCardStyle.stepTitleFontWeight },
+  stepHint: { color: colors.warnText, fontSize: metrics.stepHintSize, opacity: horizonLayout.workerReadinessCardStyle.stepHintOpacity },
+  stepDone: { opacity: horizonLayout.workerReadinessCardStyle.stepDoneOpacity, fontWeight: horizonLayout.workerReadinessCardStyle.stepDoneFontWeight },
+  mark: { width: metrics.stepIcon, height: metrics.stepIcon, borderRadius: half(metrics.stepIcon), alignItems: 'center', justifyContent: 'center' },
+  markTodo: { borderWidth: horizonLayout.workerReadinessCardStyle.markTodoBorderWidth, borderColor: colors.warnBar },
   markDone: { backgroundColor: colors.okBar },
 });

@@ -34,6 +34,7 @@ export type WorkerJobCard = {
   location: string;
   customer_label: string;
   updated_at: string | null;
+  preferred_visit_at?: string | null;
 };
 
 export type Pause = {

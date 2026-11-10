@@ -26,6 +26,13 @@ export type KaelApprovalView = {
   expires_at: string | null;
 };
 
+export type KaelQuestionView = {
+  id: string;
+  prompt: string;
+  options: string[];
+  date: boolean;
+};
+
 export type KaelToolOutcome = 'succeeded' | 'failed' | 'denied' | 'approval_required' | 'unavailable' | 'uncertain';
 
 export const kaelFailureCodes = [
@@ -42,6 +49,7 @@ export type KaelEventBody =
   | { type: 'tool_completed'; call_id: string; tool: string; outcome: KaelToolOutcome; label: string }
   | { type: 'task_updated'; task: KaelTaskView }
   | { type: 'approval_required'; approval: KaelApprovalView }
+  | { type: 'question'; question: KaelQuestionView }
   | { type: 'run_completed'; text: string }
   | { type: 'run_failed'; code: KaelFailureCode; message: string; retryable: boolean };
 

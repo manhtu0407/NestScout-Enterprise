@@ -188,9 +188,9 @@ function WorkerCard({ worker, expanded, leaving, failed, onLeave, onToggle, onRe
         <Text style={styles.toggleLabel}>{expanded ? 'Thu gọn' : 'Xem chi tiết'}</Text>
       </PressScale>
 
-      <PressScale accessibilityRole="button" accessibilityLabel={`Hỏi Kael về ${worker.name}`} onPress={() => onAskKael?.(worker)} style={supportStyles.secondary}>
+      {onAskKael ? <PressScale accessibilityRole="button" accessibilityLabel={`Hỏi Kael về ${worker.name}`} onPress={() => onAskKael(worker)} style={supportStyles.secondary}>
         <Text style={supportStyles.secondaryLabel}>Hỏi Kael về thợ này</Text>
-      </PressScale>
+      </PressScale> : null}
     </View>
     </Presence>
   );

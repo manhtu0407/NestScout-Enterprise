@@ -74,7 +74,9 @@ export function KaelApprovalCard({ approval, disabled, onDecide }: ApprovalProps
   if (approval.kind === 'reconcile') {
     return <View accessibilityLabel={`Cần kiểm tra lại: ${approval.summary}`} style={styles.card}>
       <ApprovalDetails approval={approval}/>
-      <Text style={styles.detailLabel}>Bạn đã xác nhận yêu cầu này nhưng chưa rõ hệ thống đã nhận hay chưa. Kiểm tra lại dùng đúng lần gửi bạn đã xác nhận, với cùng nội dung và mã gửi: nếu hệ thống đã nhận, Kael chỉ báo lại kết quả; nếu chưa, chính lần gửi đó được hoàn tất. Không tạo yêu cầu mới và không cần xác nhận lại.</Text>
+      <Text style={styles.detailLabel}>{approval.tool === 'service_request_submit'
+        ? 'Bạn đã xác nhận yêu cầu này nhưng chưa rõ hệ thống đã nhận hay chưa. Kiểm tra lại dùng đúng lần gửi bạn đã xác nhận, với cùng nội dung và mã gửi: nếu hệ thống đã nhận, Kael chỉ báo lại kết quả; nếu chưa, chính lần gửi đó được hoàn tất. Không tạo yêu cầu mới và không cần xác nhận lại.'
+        : 'Bạn đã xác nhận thao tác này nhưng chưa rõ hệ thống đã ghi nhận hay chưa. Kiểm tra lại dùng đúng thao tác bạn đã xác nhận: nếu đã ghi nhận, Kael chỉ báo lại kết quả; nếu chưa, chính thao tác đó được hoàn tất. Không có thao tác thứ hai và không cần xác nhận lại.'}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={`Kiểm tra lại ${approval.summary}`} disabled={disabled} onPress={() => onDecide(approval, true)} style={styles.decline}>
         <Text style={styles.declineText}>Kiểm tra lại</Text>
       </Pressable>
@@ -82,7 +84,7 @@ export function KaelApprovalCard({ approval, disabled, onDecide }: ApprovalProps
   }
   return <View accessibilityLabel={`Cần xác nhận: ${approval.summary}`} style={styles.card}>
     <ApprovalDetails approval={approval}/>
-    <Text style={styles.detailLabel}>Yêu cầu này chưa được gửi cho đến khi bạn xác nhận.</Text>
+    <Text style={styles.detailLabel}>{approval.tool === 'service_request_submit' ? 'Yêu cầu này chưa được gửi cho đến khi bạn xác nhận.' : 'Chưa có thao tác nào được thực hiện cho đến khi bạn xác nhận.'}</Text>
     <SlideToConfirm label="Trượt để xác nhận" accessibilityLabel={`Xác nhận ${approval.summary}`} disabled={disabled} onConfirm={() => onDecide(approval, true)}/>
     <Pressable accessibilityRole="button" accessibilityLabel="Không thực hiện" disabled={disabled} onPress={() => onDecide(approval, false)} style={styles.decline}>
       <Text style={styles.declineText}>Không thực hiện</Text>

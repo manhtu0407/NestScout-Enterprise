@@ -7,7 +7,7 @@ export type SideEffect = 'internal' | 'read' | 'external_read' | 'prepare' | 'co
 export type Capability = 'customer' | 'worker';
 export type KaelMode = 'client' | 'worker';
 export type ExecutionClass = 'internal_prepare' | 'authorized_read' | 'explicit_confirmation';
-export type ResourceKind = 'kael_task' | 'service_request' | 'worker_job' | 'worker_earnings' | 'public_web' | 'knowledge';
+export type ResourceKind = 'kael_task' | 'service_request' | 'service_quote' | 'service_submission' | 'worker_offer' | 'worker_job' | 'worker_earnings' | 'public_web' | 'knowledge';
 
 export type ToolContract = {
   id: string;
@@ -74,14 +74,58 @@ export const toolRegistry: readonly ToolContract[] = [
     retry: 'same_submission_key', label: 'Đang chuẩn bị bước xác nhận',
   }),
   contract({
+    id: 'ask_user_choice',
+    description: 'Show the user one short question with up to five tappable answers in the app, for example to collect a missing draft field or let the user pick between options you already explained. Set allow_date to let the user pick a day instead. The user answers in their next message, so end your reply right after calling it. Never use it to ask for confirmation of a business operation.',
+    inputSchema: schema({
+      question: { type: 'string', minLength: 3, maxLength: 200 },
+      options: { type: 'array', maxItems: 5, items: { type: 'string', minLength: 1, maxLength: 60 } },
+      allow_date: { type: 'boolean' },
+    }),
+    sideEffect: 'internal', executionClass: 'internal_prepare', resource: 'kael_task', requires: null, modes: ['client', 'worker'], label: 'Đang chuẩn bị câu hỏi',
+  }),
+  contract({
+    id: 'service_quote_decision',
+    description: 'Ask the customer to confirm accepting or rejecting one current quote returned by customer_requests, inside an open workflow_action task. Nothing changes until the user confirms in the app. An accepted quote is an agreement on scope and price only: no worker, appointment or payment exists until backend data shows it.',
+    inputSchema: schema({ task_id: uuid, quote_id: uuid, quote_version: { type: 'integer', minimum: 1, maximum: 1000 }, decision: { type: 'string', enum: ['accepted', 'rejected'] } }),
+    sideEffect: 'consequential', executionClass: 'explicit_confirmation', resource: 'service_quote', requires: 'customer', modes: ['client'], effect: 'service_quote_decision',
+    retry: 'same_submission_key', label: 'Đang chuẩn bị bước xác nhận báo giá',
+  }),
+  contract({
+    id: 'work_submission_decision',
+    description: "Ask the customer to confirm accepting submitted work or requesting a correction for a pending submission returned by customer_requests, inside an open workflow_action task. A correction needs a short reason in the user's own words; acceptance needs an empty reason. Accepting work is not a payment.",
+    inputSchema: schema({
+      task_id: uuid, submission_id: uuid, job_version: { type: 'integer', minimum: 1, maximum: 100000 },
+      decision: { type: 'string', enum: ['accepted', 'revision_requested'] }, reason: { type: 'string', maxLength: 500 },
+    }),
+    sideEffect: 'consequential', executionClass: 'explicit_confirmation', resource: 'service_submission', requires: 'customer', modes: ['client'], effect: 'work_submission_decision',
+    retry: 'same_submission_key', label: 'Đang chuẩn bị bước nghiệm thu',
+  }),
+  contract({
+    id: 'worker_offer_decision',
+    description: 'Ask the worker to confirm accepting or declining one open offer returned by worker_jobs, inside an open workflow_action task. Nothing changes until the worker confirms in the app; only one worker can win an assignment.',
+    inputSchema: schema({
+      task_id: uuid, invitation_id: uuid, quote_id: uuid, quote_version: { type: 'integer', minimum: 1, maximum: 1000 },
+      decision: { type: 'string', enum: ['accept', 'decline'] },
+    }),
+    sideEffect: 'consequential', executionClass: 'explicit_confirmation', resource: 'worker_offer', requires: 'worker', modes: ['worker'], effect: 'worker_offer_decision',
+    retry: 'same_submission_key', label: 'Đang chuẩn bị bước nhận việc',
+  }),
+  contract({
+    id: 'worker_job_advance',
+    description: 'Ask the worker to confirm moving one assigned job returned by worker_jobs to its next stage (assigned to en_route, en_route to arrived, arrived to working), using the version returned there, inside an open workflow_action task. Pausing, scope changes and submitting work stay in the Jobs screen.',
+    inputSchema: schema({ task_id: uuid, job_id: uuid, version: { type: 'integer', minimum: 1, maximum: 100000 }, next: { type: 'string', enum: ['en_route', 'arrived', 'working'] } }),
+    sideEffect: 'consequential', executionClass: 'explicit_confirmation', resource: 'worker_job', requires: 'worker', modes: ['worker'], effect: 'worker_job_advance',
+    retry: 'same_submission_key', label: 'Đang chuẩn bị bước cập nhật tiến độ',
+  }),
+  contract({
     id: 'customer_requests',
-    description: "Read the signed-in customer's own recent service requests and quote status. Returns authoritative backend state.",
+    description: "Read the signed-in customer's own recent service requests with the current quote, assigned job stage and any work submission waiting for acceptance. Returns authoritative backend state.",
     inputSchema: schema({ limit: { type: 'integer', minimum: 1, maximum: 10 } }),
     sideEffect: 'read', executionClass: 'authorized_read', resource: 'service_request', requires: 'customer', modes: ['client'], label: 'Đang xem yêu cầu của bạn',
   }),
   contract({
     id: 'worker_jobs',
-    description: "Read the signed-in worker's own open offers and assigned jobs.",
+    description: "Read the signed-in worker's own open offers and assigned jobs with the ids, versions and stages needed for offer and progress decisions.",
     inputSchema: schema({}),
     sideEffect: 'read', executionClass: 'authorized_read', resource: 'worker_job', requires: 'worker', modes: ['worker'], label: 'Đang xem lịch việc của bạn',
   }),

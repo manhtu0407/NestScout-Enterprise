@@ -13,7 +13,7 @@ export const taskTransitions: Readonly<Record<KaelTaskStatus, readonly KaelTaskS
 
 export const modelSettableStatuses: readonly KaelTaskStatus[] = ['running', 'waiting_for_input', 'paused', 'completed', 'failed', 'cancelled'];
 
-export const taskKinds = ['general', 'service_request', 'customer_lookup', 'worker_assist', 'research', 'writing'] as const;
+export const taskKinds = ['general', 'service_request', 'customer_lookup', 'worker_assist', 'research', 'writing', 'workflow_action'] as const;
 
 export type TaskKind = typeof taskKinds[number];
 

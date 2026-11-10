@@ -41,9 +41,16 @@ function capabilityNotes(actor: Actor, config: KaelConfig, offered: readonly Too
     notes.push(has('service_request_submit')
       ? 'You may ask the user to confirm submitting a complete draft with service_request_submit; the app then shows a confirmation control.'
       : 'Submitting requests through Kael is not enabled. Prepare the draft and tell the user they can submit it from the Requests screen.');
+    if (has('service_quote_decision') || has('work_submission_decision')) {
+      notes.push('To act on a quote or on submitted work, read customer_requests, create a workflow_action task, then call service_quote_decision or work_submission_decision with the exact ids and versions returned; the app shows a confirmation control. Never decide for the user.');
+    }
   } else {
     notes.push('Help workers draft quotes or messages as text only; nothing is sent on their behalf.');
+    if (has('worker_offer_decision') || has('worker_job_advance')) {
+      notes.push('To accept or decline an offer or report progress, read worker_jobs, create a workflow_action task, then call worker_offer_decision or worker_job_advance with the exact ids and versions returned; the app shows a confirmation control.');
+    }
   }
+  if (has('ask_user_choice')) notes.push('When you need one missing detail and the answers are short options or a day, ask with ask_user_choice instead of a text list.');
   return notes;
 }
 

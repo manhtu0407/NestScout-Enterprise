@@ -29,7 +29,7 @@ type Props = {
   perform: WorkerPerform;
   jobChanges?: { userId: string; api: JobChangesApi };
   onBack: () => void;
-  onAskKael?: () => void;
+  onAskKael?: (job: WorkerJob) => void;
   sample?: boolean;
 };
 
@@ -118,7 +118,7 @@ export function WorkerJobsScreen({ initialStage, jobs, perform, jobChanges, onBa
     },
     onResume: () => void run(job.id, { type: 'resume' }),
     onOpen: kind => open(job.id, kind),
-    onAskKael,
+    onAskKael: onAskKael ? () => onAskKael(job) : undefined,
   });
 
   return (
@@ -366,6 +366,7 @@ function JobCard({ job, actions, form, busy, error, onCancelForm, onRun, onInval
         ) : null}
       </View>
       {stage === 'offer' ? <Text numberOfLines={3} style={styles.description}>{job.description}</Text> : null}
+      {job.preferredVisitLabel ? <Text style={styles.description}>{`Khách mong muốn: ${job.preferredVisitLabel} · chưa phải lịch hẹn đã xác nhận`}</Text> : null}
       <View style={styles.amountBlock}>
         <Text style={styles.amountLabel}>Giá khách đã chấp nhận</Text>
         <Text accessibilityLabel={`Giá khách đã chấp nhận ${amount}`} style={styles.amount}>{amount}</Text>

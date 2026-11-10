@@ -105,7 +105,7 @@ function StarCell({ position, value, star, interactive, allowHalf, max, onChoose
     Animated.timing(press, { toValue, duration: metrics.pressDuration, easing: easeOut, useNativeDriver: true }).start();
   };
 
-  const width = fill.interpolate({ inputRange: [0, 1], outputRange: [0, star] });
+  const width = starFill(fill, star);
 
   const glyph = (
     <Animated.View style={{ width: star, height: star, transform: [{ scale: press }, { scale: pop }] }}>
@@ -121,7 +121,7 @@ function StarCell({ position, value, star, interactive, allowHalf, max, onChoose
   if (!interactive) return <View style={[styles.cell, { width: star + metrics.gap, height: star + metrics.gap }]}>{glyph}</View>;
 
   return (
-    <View style={[styles.cell, { width: star + metrics.gap * 2, height: Math.max(star + metrics.gap, metrics.touch) }]}>
+    <View style={[styles.cell, { width: interactiveCellWidth(star), height: Math.max(star + metrics.gap, metrics.touch) }]}>
       {glyph}
       {allowHalf ? (
         <View style={styles.halves}>
@@ -135,6 +135,14 @@ function StarCell({ position, value, star, interactive, allowHalf, max, onChoose
   );
 }
 
+function starFill(progress: Animated.Value, star: number): Animated.AnimatedInterpolation<number> {
+  return progress.interpolate({ inputRange: [0, 1], outputRange: [0, star] });
+}
+
+function interactiveCellWidth(star: number): number {
+  return star + metrics.gap * 2;
+}
+
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: metrics.wordGap },
   stars: { flexDirection: 'row', alignItems: 'center' },
@@ -143,6 +151,6 @@ const styles = StyleSheet.create({
   halves: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, flexDirection: 'row' },
   half: { flex: 1 },
   word: { minWidth: metrics.wordMinWidth },
-  wordText: { color: colors.word, fontSize: metrics.wordSize, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  wordEmpty: { color: colors.wordEmpty, fontWeight: '500' },
+  wordText: { color: colors.word, fontSize: metrics.wordSize, fontWeight: horizonLayout.ratingStyle.wordTextFontWeight, fontVariant: ['tabular-nums'] },
+  wordEmpty: { color: colors.wordEmpty, fontWeight: horizonLayout.ratingStyle.wordEmptyFontWeight },
 });

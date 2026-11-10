@@ -41,7 +41,7 @@ export function ThemeSwitch({ theme, onThemeChange, label, accessibilityLabel, d
   };
 
   const sunStyle = {
-    opacity: progress.interpolate({ inputRange: [0, 0.6, 1], outputRange: [1, 0, 0] }),
+    opacity: fadeOutEarly(progress),
     transform: [
       { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [0, metrics.rise] }) },
       { rotate: progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-70deg'] }) },
@@ -49,7 +49,7 @@ export function ThemeSwitch({ theme, onThemeChange, label, accessibilityLabel, d
     ],
   };
   const moonStyle = {
-    opacity: progress.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 0, 1] }),
+    opacity: fadeInLate(progress),
     transform: [
       { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [-metrics.rise, 0] }) },
       { rotate: progress.interpolate({ inputRange: [0, 1], outputRange: ['70deg', '0deg'] }) },
@@ -72,10 +72,18 @@ export function ThemeSwitch({ theme, onThemeChange, label, accessibilityLabel, d
   );
 }
 
+function fadeOutEarly(progress: Animated.Value): Animated.AnimatedInterpolation<number> {
+  return progress.interpolate({ inputRange: [0, 0.6, 1], outputRange: [1, 0, 0] });
+}
+
+function fadeInLate(progress: Animated.Value): Animated.AnimatedInterpolation<number> {
+  return progress.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 0, 1] });
+}
+
 const styles = StyleSheet.create({
   button: { minHeight: metrics.height, flexDirection: 'row', alignItems: 'center', gap: metrics.gap, paddingHorizontal: metrics.padding, borderRadius: metrics.radius, backgroundColor: colors.fill },
-  disabled: { opacity: 0.5 },
+  disabled: { opacity: horizonLayout.themeSwitchStyle.disabledOpacity },
   glyph: { width: metrics.iconSize, height: metrics.iconSize },
   layer: { position: 'absolute', left: 0, top: 0 },
-  label: { flex: 1, color: colors.text, fontSize: metrics.labelSize, fontWeight: '600' },
+  label: { flex: 1, color: colors.text, fontSize: metrics.labelSize, fontWeight: horizonLayout.themeSwitchStyle.labelFontWeight },
 });

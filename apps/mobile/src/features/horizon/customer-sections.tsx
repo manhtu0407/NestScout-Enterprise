@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Text } from 'react-native';
 
 import { formatNational, toNationalDigits, useAccess } from '@/features/access';
-import { PressScale, acceptTerms, acceptedImageTypes, cancelAccountDeletion, exportPersonalData, readDeletionRequest, readReviewReactions, toggleReviewReaction, readTermsAcceptance, recordConsent, requestAccountDeletion, submitSupportRequest, type CustomerSettings, type ReviewReactionId } from '@/features/shared';
+import { PressScale, decideSubmission, setPreferredVisit, acceptedImageTypes, cancelAccountDeletion, exportPersonalData, readDeletionRequest, readReviewReactions, toggleReviewReaction, recordConsent, requestAccountDeletion, submitSupportRequest, type CustomerSettings, type ReviewReactionId } from '@/features/shared';
 
 import type { UserProfile } from './content';
 import { HelpScreen } from './help-screen';
@@ -18,6 +18,7 @@ import { SavedWorkersScreen } from './saved-workers-screen';
 import { SettingsScreen, defaultSettings } from './settings-screen';
 import { SupportEmpty, SupportShell, supportStyles } from './support-shell';
 import { useCustomerData } from './use-customer-data';
+import { quotePrompt, requestPrompt, savedWorkerPrompt } from './kael-handoff';
 import { workflowMessage } from './workflow-messages';
 
 export const customerSectionIds = ['requests', 'quotes', 'saved', 'notifications', 'help', 'settings'] as const;
@@ -37,13 +38,13 @@ const titles: Record<CustomerSectionId, string> = {
   settings: 'Cài đặt',
 };
 
-type Props = { id: CustomerSectionId; focusId?: string; onBack: () => void; onNavigate: (id: CustomerSectionId, focusId?: string) => void };
+type Props = { id: CustomerSectionId; focusId?: string; onBack: () => void; onNavigate: (id: CustomerSectionId, focusId?: string) => void; onAskKael?: (prompt: string) => void };
 
 function StateShell({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
   return <SupportShell title={title} onBack={onBack}>{children}</SupportShell>;
 }
 
-export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
+export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: Props) {
   const access = useAccess();
   const userId = access.identity === 'verified' ? access.userId : null;
   const customer = useCustomerData(userId);
@@ -58,10 +59,6 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
       read: () => readDeletionRequest(userId, new AbortController().signal),
       request: () => requestAccountDeletion(userId, new AbortController().signal),
       cancel: () => cancelAccountDeletion(userId, new AbortController().signal),
-    },
-    termsAcceptance: {
-      read: (versionId: string) => readTermsAcceptance(userId, 'terms', versionId, new AbortController().signal),
-      accept: (versionId: string) => acceptTerms(userId, 'terms', versionId, new AbortController().signal),
     },
   }, [userId]);
   const dataExport = useMemo(() => userId === null ? undefined : () => exportPersonalData(userId, new AbortController().signal), [userId]);
@@ -120,6 +117,25 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
       jobChanges={jobChanges}
       onBack={onBack}
       onViewQuotes={() => onNavigate('quotes')}
+      onAskKael={onAskKael ? request => onAskKael(requestPrompt(request)) : undefined}
+      onSetPreferredVisit={async (request, at) => {
+        try {
+          await setPreferredVisit(userId, request.id, at, new AbortController().signal);
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+        customer.refresh();
+      }}
+      onDecideSubmission={async (request, decision, reason) => {
+        const pending = request.pendingSubmission;
+        if (!pending) return;
+        try {
+          await decideSubmission(userId, pending.id, pending.jobVersion, decision, reason, new AbortController().signal);
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+        customer.refresh();
+      }}
       onToggleSaveWorker={worker => customer.setWorkerSaved(worker.profileId, !worker.saved)}
       onReviewWorker={(worker, review) => customer.reviewJob(worker.jobId, review)}
     />;
@@ -129,6 +145,7 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
     return <QuotesScreen
       items={toQuoteItems(data.requests, data.quotes, now)}
       onBack={onBack}
+      onAskKael={onAskKael ? quote => onAskKael(quotePrompt(quote)) : undefined}
       onDecide={async (quote, decision) => {
         try {
           await customer.decideQuote({ id: quote.id, version: quote.version }, decision);
@@ -143,6 +160,7 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
     return <SavedWorkersScreen
       items={toSavedWorkers(data.savedWorkers, now)}
       onBack={onBack}
+      onAskKael={onAskKael ? worker => onAskKael(savedWorkerPrompt(worker)) : undefined}
       onRemove={worker => customer.removeSavedWorker(worker.id)}
       reactions={reviewReactions}
     />;
@@ -181,6 +199,5 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
     accountDeletion={compliance?.accountDeletion}
     aiConsent={aiConsent}
     dataExport={dataExport}
-    termsAcceptance={compliance?.termsAcceptance}
   />;
 }

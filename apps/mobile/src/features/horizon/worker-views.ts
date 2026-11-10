@@ -1,3 +1,4 @@
+import { formatVisit } from './preferred-visit-picker';
 import type { CustomerNotification, Correction, Job, JobReport, NotificationKind, Offer, Pause, ScopeChange, WorkerJobCard, WorkerProfileRecord } from '@/features/shared';
 import type { NotificationItem } from './content';
 
@@ -44,7 +45,12 @@ function offerView(offer: Offer, card: WorkerJobCard | undefined, now: Date): Wo
     address: '',
     amountMinor: offer.amount_minor,
     expiresLabel: expiryLabel(offer.expires_at, now),
+    ...visitLabel(card),
   };
+}
+
+function visitLabel(card: WorkerJobCard | undefined): { preferredVisitLabel?: string } {
+  return card?.preferred_visit_at ? { preferredVisitLabel: formatVisit(card.preferred_visit_at) } : {};
 }
 
 function jobView(job: Job, card: WorkerJobCard | undefined, snapshot: WorkerSnapshot, now: Date): WorkerJob {
@@ -63,6 +69,7 @@ function jobView(job: Job, card: WorkerJobCard | undefined, snapshot: WorkerSnap
     photoCount: card?.photo_count ?? 0,
     address: card?.location ?? '',
     amountMinor: job.amount_minor,
+    ...visitLabel(card),
   };
   const pendingChange = snapshot.changes.some(change => change.job_id === job.job_id && change.decision === 'pending');
   let stage: WorkerJobStage;

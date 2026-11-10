@@ -1,9 +1,9 @@
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { loadKaelConversation, streamKaelTurn, type KaelApproval, type KaelConversationSnapshot, type KaelEvent, type KaelMode, type KaelTask, type KaelTaskStatus, type KaelTurnAction, type KaelTurnOutcome } from '@/features/shared';
+import { loadKaelConversation, setKaelFeedback, streamKaelTurn, type KaelApproval, type KaelConversationSnapshot, type KaelEvent, type KaelFeedbackRating, type KaelFeedbackReason, type KaelMode, type KaelQuestion, type KaelTask, type KaelTaskStatus, type KaelTurnAction, type KaelTurnOutcome } from '@/features/shared';
 
-export type KaelChatMessage = { id: string; role: 'user' | 'assistant'; text: string; incomplete?: boolean };
+export type KaelChatMessage = { id: string; role: 'user' | 'assistant'; text: string; incomplete?: boolean; runId?: string; storedId?: string };
 
 export type KaelConversationState = {
   messages: KaelChatMessage[];
@@ -15,12 +15,14 @@ export type KaelConversationState = {
   conversationId: string | null;
   processingTaskId: string | null;
   receipt: string | null;
+  question: KaelQuestion | null;
 };
 
 type Streamer = typeof streamKaelTurn;
+type FeedbackWriter = typeof setKaelFeedback;
 type Loader = (userId: string, mode: KaelMode, signal: AbortSignal) => Promise<KaelConversationSnapshot>;
 
-const idleState: KaelConversationState = { messages: [], activity: null, tasks: [], approvals: [], notice: null, running: false, conversationId: null, processingTaskId: null, receipt: null };
+const idleState: KaelConversationState = { messages: [], activity: null, tasks: [], approvals: [], notice: null, running: false, conversationId: null, processingTaskId: null, receipt: null, question: null };
 const interruptedNotice = 'Kết nối bị gián đoạn trước khi Kael trả lời xong. Nội dung phía trên có thể chưa đầy đủ.';
 const unverifiedNotice = 'Kết nối bị gián đoạn và chưa tải lại được cuộc trò chuyện để xác minh. Nội dung phía trên có thể chưa đầy đủ.';
 const unconfirmedNotice = 'Đã tải lại cuộc trò chuyện nhưng chưa xác nhận được Kael đã trả lời xong tin nhắn bị gián đoạn. Nội dung phía trên có thể chưa đầy đủ.';
@@ -50,7 +52,7 @@ function applyEvent(state: KaelConversationState, event: KaelEvent, assistantId:
       const existing = state.messages.find(message => message.id === assistantId);
       const messages = existing
         ? state.messages.map(message => (message.id === assistantId ? { ...message, text: message.text + event.text } : message))
-        : [...state.messages, { id: assistantId, role: 'assistant' as const, text: event.text }];
+        : [...state.messages, { id: assistantId, role: 'assistant' as const, text: event.text, runId: event.run_id }];
       return { ...state, messages, activity: busyLabel };
     }
     case 'tool_started':
@@ -63,11 +65,13 @@ function applyEvent(state: KaelConversationState, event: KaelEvent, assistantId:
     }
     case 'approval_required':
       return { ...state, approvals: [...state.approvals.filter(item => item.task_id !== event.approval.task_id), event.approval] };
+    case 'question':
+      return { ...state, question: event.question };
     case 'run_completed': {
       const existing = state.messages.some(message => message.id === assistantId);
       const messages = existing
-        ? state.messages.map(message => (message.id === assistantId ? { ...message, text: event.text, incomplete: false } : message))
-        : event.text ? [...state.messages, { id: assistantId, role: 'assistant' as const, text: event.text }] : state.messages;
+        ? state.messages.map(message => (message.id === assistantId ? { ...message, text: event.text, incomplete: false, runId: event.run_id } : message))
+        : event.text ? [...state.messages, { id: assistantId, role: 'assistant' as const, text: event.text, runId: event.run_id }] : state.messages;
       return { ...state, messages, activity: null, running: false, processingTaskId: null };
     }
     case 'run_failed':
@@ -117,14 +121,14 @@ function restored(state: KaelConversationState, snapshot: KaelConversationSnapsh
   return {
     ...state,
     conversationId: snapshot.conversationId,
-    messages: snapshot.messages.map(message => ({ id: `stored-${message.id}`, role: message.role, text: message.text, incomplete: message.incomplete })),
+    messages: snapshot.messages.map(message => ({ id: `stored-${message.id}`, storedId: message.id, role: message.role, text: message.text, incomplete: message.incomplete })),
     tasks: snapshot.tasks,
     approvals: snapshot.approvals,
     notice: restoredNotice(state, snapshot, interrupted),
   };
 }
 
-export function useKaelConversation(userId: string | null, mode: KaelMode, streamer: Streamer = streamKaelTurn, loader: Loader = loadKaelConversation) {
+export function useKaelConversation(userId: string | null, mode: KaelMode, streamer: Streamer = streamKaelTurn, loader: Loader = loadKaelConversation, feedback: FeedbackWriter = setKaelFeedback) {
   const scope = `${userId ?? 'guest'}:${mode}`;
   const [state, setState] = useState<KaelConversationState>(idleState);
   const [seenScope, setSeenScope] = useState(scope);
@@ -255,6 +259,7 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
       activity: busyLabel,
       processingTaskId: decided !== null && action.type !== 'reject' ? decided.task_id : null,
       receipt: null,
+      question: null,
       messages: [...current.messages, { id: `user-${requestId}`, role: 'user', text: userText }],
       approvals: action.type === 'message' ? current.approvals : current.approvals.filter(item => item.id !== action.approval_id),
     }));
@@ -312,5 +317,17 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
 
   const dismissNotice = useCallback(() => setState(current => ({ ...current, notice: null })), []);
 
-  return { ...state, available: userId !== null, send, decide, reset, dismissNotice, refresh };
+  const rate = useCallback(async (message: KaelChatMessage, rating: KaelFeedbackRating | null, reason: KaelFeedbackReason | null): Promise<boolean> => {
+    if (userId === null || message.role !== 'assistant') return false;
+    const target = message.storedId !== undefined ? { messageId: message.storedId } : message.runId !== undefined ? { runId: message.runId } : null;
+    if (target === null) return false;
+    try {
+      await feedback(userId, target, rating, reason, new AbortController().signal);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [feedback, userId]);
+
+  return { ...state, available: userId !== null, send, decide, reset, dismissNotice, refresh, rate };
 }

@@ -51,7 +51,7 @@ function Segment({ active, color, delay }: { active: boolean; color: string; del
     motion.start();
     return () => motion.stop();
   }, [active, delay, fill, reduceMotion]);
-  const width = fill.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
+  const width = fillWidth(fill);
   return (
     <View style={styles.segment}>
       <Animated.View style={[styles.segmentFill, { width, backgroundColor: color }]} />
@@ -101,18 +101,26 @@ function Rule({ label, met }: { label: string; met: boolean }) {
   );
 }
 
+function half(size: number): number {
+  return size / 2;
+}
+
+function fillWidth(progress: Animated.Value): Animated.AnimatedInterpolation<string> {
+  return progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
+}
+
 const styles = StyleSheet.create({
   root: { gap: metrics.gap },
   meter: { flexDirection: 'row', gap: metrics.segmentGap },
-  segment: { flex: 1, height: metrics.segmentHeight, borderRadius: metrics.segmentHeight / 2, overflow: 'hidden', backgroundColor: colors.track },
-  segmentFill: { height: '100%', borderRadius: metrics.segmentHeight / 2 },
+  segment: { flex: 1, height: metrics.segmentHeight, borderRadius: half(metrics.segmentHeight), overflow: 'hidden', backgroundColor: colors.track },
+  segmentFill: { height: horizonLayout.passwordStrengthStyle.segmentFillHeight, borderRadius: half(metrics.segmentHeight) },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  word: { fontSize: metrics.wordSize, fontWeight: '700' },
-  suggest: { color: colors.action, fontSize: metrics.wordSize, fontWeight: '600' },
-  disabled: { opacity: 0.5 },
+  word: { fontSize: metrics.wordSize, fontWeight: horizonLayout.passwordStrengthStyle.wordFontWeight },
+  suggest: { color: colors.action, fontSize: metrics.wordSize, fontWeight: horizonLayout.passwordStrengthStyle.suggestFontWeight },
+  disabled: { opacity: horizonLayout.passwordStrengthStyle.disabledOpacity },
   rules: { gap: metrics.ruleGap },
   rule: { flexDirection: 'row', alignItems: 'center', gap: metrics.ruleInset },
-  dot: { width: metrics.ruleDot, height: metrics.ruleDot, borderRadius: metrics.ruleDot / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ruleOff },
+  dot: { width: metrics.ruleDot, height: metrics.ruleDot, borderRadius: half(metrics.ruleDot), alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ruleOff },
   dotOn: { backgroundColor: colors.ruleOn },
   ruleText: { color: colors.ruleText, fontSize: metrics.ruleSize },
   ruleTextOn: { color: colors.ruleTextOn },
