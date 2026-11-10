@@ -3,7 +3,9 @@
   "compilerOptions": {
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "types": ["expo/types", "jest", "node"],
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "types": ["expo/types", "node"],
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]

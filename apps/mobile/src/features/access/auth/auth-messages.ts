@@ -52,6 +52,7 @@ export const emailMessages = {
   email_invalid: 'Địa chỉ Email chưa hợp lệ.',
   password_empty: 'Nhập mật khẩu.',
   password_too_short: (min: number) => `Mật khẩu cần ít nhất ${min} ký tự.`,
+  password_weak: 'Mật khẩu chưa đủ mạnh. Thêm chữ hoa, chữ số hoặc ký tự đặc biệt.',
   confirm_empty: 'Nhập lại mật khẩu để xác nhận.',
   confirm_mismatch: 'Mật khẩu nhập lại chưa khớp.',
 } as const;

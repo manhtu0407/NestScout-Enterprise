@@ -2,10 +2,13 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Text } from 'react-native';
 
 import { formatNational, toNationalDigits, useAccess } from '@/features/access';
-import { PressScale, acceptedImageTypes, submitSupportRequest } from '@/features/shared';
+import { PressScale, acceptTerms, acceptedImageTypes, cancelAccountDeletion, exportPersonalData, readDeletionRequest, readReviewReactions, toggleReviewReaction, readTermsAcceptance, recordConsent, requestAccountDeletion, submitSupportRequest, type CustomerSettings, type ReviewReactionId } from '@/features/shared';
 
 import type { UserProfile } from './content';
 import { HelpScreen } from './help-screen';
+import { jobChangesApiFor } from './job-changes-api';
+import { legalDocument } from './legal-content';
+import { useAiConsent } from './use-ai-consent';
 import { NotificationsScreen } from './notifications-screen';
 import { ProfileEditScreen } from './profile-edit-screen';
 import { QuotesScreen } from './quotes-screen';
@@ -44,7 +47,25 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
   const access = useAccess();
   const userId = access.identity === 'verified' ? access.userId : null;
   const customer = useCustomerData(userId);
+  const reviewReactions = useMemo(() => userId === null ? undefined : {
+    load: (reviewIds: readonly string[], signal: AbortSignal) => readReviewReactions(userId, reviewIds, signal),
+    toggle: (reviewId: string, reaction: ReviewReactionId, signal: AbortSignal) => toggleReviewReaction(userId, reviewId, reaction, signal),
+  }, [userId]);
   const [editing, setEditing] = useState(false);
+  const aiConsent = useAiConsent(userId);
+  const compliance = useMemo(() => userId === null ? null : {
+    accountDeletion: {
+      read: () => readDeletionRequest(userId, new AbortController().signal),
+      request: () => requestAccountDeletion(userId, new AbortController().signal),
+      cancel: () => cancelAccountDeletion(userId, new AbortController().signal),
+    },
+    termsAcceptance: {
+      read: (versionId: string) => readTermsAcceptance(userId, 'terms', versionId, new AbortController().signal),
+      accept: (versionId: string) => acceptTerms(userId, 'terms', versionId, new AbortController().signal),
+    },
+  }, [userId]);
+  const dataExport = useMemo(() => userId === null ? undefined : () => exportPersonalData(userId, new AbortController().signal), [userId]);
+  const jobChanges = useMemo(() => userId === null ? undefined : { userId, api: jobChangesApiFor(userId) }, [userId]);
   const [now] = useState(() => new Date());
   const { data } = customer;
   const title = titles[id];
@@ -57,6 +78,14 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
     avatarUri: data.avatar?.uri,
     avatarHeaders: data.avatar?.headers,
   }), [data.profile, data.phone, data.avatar]);
+
+  const currentSettings = data.settings ?? defaultSettings;
+  const changeSettings = async (next: CustomerSettings) => {
+    if (userId !== null && next.push !== currentSettings.push) {
+      await recordConsent(userId, 'push_notifications', next.push, legalDocument('vi', 'privacy').versionId, new AbortController().signal);
+    }
+    await customer.saveSettings(next);
+  };
 
   if (id === 'help') {
     const submitSupport = userId === null ? undefined : (key: string, subject: string, body: string) => submitSupportRequest(userId, key, subject, body, new AbortController().signal).then(() => undefined);
@@ -88,6 +117,7 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
     return <RequestsScreen
       requests={toRequestViews({ requests: data.requests, quotes: data.quotes, activity: data.activity, workers: data.jobWorkers, photos: data.photos }, now)}
       focusId={focusId}
+      jobChanges={jobChanges}
       onBack={onBack}
       onViewQuotes={() => onNavigate('quotes')}
       onToggleSaveWorker={worker => customer.setWorkerSaved(worker.profileId, !worker.saved)}
@@ -114,6 +144,7 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
       items={toSavedWorkers(data.savedWorkers, now)}
       onBack={onBack}
       onRemove={worker => customer.removeSavedWorker(worker.id)}
+      reactions={reviewReactions}
     />;
   }
 
@@ -144,7 +175,12 @@ export function CustomerSection({ id, focusId, onBack, onNavigate }: Props) {
     onBack={onBack}
     profile={{ ...profile, name: profile.name || 'Tài khoản của bạn' }}
     onEditProfile={() => setEditing(true)}
-    settings={data.settings ?? defaultSettings}
-    onChangeSettings={customer.saveSettings}
+    settings={currentSettings}
+    onChangeSettings={changeSettings}
+    onClearHistory={customer.clearChatHistory}
+    accountDeletion={compliance?.accountDeletion}
+    aiConsent={aiConsent}
+    dataExport={dataExport}
+    termsAcceptance={compliance?.termsAcceptance}
   />;
 }

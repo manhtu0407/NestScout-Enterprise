@@ -50,6 +50,7 @@ const failureMessages: Record<KaelFailureCode, string> = {
   incomplete_output: 'Phản hồi bị gián đoạn trước khi hoàn tất. Nội dung phía trên có thể chưa đầy đủ.',
   budget_exhausted: 'Kael đã dừng vì đạt giới hạn xử lý hoặc ngân sách. Các bước đã ghi nhận vẫn được giữ.',
   approval_invalid: 'Xác nhận này không còn hợp lệ. Chưa có thao tác nào được thực hiện.',
+  consent_required: 'Bạn cần đồng ý chia sẻ dữ liệu với AI trong Kael trước khi tiếp tục. Tin nhắn chưa được gửi tới nhà cung cấp AI.',
   cancelled: 'Lượt xử lý đã bị dừng.',
   internal: 'Kael gặp lỗi nội bộ. Chưa có thao tác nào được báo là thành công.',
 };

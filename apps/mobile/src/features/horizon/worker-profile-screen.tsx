@@ -1,21 +1,24 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
 
-import { Icon } from '@/features/shared';
+import { Icon, PressScale } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 import { formatRating, minReviewsToShowRating } from './content';
+import { Rating } from './rating';
 import { LiquidSwitch } from './liquid-switch';
 import { Presence, useRetained } from './motion-presence';
 import { SlidingChips } from './sliding-chips';
 import { ScreenHeader, SupportCard, SupportRow, SupportSection } from './support-shell';
 import { ActionButton, actionRowStyles } from './worker-action-button';
 import {
-  maxCertificates, radiusOptionsKm, toWorkerProfileFields, validateWorkerProfileFields, workerProfileTabs, workerServiceOptions,
-  type WorkerProfileCommand, type WorkerProfileFields, type WorkerProfilePerform, type WorkerProfileTab, type WorkerProfileView,
+  radiusOptionsKm, toWorkerProfileFields, validateWorkerProfileFields, workerProfileTabs, workerServiceOptions,
+  type ReadinessStep, type WorkerProfileCommand, type WorkerProfileFields, type WorkerProfilePerform, type WorkerProfileTab, type WorkerProfileView,
 } from './worker-profile';
+import { WorkerDocumentsSection } from './worker-documents-section';
+import { WorkerReadinessCard } from './worker-readiness-card';
 import { workflowMessage } from './workflow-messages';
 
 const webField = Platform.select({ web: { outlineStyle: 'solid', outlineWidth: 0 } as const, default: undefined });
@@ -24,6 +27,8 @@ const supportColors = horizonColors.supportScreens;
 const jobs = horizonLayout.workerJobs;
 const jobColors = horizonColors.workerJobs;
 const card = horizonLayout.requestsScreen;
+const kit = horizonLayout.profileKit;
+const kitColors = horizonColors.profileKit;
 
 type Props = {
   initialTab: WorkerProfileTab;
@@ -44,6 +49,7 @@ export function WorkerProfileScreen({ initialTab, profile, fallbackName, perform
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
+  const scroller = useRef<ScrollViewInstance>(null);
   const mounted = useRef(true);
   const retainedNotice = useRetained(notice);
 
@@ -88,14 +94,14 @@ export function WorkerProfileScreen({ initialTab, profile, fallbackName, perform
       <View style={styles.tabs}>
         <SlidingChips items={workerProfileTabs.map(item => ({ key: item.tab, label: item.label }))} selectedKey={tab} onSelect={key => { const next = workerProfileTabs.find(item => item.tab === key); if (next) select(next.tab); }} />
       </View>
-      <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scroller} style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Presence visible={notice !== null}>
           <View accessibilityLiveRegion="polite" style={styles.notice}>
             <Icon name="check" size={jobs.noticeIconSize} color={jobColors.noticeText} strokeWidth={card.toggleStroke} />
             <Text style={styles.noticeText}>{retainedNotice}</Text>
           </View>
         </Presence>
-        {tab === 'profile' ? <ProfileTab profile={profile} fallbackName={fallbackName} busy={busy} error={error} onError={setError} run={run} /> : null}
+        {tab === 'profile' ? <ProfileTab profile={profile} fallbackName={fallbackName} busy={busy} error={error} onError={setError} run={run} onAreas={() => select('areas')} onScrollTo={y => scroller.current?.scrollTo({ y, animated: true })} /> : null}
         {tab === 'areas' ? <AreasTab profile={profile} busy={busy} error={error} run={run} onCreate={() => select('profile')} /> : null}
         {tab === 'reviews' ? <ReviewsTab profile={profile} onCreate={() => select('profile')} /> : null}
         {sample ? <Text style={styles.footnote}>Dữ liệu mẫu. Hồ sơ, chứng chỉ và đánh giá chưa được kết nối.</Text> : null}
@@ -139,12 +145,12 @@ function Field({ label, value, onChange, disabled, multiline = false, keyboardTy
   );
 }
 
-type ProfileTabProps = { profile: WorkerProfileView | null; fallbackName: string; busy: boolean; error: string | null; onError: (message: string | null) => void; run: Run };
+type ProfileTabProps = { profile: WorkerProfileView | null; fallbackName: string; busy: boolean; error: string | null; onError: (message: string | null) => void; run: Run; onAreas: () => void; onScrollTo: (y: number) => void };
 
-function ProfileTab({ profile, fallbackName, busy, error, onError, run }: ProfileTabProps) {
+function ProfileTab({ profile, fallbackName, busy, error, onError, run, onAreas, onScrollTo }: ProfileTabProps) {
   const [editing, setEditing] = useState(profile === null);
   const [fields, setFields] = useState<WorkerProfileFields>(() => toWorkerProfileFields(profile, fallbackName));
-  const [certificate, setCertificate] = useState('');
+  const documentsTop = useRef(0);
   const edit = (key: keyof WorkerProfileFields) => (value: string) => setFields(current => ({ ...current, [key]: value }));
 
   const save = async () => {
@@ -153,10 +159,18 @@ function ProfileTab({ profile, fallbackName, busy, error, onError, run }: Profil
     if (await run({ type: 'save', draft: result.draft })) setEditing(false);
   };
 
-  const add = async () => {
-    const title = certificate.trim();
-    if (!title) return onError('Nhập tên chứng chỉ, tối đa 80 ký tự.');
-    if (await run({ type: 'addCertificate', title })) setCertificate('');
+  const startEditing = () => {
+    if (profile === null) return;
+    setFields(toWorkerProfileFields(profile, fallbackName));
+    onError(null);
+    setEditing(true);
+    onScrollTo(0);
+  };
+
+  const openStep = (step: ReadinessStep) => {
+    if (step.target === 'areas') onAreas();
+    else if (step.target === 'documents') onScrollTo(Math.max(documentsTop.current - kit.sectionGap, 0));
+    else startEditing();
   };
 
   if (profile === null || editing) {
@@ -164,7 +178,9 @@ function ProfileTab({ profile, fallbackName, busy, error, onError, run }: Profil
       <>
         {profile === null ? (
           <Text style={styles.intro}>Tạo hồ sơ để khách biết bạn làm nghề gì, ở khu vực nào. Hồ sơ chỉ hiển thị công khai sau khi được duyệt.</Text>
-        ) : null}
+        ) : (
+          <Text style={styles.intro}>Giới thiệu và kỹ năng là bắt buộc để bật nhận việc. Càng rõ, khách càng dễ chọn bạn.</Text>
+        )}
         <View style={styles.form}>
           <Field label="Tên hiển thị" value={fields.name} onChange={edit('name')} disabled={busy} maxLength={80} />
           <Field label="Nghề chính" value={fields.trade} onChange={edit('trade')} disabled={busy} maxLength={80} />
@@ -192,60 +208,41 @@ function ProfileTab({ profile, fallbackName, busy, error, onError, run }: Profil
         </View>
         <View style={styles.heroCopy}>
           <Text numberOfLines={2} style={styles.heroName}>{profile.name}</Text>
-          <Text style={styles.heroMeta}>{profile.trade} · {profile.experienceYears} năm kinh nghiệm</Text>
+          <Text numberOfLines={2} style={styles.heroMeta}>{profile.trade} · {profile.experienceYears} năm kinh nghiệm</Text>
+          <View style={styles.heroTags}>
+            <View style={[styles.statusTag, profile.listed ? styles.statusLive : styles.statusDraft]}>
+              <Text style={[styles.statusText, profile.listed ? styles.statusLiveText : styles.statusDraftText]}>{profile.listed ? 'Đang công khai' : 'Chưa công khai'}</Text>
+            </View>
+          </View>
         </View>
-        <View style={styles.heroChip}>
-          <Text style={styles.heroChipText}>{profile.listed ? 'Đang công khai' : 'Chưa công khai'}</Text>
+        <PressScale accessibilityRole="button" accessibilityLabel="Chỉnh sửa hồ sơ nghề" disabled={busy} onPress={startEditing} style={styles.editPill}>
+          <Text style={styles.editText}>Sửa</Text>
+        </PressScale>
+      </View>
+      <WorkerReadinessCard missing={profile.missing} onStep={openStep} />
+      <View style={styles.block}>
+        <Text accessibilityRole="header" style={styles.blockTitle}>Giới thiệu và kỹ năng</Text>
+        <View style={styles.panel}>
+          {profile.about ? <Text style={styles.body}>{profile.about}</Text> : <Text style={styles.emptyNote}>Chưa có phần giới thiệu. Bấm Sửa để thêm.</Text>}
+          {profile.skills.length > 0 ? (
+            <View style={styles.chips}>
+              {profile.skills.map(skill => (
+                <View key={skill} style={styles.skillChip}>
+                  <Text style={styles.skillText}>{skill}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.emptyNote}>Chưa có kỹ năng nào.</Text>
+          )}
         </View>
       </View>
-      {profile.about ? (
-        <SupportSection title="Giới thiệu">
-          <Text style={styles.body}>{profile.about}</Text>
-        </SupportSection>
-      ) : null}
-      {profile.skills.length > 0 ? (
-        <SupportSection title="Kỹ năng">
-          <View style={styles.chips}>
-            {profile.skills.map(skill => (
-              <View key={skill} style={styles.skillChip}>
-                <Text style={styles.skillText}>{skill}</Text>
-              </View>
-            ))}
-          </View>
-        </SupportSection>
-      ) : null}
-      <View style={styles.sectionGap}>
-        <ActionButton secondary disabled={busy} label="Chỉnh sửa hồ sơ" accessibilityLabel="Chỉnh sửa hồ sơ nghề" onPress={() => { setFields(toWorkerProfileFields(profile, fallbackName)); onError(null); setEditing(true); }} />
-      </View>
-      <SupportSection title={`Chứng chỉ · ${profile.certificates.length}/${maxCertificates}`}>
-        {profile.certificates.length > 0 ? (
-          <SupportCard>
-            {profile.certificates.map(item => (
-              <SupportRow
-                key={item.id}
-                icon="receipt"
-                title={item.title}
-                detail={item.statusLabel}
-                trailing={
-                  <Pressable accessibilityRole="button" accessibilityLabel={`Xóa chứng chỉ ${item.title}`} disabled={busy} hitSlop={jobs.removeHitSlop} onPress={() => void run({ type: 'removeCertificate', id: item.id })} style={styles.remove}>
-                    <Text style={styles.removeLabel}>Xóa</Text>
-                  </Pressable>
-                }
-              />
-            ))}
-          </SupportCard>
-        ) : (
-          <Text style={styles.body}>Chưa có chứng chỉ nào.</Text>
-        )}
-        {profile.certificates.length < maxCertificates ? (
-          <View style={styles.addRow}>
-            <Field label="Tên chứng chỉ" value={certificate} onChange={setCertificate} disabled={busy} maxLength={80} />
-            <ActionButton disabled={busy} label="Thêm chứng chỉ" accessibilityLabel="Thêm chứng chỉ" onPress={() => void add()} />
-          </View>
-        ) : null}
+      <View style={styles.block} onLayout={event => { documentsTop.current = event.nativeEvent.layout.y; }}>
+        <Text accessibilityRole="header" style={styles.blockTitle}>Giấy tờ và chứng chỉ</Text>
+        <WorkerDocumentsSection documents={profile.documents} certificates={profile.certificates} busy={busy} onError={onError} run={run} />
         <Problem message={error} />
-        <Text style={[styles.footnote, styles.footnoteLeft]}>Khách chỉ thấy chứng chỉ sau khi được xác minh. Hiện chưa tải được tài liệu chứng minh lên ứng dụng.</Text>
-      </SupportSection>
+        <Text style={[styles.footnote, styles.footnoteLeft]}>Ảnh được lưu riêng tư và chỉ nhân viên xác minh xem được. Khách chỉ thấy chứng chỉ sau khi được xác minh.</Text>
+      </View>
     </>
   );
 }
@@ -329,6 +326,7 @@ function ReviewsTab({ profile, onCreate }: { profile: WorkerProfileView | null; 
           <Text style={styles.statLabel}>Đánh giá</Text>
         </View>
       </View>
+      {rated ? <Rating label="Điểm trung bình" value={profile.ratingAverage} readOnly allowHalf size="md" /> : null}
       <SupportSection title="Điểm mạnh khách khen">
         <View style={styles.strengthPanel}>
           {rated && profile.strengths.length > 0 ? (
@@ -384,18 +382,25 @@ const styles = StyleSheet.create({
   fieldLabel: { color: supportColors.sectionTitle, fontSize: support.sectionTitleSize, fontWeight: support.sectionTitleWeight, marginLeft: support.sectionTitleInset },
   field: { ...webField, minHeight: jobs.fieldHeight, paddingHorizontal: jobs.fieldPaddingHorizontal, paddingVertical: jobs.composerPadding, borderRadius: jobs.fieldRadius, backgroundColor: jobColors.fieldFill, color: jobColors.fieldText, fontSize: jobs.fieldFontSize },
   fieldMultiline: { minHeight: jobs.fieldMultilineHeight, textAlignVertical: 'top' },
-  sectionGap: { marginBottom: support.sectionGap },
-  addRow: { gap: jobs.composerGap, marginTop: jobs.noticeGap },
-  remove: { minHeight: support.heroChipHeight, justifyContent: 'center', paddingHorizontal: support.heroChipPaddingHorizontal },
-  removeLabel: { color: supportColors.danger, fontSize: jobs.noticeSize, fontWeight: support.sectionTitleWeight },
-  hero: { flexDirection: 'row', alignItems: 'center', gap: support.heroGap, padding: support.heroPadding, borderRadius: support.heroRadius, backgroundColor: supportColors.heroFill, marginBottom: support.sectionGap },
+  hero: { flexDirection: 'row', alignItems: 'flex-start', gap: support.heroGap, padding: kit.cardPadding, borderRadius: kit.cardRadius, backgroundColor: kitColors.cardFill, marginBottom: kit.cardGap },
   avatar: { width: support.avatarSize, height: support.avatarSize, borderRadius: support.avatarRadius, backgroundColor: supportColors.avatarFill, alignItems: 'center', justifyContent: 'center' },
   avatarInitial: { color: supportColors.avatarInitial, fontSize: support.avatarInitialSize, fontWeight: support.avatarInitialWeight },
   heroCopy: { flex: 1, minWidth: 0, gap: support.workerStatGap },
   heroName: { color: horizonColors.text, fontSize: support.heroNameSize, fontWeight: support.heroNameWeight },
   heroMeta: { color: horizonColors.muted, fontSize: support.workerMetaSize },
-  heroChip: { height: support.heroChipHeight, paddingHorizontal: support.heroChipPaddingHorizontal, borderRadius: support.heroChipRadius, backgroundColor: jobColors.waitingFill, justifyContent: 'center' },
-  heroChipText: { color: jobColors.waitingText, fontSize: support.heroChipSize, fontWeight: support.heroChipWeight },
+  heroTags: { flexDirection: 'row', marginTop: 4 },
+  statusTag: { height: kit.tagHeight, borderRadius: kit.tagRadius, paddingHorizontal: kit.tagPaddingHorizontal, justifyContent: 'center' },
+  statusLive: { backgroundColor: kitColors.verifiedFill },
+  statusDraft: { backgroundColor: kitColors.optionalFill },
+  statusText: { fontSize: kit.tagSize, fontWeight: '600' },
+  statusLiveText: { color: kitColors.verifiedText },
+  statusDraftText: { color: kitColors.optional },
+  editPill: { height: kit.pillHeight, borderRadius: kit.pillRadius, paddingHorizontal: kit.pillPaddingHorizontal, backgroundColor: kitColors.tileFill, justifyContent: 'center' },
+  editText: { color: horizonColors.text, fontSize: kit.pillSize, fontWeight: '600' },
+  block: { marginTop: kit.sectionGap - kit.cardGap, gap: kit.cardGap },
+  blockTitle: { color: horizonColors.text, fontSize: 18, fontWeight: '600', marginLeft: support.sectionTitleInset },
+  panel: { padding: kit.cardPadding, borderRadius: kit.cardRadius, backgroundColor: kitColors.cardFill, gap: kit.innerGap },
+  emptyNote: { color: horizonColors.muted, fontSize: kit.slotBodySize, lineHeight: kit.slotBodyLineHeight },
   body: { color: horizonColors.text, fontSize: support.quoteScopeSize, lineHeight: support.quoteScopeLineHeight },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: support.skillChipGap },
   skillChip: { minHeight: support.skillChipHeight, paddingHorizontal: support.skillChipPaddingHorizontal, borderRadius: support.skillChipRadius, backgroundColor: supportColors.skillChipFill, justifyContent: 'center' },

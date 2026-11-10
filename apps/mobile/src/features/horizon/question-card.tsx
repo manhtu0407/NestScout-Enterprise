@@ -4,6 +4,7 @@ import { Check } from 'lucide-react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 import { DateCalendar, dayLabel } from '@/features/shared';
+import { TimePicker } from './time-picker';
 
 const metrics = horizonLayout.designKit;
 const colors = horizonColors.designKit;
@@ -26,10 +27,11 @@ type Props = {
 
 export function QuestionCard({ question, hint, options, date, progress, onAnswer, onSkip }: Props) {
   const [picked, setPicked] = useState<Date | null>(null);
+  const [time, setTime] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [other, setOther] = useState('');
   const [answer, setAnswer] = useState<string | null>(null);
-  const label = date !== undefined ? (picked === null ? '' : `Thợ đến ${dayLabel(picked)}`) : selected === otherId ? other.trim() : options.find(option => option.id === selected)?.label ?? '';
+  const label = date !== undefined ? (picked === null ? '' : `Thợ đến ${dayLabel(picked)}${time === null ? '' : ` lúc ${time}`}`) : selected === otherId ? other.trim() : options.find(option => option.id === selected)?.label ?? '';
   const ready = date !== undefined ? picked !== null : selected !== null && label !== '';
   const submit = () => {
     if (!ready) return;
@@ -51,7 +53,10 @@ export function QuestionCard({ question, hint, options, date, progress, onAnswer
     </View>}
     <Text style={styles.question}>{question}</Text>
     {hint !== undefined && <Text style={styles.hint}>{hint}</Text>}
-    {date !== undefined ? <DateCalendar value={picked} onChange={setPicked} today={date.today} isUnavailable={date.isUnavailable}/> : <>
+    {date !== undefined ? <>
+      <DateCalendar value={picked} onChange={setPicked} today={date.today} isUnavailable={date.isUnavailable}/>
+      <TimePicker label="Giờ hẹn" value={time} onChange={setTime} minuteStep={30} placeholder="Chọn giờ (không bắt buộc)" />
+    </> : <>
     <View style={styles.options}>
       {[...options, { id: otherId, label: 'Khác…' }].map(option => {
         const on = option.id === selected;

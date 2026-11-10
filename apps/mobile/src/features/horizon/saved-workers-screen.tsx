@@ -5,6 +5,9 @@ import { Icon, PressScale, isFixtureBasis } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
+import { Rating } from './rating';
+import { Reactions } from './reactions';
+import { useReviewReactions, type ReviewReactionsApi, type ReviewReactionsState } from './use-review-reactions';
 import { formatRating, minReviewsToShowRating, type SavedWorker } from './content';
 import { HeartToggle } from './motion-heart';
 import { Presence } from './motion-presence';
@@ -14,16 +17,18 @@ import { SupportEmpty, SupportShell, supportStyles } from './support-shell';
 const metrics = horizonLayout.supportScreens;
 const colors = horizonColors.supportScreens;
 
-type Props = { items?: readonly SavedWorker[]; onBack: () => void; onAskKael?: (worker: SavedWorker) => void; onRemove?: (worker: SavedWorker) => Promise<void> };
+type Props = { items?: readonly SavedWorker[]; onBack: () => void; onAskKael?: (worker: SavedWorker) => void; onRemove?: (worker: SavedWorker) => Promise<void>; reactions?: ReviewReactionsApi };
 
 const removeFailure = 'Chưa bỏ lưu được. Kiểm tra kết nối rồi thử lại.';
 
-export function SavedWorkersScreen({ items = [], onBack, onAskKael, onRemove }: Props) {
+export function SavedWorkersScreen({ items = [], onBack, onAskKael, onRemove, reactions }: Props) {
   const [removedIds, setRemovedIds] = useState<readonly string[]>([]);
   const [leavingIds, setLeavingIds] = useState<readonly string[]>([]);
   const [failedId, setFailedId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<readonly string[]>([]);
   const visible = items.filter(item => !removedIds.includes(item.id));
+  const reviewIds = visible.flatMap(item => item.reviews.map(review => review.id));
+  const reactionState = useReviewReactions(reviewIds, reactions);
   const showNote = visible.some(item => item.basis === undefined || isFixtureBasis(item.basis));
   const remove = (worker: SavedWorker) => {
     setFailedId(null);
@@ -53,6 +58,7 @@ export function SavedWorkersScreen({ items = [], onBack, onAskKael, onRemove }: 
               onLeave={() => setLeavingIds(current => [...current, item.id])}
               onRemove={() => remove(item)}
               onAskKael={onAskKael}
+              reactionState={reactionState}
             />
           ))}
           {showNote ? (
@@ -75,9 +81,10 @@ type CardProps = {
   onToggle: () => void;
   onRemove: () => void;
   onAskKael?: (worker: SavedWorker) => void;
+  reactionState: ReviewReactionsState;
 };
 
-function WorkerCard({ worker, expanded, leaving, failed, onLeave, onToggle, onRemove, onAskKael }: CardProps) {
+function WorkerCard({ worker, expanded, leaving, failed, onLeave, onToggle, onRemove, onAskKael, reactionState }: CardProps) {
   const rated = worker.reviewCount >= minReviewsToShowRating;
   return (
     <Presence visible={!leaving} offset={0} onExited={onRemove}>
@@ -105,6 +112,7 @@ function WorkerCard({ worker, expanded, leaving, failed, onLeave, onToggle, onRe
         <View style={styles.statDivider} />
         <Stat label="Việc đã xong" value={String(worker.completedJobs)} />
       </View>
+      {rated ? <Rating label={`Điểm trung bình của ${worker.name}`} value={worker.ratingAverage} readOnly allowHalf size="md" /> : null}
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
@@ -161,6 +169,7 @@ function WorkerCard({ worker, expanded, leaving, failed, onLeave, onToggle, onRe
                   <View key={review.id} style={styles.review}>
                     <Text style={styles.reviewMeta}>{review.author} · {review.service} · {review.time}</Text>
                     <Text style={styles.reviewText}>{review.text}</Text>
+                    <Reactions value={reactionState.reactionsFor(review.id)} onToggle={reaction => reactionState.toggle(review.id, reaction)} />
                   </View>
                 ))}
               </View>

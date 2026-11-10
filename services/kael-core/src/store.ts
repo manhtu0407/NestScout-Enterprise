@@ -54,7 +54,7 @@ export function createServerRpc(config: KaelConfig, fetcher: Fetcher = fetch): S
 export type RunStart =
   | { status: 'started'; run_id: string; conversation_id: string }
   | { status: 'replay'; run_id: string; conversation_id: string; run_status: string; assistant_text: string | null }
-  | { status: 'rate_limited' | 'busy' | 'invalid' };
+  | { status: 'rate_limited' | 'busy' | 'invalid' | 'consent_required' };
 
 export type HistoryMessage = { seq?: number; role: 'user' | 'assistant'; content: string; status: 'complete' | 'incomplete' };
 

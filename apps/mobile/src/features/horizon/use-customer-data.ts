@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
-  WorkflowError, acceptQuote, markNotificationsRead, readAccountPhone, readCustomerActivity, readCustomerProfile, readCustomerSettings, readJobWorkerCards,
+  WorkflowError, acceptQuote, clearKaelHistory, markNotificationsRead, readAccountPhone, readCustomerActivity, readCustomerProfile, readCustomerSettings, readJobWorkerCards,
   readAvatarSource, readNotifications, readPinnedRequestIds, readQuotes, readRequestPhotos, readRequests, readSavedWorkers, rejectQuote, removeAvatar,
   reviewJobWorker, saveCustomerProfile, uploadAvatar,
   saveCustomerSettings, saveWorker, setRequestPinned, unsaveWorker,
@@ -41,6 +41,7 @@ export type CustomerDataController = {
   saveProfile: (profile: CustomerProfile) => Promise<void>;
   removeSavedWorker: (profileId: string) => Promise<void>;
   saveSettings: (settings: CustomerSettings) => Promise<void>;
+  clearChatHistory: () => Promise<void>;
   changeAvatar: (file: MediaFile) => Promise<void>;
   clearAvatar: () => Promise<void>;
   setWorkerSaved: (profileId: string, saved: boolean) => Promise<void>;
@@ -202,6 +203,11 @@ export function useCustomerData(userId: string | null): CustomerDataController {
     }
   }, [data.settings, patch, requireOwner]);
 
+  const clearChatHistory = useCallback(async () => {
+    const id = requireOwner();
+    await clearKaelHistory(id, 'client', new AbortController().signal);
+  }, [requireOwner]);
+
   const setWorkerSaved = useCallback(async (profileId: string, saved: boolean) => {
     const id = requireOwner();
     const signal = new AbortController().signal;
@@ -223,6 +229,6 @@ export function useCustomerData(userId: string | null): CustomerDataController {
   }, [refresh, requireOwner]);
 
   return {
-    data, status, loaded: current.loaded, refresh, togglePin, decideQuote, markRead, saveProfile, removeSavedWorker, saveSettings, changeAvatar, clearAvatar, setWorkerSaved, reviewJob,
+    data, status, loaded: current.loaded, refresh, togglePin, decideQuote, markRead, saveProfile, removeSavedWorker, saveSettings, clearChatHistory, changeAvatar, clearAvatar, setWorkerSaved, reviewJob,
   };
 }

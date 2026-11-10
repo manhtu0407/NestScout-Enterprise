@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import {
-  WorkflowError, acceptOffer, addWorkerCertificate, advanceJob, declineOffer, pauseJob, proposeScope, markNotificationsRead, readNotifications, readWorkerEarnings, readWorkerJobCards, readWorkerProfile, readWorkerSnapshot,
-  removeWorkerCertificate, reportJob, requestResume, saveWorkerCoverage, saveWorkerProfile, setWorkerAccepting, submitWork,
-  type CustomerNotification, type WorkerEarningRecord, type WorkerJobCard, type WorkerProfileRecord,
+  WorkflowError, acceptOffer, addWorkerCertificate, advanceJob, declineOffer, pauseJob, proposeScope, markNotificationsRead, readNotifications, readWorkerEarnings, readWorkerJobCards, readWorkerPayout, readWorkerProfile, readWorkerSnapshot,
+  removeWorkerCertificate, removeWorkerDocument, removeWorkerPayout, saveWorkerPayout, reportJob, requestResume, saveWorkerCoverage, saveWorkerProfile, setWorkerAccepting, submitWork, uploadWorkerDocument,
+  type CustomerNotification, type WorkerEarningRecord, type WorkerJobCard, type WorkerPayoutRecord, type WorkerProfileRecord,
 } from '@/features/shared';
 
 import type { WorkerCommand } from './worker-jobs';
+import type { WorkerPayoutCommand } from './worker-payout';
 import type { WorkerProfileCommand } from './worker-profile';
 import type { WorkerSnapshot } from './worker-views';
 
 export type WorkerDataStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-export type WorkerData = { snapshot: WorkerSnapshot; cards: readonly WorkerJobCard[]; profile: WorkerProfileRecord | null; earnings: readonly WorkerEarningRecord[]; notifications: readonly CustomerNotification[] };
+export type WorkerData = { snapshot: WorkerSnapshot; cards: readonly WorkerJobCard[]; profile: WorkerProfileRecord | null; earnings: readonly WorkerEarningRecord[]; payout: WorkerPayoutRecord | null; notifications: readonly CustomerNotification[] };
 
-const emptyData: WorkerData = { snapshot: { offers: [], jobs: [], changes: [], reports: [], corrections: [], pauses: [] }, cards: [], profile: null, earnings: [], notifications: [] };
+const emptyData: WorkerData = { snapshot: { offers: [], jobs: [], changes: [], reports: [], corrections: [], pauses: [] }, cards: [], profile: null, earnings: [], payout: null, notifications: [] };
 
 export type WorkerDataController = {
   data: WorkerData;
@@ -23,15 +24,16 @@ export type WorkerDataController = {
   refresh: () => void;
   perform: (id: string, command: WorkerCommand) => Promise<string>;
   performProfile: (command: WorkerProfileCommand) => Promise<string>;
+  performPayout: (command: WorkerPayoutCommand) => Promise<string>;
   markRead: (ids: readonly string[]) => Promise<void>;
 };
 
 async function loadAll(userId: string, signal: AbortSignal): Promise<WorkerData> {
-  const [snapshot, cards, profile, earnings, notifications] = await Promise.all([
-    readWorkerSnapshot(userId, signal), readWorkerJobCards(userId, signal), readWorkerProfile(userId, signal), readWorkerEarnings(userId, signal),
+  const [snapshot, cards, profile, earnings, payout, notifications] = await Promise.all([
+    readWorkerSnapshot(userId, signal), readWorkerJobCards(userId, signal), readWorkerProfile(userId, signal), readWorkerEarnings(userId, signal), readWorkerPayout(userId, signal),
     readNotifications(userId, signal, 'worker'),
   ]);
-  return { snapshot, cards, profile, earnings, notifications };
+  return { snapshot, cards, profile, earnings, payout, notifications };
 }
 
 type Loaded = { owner: string | null; data: WorkerData; loaded: boolean };
@@ -137,10 +139,31 @@ export function useWorkerData(userId: string | null): WorkerDataController {
         case 'addCertificate':
           await addWorkerCertificate(userId, command.title, signal);
           return 'Đã thêm chứng chỉ. Khách chỉ thấy chứng chỉ sau khi được xác minh.';
+        case 'addDocument':
+          await uploadWorkerDocument(userId, command.kind, command.file, command.title, signal);
+          return command.kind === 'identity' ? 'Đã tải giấy tờ lên. Hồ sơ chờ xác minh.' : 'Đã tải tệp lên. Khách chỉ thấy sau khi được xác minh.';
+        case 'removeDocument':
+          await removeWorkerDocument(userId, command.id, signal);
+          return 'Đã xóa tệp.';
         default:
           await removeWorkerCertificate(userId, command.id, signal);
           return 'Đã xóa chứng chỉ.';
       }
+    } finally {
+      refresh();
+    }
+  }, [refresh, userId]);
+
+  const performPayout = useCallback(async (command: WorkerPayoutCommand): Promise<string> => {
+    if (userId === null) throw new WorkflowError('forbidden');
+    const signal = new AbortController().signal;
+    try {
+      if (command.type === 'save') {
+        await saveWorkerPayout(userId, command.draft.input, command.draft.qr, command.existingQrPath, signal);
+        return 'Đã lưu tài khoản nhận tiền. Chờ xác minh.';
+      }
+      await removeWorkerPayout(userId, signal);
+      return 'Đã xóa tài khoản nhận tiền.';
     } finally {
       refresh();
     }
@@ -161,5 +184,5 @@ export function useWorkerData(userId: string | null): WorkerDataController {
     }
   }, [refresh, userId]);
 
-  return { data: current.data, status, loaded: current.loaded, refresh, perform, performProfile, markRead };
+  return { data: current.data, status, loaded: current.loaded, refresh, perform, performProfile, performPayout, markRead };
 }

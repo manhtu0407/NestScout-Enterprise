@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { EntryRedirect, useAccess } from '@/features/access';
 import { Sidebar } from './sidebar';
 import { Icon } from '@/features/shared';
@@ -21,10 +21,13 @@ import { countActionableQuotes, countUnreadNotifications, toRecentSessions } fro
 import { useCustomerData } from './use-customer-data';
 import { useWorkerData } from './use-worker-data';
 import { workerBadgesFor } from './worker-jobs';
-import { formatMoney } from './content';
-import { earningsTodayMinor } from './worker-earnings';
-import { nextJobLabel, toWorkerJobs, toWorkerProfileView } from './worker-views';
+import { toWorkerJobs, toWorkerProfileView } from './worker-views';
 import { useKaelConversation } from './use-kael-conversation';
+import { useAiConsent } from './use-ai-consent';
+import { AiConsentSheet } from './ai-consent-sheet';
+import { settingsStrings } from './settings-strings';
+import { usePreferences } from '@/lib/preferences-provider';
+import { consumeSidebarReturn, markSidebarReturn } from './sidebar-return';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
@@ -49,6 +52,9 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   const kaelUserId = (access.phase === 'client' || access.phase === 'worker') && access.identity === 'verified' ? access.userId : null;
   const kaelMode = access.phase === 'worker' ? 'worker' : 'client';
   const kael = useKaelConversation(kaelUserId, kaelMode);
+  const aiConsent = useAiConsent(kaelUserId);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const consentStrings = settingsStrings(usePreferences().language);
   const scope = kaelUserId === null ? null : `${kaelUserId}:${kaelMode}`;
   const [previousScope, setPreviousScope] = useState(scope);
   if (previousScope !== scope) {
@@ -76,22 +82,15 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     if (access.phase !== 'worker') return undefined;
     if (workerUserId === null || !worker.loaded) return 'loading' as const;
     const view = toWorkerProfileView(worker.data.profile, now);
-    return view === null ? null : { area: view.area, radiusKm: view.radiusKm, accepting: view.accepting };
+    return view === null ? null : { area: view.area, radiusKm: view.radiusKm, accepting: view.accepting, missing: view.missing };
   }, [access.phase, now, worker.data.profile, worker.loaded, workerUserId]);
-
-  const workerStats = useMemo(() => {
-    if (workerUserId === null || !worker.loaded) return undefined;
-    return {
-      acceptedToday: formatMoney(earningsTodayMinor(worker.data.earnings, now), 'VND'),
-      nextJob: nextJobLabel(toWorkerJobs(worker.data.snapshot, worker.data.cards, now)),
-    };
-  }, [now, worker.data, worker.loaded, workerUserId]);
 
   const setAccepting = useCallback(async (accepting: boolean) => {
     try {
       await worker.performProfile({ type: 'accepting', accepting });
     } catch {
       setDataNotice('Chưa lưu được trạng thái nhận việc. Vui lòng thử lại.');
+      throw new Error('accepting not saved');
     }
   }, [worker]);
 
@@ -102,8 +101,17 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     setDrawerOpen(true);
   }, [customer, worker]);
 
+  const openMenuRef = useRef(openMenu);
+  useEffect(() => { openMenuRef.current = openMenu; });
+  useFocusEffect(useCallback(() => {
+    if (!consumeSidebarReturn()) return undefined;
+    const timer = setTimeout(() => openMenuRef.current(), horizonLayout.sidebar.returnDelay);
+    return () => clearTimeout(timer);
+  }, []));
+
   const openRequest = useCallback((id: string) => {
     setDrawerOpen(false);
+    markSidebarReturn();
     router.push({ pathname: '/requests', params: { focus: id } });
   }, [router]);
 
@@ -127,6 +135,29 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   const sendToKael = kael.send;
   const kaelAvailable = kael.available;
   const kaelRunning = kael.running;
+  const aiConsentGranted = aiConsent.granted;
+  const aiConsentStatus = aiConsent.status;
+  const setAiConsent = aiConsent.set;
+  const consentCheckingMessage = consentStrings.consentChecking;
+  const consentFailedMessage = consentStrings.consentFailed;
+  const consentDeniedMessage = consentStrings.consentDenied;
+  const deliver = useCallback(() => {
+    const text = inputRef.current.trim();
+    if (!text) return;
+    sendToKael(text);
+    setInput('');
+    inputRef.current = '';
+    access.clearHorizonDraft(access.userId);
+  }, [access, sendToKael]);
+  const allowAiSharing = useCallback(async () => {
+    await setAiConsent(true);
+    setConsentOpen(false);
+    deliver();
+  }, [deliver, setAiConsent]);
+  const denyAiSharing = useCallback(() => {
+    setConsentOpen(false);
+    setComposerError(consentDeniedMessage);
+  }, [consentDeniedMessage]);
   const sendMessage = useCallback((images: readonly ComposerImage[]) => {
     if (images.length > 0) {
       setComposerError('Ảnh chưa được gửi vì chức năng phân tích ảnh chưa được kết nối.');
@@ -140,27 +171,24 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
       setComposerError('Kael đang trả lời tin nhắn trước. Vui lòng đợi trong giây lát.');
       return;
     }
-    const text = inputRef.current.trim();
-    if (!text) return;
-    sendToKael(text);
-    setInput('');
-    inputRef.current = '';
-    access.clearHorizonDraft(access.userId);
-  }, [access, kaelAvailable, kaelRunning, sendToKael]);
+    if (!aiConsentGranted) {
+      if (aiConsentStatus === 'ready') setConsentOpen(true);
+      else setComposerError(aiConsentStatus === 'error' ? consentFailedMessage : consentCheckingMessage);
+      return;
+    }
+    deliver();
+  }, [aiConsentGranted, aiConsentStatus, consentCheckingMessage, consentFailedMessage, deliver, kaelAvailable, kaelRunning]);
 
   const navigate = useCallback((id: string) => {
     setDrawerOpen(false);
-    if (id === 'profile') {
-      router.push(access.phase === 'worker' ? '/worker-home' : access.phase === 'client' ? '/client-home' : '/explore');
-      return;
-    }
     if (id === 'home' || id === 'new') {
       newConversation();
       return;
     }
+    markSidebarReturn();
     if (id === 'requests') router.push('/requests');
     else router.push({ pathname: '/section', params: { id } });
-  }, [access.phase, newConversation, router]);
+  }, [newConversation, router]);
 
   const accessMessage = access.notice === null ? null : access.notice === 'worker_unavailable'
     ? 'Không thể chuyển sang vai trò Thợ vì tài khoản chưa có quyền.'
@@ -187,8 +215,9 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
         <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    <AiConsentSheet visible={consentOpen} onAllow={allowAiSharing} onDeny={denyAiSharing}/>
     {kaelUserId !== null && scope === memoryScope && <KaelMemorySettings key={scope} userId={kaelUserId} mode={kaelMode} onClose={() => setMemoryScope(null)}/>}
-    {!onPreviewMenu && <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
+    {!onPreviewMenu && <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
       if (access.phase === 'guest') {
         kaelIntroSession.markPlayed();
         access.prepareHorizonDraftTransfer({ text: inputRef.current, images: imagesRef.current });

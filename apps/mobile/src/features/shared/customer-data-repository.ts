@@ -4,7 +4,8 @@ import { workflowErrorFrom } from './workflow-error';
 
 export type CustomerNotificationKind = 'quote_received' | 'job_assigned' | 'job_progress' | 'work_submitted' | 'job_completed' | 'scope_proposed';
 export type WorkerNotificationKind = 'job_offered' | 'work_approved' | 'revision_requested' | 'work_disputed' | 'scope_approved' | 'scope_rejected' | 'resume_agreed' | 'review_received';
-export type NotificationKind = CustomerNotificationKind | WorkerNotificationKind;
+export type JobChangeNotificationKind = 'change_requested' | 'change_decided';
+export type NotificationKind = CustomerNotificationKind | WorkerNotificationKind | JobChangeNotificationKind;
 export type NotificationAudience = 'customer' | 'worker';
 export type CustomerNotification = { id: string; kind: NotificationKind; request_id: string; title: string; body: string; created_at: string; read_at: string | null };
 export type CustomerProfile = { display_name: string; email: string; address: string };
@@ -33,8 +34,8 @@ export type SavedWorkerRecord = {
 };
 
 const notificationKindsByAudience: Readonly<Record<NotificationAudience, readonly NotificationKind[]>> = {
-  customer: ['quote_received', 'job_assigned', 'job_progress', 'work_submitted', 'job_completed', 'scope_proposed'],
-  worker: ['job_offered', 'work_approved', 'revision_requested', 'work_disputed', 'scope_approved', 'scope_rejected', 'resume_agreed', 'review_received'],
+  customer: ['quote_received', 'job_assigned', 'job_progress', 'work_submitted', 'job_completed', 'scope_proposed', 'change_requested', 'change_decided'],
+  worker: ['job_offered', 'work_approved', 'revision_requested', 'work_disputed', 'scope_approved', 'scope_rejected', 'resume_agreed', 'review_received', 'change_requested', 'change_decided'],
 };
 const notificationLimit = 100;
 
@@ -140,6 +141,12 @@ export async function saveCustomerSettings(userId: string, settings: CustomerSet
     p_push: settings.push, p_quotes: settings.quotes, p_messages: settings.messages, p_promotions: settings.promotions, p_reduce_motion: settings.reduce_motion,
   }, signal);
   if (result !== userId) throw new Error('Invalid settings response');
+}
+
+export async function clearKaelHistory(userId: string, mode: 'client' | 'worker', signal: AbortSignal): Promise<number> {
+  const result = await callRpc(userId, 'clear_kael_history', { p_mode: mode }, signal);
+  if (typeof result !== 'number' || !Number.isSafeInteger(result) || result < 0) throw new Error('Invalid history response');
+  return result;
 }
 
 export async function readAccountPhone(userId: string, signal: AbortSignal): Promise<string> {

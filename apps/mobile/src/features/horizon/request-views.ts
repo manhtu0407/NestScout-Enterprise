@@ -206,6 +206,8 @@ const notificationIcons: Record<NotificationKind, IconName> = {
   scope_rejected: 'receipt',
   resume_agreed: 'briefcase',
   review_received: 'star',
+  change_requested: 'clock',
+  change_decided: 'clock',
 };
 
 export function toNotificationItems(notifications: readonly CustomerNotification[], now: Date): NotificationItem[] {

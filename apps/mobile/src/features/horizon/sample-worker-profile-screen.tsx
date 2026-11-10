@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import {
-  certificateStatusLabels, sampleWorkerProfileView, type WorkerProfileCommand, type WorkerProfileTab, type WorkerProfileView,
+  certificateStatusLabels, missingItemsOf, sampleWorkerProfileView, type WorkerProfileCommand, type WorkerProfileTab, type WorkerProfileView,
 } from './worker-profile';
 import { WorkerProfileScreen } from './worker-profile-screen';
 
@@ -27,11 +27,20 @@ export function SampleWorkerProfileScreen({ initialTab, onBack }: Props) {
           certificates: [...current.certificates, { id: `sample-${current.certificates.length + 1}`, title: command.title, status: 'pending', statusLabel: certificateStatusLabels.pending }],
         }));
         return 'Đã thêm chứng chỉ. Khách chỉ thấy chứng chỉ sau khi được xác minh.';
+      case 'addDocument':
+        setProfile(current => ({
+          ...current,
+          documents: [...current.documents, { id: `sample-doc-${current.documents.length + 1}`, kind: command.kind, title: command.title, status: 'pending', statusLabel: certificateStatusLabels.pending }],
+        }));
+        return 'Đã tải tệp lên. Khách chỉ thấy sau khi được xác minh.';
+      case 'removeDocument':
+        setProfile(current => ({ ...current, documents: current.documents.filter(item => item.id !== command.id) }));
+        return 'Đã xóa tệp.';
       default:
         setProfile(current => ({ ...current, certificates: current.certificates.filter(item => item.id !== command.id) }));
         return 'Đã xóa chứng chỉ.';
     }
   }, []);
 
-  return <WorkerProfileScreen sample initialTab={initialTab} profile={profile} fallbackName={sampleWorkerProfileView.name} perform={perform} onBack={onBack} />;
+  return <WorkerProfileScreen sample initialTab={initialTab} profile={{ ...profile, missing: missingItemsOf(profile) }}fallbackName={sampleWorkerProfileView.name} perform={perform} onBack={onBack} />;
 }

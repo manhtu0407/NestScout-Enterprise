@@ -1,4 +1,4 @@
-import type { IconName, WorkerCertificateStatus } from '@/features/shared';
+import type { IconName, MediaFile, WorkerCertificateStatus, WorkerDocumentKind, WorkerMissingItem } from '@/features/shared';
 
 import type { WorkerReview, WorkerStrength } from './content';
 
@@ -16,6 +16,52 @@ export function workerProfileTabForSidebarId(id: string): WorkerProfileTab | nul
 
 export type WorkerCertificate = { id: string; title: string; status: WorkerCertificateStatus; statusLabel: string };
 
+export type WorkerDocument = { id: string; kind: WorkerDocumentKind; title: string; status: WorkerCertificateStatus; statusLabel: string };
+
+export type WorkerDocumentSlot = { kind: WorkerDocumentKind; title: string; body: string; icon: IconName; required: boolean; limit: number; action: string };
+
+export const workerDocumentSlots: readonly WorkerDocumentSlot[] = [
+  { kind: 'identity', title: 'Giấy tờ tùy thân', body: 'Ảnh CCCD hoặc CMND, rõ cả 4 góc. Chỉ nhân viên xác minh xem được, khách không thấy.', icon: 'user', required: true, limit: 2, action: 'Tải ảnh giấy tờ' },
+  { kind: 'qualification', title: 'Chứng chỉ và giấy xác nhận tay nghề', body: 'Chứng chỉ nghề, giấy xác nhận từ đơn vị cũ hoặc thẻ an toàn lao động.', icon: 'receipt', required: false, limit: 10, action: 'Tải chứng chỉ' },
+  { kind: 'portfolio', title: 'Ảnh công việc đã làm', body: 'Ảnh trước và sau khi làm giúp khách tin tưởng hồ sơ của bạn.', icon: 'image', required: false, limit: 6, action: 'Tải ảnh công việc' },
+];
+
+export const documentKindLabels: Readonly<Record<WorkerDocumentKind, string>> = {
+  identity: 'Giấy tờ tùy thân',
+  qualification: 'Chứng chỉ',
+  portfolio: 'Ảnh công việc',
+};
+
+export type ReadinessStep = { key: WorkerMissingItem; label: string; hint: string; target: 'edit' | 'areas' | 'documents' };
+
+export const readinessSteps: readonly ReadinessStep[] = [
+  { key: 'about', label: 'Giới thiệu bản thân', hint: 'Viết vài câu về nghề và cách làm việc', target: 'edit' },
+  { key: 'skills', label: 'Kỹ năng', hint: 'Thêm ít nhất 1 kỹ năng', target: 'edit' },
+  { key: 'services', label: 'Dịch vụ nhận', hint: 'Chọn ít nhất 1 dịch vụ ở tab Khu vực', target: 'areas' },
+  { key: 'identity', label: 'Giấy tờ tùy thân', hint: 'Tải ảnh CCCD hoặc CMND để xác minh', target: 'documents' },
+];
+
+export type WorkerReadiness = { total: number; done: number; pending: readonly ReadinessStep[]; ready: boolean };
+
+export function missingItemsOf(profile: Pick<WorkerProfileView, 'about' | 'skills' | 'serviceIds' | 'documents'>): WorkerMissingItem[] {
+  const missing: WorkerMissingItem[] = [];
+  if (profile.about.trim() === '') missing.push('about');
+  if (profile.skills.length === 0) missing.push('skills');
+  if (profile.serviceIds.length === 0) missing.push('services');
+  if (!profile.documents.some(item => item.kind === 'identity' && item.status !== 'rejected')) missing.push('identity');
+  return missing;
+}
+
+export function workerReadiness(missing: readonly WorkerMissingItem[]): WorkerReadiness {
+  const pending = readinessSteps.filter(step => missing.includes(step.key));
+  return { total: readinessSteps.length, done: readinessSteps.length - pending.length, pending, ready: missing.length === 0 };
+}
+
+export function readinessSummary(missing: readonly WorkerMissingItem[]): string {
+  const { pending } = workerReadiness(missing);
+  return pending.length === 0 ? 'Hồ sơ đã đủ để nhận việc' : `Cần bổ sung ${pending.length} mục để nhận việc`;
+}
+
 export type WorkerProfileView = {
   name: string;
   trade: string;
@@ -28,6 +74,8 @@ export type WorkerProfileView = {
   serviceIds: readonly string[];
   listed: boolean;
   certificates: readonly WorkerCertificate[];
+  documents: readonly WorkerDocument[];
+  missing: readonly WorkerMissingItem[];
   reviewCount: number;
   ratingAverage: number;
   strengths: readonly WorkerStrength[];
@@ -48,7 +96,9 @@ export type WorkerProfileCommand =
   | { type: 'coverage'; radiusKm: number; serviceIds: readonly string[] }
   | { type: 'accepting'; accepting: boolean }
   | { type: 'addCertificate'; title: string }
-  | { type: 'removeCertificate'; id: string };
+  | { type: 'removeCertificate'; id: string }
+  | { type: 'addDocument'; kind: WorkerDocumentKind; file: MediaFile; title: string }
+  | { type: 'removeDocument'; id: string };
 
 export type WorkerProfilePerform = (command: WorkerProfileCommand) => Promise<string>;
 
@@ -127,6 +177,10 @@ export const sampleWorkerProfileView: WorkerProfileView = {
   accepting: true,
   serviceIds: ['electric', 'water', 'aircon'],
   listed: false,
+  documents: [
+    { id: 'd1', kind: 'identity', title: 'CCCD mặt trước', status: 'pending', statusLabel: certificateStatusLabels.pending },
+  ],
+  missing: [],
   certificates: [
     { id: 'c1', title: 'Chứng chỉ an toàn điện', status: 'pending', statusLabel: certificateStatusLabels.pending },
     { id: 'c2', title: 'Chứng nhận nghề điện dân dụng', status: 'rejected', statusLabel: certificateStatusLabels.rejected },

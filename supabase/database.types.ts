@@ -5,7 +5,35 @@ export type Database = {
 
   "public": {
           Tables: {
-            "customer_profiles": {
+            "account_deletion_requests": {
+                  Row: {
+                    "processed_at": string | null,"requested_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "processed_at"?: string | null,"requested_at"?: string,"user_id"?: string
+                  }
+                  Update: {
+                    "processed_at"?: string | null,"requested_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"consent_events": {
+                  Row: {
+                    "granted": boolean,"id": number,"policy_version": string,"purpose": string,"recorded_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "granted": boolean,"id"?: never,"policy_version": string,"purpose": string,"recorded_at"?: string,"user_id"?: string
+                  }
+                  Update: {
+                    "granted"?: boolean,"id"?: never,"policy_version"?: string,"purpose"?: string,"recorded_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"customer_profiles": {
                   Row: {
                     "address": string,"avatar_path": string,"display_name": string,"email": string,"updated_at": string,"user_id": string
                   }
@@ -52,6 +80,26 @@ isOneToOne: false
                   }
                   Relationships: [
 
+                  ]
+                },"job_change_requests": {
+                  Row: {
+                    "created_at": string,"decided_at": string | null,"decided_by": string | null,"id": string,"job_id": string,"kind": string,"proposed_for": string | null,"reason": string | null,"requested_by": string,"status": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"id"?: string,"job_id": string,"kind": string,"proposed_for"?: string | null,"reason"?: string | null,"requested_by"?: string,"status"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"id"?: string,"job_id"?: string,"kind"?: string,"proposed_for"?: string | null,"reason"?: string | null,"requested_by"?: string,"status"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "job_change_requests_job_id_fkey"
+      columns: ["job_id"]
+isOneToOne: false
+      referencedRelation: "service_jobs"
+      referencedColumns: ["id"]
+    }
                   ]
                 },"kael_conversations": {
                   Row: {
@@ -227,6 +275,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"push_tokens": {
+                  Row: {
+                    "platform": string,"registered_at": string,"token": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "platform": string,"registered_at"?: string,"token": string,"user_id"?: string
+                  }
+                  Update: {
+                    "platform"?: string,"registered_at"?: string,"token"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
                 },"request_photos": {
                   Row: {
                     "created_at": string,"id": string,"owner_id": string,"path": string,"request_id": string
@@ -264,6 +326,26 @@ isOneToOne: false
       columns: ["request_id"]
 isOneToOne: false
       referencedRelation: "service_requests"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"review_reactions": {
+                  Row: {
+                    "created_at": string,"reaction": string,"review_id": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"reaction": string,"review_id": string,"user_id"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"reaction"?: string,"review_id"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "review_reactions_review_id_fkey"
+      columns: ["review_id"]
+isOneToOne: false
+      referencedRelation: "worker_reviews"
       referencedColumns: ["id"]
     }
                   ]
@@ -499,6 +581,20 @@ isOneToOne: false
                   Relationships: [
 
                   ]
+                },"terms_acceptances": {
+                  Row: {
+                    "accepted_at": string,"document": string,"user_id": string,"version": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "accepted_at"?: string,"document": string,"user_id"?: string,"version": string
+                  }
+                  Update: {
+                    "accepted_at"?: string,"document"?: string,"user_id"?: string,"version"?: string
+                  }
+                  Relationships: [
+
+                  ]
                 },"worker_access_grants": {
                   Row: {
                     "granted_at": string,"revoked_at": string | null,"status": string,"user_id": string
@@ -523,6 +619,34 @@ isOneToOne: false
                   }
                   Update: {
                     "created_at"?: string,"id"?: string,"status"?: string,"title"?: string,"worker_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"worker_documents": {
+                  Row: {
+                    "created_at": string,"id": string,"kind": string,"path": string,"status": string,"title": string,"worker_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"kind": string,"path": string,"status"?: string,"title": string,"worker_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"kind"?: string,"path"?: string,"status"?: string,"title"?: string,"worker_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"worker_payout_accounts": {
+                  Row: {
+                    "account_holder": string,"account_number": string,"bank_code": string,"bank_name": string,"created_at": string,"qr_path": string,"status": string,"updated_at": string,"worker_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "account_holder": string,"account_number": string,"bank_code": string,"bank_name": string,"created_at"?: string,"qr_path": string,"status"?: string,"updated_at"?: string,"worker_id": string
+                  }
+                  Update: {
+                    "account_holder"?: string,"account_number"?: string,"bank_code"?: string,"bank_name"?: string,"created_at"?: string,"qr_path"?: string,"status"?: string,"updated_at"?: string,"worker_id"?: string
                   }
                   Relationships: [
 
@@ -579,6 +703,9 @@ isOneToOne: false
 "accept_service_quote":
 { Args: { "p_quote_id": string,"p_version": number }; Returns: string
                            },
+"accept_terms":
+{ Args: { "p_document": string,"p_version": string }; Returns: string
+                           },
 "account_phone":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
@@ -588,8 +715,20 @@ isOneToOne: false
 "add_worker_certificate":
 { Args: { "p_title": string }; Returns: string
                            },
+"add_worker_document":
+{ Args: { "p_kind": string,"p_path": string,"p_title": string }; Returns: string
+                           },
 "advance_service_job":
 { Args: { "p_job_id": string,"p_next": string,"p_version": number }; Returns: number
+                           },
+"cancel_account_deletion":
+{ Args: Record<PropertyKey, never>; Returns: boolean
+                           },
+"claim_push_deliveries":
+{ Args: { "p_limit": number }; Returns: Json
+                           },
+"clear_kael_history":
+{ Args: { "p_mode": string }; Returns: number
                            },
 "consent_service_resume":
 { Args: { "p_job_id": string,"p_version": number }; Returns: number
@@ -599,6 +738,9 @@ isOneToOne: false
               "category": string,"created_at": string,"job_id": string,"paused_from_version": number,"prior_stage": string,"resume_requested": boolean
             }[]
                            },
+"decide_job_change":
+{ Args: { "p_change_id": string,"p_decision": string }; Returns: string
+                           },
 "decide_service_scope":
 { Args: { "p_decision": string,"p_job_version": number,"p_proposal_id": string,"p_sequence": number }; Returns: string
                            },
@@ -607,6 +749,12 @@ isOneToOne: false
                            },
 "decline_service_invitation":
 { Args: { "p_invitation_id": string,"p_quote_id": string,"p_quote_version": number }; Returns: string
+                           },
+"export_my_data":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"finish_push_delivery":
+{ Args: { "p_error": string,"p_notification_id": string }; Returns: boolean
                            },
 "job_worker_cards":
 { Args: Record<PropertyKey, never>; Returns: {
@@ -670,9 +818,14 @@ isOneToOne: false
 "mark_notifications_read":
 { Args: { "p_ids": (string)[] }; Returns: number
                            },
+"my_worker_payout_account":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "account_holder": string,"account_number": string,"bank_code": string,"bank_name": string,"qr_path": string,"status": string,"updated_at": string
+            }[]
+                           },
 "my_worker_profile":
 { Args: Record<PropertyKey, never>; Returns: {
-              "about": string,"accepting_jobs": boolean,"area": string,"certificates": Json,"completed_jobs": number,"display_name": string,"experience_years": number,"listed": boolean,"profile_id": string,"radius_km": number,"rating_average": number,"review_count": number,"reviews": Json,"service_ids": (string)[],"skills": (string)[],"strengths": Json,"trade": string
+              "about": string,"accepting_jobs": boolean,"area": string,"certificates": Json,"completed_jobs": number,"display_name": string,"documents": Json,"experience_years": number,"listed": boolean,"missing_items": (string)[],"profile_id": string,"radius_km": number,"rating_average": number,"review_count": number,"reviews": Json,"service_ids": (string)[],"skills": (string)[],"strengths": Json,"trade": string
             }[]
                            },
 "open_service_aftercare":
@@ -681,8 +834,17 @@ isOneToOne: false
 "pause_service_job":
 { Args: { "p_category": string,"p_job_id": string,"p_version": number }; Returns: number
                            },
+"process_account_deletions":
+{ Args: { "p_grace": string }; Returns: number
+                           },
 "propose_service_scope":
 { Args: { "p_amount": number,"p_job_id": string,"p_key": string,"p_rationale": string,"p_scope": string,"p_version": number }; Returns: string
+                           },
+"purge_expired_data":
+{ Args: { "p_kael_messages_older_than": string,"p_read_notifications_older_than": string }; Returns: Json
+                           },
+"register_push_token":
+{ Args: { "p_platform": string,"p_token": string }; Returns: string
                            },
 "reject_service_quote":
 { Args: { "p_quote_id": string,"p_version": number }; Returns: string
@@ -690,14 +852,31 @@ isOneToOne: false
 "remove_worker_certificate":
 { Args: { "p_id": string }; Returns: string
                            },
+"remove_worker_document":
+{ Args: { "p_id": string }; Returns: string
+                           },
+"remove_worker_payout_account":
+{ Args: Record<PropertyKey, never>; Returns: string
+                           },
 "report_service_job":
 { Args: { "p_details": string,"p_job_id": string,"p_key": string,"p_kind": string,"p_version": number }; Returns: string
+                           },
+"request_account_deletion":
+{ Args: Record<PropertyKey, never>; Returns: string
+                           },
+"request_job_change":
+{ Args: { "p_job_id": string,"p_kind": string,"p_proposed_for": string,"p_reason": string }; Returns: string
                            },
 "request_service_resume":
 { Args: { "p_job_id": string,"p_version": number }; Returns: number
                            },
 "review_job_worker":
 { Args: { "p_body": string,"p_job_id": string,"p_rating": number,"p_tags": (string)[] }; Returns: string
+                           },
+"review_reactions":
+{ Args: { "p_review_ids": (string)[] }; Returns: {
+              "reacted": boolean,"reaction": string,"review_id": string,"total": number
+            }[]
                            },
 "save_customer_profile":
 { Args: { "p_address": string,"p_display_name": string,"p_email": string }; Returns: string
@@ -719,6 +898,9 @@ isOneToOne: false
               "area": string,"basis": string,"completed_jobs": number,"display_name": string,"experience_years": number,"profile_id": string,"rating_average": number,"review_count": number,"reviews": Json,"saved_at": string,"service_areas": (string)[],"skills": (string)[],"strengths": Json,"trade": string
             }[]
                            },
+"set_consent":
+{ Args: { "p_granted": boolean,"p_purpose": string,"p_version": string }; Returns: string
+                           },
 "set_customer_avatar":
 { Args: { "p_has_avatar": boolean }; Returns: string
                            },
@@ -728,6 +910,9 @@ isOneToOne: false
 "set_worker_accepting":
 { Args: { "p_accepting": boolean }; Returns: boolean
                            },
+"set_worker_payout_account":
+{ Args: { "p_account_holder": string,"p_account_number": string,"p_bank_code": string,"p_bank_name": string,"p_qr_path": string }; Returns: string
+                           },
 "submit_service_request":
 { Args: { "p_description": string,"p_location"?: string,"p_submission_key": string }; Returns: string
                            },
@@ -736,6 +921,12 @@ isOneToOne: false
                            },
 "submit_support_request":
 { Args: { "p_body": string,"p_subject": string,"p_submission_key": string }; Returns: string
+                           },
+"toggle_review_reaction":
+{ Args: { "p_reaction": string,"p_review_id": string }; Returns: boolean
+                           },
+"unregister_push_token":
+{ Args: { "p_token": string }; Returns: boolean
                            },
 "unsave_worker":
 { Args: { "p_profile_id": string }; Returns: string

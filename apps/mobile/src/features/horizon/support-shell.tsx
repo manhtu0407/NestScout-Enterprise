@@ -8,12 +8,12 @@ import { horizonColors } from '@/theme/palette';
 const metrics = horizonLayout.supportScreens;
 const colors = horizonColors.supportScreens;
 
-type ShellProps = { title: string; subtitle?: string; onBack: () => void; headerAction?: ReactNode; children: ReactNode };
+type ShellProps = { title: string; subtitle?: string; onBack: () => void; backLabel?: string; headerAction?: ReactNode; children: ReactNode };
 
-export function ScreenHeader({ title, onBack, action }: { title: string; onBack: () => void; action?: ReactNode }) {
+export function ScreenHeader({ title, onBack, action, backLabel = 'Quay về' }: { title: string; onBack: () => void; action?: ReactNode; backLabel?: string }) {
   return (
     <View style={styles.topBar}>
-      <GlassIconButton label="Quay về" onPress={onBack} style={styles.back}>
+      <GlassIconButton label={backLabel} onPress={onBack} style={styles.back}>
         <Icon name="back" size={horizonLayout.glass.iconSize} />
       </GlassIconButton>
       <Text accessibilityRole="header" numberOfLines={1} style={styles.title}>{title}</Text>
@@ -22,10 +22,10 @@ export function ScreenHeader({ title, onBack, action }: { title: string; onBack:
   );
 }
 
-export function SupportShell({ title, subtitle, onBack, headerAction, children }: ShellProps) {
+export function SupportShell({ title, subtitle, onBack, backLabel, headerAction, children }: ShellProps) {
   return (
     <View style={styles.root}>
-      <ScreenHeader title={title} onBack={onBack} action={headerAction} />
+      <ScreenHeader title={title} onBack={onBack} action={headerAction} backLabel={backLabel} />
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {children}

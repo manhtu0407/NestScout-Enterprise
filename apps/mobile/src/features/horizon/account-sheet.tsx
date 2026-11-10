@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 import { Icon, PressScale } from '@/features/shared';
+import { AvatarImage } from './avatar-image';
 
 const metrics = horizonLayout.modePicker;
 const colors = horizonColors.modePicker;
@@ -15,6 +16,7 @@ type Props = { profileName?: string; avatarUri?: string; avatarHeaders?: Readonl
 
 export function AccountSheet({ profileName, avatarUri, avatarHeaders, modeLabel, reduceMotion, closeRequest, onClose }: Props) {
   const insets = useSafeAreaInsets();
+  const placeholder = profileName ? <Text style={styles.initial}>{profileName.trim().charAt(0).toLocaleUpperCase()}</Text> : <Icon name="user" size={account.avatarIconSize} color={tones.avatarInitial}/>;
   const [focused, setFocused] = useState<'close' | null>(null);
   const [progress] = useState(() => new Animated.Value(reduceMotion ? 1 : 0));
   const [exiting, setExiting] = useState(false);
@@ -79,7 +81,7 @@ export function AccountSheet({ profileName, avatarUri, avatarHeaders, modeLabel,
           <PressScale accessibilityRole="button" accessibilityLabel="Đóng bảng tài khoản" onPress={closeSheet} onFocus={() => setFocused('close')} onBlur={() => setFocused(null)} style={[styles.close, webControlStyle, focused === 'close' && styles.closeFocused]}><Icon name="close" size={account.closeIconSize}/></PressScale>
         </View>
         <View style={styles.identity}>
-          <View style={styles.avatar}>{avatarUri ? <Image source={{ uri: avatarUri, headers: avatarHeaders ? { ...avatarHeaders } : undefined }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện"/> : profileName ? <Text style={styles.initial}>{profileName.trim().charAt(0).toLocaleUpperCase()}</Text> : <Icon name="user" size={account.avatarIconSize} color={tones.avatarInitial}/>}</View>
+          <View style={styles.avatar}>{avatarUri ? <AvatarImage uri={avatarUri} headers={avatarHeaders} fallback={placeholder}/> : placeholder}</View>
           <View style={styles.copy}>
             <Text numberOfLines={1} style={styles.name}>{profileName ?? 'Chưa có thông tin hồ sơ'}</Text>
             <View style={styles.chip}><Text style={styles.chipText}>{modeLabel}</Text></View>

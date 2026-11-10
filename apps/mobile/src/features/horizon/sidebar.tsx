@@ -1,6 +1,7 @@
+import { usePreferences } from '@/lib/preferences-provider';
 import { horizonLayout } from '@/theme/layout';
 import React, { useCallback, useEffect, useState } from 'react';
-import { AccessibilityInfo, Animated, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { GlassCapsuleButton, GlassIconButton, Icon, useGlassAccessibility, usePressFeedback } from '@/features/shared';
 import { quickServices, sidebarGroups } from './content';
 import type { SidebarItem } from './content';
@@ -8,7 +9,8 @@ import { horizonColors, horizonColors as colors } from '@/theme/palette';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ModePicker, type HorizonMode, type ModeNotice } from './mode-picker';
 import { AccountSheet } from './account-sheet';
-import { WorkerSidebarBody, type WorkerSidebarState, type WorkerSidebarStats } from './worker-sidebar-body';
+import { AvatarImage } from './avatar-image';
+import { WorkerSidebarBody, type WorkerSidebarState } from './worker-sidebar-body';
 import { CollapsibleGroup } from './sidebar-group';
 import { PopBadge } from './motion-count';
 import { SkeletonReveal } from './skeleton';
@@ -33,7 +35,6 @@ type Props = {
   recentLoading?: boolean;
   badges?: Readonly<Record<string, number>>;
   workerProfile?: WorkerSidebarState;
-  workerStats?: WorkerSidebarStats;
   onSetAccepting?: (accepting: boolean) => Promise<void>;
   recentSessions?: readonly RecentSession[];
   activeSessionId?: string;
@@ -44,6 +45,7 @@ type Props = {
 
 const listColors = horizonColors.sidebarList;
 const lockupWidth = horizonLayout.lockup.height * horizonLayout.lockup.aspect;
+const drawerEasing = Easing.bezier(0.23, 1, 0.32, 1);
 
 function Group({ title, first, children }: { title?: string; first?: boolean; children: React.ReactNode }) {
   return <View style={first ? undefined : styles.group}>
@@ -64,7 +66,7 @@ function ItemRow({ item, onPress, badge = 0 }: { item: SidebarItem; onPress: () 
   </Animated.View>;
 }
 
-export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, profileAvatarUri, profileAvatarHeaders, recentLoading = false, badges = {}, workerProfile, workerStats, onSetAccepting, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore }: Props) {
+export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, profileAvatarUri, profileAvatarHeaders, recentLoading = false, badges = {}, workerProfile, onSetAccepting, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const topInset = Platform.select({ web: 0, default: insets.top }) ?? 0;
@@ -74,7 +76,9 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
   const [modeOpen, setModeOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountCloseRequest, setAccountCloseRequest] = useState(0);
-  const [reduceMotion, setReduceMotion] = useState(true);
+  const [systemReduceMotion, setReduceMotion] = useState(true);
+  const preferredReduceMotion = usePreferences().reduceMotion;
+  const reduceMotion = systemReduceMotion || preferredReduceMotion;
   useEffect(() => {
     let active = true;
     let changed = false;
@@ -82,10 +86,25 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
     void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (active && !changed) setReduceMotion(value); }, () => undefined);
     return () => { active = false; subscription.remove(); };
   }, []);
+  const [mounted, setMounted] = useState(visible);
+  const [progress] = useState(() => new Animated.Value(visible ? 1 : 0));
+  if (visible && !mounted) setMounted(true);
+  useEffect(() => {
+    const motion = horizonLayout.sidebar;
+    const animation = Animated.timing(progress, {
+      toValue: visible ? 1 : 0,
+      duration: reduceMotion ? motion.reducedDuration : visible ? motion.enterDuration : motion.exitDuration,
+      easing: drawerEasing,
+      useNativeDriver: true,
+    });
+    animation.start(({ finished }) => { if (finished && !visible) setMounted(false); });
+    return () => animation.stop();
+  }, [visible, reduceMotion, progress]);
   const [requestedWorker, setRequestedWorker] = useState(false);
   const modeLabel = mode === 'worker' ? 'Thợ' : mode === 'guest' ? 'Khách' : 'Khách hàng';
   const accountName = profileName ?? (mode === 'guest' ? 'Khách' : 'của bạn');
   const initial = profileName?.trim().charAt(0).toLocaleUpperCase();
+  const avatarPlaceholder = initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={horizonLayout.sidebarList.accountAvatarIconSize} color={horizonColors.sidebarComponent.avatarForeground}/>;
   const pinnedSessions = recentSessions.filter(session => session.pinned);
   const unpinnedSessions = recentSessions.filter(session => !session.pinned);
   const renderSession = (session: RecentSession) => <RecentSessionRow key={session.id} session={session} active={session.id === activeSessionId} onPress={() => onOpenSession?.(session.id)} onMore={() => onSessionMore?.(session.id)} onTogglePin={() => onTogglePin?.(session.id)}/>;
@@ -104,10 +123,15 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
     else setModeOpen(false);
     onModeSelect(next);
   };
-  return <Modal visible={visible} transparent animationType="fade" onRequestClose={pickerVisible ? closePicker : accountOpen ? () => setAccountCloseRequest(value => value + 1) : closeSidebar} statusBarTranslucent>
-    <View style={styles.full}>
-      <View pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'} accessibilityElementsHidden={pickerVisible || accountOpen} importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} style={[styles.drawer, { width: Math.min(width * horizonLayout.sidebar.drawerWidthRatio, horizonLayout.sidebar.drawerMaxWidth), paddingTop: topInset, paddingBottom: Math.max(insets.bottom, horizonLayout.sidebar.drawerMinimumBottom) }]}>
-        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={badges} workerProfile={workerProfile} workerStats={workerStats} onSetAccepting={onSetAccepting}/> : <>
+  const drawerWidth = Math.min(width * horizonLayout.sidebar.drawerWidthRatio, horizonLayout.sidebar.drawerMaxWidth);
+  const drawerMotion = reduceMotion
+    ? { opacity: progress }
+    : { opacity: progress.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1] }), transform: [{ translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [-drawerWidth, 0] }) }] };
+  return <Modal visible={mounted} transparent animationType="none" onRequestClose={pickerVisible ? closePicker : accountOpen ? () => setAccountCloseRequest(value => value + 1) : closeSidebar} statusBarTranslucent>
+    <View pointerEvents={visible ? 'auto' : 'none'} style={styles.full}>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dim, { opacity: progress }]}/>
+      <Animated.View pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'} accessibilityElementsHidden={pickerVisible || accountOpen} importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} style={[styles.drawer, drawerMotion, { width: drawerWidth, paddingTop: topInset, paddingBottom: Math.max(insets.bottom, horizonLayout.sidebar.drawerMinimumBottom) }]}>
+        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={badges} workerProfile={workerProfile} onSetAccepting={onSetAccepting}/> : <>
         <View style={styles.heading}>
           <View style={styles.brand}>
             <View accessible accessibilityRole="header" accessibilityLabel="NestScout Horizon" style={styles.lockup}>
@@ -139,13 +163,13 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
           </CollapsibleGroup>
         </ScrollView>
         <View pointerEvents="box-none" style={styles.floating}>
-          <GlassIconButton label={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} hint="Mở tài khoản và chuyển vai trò" onPress={() => { setAccountCloseRequest(0); setAccountOpen(true); }}><View style={styles.avatarDisc}>{profileAvatarUri ? <Image source={{ uri: profileAvatarUri, headers: profileAvatarHeaders ? { ...profileAvatarHeaders } : undefined }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Ảnh đại diện"/> : initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={horizonLayout.sidebarList.accountAvatarIconSize} color={horizonColors.sidebarComponent.avatarForeground}/>}</View></GlassIconButton>
+          <GlassIconButton label={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} hint="Mở tài khoản và chuyển vai trò" onPress={() => { setAccountCloseRequest(0); setAccountOpen(true); }}><View style={styles.avatarDisc}>{profileAvatarUri ? <AvatarImage uri={profileAvatarUri} headers={profileAvatarHeaders} fallback={avatarPlaceholder}/> : avatarPlaceholder}</View></GlassIconButton>
           <GlassCapsuleButton label="Chat" tone="light" radius={horizonLayout.sidebarList.floatingRadius} onPress={() => onNavigate('new')} style={styles.newChat}>
             <Icon name="plus" size={22} color={listColors.onAccent} strokeWidth={2}/><Text style={styles.newChatLabel}>Chat</Text>
           </GlassCapsuleButton>
         </View>
         </>}
-      </View>
+      </Animated.View>
       <Pressable style={styles.scrim} onPress={closeSidebar} accessibilityLabel="Đóng sidebar" importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'}/>
       {visible && accountOpen && <AccountSheet closeRequest={accountCloseRequest} reduceMotion={reduceMotion} profileName={profileName} avatarUri={profileAvatarUri} avatarHeaders={profileAvatarHeaders} modeLabel={modeLabel} onClose={closeAccount}/>}
       {pickerVisible && <ModePicker mode={mode} pending={requestedWorker && !modeNotice} notice={modeNotice} onSelect={selectMode} onClose={closePicker}/>}
@@ -155,7 +179,8 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
 
 const styles = StyleSheet.create({
   full: { flex: 1, flexDirection: 'row' },
-  scrim: { flex: 1, backgroundColor: colors.scrim },
+  dim: { backgroundColor: colors.scrim },
+  scrim: { flex: 1 },
   drawer: { backgroundColor: horizonColors.sidebarComponent.drawerBackgroundColor, paddingHorizontal: horizonLayout.sidebar.drawerPaddingHorizontal, borderRightWidth: horizonLayout.sidebar.drawerBorderRightWidth, borderRightColor: horizonColors.sidebarComponent.drawerBorderRightColor },
   heading: { height: horizonLayout.sidebar.headingHeight, flexDirection: 'row', alignItems: 'center', marginTop: horizonLayout.sidebar.headingMarginTop, marginBottom: horizonLayout.sidebar.headingMarginBottom },
   brandIcon: { width: horizonLayout.sidebar.brandIconWidth, height: horizonLayout.sidebar.brandIconHeight, borderRadius: horizonLayout.sidebar.brandIconBorderRadius, backgroundColor: horizonColors.sidebarComponent.brandIconBackgroundColor, alignItems: 'center', justifyContent: 'center', marginRight: horizonLayout.sidebar.brandIconMarginRight },
