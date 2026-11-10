@@ -35,6 +35,8 @@ select is_empty($$
   where n.nspname='nestscout_private' and has_function_privilege('service_role',p.oid,'execute')
     and p.proname not in ('kael_start_run','kael_finish_run','kael_save_task','kael_record_tool',
       'kael_request_approval','kael_consume_approval','kael_complete_approval','kael_reject_approval','kael_pilot_charge',
+      'kael_durable_start_run','kael_durable_claim','kael_durable_heartbeat','kael_durable_release','kael_durable_claim_next','kael_durable_expire',
+      'kael_durable_purge_queue','kael_durable_mark_purged','kael_durable_known','kael_durable_erasure_pending',
       'claim_push_deliveries','finish_push_delivery','process_account_deletions','purge_expired_data')
 $$, 'The trusted server role reaches only the reviewed Kael-internal operations in the private schema');
 

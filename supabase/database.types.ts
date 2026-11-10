@@ -815,6 +815,36 @@ isOneToOne: false
 "kael_conversation_state":
 { Args: { "p_mode": string }; Returns: Json
                            },
+"kael_durable_claim":
+{ Args: { "p_actor": string,"p_holder": string,"p_lease_seconds": number,"p_run_id": string }; Returns: Json
+                           },
+"kael_durable_claim_next":
+{ Args: { "p_holder": string,"p_lease_seconds": number,"p_limit": number }; Returns: Json
+                           },
+"kael_durable_erasure_pending":
+{ Args: { "p_user": string }; Returns: number
+                           },
+"kael_durable_expire":
+{ Args: { "p_max_age": string }; Returns: number
+                           },
+"kael_durable_heartbeat":
+{ Args: { "p_actor": string,"p_epoch": number,"p_holder": string,"p_lease_seconds": number,"p_run_id": string }; Returns: boolean
+                           },
+"kael_durable_known":
+{ Args: { "p_run_ids": (string)[] }; Returns: Json
+                           },
+"kael_durable_mark_purged":
+{ Args: { "p_run_id": string }; Returns: boolean
+                           },
+"kael_durable_purge_queue":
+{ Args: { "p_limit": number }; Returns: Json
+                           },
+"kael_durable_release":
+{ Args: { "p_actor": string,"p_epoch": number,"p_holder": string,"p_run_id": string }; Returns: boolean
+                           },
+"kael_durable_start_run":
+{ Args: { "p_actor": string,"p_conversation_id": string,"p_holder": string,"p_lease_seconds": number,"p_mode": string,"p_request_id": string,"p_user_text": string }; Returns: Json
+                           },
 "kael_finish_run":
 { Args: { "p_actor": string,"p_complete": boolean,"p_error": string,"p_input_tokens": number,"p_model": string,"p_output_tokens": number,"p_provider": string,"p_run_id": string,"p_status": string,"p_steps": number,"p_text": string }; Returns: boolean
                            },
