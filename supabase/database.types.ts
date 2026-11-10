@@ -103,14 +103,14 @@ isOneToOne: false
                   ]
                 },"kael_conversations": {
                   Row: {
-                    "created_at": string,"id": string,"mode": string,"owner_id": string,"updated_at": string
+                    "archived_at": string | null,"created_at": string,"deleted_at": string | null,"id": string,"mode": string,"owner_id": string,"pinned_at": string | null,"title": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"id"?: string,"mode": string,"owner_id": string,"updated_at"?: string
+                    "archived_at"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"mode": string,"owner_id": string,"pinned_at"?: string | null,"title"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"mode"?: string,"owner_id"?: string,"updated_at"?: string
+                    "archived_at"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"mode"?: string,"owner_id"?: string,"pinned_at"?: string | null,"title"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
 
@@ -800,6 +800,9 @@ isOneToOne: false
 "kael_actor_capabilities":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"kael_archive_session":
+{ Args: { "p_archived": boolean,"p_session_id": string }; Returns: boolean
+                           },
 "kael_complete_approval":
 { Args: { "p_actor": string,"p_approval_id": string,"p_outcome": string,"p_result": Json,"p_run_id": string }; Returns: Json
                            },
@@ -815,20 +818,32 @@ isOneToOne: false
 "kael_conversation_state":
 { Args: { "p_mode": string }; Returns: Json
                            },
+"kael_delete_session":
+{ Args: { "p_session_id": string }; Returns: Json
+                           },
 "kael_finish_run":
 { Args: { "p_actor": string,"p_complete": boolean,"p_error": string,"p_input_tokens": number,"p_model": string,"p_output_tokens": number,"p_provider": string,"p_run_id": string,"p_status": string,"p_steps": number,"p_text": string }; Returns: boolean
                            },
 "kael_knowledge_search":
 { Args: { "p_limit"?: number,"p_query": string,"p_source_id"?: string,"p_strategy"?: string }; Returns: Json
                            },
+"kael_list_sessions":
+{ Args: { "p_archived"?: boolean,"p_before"?: string,"p_limit"?: number,"p_mode": string,"p_search"?: string }; Returns: Json
+                           },
 "kael_manage_memory":
 { Args: { "p_action": string,"p_mode": string,"p_preference"?: string,"p_previous"?: string,"p_value"?: string }; Returns: boolean
+                           },
+"kael_open_session":
+{ Args: { "p_mode": string,"p_session_id": string }; Returns: Json
                            },
 "kael_pilot_charge":
 { Args: { "p_action": string,"p_actor": string,"p_cached": number,"p_call": string,"p_input": number,"p_model": string,"p_output": number,"p_pilot": string,"p_run": string,"p_thinking": boolean }; Returns: Json
                            },
 "kael_pilot_status":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"kael_pin_session":
+{ Args: { "p_pinned": boolean,"p_session_id": string }; Returns: boolean
                            },
 "kael_read_context":
 { Args: { "p_kind": string,"p_resource_id": string }; Returns: Json
@@ -838,6 +853,9 @@ isOneToOne: false
                            },
 "kael_reject_approval":
 { Args: { "p_actor": string,"p_approval_id": string,"p_fingerprint": string,"p_run_id": string }; Returns: Json
+                           },
+"kael_rename_session":
+{ Args: { "p_session_id": string,"p_title": string }; Returns: string
                            },
 "kael_request_approval":
 { Args: { "p_actor": string,"p_args": Json,"p_details": Json,"p_expected_version": number,"p_fingerprint": string,"p_run_id": string,"p_summary": string,"p_task_id": string,"p_tool": string,"p_ttl_seconds": number }; Returns: Json

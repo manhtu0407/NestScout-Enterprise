@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { horizonLayout } from '@/theme/layout';
@@ -21,6 +21,7 @@ type Props = {
   badges?: Readonly<Record<string, number>>;
   workerProfile?: WorkerSidebarState;
   onSetAccepting?: (accepting: boolean) => Promise<void>;
+  sessionsSlot?: ReactNode;
 };
 
 export type WorkerSidebarProfile = { area: string; radiusKm: number; accepting: boolean; missing: readonly WorkerMissingItem[] };
@@ -80,7 +81,7 @@ function onlineOf(profile: WorkerSidebarState | undefined, sampleOnline: boolean
   return profile !== null && profile !== 'loading' && profile.accepting;
 }
 
-export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, profileName, accountLabel, badges = {}, workerProfile, onSetAccepting }: Props) {
+export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, profileName, accountLabel, badges = {}, workerProfile, onSetAccepting, sessionsSlot }: Props) {
   const [sampleOnline, setSampleOnline] = useState(true);
   const [pending, setPending] = useState<{ value: boolean; from: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -115,6 +116,7 @@ export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, pro
     </View>
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Profile profileName={profileName} roleLine={roleLineFor(workerProfile)} online={online} goHint={workerProfile === null ? 'Chưa có hồ sơ nghề. Chạm để tạo hồ sơ' : undefined} missingCount={missingCount} onToggle={toggle}/>
+      {sessionsSlot !== undefined && <View style={styles.sessions}><Text accessibilityRole="header" style={styles.sessionsTitle}>Cuộc trò chuyện</Text>{sessionsSlot}</View>}
       <View style={styles.groups}>{workerSidebarGroups.map((group, index) => <CollapsibleGroup first={index === 0} key={group.title} title={group.title} expanded={openGroups.has(group.title)} onToggle={() => toggleGroup(group.title)} badge={group.items.reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>
         {group.items.map(item => <WorkerRow key={item.id} item={item} badge={badges[item.id]} onPress={() => onNavigate(item.id)}/>)}
         {group.title === supportGroupTitle && <>
@@ -150,6 +152,8 @@ const styles = StyleSheet.create({
   name: { color: colors.ink, fontSize: metrics.nameSize, fontWeight: metrics.nameWeight, letterSpacing: metrics.nameTracking },
   role: { color: colors.muted, fontSize: metrics.roleSize },
   groups: { paddingTop: metrics.groupsTop },
+  sessions: { paddingTop: metrics.groupsTop },
+  sessionsTitle: { color: horizonColors.text, fontSize: horizonLayout.sidebarList.groupTitleFontSize, fontWeight: horizonLayout.sidebarList.groupTitleFontWeight, marginBottom: horizonLayout.sidebarList.groupTitleMarginBottom },
   row: { minHeight: list.rowHeight, flexDirection: 'row', alignItems: 'center', gap: list.rowGap, paddingVertical: list.rowPaddingVertical },
   rowPressed: { backgroundColor: listColors.pressed },
   rowTitle: { flex: 1, color: colors.ink, fontSize: list.rowFontSize, fontWeight: list.rowFontWeight },

@@ -1934,3 +1934,106 @@ test('Kael coordinates the authorized Customer–Worker lifecycle through confir
     }
   });
 });
+
+test('real Auth and REST keep Kael sessions per owner and never touch service requests when one is deleted', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const runtime = localRuntime();
+    const stack = runtime.verify();
+    const status = runtime.status();
+    const serviceKey = status.env.SERVICE_ROLE_KEY;
+    const publicKey = status.env.ANON_KEY;
+    assert.ok(serviceKey && publicKey);
+    const origin = stack.endpoints['rest.http'].url.replace(/\/$/, '');
+    const ids = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/);
+    assert.equal(ids.length, 1);
+    const query = sql => execFileSync('docker', ['exec', '-i', ids[0], 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], { input: sql, encoding: 'utf8' });
+    const admin = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
+    const rest = (path, token, body, key = publicKey) => fetch(`${origin}/rest/v1/${path}`, {
+      method: 'POST', headers: { apikey: key, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const users = [];
+    try {
+      for (let index = 0; index < 2; index++) {
+        const email = `${randomUUID()}@example.invalid`;
+        const password = randomUUID();
+        const created = await fetch(`${origin}/auth/v1/admin/users`, { method: 'POST', headers: admin, body: JSON.stringify({ email, password, email_confirm: true }) });
+        assert.equal(created.status, 200);
+        const account = await created.json();
+        const login = await fetch(`${origin}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: publicKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+        assert.equal(login.status, 200);
+        users[index] = { id: account.id, token: (await login.json()).access_token };
+        const consent = await rest('rpc/set_consent', users[index].token, { p_purpose: 'ai_sharing', p_granted: true, p_version: '2026-11-09' });
+        assert.equal(consent.status, 200);
+        await consent.body?.cancel();
+      }
+      const [a, b] = users;
+      const start = async (user, text) => {
+        const response = await rest('rpc/kael_start_run', serviceKey, { p_actor: user.id, p_request_id: randomUUID(), p_conversation_id: null, p_mode: 'client', p_user_text: text }, serviceKey);
+        assert.equal(response.status, 200);
+        const started = await response.json();
+        const finished = await rest('rpc/kael_finish_run', serviceKey, { p_actor: user.id, p_run_id: started.run_id, p_status: 'completed', p_text: `Trả lời: ${text}`, p_complete: true, p_provider: 'local', p_model: 'test', p_input_tokens: 0, p_output_tokens: 0, p_steps: 1, p_error: null }, serviceKey);
+        assert.equal(finished.status, 200);
+        await finished.body?.cancel();
+        return started.conversation_id;
+      };
+      const sessionA1 = await start(a, 'Sửa điện phòng khách');
+      const sessionA2 = await start(a, 'Vệ sinh sofa');
+      const sessionB = await start(b, 'Phiên riêng của B');
+      assert.ok(sessionA1 && sessionA2 && sessionB);
+
+      const list = async (user, extra = {}) => (await rest('rpc/kael_list_sessions', user.token, { p_mode: 'client', ...extra })).json();
+      const everyId = page => [...page.pinned, ...page.items].map(item => item.id);
+      assert.deepEqual(everyId(await list(a)).sort(), [sessionA1, sessionA2].sort());
+      assert.deepEqual(everyId(await list(b)), [sessionB]);
+
+      const open = await rest('rpc/kael_open_session', a.token, { p_mode: 'client', p_session_id: sessionA1 });
+      assert.equal(open.status, 200);
+      const opened = await open.json();
+      assert.equal(opened.messages.length, 2);
+
+      const crossOpen = await rest('rpc/kael_open_session', b.token, { p_mode: 'client', p_session_id: sessionA1 });
+      assert.notEqual(crossOpen.status, 200);
+      await crossOpen.body?.cancel();
+      const crossRename = await rest('rpc/kael_rename_session', b.token, { p_session_id: sessionA1, p_title: 'Chiếm quyền' });
+      assert.notEqual(crossRename.status, 200);
+      await crossRename.body?.cancel();
+      const crossDelete = await rest('rpc/kael_delete_session', b.token, { p_session_id: sessionA1 });
+      assert.notEqual((await crossDelete.json()).status, 'deleted');
+      const anonymous = await rest('rpc/kael_list_sessions', publicKey, { p_mode: 'client' });
+      assert.notEqual(anonymous.status, 200);
+      await anonymous.body?.cancel();
+      const direct = await fetch(`${origin}/rest/v1/kael_conversations?id=eq.${sessionA1}`, { method: 'PATCH', headers: { apikey: publicKey, Authorization: `Bearer ${b.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'x' }) });
+      assert.notEqual(direct.status, 200);
+      await direct.body?.cancel();
+      assert.equal(query(`select count(*) from public.kael_conversations where id='${sessionA1}' and deleted_at is null and title is distinct from 'Chiếm quyền';`).trim(), '1');
+
+      const renamed = await rest('rpc/kael_rename_session', a.token, { p_session_id: sessionA1, p_title: '  Điện   phòng khách  ' });
+      assert.equal(await renamed.json(), 'Điện phòng khách');
+      await (await rest('rpc/kael_pin_session', a.token, { p_session_id: sessionA2, p_pinned: true })).body?.cancel();
+      assert.deepEqual((await list(a)).pinned.map(item => item.id), [sessionA2]);
+      assert.deepEqual(everyId(await list(a, { p_search: 'Điện' })), [sessionA1]);
+      await (await rest('rpc/kael_archive_session', a.token, { p_session_id: sessionA1, p_archived: true })).body?.cancel();
+      assert.deepEqual(everyId(await list(a, { p_archived: true })), [sessionA1]);
+      assert.ok(!everyId(await list(a)).includes(sessionA1));
+
+      const submitted = await rest('rpc/submit_service_request', a.token, { p_submission_key: randomUUID(), p_description: 'Sửa điện: phòng khách', p_location: 'Quận 1' });
+      assert.equal(submitted.status, 200);
+      const requestId = await submitted.json();
+      const deleted = await rest('rpc/kael_delete_session', a.token, { p_session_id: sessionA1 });
+      assert.equal((await deleted.json()).status, 'deleted');
+      const reopened = await rest('rpc/kael_open_session', a.token, { p_mode: 'client', p_session_id: sessionA1 });
+      assert.notEqual(reopened.status, 200);
+      await reopened.body?.cancel();
+      assert.equal(query(`select count(*) from public.kael_messages where conversation_id='${sessionA1}';`).trim(), '0');
+      const own = await fetch(`${origin}/rest/v1/service_requests?id=eq.${requestId}&select=id,description,location`, { headers: { apikey: publicKey, Authorization: `Bearer ${a.token}` } });
+      assert.deepEqual(await own.json(), [{ id: requestId, description: 'Sửa điện: phòng khách', location: 'Quận 1' }]);
+      const foreign = await fetch(`${origin}/rest/v1/service_requests?id=eq.${requestId}&select=id`, { headers: { apikey: publicKey, Authorization: `Bearer ${b.token}` } });
+      assert.deepEqual(await foreign.json(), []);
+    } finally {
+      for (const user of users) {
+        if (!user?.id) continue;
+        await fetch(`${origin}/auth/v1/admin/users/${user.id}`, { method: 'DELETE', headers: admin });
+      }
+    }
+  });
+});

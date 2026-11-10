@@ -17,12 +17,16 @@ import { SkeletonReveal } from './skeleton';
 import { RecentSkeleton } from './skeleton-layouts';
 import { RecentSessionRow } from './recent-session';
 import type { RecentSession } from './recent-session';
+import { KaelSessionsSection, type KaelSessionsPanel } from './kael-sessions-section';
+import { serviceCatalog, type ServiceKey } from './service-catalog';
 
 type Props = {
   visible: boolean;
   onClose: () => void;
   onNavigate: (screen: string) => void;
   onSelectService?: (prompt: string) => void;
+  onOpenService?: (key: ServiceKey) => void;
+  sessions?: KaelSessionsPanel;
   mode: HorizonMode;
   modePending: boolean;
   modeNotice: ModeNotice;
@@ -66,7 +70,7 @@ function ItemRow({ item, onPress, badge = 0 }: { item: SidebarItem; onPress: () 
   </Animated.View>;
 }
 
-export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, profileAvatarUri, profileAvatarHeaders, recentLoading = false, badges = {}, workerProfile, onSetAccepting, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore }: Props) {
+export function Sidebar({ visible, onClose, onNavigate, onSelectService, onOpenService, sessions, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, profileAvatarUri, profileAvatarHeaders, recentLoading = false, badges = {}, workerProfile, onSetAccepting, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const topInset = Platform.select({ web: 0, default: insets.top }) ?? 0;
@@ -131,7 +135,7 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
     <View pointerEvents={visible ? 'auto' : 'none'} style={styles.full}>
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dim, { opacity: progress }]}/>
       <Animated.View pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'} accessibilityElementsHidden={pickerVisible || accountOpen} importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} style={[styles.drawer, drawerMotion, { width: drawerWidth, paddingTop: topInset, paddingBottom: Math.max(insets.bottom, horizonLayout.sidebar.drawerMinimumBottom) }]}>
-        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={badges} workerProfile={workerProfile} onSetAccepting={onSetAccepting}/> : <>
+        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={badges} workerProfile={workerProfile} onSetAccepting={onSetAccepting} sessionsSlot={sessions ? <KaelSessionsSection panel={sessions}/> : undefined}/> : <>
         <View style={styles.heading}>
           <View style={styles.brand}>
             <View accessible accessibilityRole="header" accessibilityLabel="NestScout Horizon" style={styles.lockup}>
@@ -143,18 +147,24 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
           <CollapsibleGroup first title={sidebarGroups[0]?.title ?? ''} expanded={activityOpen} onToggle={() => setActivityOpen(open => !open)} badge={(sidebarGroups[0]?.items ?? []).reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>
             {sidebarGroups[0]?.items.map(item => <ItemRow key={item.id} item={item} badge={badges[item.id]} onPress={() => onNavigate(item.id)}/>)}
           </CollapsibleGroup>
-          {recentSessions.length > 0 && <Group title="Đã ghim">
-            {pinnedSessions.length > 0 ? pinnedSessions.map(renderSession) : <Text style={styles.emptyText}>Bấm biểu tượng ghim để giữ cuộc trò chuyện quan trọng ở đây.</Text>}
-          </Group>}
-          <Group title="Gần đây">
-            <SkeletonReveal loading={recentLoading === true} skeleton={<RecentSkeleton label="Đang tải cuộc trò chuyện gần đây"/>}>
-              {recentSessions.length === 0
-                ? <Text style={styles.emptyText}>Chưa có yêu cầu nào. Khi bạn gửi yêu cầu, nó sẽ hiện ở đây.</Text>
-                : unpinnedSessions.map(renderSession)}
-            </SkeletonReveal>
-          </Group>
+          {sessions
+            ? <Group title="Cuộc trò chuyện"><KaelSessionsSection panel={sessions}/></Group>
+            : <>
+              {recentSessions.length > 0 && <Group title="Đã ghim">
+                {pinnedSessions.length > 0 ? pinnedSessions.map(renderSession) : <Text style={styles.emptyText}>Bấm biểu tượng ghim để giữ cuộc trò chuyện quan trọng ở đây.</Text>}
+              </Group>}
+              <Group title="Gần đây">
+                <SkeletonReveal loading={recentLoading === true} skeleton={<RecentSkeleton label="Đang tải cuộc trò chuyện gần đây"/>}>
+                  {recentSessions.length === 0
+                    ? <Text style={styles.emptyText}>Chưa có yêu cầu nào. Khi bạn gửi yêu cầu, nó sẽ hiện ở đây.</Text>
+                    : unpinnedSessions.map(renderSession)}
+                </SkeletonReveal>
+              </Group>
+            </>}
           <CollapsibleGroup title="Dịch vụ" expanded={servicesOpen} onToggle={() => setServicesOpen(open => !open)}>
-            {quickServices.map(service => <ItemRow key={service.title} item={{ id: service.title, title: service.title, icon: service.icon }} onPress={() => (onSelectService ?? onNavigate)(service.prompt)}/>)}
+            {onOpenService
+              ? serviceCatalog.map(service => <ItemRow key={service.key} item={{ id: service.key, title: service.title, icon: service.icon }} onPress={() => onOpenService(service.key)}/>)
+              : quickServices.map(service => <ItemRow key={service.title} item={{ id: service.title, title: service.title, icon: service.icon }} onPress={() => (onSelectService ?? onNavigate)(service.prompt)}/>)}
           </CollapsibleGroup>
           <CollapsibleGroup title={sidebarGroups[1]?.title ?? ''} expanded={supportOpen} onToggle={() => setSupportOpen(open => !open)} badge={(sidebarGroups[1]?.items ?? []).reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>
             {sidebarGroups[1]?.items.map(item => <ItemRow key={item.id} item={item} badge={badges[item.id]} onPress={() => onNavigate(item.id)}/>)}

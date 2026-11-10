@@ -485,6 +485,15 @@ export const horizonLayout = {
       labelFontSize: 17, labelFontWeight: '400',
       contentFadeInput: [0, 0.35, 0.9, 2], contentFadeOutput: [0, 0, 1, 1],
     },
+    serviceIntake: { answerMaxLength: 200, borderWidth: 1 },
+    sessionsPanel: {
+      searchHeight: 40, searchRadius: 12, searchPaddingHorizontal: 12, searchGap: 8, searchFontSize: 15, searchIconSize: 17, searchMarginBottom: 8,
+      chipHeight: 32, chipRadius: 16, chipPaddingHorizontal: 12, chipFontSize: 13, chipFontWeight: '500', chipGap: 8, chipMarginBottom: 8,
+      statusFontSize: 13, statusLineHeight: 18, linkMinHeight: 44, linkFontSize: 14, linkFontWeight: '600',
+      dialogPadding: 20, dialogRadius: 22, dialogMaxWidth: 340, dialogWidth: '100%', dialogGap: 14, dialogTitleSize: 17, dialogTitleWeight: '600', dialogBodySize: 14, dialogBodyLine: 20,
+      inputHeight: 46, inputRadius: 12, inputPaddingHorizontal: 12, inputFontSize: 16, inputBorderWidth: 1,
+      buttonHeight: 46, buttonRadius: 14, buttonFontSize: 15, buttonFontWeight: '600', buttonGap: 10, pageSize: 30, disabledOpacity: 0.5,
+    },
     signIn: {
       gutter: 20, sheetRadius: 36, sheetPadding: 22, sheetGap: 18, sheetBottomGap: 12,
       heroHeight: 248, orbSize: 132, heroImageWidth: 224, heroImageHeight: 215, orbFloat: -7, orbFloatDuration: 3400, orbBreath: 1.045, orbTyping: 1.04, orbSuccess: 1.08, orbBusyDuration: 620,

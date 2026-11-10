@@ -1,12 +1,24 @@
 let pending: string | null = null;
+let fresh = false;
 
 export function handOffToKael(prompt: string): void {
   pending = prompt.trim() || null;
+  fresh = false;
+}
+
+export function handOffToNewKaelSession(prompt: string): void {
+  pending = prompt.trim() || null;
+  fresh = pending !== null;
+}
+
+export function isFreshKaelHandoff(): boolean {
+  return pending !== null && fresh;
 }
 
 export function consumeKaelHandoff(): string | null {
   const prompt = pending;
   pending = null;
+  fresh = false;
   return prompt;
 }
 

@@ -749,3 +749,42 @@ test('feedback targets a streamed reply by its run and a restored reply by its s
   feedback.mockRejectedValueOnce(new Error('offline'));
   await act(async () => { expect(await result.current.rate(fresh, 'up', null)).toBe(false); });
 });
+
+const otherConversation = '99999999-9999-4999-8999-999999999999';
+const otherSnapshot: KaelConversationSnapshot = {
+  conversationId: otherConversation,
+  busy: false,
+  messages: [{ id: '88888888-8888-4888-8888-888888888891', role: 'user', text: 'Câu hỏi khác', incomplete: false }],
+  tasks: [],
+  approvals: [],
+};
+
+test('opening another session replaces the visible history and does not mix sessions', async () => {
+  const loader = jest.fn(async (_user: string, _mode: KaelMode, _signal: AbortSignal, sessionId?: string) => (sessionId === otherConversation ? otherSnapshot : storedSnapshot));
+  const { streamer } = scriptedStreamer([]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.conversationId).toBe(conversation);
+  let outcome = '';
+  await act(async () => { outcome = await result.current.openSession(otherConversation); });
+  expect(outcome).toBe('opened');
+  expect(loader).toHaveBeenLastCalledWith('customer-a', 'client', expect.any(AbortSignal), otherConversation);
+  expect(result.current.conversationId).toBe(otherConversation);
+  expect(result.current.messages.map(message => message.text)).toEqual(['Câu hỏi khác']);
+  expect(result.current.tasks).toEqual([]);
+});
+
+test('opening a session that no longer exists reports not_found and keeps the current session', async () => {
+  const { KaelSessionError } = jest.requireActual('@/features/shared');
+  const loader = jest.fn(async (_user: string, _mode: KaelMode, _signal: AbortSignal, sessionId?: string) => {
+    if (sessionId) throw new KaelSessionError('not_found', 'gone');
+    return storedSnapshot;
+  });
+  const { streamer } = scriptedStreamer([]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  let outcome = '';
+  await act(async () => { outcome = await result.current.openSession(otherConversation); });
+  expect(outcome).toBe('not_found');
+  expect(result.current.conversationId).toBe(conversation);
+});

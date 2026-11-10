@@ -10,6 +10,7 @@ export function AccessStack() {
       <Stack.Screen name="index" />
       <Stack.Screen name="requests" />
       <Stack.Screen name="section" />
+      <Stack.Screen name="service" />
       <Stack.Protected guard={canEnterArea(access, 'guest')}>
         <Stack.Screen name="(guest)/explore" />
       </Stack.Protected>

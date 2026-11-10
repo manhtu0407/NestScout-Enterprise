@@ -240,6 +240,14 @@ export const horizonColors = {
   conversationMenu: {
     scrim: 'rgba(0,0,0,0.12)', pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', title: '#6B7683', danger: '#D4322C',
   },
+  sessionsPanel: {
+    searchFill: 'rgba(118,118,128,0.12)', searchText: '#11161C', placeholder: '#8A8A90', chipFill: 'rgba(118,118,128,0.12)', chipActiveFill: '#11161C', chipText: '#11161C', chipActiveText: '#FFFFFF',
+    link: '#0A6F64', error: '#8A3B12', dialogScrim: 'rgba(0,0,0,0.32)', dialogSurface: '#FFFFFF', dialogTitle: '#11161C', dialogBody: '#4A525C', inputFill: '#F4F5F7', inputBorder: 'rgba(60,60,67,0.18)',
+    confirmFill: '#0B0F14', confirmText: '#FFFFFF', dangerFill: '#D4322C', cancelFill: 'rgba(118,118,128,0.12)', cancelText: '#11161C',
+  },
+  serviceIntake: {
+    fieldBorder: 'rgba(0,0,0,0)', errorBorder: '#D4322C', errorText: '#B3261E', bannerFill: '#FDEEE6', bannerText: '#8A3B12', safetyFill: '#FFF4D6', safetyText: '#6B4A00',
+  },
   horizonEntry: { noticeSurface: '#FDEEE6', noticeText: '#8A3B12' },
   signIn: {
     backdrop: '#F3F4F6',
