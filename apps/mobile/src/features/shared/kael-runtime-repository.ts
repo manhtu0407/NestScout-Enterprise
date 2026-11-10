@@ -56,13 +56,17 @@ function refusalForStatus(status: number): KaelTurnOutcome {
   return refused('provider_error', `Kael không nhận được phản hồi hợp lệ từ Backend (HTTP ${status}). Vui lòng thử lại.`, true);
 }
 
-export async function streamKaelTurn(
+export const kaelReconnectDelaysMs: readonly number[] = [1000, 2000, 4000, 8000, 15000];
+
+type KaelAttempt = { outcome: KaelTurnOutcome; durable: boolean };
+
+async function attemptKaelTurn(
   userId: string,
   request: KaelTurnRequest,
   onEvent: (event: KaelEvent) => void,
   signal: AbortSignal,
-  fetcher: FunctionFetch = streamingFetch,
-): Promise<KaelTurnOutcome> {
+  fetcher: FunctionFetch,
+): Promise<KaelAttempt> {
   let response: Response;
   try {
     response = await authenticatedFunctionRequest(userId, 'kael', {
@@ -72,12 +76,56 @@ export async function streamKaelTurn(
       action: request.action,
     }, signal, fetcher);
   } catch (error) {
-    return requestFailure(error, signal);
+    return { outcome: requestFailure(error, signal), durable: false };
   }
-  if (!response.ok) return refusalFrom(response);
-  if (!response.body) return { kind: 'interrupted' };
+  const durable = response.headers?.get?.('x-kael-runtime') === 'durable';
+  if (!response.ok) return { outcome: await refusalFrom(response), durable };
+  if (!response.body) return { outcome: { kind: 'interrupted' }, durable };
 
-  return readKaelStream(response.body.getReader(), onEvent, signal);
+  return { outcome: await readKaelStream(response.body.getReader(), onEvent, signal), durable };
+}
+
+function waitFor(milliseconds: number, signal: AbortSignal): Promise<void> {
+  return new Promise(resolve => {
+    if (signal.aborted) return resolve();
+    const timer = setTimeout(done, milliseconds);
+    function done() {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    }
+    signal.addEventListener('abort', done, { once: true });
+  });
+}
+
+function reconnectable(outcome: KaelTurnOutcome, attached: boolean): boolean {
+  return outcome.kind === 'interrupted' || (attached && outcome.kind === 'refused' && outcome.code === 'busy' && outcome.retryable);
+}
+
+export async function streamKaelTurn(
+  userId: string,
+  request: KaelTurnRequest,
+  onEvent: (event: KaelEvent) => void,
+  signal: AbortSignal,
+  fetcher: FunctionFetch = streamingFetch,
+  reconnectDelays: readonly number[] = kaelReconnectDelaysMs,
+): Promise<KaelTurnOutcome> {
+  let delivered = 0;
+  const forward = (event: KaelEvent) => {
+    if (event.seq <= delivered) return;
+    delivered = event.seq;
+    onEvent(event);
+  };
+  let attempt = await attemptKaelTurn(userId, request, forward, signal, fetcher);
+  let durable = attempt.durable;
+  for (const delay of reconnectDelays) {
+    if (!durable || signal.aborted || !reconnectable(attempt.outcome, delivered > 0)) break;
+    await waitFor(delay, signal);
+    if (signal.aborted) return { kind: 'cancelled' };
+    attempt = await attemptKaelTurn(userId, request, forward, signal, fetcher);
+    durable = durable || attempt.durable;
+  }
+  return signal.aborted && attempt.outcome.kind === 'interrupted' ? { kind: 'cancelled' } : attempt.outcome;
 }
 
 export type KaelStreamReader = { read: () => Promise<{ value?: Uint8Array; done: boolean }>; cancel: () => Promise<void> };
