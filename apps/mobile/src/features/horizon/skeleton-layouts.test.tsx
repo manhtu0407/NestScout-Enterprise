@@ -45,11 +45,11 @@ test('the recent list placeholder is labelled for assistive technology', async (
 test('the sidebar shows the recent placeholder instead of the empty message while loading', async () => {
   await renderSidebar(true);
   expect(screen.getByLabelText('Đang tải cuộc trò chuyện gần đây')).toBeTruthy();
-  expect(screen.queryByText(/Chưa có yêu cầu nào/)).toBeNull();
+  expect(screen.queryByText(/Chưa có cuộc trò chuyện nào/)).toBeNull();
 });
 
 test('the sidebar shows the empty message once loading has finished', async () => {
   await renderSidebar();
   expect(screen.queryByLabelText('Đang tải cuộc trò chuyện gần đây')).toBeNull();
-  expect(screen.getByText(/Chưa có yêu cầu nào/)).toBeTruthy();
+  expect(screen.getByText(/Chưa có cuộc trò chuyện nào/)).toBeTruthy();
 });

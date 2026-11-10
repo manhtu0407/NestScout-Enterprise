@@ -3,10 +3,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 
-import { ActionButton, BasisNotice, BodyText, DraftRecovery, ErrorText, KaelStatus, acceptQuote, acceptedImageTypes, failureMessage, isFixtureBasis, readCustomerActivity, readQuotes, readRequests, maxRequestPhotos, rejectQuote, submitRequest, toPendingPhoto, useDraftRecovery, type CustomerActivity, type MediaFile, type ServiceQuote, type ServiceRequest } from '@/features/shared';
+import { ActionButton, BasisNotice, BodyText, DraftRecovery, ErrorText, KaelStatus, acceptQuote, clearPendingRequest, loadPendingRequest, maxLocationLength, savePendingRequest, type PendingRequest, acceptedImageTypes, failureMessage, isFixtureBasis, readCustomerActivity, readQuotes, readRequests, maxRequestPhotos, rejectQuote, submitRequest, toPendingPhoto, useDraftRecovery, type CustomerActivity, type MediaFile, type ServiceQuote, type ServiceRequest } from '@/features/shared';
 
 import { flushQueuedPhotos, loadQueuedPhotos, saveQueuedPhotos, type FlushResult, type QueuedPhoto } from './pending-photo-queue';
-import { clearPendingRequest, loadPendingRequest, maxLocationLength, savePendingRequest, type PendingRequest } from './pending-request-store';
 import { CustomerJobActivity } from './customer-job-activity';
 
 function queueMessage(result: FlushResult): string | null {

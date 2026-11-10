@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { acceptQuote, readCustomerActivity, readQuotes, readRequests, rejectQuote, submitRequest, uploadRequestPhoto } from '@/features/shared';
-import { loadPendingRequest } from './pending-request-store';
+import { loadPendingRequest } from '@/features/shared/pending-request-store';
 import { ServiceRequests } from './service-requests';
 
 jest.mock('expo-crypto', () => ({ randomUUID: () => '00000000-0000-4000-8000-000000000123' }));
@@ -26,7 +26,7 @@ jest.mock('@/features/shared/service-request-repository', () => ({
   acceptQuote: jest.fn(),
   rejectQuote: jest.fn(),
 }));
-jest.mock('./pending-request-store', () => ({
+jest.mock('@/features/shared/pending-request-store', () => ({
   maxLocationLength: 200,
   loadPendingRequest: jest.fn(),
   savePendingRequest: jest.fn().mockResolvedValue(undefined),
