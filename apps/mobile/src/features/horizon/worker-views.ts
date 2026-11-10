@@ -146,6 +146,8 @@ const notificationTargets: Readonly<Partial<Record<NotificationKind, string>>> =
   scope_rejected: 'worker-active',
   resume_agreed: 'worker-active',
   review_received: 'worker-reviews',
+  change_requested: 'worker-active',
+  change_decided: 'worker-active',
 };
 
 export function toWorkerNotificationItems(notifications: readonly CustomerNotification[], now: Date): NotificationItem[] {

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 
 import { readConsent, recordConsent } from '@/features/shared';
 
@@ -17,7 +18,7 @@ const policyVersion = legalDocument('vi', 'privacy').versionId;
 export function useAiConsent(userId: string | null): AiConsent {
   const [state, setState] = useState<{ userId: string | null; status: AiConsentStatus; granted: boolean }>({ userId: null, status: 'loading', granted: false });
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (userId === null) return undefined;
     const controller = new AbortController();
     readConsent(userId, 'ai_sharing', controller.signal).then(
@@ -25,7 +26,7 @@ export function useAiConsent(userId: string | null): AiConsent {
       () => { if (!controller.signal.aborted) setState({ userId, status: 'error', granted: false }); },
     );
     return () => controller.abort();
-  }, [userId]);
+  }, [userId]));
 
   const set = useCallback(async (granted: boolean) => {
     if (userId === null) throw new Error('Sign-in required');

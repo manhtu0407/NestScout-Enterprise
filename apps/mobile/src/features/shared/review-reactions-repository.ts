@@ -8,6 +8,7 @@ export type ReviewReactionCount = { id: ReviewReactionId; count: number; reacted
 
 export type ReviewReactionMap = Readonly<Record<string, readonly ReviewReactionCount[]>>;
 
+const reactionBatchSize = 50;
 const uuidShape = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isReactionId(value: unknown): value is ReviewReactionId {
@@ -15,11 +16,20 @@ function isReactionId(value: unknown): value is ReviewReactionId {
 }
 
 export async function readReviewReactions(userId: string, reviewIds: readonly string[], signal: AbortSignal): Promise<ReviewReactionMap> {
-  const ids = reviewIds.filter(id => uuidShape.test(id));
+  const ids = [...new Set(reviewIds.filter(id => uuidShape.test(id)))];
   if (ids.length === 0) return {};
-  const result = await callRpc(userId, 'review_reactions', { p_review_ids: ids }, signal);
-  if (!Array.isArray(result)) throw new Error('Invalid reactions response');
+  const batches: string[][] = [];
+  for (let start = 0; start < ids.length; start += reactionBatchSize) batches.push(ids.slice(start, start + reactionBatchSize));
+  const responses = await Promise.all(batches.map(batch => callRpc(userId, 'review_reactions', { p_review_ids: batch }, signal)));
   const grouped: Record<string, ReviewReactionCount[]> = {};
+  for (const result of responses) {
+    if (!Array.isArray(result)) throw new Error('Invalid reactions response');
+    collectReactions(result, grouped);
+  }
+  return grouped;
+}
+
+function collectReactions(result: readonly unknown[], grouped: Record<string, ReviewReactionCount[]>): void {
   for (const row of result) {
     if (typeof row !== 'object' || row === null) throw new Error('Invalid reactions response');
     const entry = row as Record<string, unknown>;
@@ -28,7 +38,6 @@ export async function readReviewReactions(userId: string, reviewIds: readonly st
     }
     (grouped[entry.review_id] ??= []).push({ id: entry.reaction, count: entry.total, reacted: entry.reacted });
   }
-  return grouped;
 }
 
 export async function toggleReviewReaction(userId: string, reviewId: string, reaction: ReviewReactionId, signal: AbortSignal): Promise<boolean> {
