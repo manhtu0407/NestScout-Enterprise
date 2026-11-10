@@ -108,6 +108,7 @@ export const horizonLayout = {
       consentActionHeight: 44,
       consentActionRadius: 22,
       consentActionPadding: 16,
+      consentActionWeight: '600',
       disclaimerLineHeight: 16,
       disclaimerMarginTop: 8,
       chatContentPaddingTop: 20,

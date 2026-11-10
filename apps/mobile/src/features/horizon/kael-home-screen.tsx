@@ -234,6 +234,6 @@ const styles = StyleSheet.create({
   consent: { backgroundColor: bubbleColors.consentSurface, borderRadius: bubbles.consentRadius, padding: bubbles.consentPadding, gap: bubbles.consentGap, marginBottom: bubbles.consentMarginBottom },
   consentText: { color: bubbleColors.consentText, fontSize: bubbles.consentTextSize, lineHeight: bubbles.consentLineHeight },
   consentAction: { minHeight: bubbles.consentActionHeight, borderRadius: bubbles.consentActionRadius, paddingHorizontal: bubbles.consentActionPadding, backgroundColor: bubbleColors.consentActionSurface, alignItems: 'center', justifyContent: 'center' },
-  consentActionText: { color: bubbleColors.consentActionText, fontSize: bubbles.consentTextSize, lineHeight: bubbles.consentLineHeight, fontWeight: '600' },
+  consentActionText: { color: bubbleColors.consentActionText, fontSize: bubbles.consentTextSize, lineHeight: bubbles.consentLineHeight, fontWeight: bubbles.consentActionWeight },
   disclaimer: { color: bubbleColors.disclaimerColor, fontSize: bubbles.disclaimerFontSize, lineHeight: bubbles.disclaimerLineHeight, textAlign: 'center', marginTop: metrics.disclaimerTop },
 });
