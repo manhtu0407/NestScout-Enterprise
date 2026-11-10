@@ -1087,3 +1087,74 @@ test('each workflow effect is recognised from the row it leaves behind', async (
     assert.equal((await executeApprovedEffect('approval-1', { status: 'reconcile', ...effect }, open.rest, new AbortController().signal)).status, 'uncertain', effect.tool);
   }
 });
+
+const durableRoutingBody = JSON.stringify({ request_id: '30000000-0000-4000-8000-000000000001', conversation_id: null, mode: 'client', action: { type: 'message', text: 'Xin chào' } });
+const durableRoutingEnv = { ...baseEnv, KAEL_DURABLE_URL: 'https://durable.example.test/' };
+
+function durableRoutingRequest(body = durableRoutingBody) {
+  return new Request('https://edge.test/functions/v1/kael', { method: 'POST', headers: { authorization: `Bearer ${users.customer.token}` }, body });
+}
+
+function routingFetcher(durable) {
+  const urls = [];
+  const fetcher = async (url, init) => {
+    urls.push(String(url));
+    if (String(url).startsWith('https://durable.example.test/')) return durable(url, init);
+    return Response.json({ message: 'invalid token' }, { status: 401 });
+  };
+  return { fetcher, urls };
+}
+
+test('turns are routed to the durable service when it is configured', async () => {
+  const seen = [];
+  const { fetcher, urls } = routingFetcher(async (url, init) => {
+    seen.push({ url: String(url), authorization: init.headers.authorization, body: init.body });
+    return new Response('{"v":1,"seq":1,"type":"run_started"}\n', { status: 200, headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'x-kael-run-id': 'run-1', 'x-kael-runtime': 'durable', 'set-cookie': 'leak=1' } });
+  });
+  const response = await createKaelHandler({ env: durableRoutingEnv, fetcher })(durableRoutingRequest());
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-kael-runtime'), 'durable');
+  assert.equal(response.headers.get('x-kael-run-id'), 'run-1');
+  assert.equal(response.headers.get('set-cookie'), null);
+  assert.equal(response.headers.get('access-control-allow-origin'), '*');
+  assert.equal(await response.text(), '{"v":1,"seq":1,"type":"run_started"}\n');
+  assert.deepEqual(seen, [{ url: 'https://durable.example.test/v1/turn', authorization: `Bearer ${users.customer.token}`, body: durableRoutingBody }]);
+  assert.deepEqual(urls, ['https://durable.example.test/v1/turn']);
+});
+
+test('an unreachable durable service falls back to the legacy runtime before admission', async () => {
+  const logs = [];
+  const { fetcher, urls } = routingFetcher(async () => { throw new TypeError('connection refused'); });
+  const response = await createKaelHandler({ env: durableRoutingEnv, fetcher, log: event => logs.push(event) })(durableRoutingRequest());
+  assert.equal(response.status, 401);
+  assert.equal(urls.length, 2);
+  assert.match(urls[1], /\/auth\/v1\/user$/);
+  assert.deepEqual(logs, [{ event: 'kael_durable_unreachable' }]);
+});
+
+test('a run that belongs to the legacy runtime is served by the legacy runtime', async () => {
+  const { fetcher, urls } = routingFetcher(async () => Response.json({ error: { code: 'invalid_request' } }, { status: 421 }));
+  const response = await createKaelHandler({ env: durableRoutingEnv, fetcher })(durableRoutingRequest());
+  assert.equal(response.status, 401);
+  assert.match(urls[1], /\/auth\/v1\/user$/);
+});
+
+test('the durable service answers its own refusals without a legacy retry', async () => {
+  const { fetcher, urls } = routingFetcher(async () => Response.json({ error: { code: 'busy', message: 'busy', retryable: true } }, { status: 409 }));
+  const response = await createKaelHandler({ env: durableRoutingEnv, fetcher })(durableRoutingRequest());
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error.code, 'busy');
+  assert.equal(urls.length, 1);
+});
+
+test('turns stay on the legacy runtime without a safe durable address and malformed turns never leave the gateway', async () => {
+  for (const address of [undefined, '', 'http://durable.example.test', 'ftp://durable.example.test', 'https://durable.example.test/extra']) {
+    const { fetcher, urls } = routingFetcher(async () => assert.fail('The durable service must not be called'));
+    const response = await createKaelHandler({ env: { ...baseEnv, KAEL_DURABLE_URL: address }, fetcher })(durableRoutingRequest());
+    assert.equal(response.status, 401, String(address));
+    assert.deepEqual(urls.map(url => new URL(url).pathname), ['/auth/v1/user'], String(address));
+  }
+  const { fetcher, urls } = routingFetcher(async () => assert.fail('The durable service must not be called'));
+  assert.equal((await createKaelHandler({ env: durableRoutingEnv, fetcher })(durableRoutingRequest('{"request_id":"x"}'))).status, 400);
+  assert.deepEqual(urls, []);
+});
