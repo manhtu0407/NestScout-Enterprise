@@ -11,6 +11,7 @@ import { KaelHomeScreen } from './kael-home-screen';
 import { KaelMemorySettings } from './kael-memory-settings';
 import { kaelIntroSession } from './kael-intro-session';
 import type { ComposerImage } from './composer-media';
+import { createComposerDrafts, isEmptyDraft } from './composer-drafts';
 import { KaelHomeLoading } from './skeleton-layouts';
 import { Presence, useRetained } from './motion-presence';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
@@ -30,7 +31,7 @@ import { useAiConsent } from './use-ai-consent';
 import { settingsStrings } from './settings-strings';
 import { usePreferences } from '@/lib/preferences-provider';
 import { consumeSidebarReturn, markSidebarReturn } from './sidebar-return';
-import { consumeKaelHandoff } from './kael-handoff';
+import { takeKaelHandoff } from './kael-handoff';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
@@ -106,19 +107,48 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
 
   const openMenuRef = useRef(openMenu);
   useEffect(() => { openMenuRef.current = openMenu; });
-  const adoptPromptRef = useRef((prompt: string) => { inputRef.current = prompt; setInput(prompt); });
+  const newConversationRef = useRef<() => void>(() => undefined);
+  const adoptPromptRef = useRef<(prompt: string, fresh: boolean) => void>(() => undefined);
   useEffect(() => {
-    adoptPromptRef.current = prompt => {
-      inputRef.current = prompt;
-      setInput(prompt);
-      access.updateHorizonDraft(access.userId, { text: prompt, images: imagesRef.current });
+    adoptPromptRef.current = (prompt, fresh) => {
+      if (fresh) newConversationRef.current();
+      const text = inputRef.current.trim() === '' ? prompt : `${inputRef.current.trimEnd()}\n\n${prompt}`;
+      inputRef.current = text;
+      setInput(text);
+      access.updateHorizonDraft(access.userId, { text, images: imagesRef.current });
     };
   });
+
+  const [parkedDrafts] = useState(createComposerDrafts);
+  useEffect(() => () => parkedDrafts.clear(), [parkedDrafts, scope]);
+  const activeConversationId = kael.conversationId;
+  const switchDraft = useCallback((targetId: string | null) => {
+    const owner = scope ?? 'guest';
+    parkedDrafts.park(owner, activeConversationId, { text: inputRef.current, images: imagesRef.current });
+    const next = parkedDrafts.recall(owner, targetId);
+    inputRef.current = next.text;
+    imagesRef.current = next.images;
+    setInput(next.text);
+    setDraftImages(next.images);
+    if (isEmptyDraft(next)) access.clearHorizonDraft(access.userId);
+    else access.updateHorizonDraft(access.userId, next);
+  }, [access, activeConversationId, parkedDrafts, scope]);
+
+  const resetKael = kael.reset;
+  const newConversation = useCallback(() => {
+    switchDraft(null);
+    resetKael();
+    setConversationKey(key => key + 1);
+    setComposerError(null);
+    setDrawerOpen(false);
+  }, [resetKael, switchDraft]);
+
+  useEffect(() => { newConversationRef.current = newConversation; });
   useFocusEffect(useCallback(() => {
-    const prompt = consumeKaelHandoff();
-    if (prompt !== null) {
+    const handoff = takeKaelHandoff();
+    if (handoff !== null) {
       consumeSidebarReturn();
-      adoptPromptRef.current(prompt);
+      adoptPromptRef.current(handoff.prompt, handoff.fresh);
       return undefined;
     }
     if (!consumeSidebarReturn()) return undefined;
@@ -126,38 +156,38 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     return () => clearTimeout(timer);
   }, []));
 
-  const resetKael = kael.reset;
-  const newConversation = useCallback(() => {
-    resetKael();
-    setConversationKey(key => key + 1);
-    setComposerError(null);
-    setDrawerOpen(false);
-  }, [resetKael]);
-
   const openKaelSession = kael.open;
   const openSession = useCallback((id: string) => {
+    switchDraft(id);
     setDrawerOpen(false);
     setComposerError(null);
     setConversationKey(key => key + 1);
     void openKaelSession(id);
-  }, [openKaelSession]);
+  }, [openKaelSession, switchDraft]);
 
-  const activeConversationId = kael.conversationId;
-  const leaveIfActive = useCallback((id: string) => {
-    if (id === activeConversationId) newConversation();
-  }, [activeConversationId, newConversation]);
+  const leaveIfActive = useCallback((id: string, discardDraft: boolean) => {
+    if (id !== activeConversationId) {
+      if (discardDraft) parkedDrafts.discard(scope ?? 'guest', id);
+      return;
+    }
+    if (discardDraft) {
+      inputRef.current = '';
+      imagesRef.current = [];
+    }
+    newConversation();
+  }, [activeConversationId, newConversation, parkedDrafts, scope]);
   const { rename: renameSession, setPinned: pinSession, setSessionArchived: archiveSession, remove: removeSession, sessions: sessionList } = sessions;
   const sessionHandlers = useMemo<SessionHandlers>(() => ({
     rename: renameSession,
     setPinned: pinSession,
     setArchived: async (id, archived) => {
       const result = await archiveSession(id, archived);
-      if (result.ok && archived) leaveIfActive(id);
+      if (result.ok && archived) leaveIfActive(id, false);
       return result;
     },
     remove: async id => {
       const result = await removeSession(id);
-      if (result.ok) leaveIfActive(id);
+      if (result.ok) leaveIfActive(id, true);
       return result;
     },
   }), [archiveSession, leaveIfActive, pinSession, removeSession, renameSession]);

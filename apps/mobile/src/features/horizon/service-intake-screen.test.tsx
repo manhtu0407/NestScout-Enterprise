@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { submitRequest, streamKaelTurn, WorkflowError } from '@/features/shared';
 
 import { serviceCategories } from './service-catalog';
+import { clearIntakeDraft } from './service-intake-drafts';
 import { ServiceIntakeScreen } from './service-intake-screen';
 
 const mockStore = new Map<string, string>();
@@ -42,6 +43,7 @@ const press = async (label: string) => { await act(async () => { fireEvent.press
 beforeEach(() => {
   jest.clearAllMocks();
   mockStore.clear();
+  serviceCategories.forEach(item => clearIntakeDraft('customer-a', item.id));
   mockSubmit.mockResolvedValue(requestId);
 });
 
@@ -53,7 +55,7 @@ test.each(serviceCategories.map(item => [item.title, item.id] as const))('%s ope
   expect(screen.getByLabelText('Địa điểm thực hiện')).toBeTruthy();
   for (const field of category.fields) expect(screen.getByLabelText(field.label)).toBeTruthy();
   expect(screen.getByLabelText('Xem lại yêu cầu')).toBeTruthy();
-  expect(screen.getByLabelText('Hỏi Kael hỗ trợ điền yêu cầu')).toBeTruthy();
+  expect(screen.getByLabelText('Trao đổi với Kael')).toBeTruthy();
 });
 
 test('manual intake: fill, review the summary, edit, confirm, and see a server-confirmed record', async () => {
@@ -130,11 +132,35 @@ test('a definitive refusal says the request was not created and returns to the r
 test('Ask Kael hands over the category and what was already typed, and sends nothing itself', async () => {
   await show('sofa-cleaning');
   await type('Mô tả nhu cầu', 'Sofa bị ố cà phê');
-  await press('Hỏi Kael hỗ trợ điền yêu cầu');
+  await press('Trao đổi với Kael');
   expect(onAskKael).toHaveBeenCalledTimes(1);
   expect(onAskKael.mock.calls[0]?.[0]).toContain('vệ sinh sofa');
   expect(onAskKael.mock.calls[0]?.[0]).toContain('Mô tả nhu cầu: Sofa bị ố cà phê');
   expect(mockSubmit).not.toHaveBeenCalled();
+});
+
+test('what was typed survives a trip to Kael and is cleared once the request is submitted', async () => {
+  await show('sofa-cleaning');
+  await type('Mô tả nhu cầu', 'Sofa bị ố cà phê');
+  await type('Địa điểm thực hiện', 'Quận 2');
+  await press('Trao đổi với Kael');
+  await screen.unmount();
+  await show('sofa-cleaning');
+  expect(screen.getByDisplayValue('Sofa bị ố cà phê')).toBeTruthy();
+  expect(screen.getByDisplayValue('Quận 2')).toBeTruthy();
+  await press('Xem lại yêu cầu');
+  await press('Xác nhận gửi yêu cầu');
+  await waitFor(() => expect(screen.getByText('Mã yêu cầu: ABCDEF12')).toBeTruthy());
+  expect(mockSubmit).toHaveBeenCalledTimes(1);
+  await screen.unmount();
+  await show('sofa-cleaning');
+  expect(screen.queryByDisplayValue('Sofa bị ố cà phê')).toBeNull();
+});
+
+test('the Kael button promises advice only, not form filling', async () => {
+  await show('sofa-cleaning');
+  expect(screen.getByText(/không tự điền hay gửi biểu mẫu/)).toBeTruthy();
+  expect(screen.queryByLabelText(/hỗ trợ điền/)).toBeNull();
 });
 
 test('the open category does not promise unsupported services and photos are not pretended', async () => {

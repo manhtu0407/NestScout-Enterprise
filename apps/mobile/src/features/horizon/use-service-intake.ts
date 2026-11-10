@@ -5,6 +5,7 @@ import { clearPendingRequest, isDefinitiveFailure, loadPendingRequest, savePendi
 import { AuthSessionError } from '@/lib/authenticated-rest';
 
 import type { ServiceCategory } from './service-catalog';
+import { clearIntakeDraft, readIntakeDraft, writeIntakeDraft } from './service-intake-drafts';
 import { composeSubmission, validateIntake, type IntakeAnswers, type IntakeErrors } from './service-intake';
 
 export type IntakePhase = 'form' | 'review' | 'submitting' | 'submitted' | 'uncertain';
@@ -49,7 +50,7 @@ type State = {
 };
 
 export function useServiceIntake(userId: string, category: ServiceCategory, deps: IntakeDeps = defaultDeps) {
-  const [state, setState] = useState<State>({ phase: 'form', answers: {}, errors: {}, message: null, requestId: null, pending: null, storage: 'loading' });
+  const [state, setState] = useState<State>(() => ({ phase: 'form', answers: readIntakeDraft(userId, category.id), errors: {}, message: null, requestId: null, pending: null, storage: 'loading' }));
   const [attempt, setAttempt] = useState(0);
   const inFlight = useRef(false);
   const controllerRef = useRef<AbortController | null>(null);
@@ -73,6 +74,12 @@ export function useServiceIntake(userId: string, category: ServiceCategory, deps
       controllerRef.current?.abort();
     };
   }, [attempt, deps, userId]);
+
+  const { answers, phase } = state;
+  useEffect(() => {
+    if (phase === 'submitted') clearIntakeDraft(userId, category.id);
+    else writeIntakeDraft(userId, category.id, answers);
+  }, [answers, category.id, phase, userId]);
 
   const setAnswer = useCallback((id: string, value: string) => {
     setState(current => {

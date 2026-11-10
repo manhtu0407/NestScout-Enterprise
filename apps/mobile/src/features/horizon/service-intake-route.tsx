@@ -60,7 +60,7 @@ export function ServiceIntakeRoute() {
         userId={access.userId}
         onBack={back}
         onOpenRequests={requestId => router.push({ pathname: '/requests', params: requestId ? { focus: requestId } : {} })}
-        onAskKael={askKael}
+        onAskKael={prompt => askKael(prompt, { fresh: true })}
       />
     </Frame>
   );

@@ -5,6 +5,7 @@ import type { KaelEvent, KaelSession, KaelTurnRequest } from '@/features/shared'
 import { deleteKaelSession, KaelSessionError, listKaelSessions, loadKaelConversation, openKaelConversation, renameKaelSession, setKaelSessionArchived, setKaelSessionPinned, streamKaelTurn } from '@/features/shared';
 
 import { HorizonEntry } from './horizon-entry';
+import { handOffToKael } from './kael-handoff';
 
 const mockAccess = {
   phase: 'client', identity: 'verified', userId: 'customer-a', horizonDraft: null, notice: null, pendingMode: null,
@@ -108,20 +109,54 @@ test('choosing a session loads that conversation by id and the next message cont
   expect(requests[0]?.conversationId).toBe(sessionB);
 });
 
-test('a new session starts empty, keeps the unsent draft, and creates its conversation only when a message is sent', async () => {
+test('a new session starts blank, creates its conversation only when a message is sent, and never carries the other session draft', async () => {
   const requests: KaelTurnRequest[] = [];
   scripted(requests, '55555555-5555-4555-8555-555555555555');
   await renderEntry();
   await act(async () => { await Promise.resolve(); });
-  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Nháp chưa gửi');
+  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Nháp của phiên A');
   await openSidebar();
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
   expect(screen.queryByText('Đã ghi nhận vòi nước')).toBeNull();
   expect(mockStream).not.toHaveBeenCalled();
-  expect(screen.getByDisplayValue('Nháp chưa gửi')).toBeTruthy();
+  expect(screen.queryByDisplayValue('Nháp của phiên A')).toBeNull();
+  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Tin của phiên mới');
   await act(async () => { fireEvent.press(screen.getByLabelText('Gửi')); });
   expect(requests[0]?.conversationId).toBeNull();
-  expect(requests[0]?.action).toEqual({ type: 'message', text: 'Nháp chưa gửi' });
+  expect(requests[0]?.action).toEqual({ type: 'message', text: 'Tin của phiên mới' });
+  expect(requests).toHaveLength(1);
+});
+
+test('an unsent draft stays with its own session when moving to a new chat, another session and back', async () => {
+  await renderEntry();
+  await act(async () => { await Promise.resolve(); });
+  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Nháp của phiên A');
+  await openSidebar();
+  await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
+  expect(screen.queryByDisplayValue('Nháp của phiên A')).toBeNull();
+  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Nháp chat mới');
+  await openSidebar();
+  await waitFor(() => expect(screen.getByLabelText(/^Vệ sinh sofa, /)).toBeTruthy());
+  await act(async () => { fireEvent.press(screen.getByLabelText(/^Vệ sinh sofa, /)); });
+  await waitFor(() => expect(screen.getByText('Đã ghi nhận sofa')).toBeTruthy());
+  expect(screen.queryByDisplayValue('Nháp của phiên A')).toBeNull();
+  expect(screen.queryByDisplayValue('Nháp chat mới')).toBeNull();
+  await openSidebar();
+  await act(async () => { fireEvent.press(screen.getByLabelText(/^Sửa vòi nước, /)); });
+  await waitFor(() => expect(screen.getByText('Đã ghi nhận vòi nước')).toBeTruthy());
+  expect(screen.getByDisplayValue('Nháp của phiên A')).toBeTruthy();
+  await openSidebar();
+  await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
+  expect(screen.getByDisplayValue('Nháp chat mới')).toBeTruthy();
+});
+
+test('a service handoff lands in a fresh session instead of the open conversation', async () => {
+  handOffToKael('Tôi cần vệ sinh sofa', { fresh: true });
+  await renderEntry();
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.getByDisplayValue('Tôi cần vệ sinh sofa')).toBeTruthy();
+  expect(screen.queryByText('Đã ghi nhận vòi nước')).toBeNull();
+  expect(mockStream).not.toHaveBeenCalled();
 });
 
 test('a failed open is reported with a retry that does not silently start another conversation', async () => {

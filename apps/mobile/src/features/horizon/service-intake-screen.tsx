@@ -113,7 +113,8 @@ export function ServiceIntakeScreen({ category, userId, onBack, onOpenRequests, 
       <Text style={styles.note}>Chưa đính kèm ảnh ở bước này. Hãy mô tả bằng chữ; Kael không phân tích ảnh trong luồng này.</Text>
       {intake.message ? <Text accessibilityLiveRegion="polite" style={styles.error}>{intake.message}</Text> : null}
       <Action label="Xem lại yêu cầu" disabled={intake.storage !== 'ready'} onPress={intake.review} />
-      <Action secondary label="Hỏi Kael hỗ trợ điền yêu cầu" onPress={() => onAskKael(kaelIntakePrompt(category, intake.answers))} />
+      <Text style={styles.note}>Kael tư vấn trong cuộc trò chuyện mới và không tự điền hay gửi biểu mẫu này. Những gì bạn đã nhập được giữ lại để quay lại điền tiếp.</Text>
+      <Action secondary label="Trao đổi với Kael" onPress={() => onAskKael(kaelIntakePrompt(category, intake.answers))} />
     </SupportShell>
   );
 }

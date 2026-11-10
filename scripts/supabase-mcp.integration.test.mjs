@@ -1574,6 +1574,74 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         traces.uncertain = uncertain.events;
         traces.reconciled = reconciled.events;
       });
+      await t.test('session actions are owner and mode scoped over real Auth and REST, and a reopened confirmation still decides once', async () => {
+        const owner = await newUser();
+        const other = await newUser();
+        const g = gateway(draftSteps(), { effects: true });
+        const draft = await send(g.handle, owner);
+        const approval = approvalOf(draft);
+        const conversation = conversationOf(draft);
+        assert.ok(approval);
+        const listed = await rpc(owner, 'kael_list_conversations', { p_mode: 'client', p_search: null, p_archived: false, p_limit: 30, p_before: null });
+        assert.deepEqual(listed.map(row => row.id), [conversation]);
+        assert.deepEqual(await rpc(other, 'kael_list_conversations', { p_mode: 'client', p_search: null, p_archived: false, p_limit: 30, p_before: null }), []);
+        assert.deepEqual(await rpc(owner, 'kael_list_conversations', { p_mode: 'worker', p_search: null, p_archived: false, p_limit: 30, p_before: null }), []);
+        const denied = [
+          ['kael_open_conversation', { p_conversation_id: conversation, p_mode: 'client' }],
+          ['kael_rename_conversation', { p_conversation_id: conversation, p_title: 'Chiếm quyền' }],
+          ['kael_set_conversation_pinned', { p_conversation_id: conversation, p_pinned: true }],
+          ['kael_set_conversation_archived', { p_conversation_id: conversation, p_archived: true }],
+          ['kael_delete_conversation', { p_conversation_id: conversation }],
+        ];
+        for (const [name, body] of denied) {
+          const crossAccount = await request(`/rest/v1/rpc/${name}`, other.token, body);
+          assert.ok(crossAccount.status >= 400, `${name} must refuse another account`);
+          const anonymous = await request(`/rest/v1/rpc/${name}`, null, body);
+          assert.ok([401, 403].includes(anonymous.status), `${name} must refuse a caller without a session`);
+        }
+        const crossMode = await request('/rest/v1/rpc/kael_open_conversation', owner.token, { p_conversation_id: conversation, p_mode: 'worker' });
+        assert.ok(crossMode.status >= 400);
+        assert.equal(query(`select coalesce(title,'') || '|' || (pinned_at is not null) || '|' || (archived_at is not null) || '|' || (deleted_at is not null) from public.kael_conversations where id='${conversation}';`), '|false|false|false');
+        await rpc(owner, 'kael_rename_conversation', { p_conversation_id: conversation, p_title: 'Việc cần xác nhận' });
+        await rpc(owner, 'kael_set_conversation_pinned', { p_conversation_id: conversation, p_pinned: true });
+        await rpc(owner, 'kael_set_conversation_archived', { p_conversation_id: conversation, p_archived: true });
+        await rpc(owner, 'kael_set_conversation_archived', { p_conversation_id: conversation, p_archived: false });
+        const reopened = parseKaelConversationSnapshot(await rpc(owner, 'kael_open_conversation', { p_conversation_id: conversation, p_mode: 'client' }));
+        assert.ok(reopened);
+        assert.equal(reopened.conversationId, conversation);
+        assert.deepEqual(reopened.approvals.map(item => item.id), [approval.id]);
+        assert.equal(countEffects(owner), 0);
+        const decided = await send(g.handle, owner, decision('approve', approval), conversation);
+        assert.ok(outcomes(decided).includes('service_request_submit:succeeded'));
+        assert.equal(countEffects(owner), 1);
+        const afterDecision = parseKaelConversationSnapshot(await rpc(owner, 'kael_open_conversation', { p_conversation_id: conversation, p_mode: 'client' }));
+        assert.equal(afterDecision.approvals.length, 0);
+        const replay = await send(g.handle, owner, decision('approve', approval), conversation);
+        assert.ok(!outcomes(replay).includes('service_request_submit:succeeded'));
+        assert.equal(countEffects(owner), 1);
+      });
+      await t.test('a manually submitted request is idempotent and visible on Requests after a reload only to its owner', async () => {
+        const owner = await newUser();
+        const other = await newUser();
+        const key = randomUUID();
+        const submit = () => rpc(owner, 'submit_service_request', { p_submission_key: key, p_description: 'Vệ sinh sofa vải ba chỗ', p_location: 'Quận 2, TP.HCM' });
+        const first = await submit();
+        assert.match(first, uuid);
+        assert.equal(await submit(), first);
+        const reload = token => request('/rest/v1/service_requests?select=id,description,location,created_at,preferred_visit_at&order=created_at.desc', token);
+        const mine = await reload(owner.token);
+        assert.equal(mine.status, 200);
+        assert.deepEqual((await mine.json()).map(row => [row.id, row.description, row.location]), [[first, 'Vệ sinh sofa vải ba chỗ', 'Quận 2, TP.HCM']]);
+        const theirs = await reload(other.token);
+        assert.equal(theirs.status, 200);
+        assert.deepEqual(await theirs.json(), []);
+        assert.equal(countEffects(owner), 1);
+        const duplicateKey = await request('/rest/v1/rpc/submit_service_request', other.token, { p_submission_key: key, p_description: 'Vệ sinh sofa vải ba chỗ', p_location: 'Quận 2, TP.HCM' });
+        assert.equal(duplicateKey.status, 200);
+        assert.notEqual(await duplicateKey.json(), first);
+        assert.equal(countEffects(other), 1);
+        assert.equal(countEffects(owner), 1);
+      });
       await t.test('busy and per-account rate limits return actual HTTP refusals without invoking a provider', async () => {
         const user = await newUser();
         let release;
