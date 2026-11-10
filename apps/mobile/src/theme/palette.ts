@@ -89,6 +89,10 @@ export const horizonColors = {
     userBubbleBackgroundColor: '#D9F2EE',
     userBubbleText: '#0B3B36',
     disclaimerColor: '#6B7683',
+    consentSurface: '#EEF6F4',
+    consentText: '#2B3A38',
+    consentActionSurface: '#91E5D6',
+    consentActionText: '#0B3B36',
   },
   liquid: {
     controlFill: 'rgba(255,255,255,0.16)',

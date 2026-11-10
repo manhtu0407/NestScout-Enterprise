@@ -18,7 +18,8 @@ jest.mock('@/features/access', () => ({ ...jest.requireActual('@/features/access
 jest.mock('@/lib/supabase-client', () => ({ getSupabaseClient: () => ({ auth: {} }) }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }), useFocusEffect: jest.requireActual<typeof import('react')>('react').useEffect }));
 const mockConsent = { status: 'ready', granted: true };
-jest.mock('./use-ai-consent', () => ({ useAiConsent: () => ({ ...mockConsent, set: jest.fn() }) }));
+const mockSetConsent = jest.fn();
+jest.mock('./use-ai-consent', () => ({ useAiConsent: () => ({ ...mockConsent, set: mockSetConsent }) }));
 jest.mock('./use-customer-data', () => ({
   useCustomerData: jest.fn(() => ({
     data: { requests: [], quotes: [], pinnedIds: new Set(), notifications: [], profile: null, avatar: null, activity: { jobs: [], submissions: [], cases: [], changes: [], reports: [], pauses: [] } },
@@ -83,6 +84,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockConsent.status = 'ready';
   mockConsent.granted = true;
+  mockSetConsent.mockResolvedValue(undefined);
   mockLoad.mockResolvedValue({ conversationId: null, busy: false, messages: [], tasks: [], approvals: [] });
 });
 
@@ -95,15 +97,41 @@ test('a pending confirmation shows the gray attention banner with the approval c
   expect(screen.queryByText('Đã gửi yêu cầu')).toBeNull();
 });
 
-test('without explicit AI sharing consent the message is not sent and no consent dialog opens', async () => {
+test('without AI sharing consent an inline card, not a dialog, asks once and the message is not sent', async () => {
   mockConsent.granted = false;
   const requests = script([started, completed('unused')]);
   await renderEntry();
+  expect(screen.getByTestId('kael-consent-card')).toBeTruthy();
   await say('Nhờ Kael giúp tôi');
   expect(requests).toHaveLength(0);
   expect(screen.getByText(/Tin nhắn chưa được gửi. Bật “Chia sẻ dữ liệu với AI”/)).toBeTruthy();
   expect(screen.queryByText('Đồng ý và tiếp tục')).toBeNull();
   expect(screen.queryByText('Không đồng ý')).toBeNull();
+});
+
+test('allowing AI sharing from the inline card records the choice explicitly', async () => {
+  mockConsent.granted = false;
+  await renderEntry();
+  await act(async () => { fireEvent.press(screen.getByLabelText('Cho phép và bắt đầu')); });
+  expect(mockSetConsent).toHaveBeenCalledTimes(1);
+  expect(mockSetConsent).toHaveBeenCalledWith(true);
+});
+
+test('a failed consent save keeps the card and reports the failure', async () => {
+  mockConsent.granted = false;
+  mockSetConsent.mockRejectedValue(new Error('offline'));
+  await renderEntry();
+  await act(async () => { fireEvent.press(screen.getByLabelText('Cho phép và bắt đầu')); });
+  expect(screen.getByText(/Chưa kiểm tra được trạng thái đồng ý/)).toBeTruthy();
+  expect(screen.getByTestId('kael-consent-card')).toBeTruthy();
+});
+
+test('once consent is granted there is no card and the message is sent', async () => {
+  const requests = script([started, completed('Xin chào.')]);
+  await renderEntry();
+  expect(screen.queryByTestId('kael-consent-card')).toBeNull();
+  await say('Nhờ Kael giúp tôi');
+  expect(requests).toHaveLength(1);
 });
 
 test('hosted Preview keeps real chat and suppresses business data and approval controls', async () => {

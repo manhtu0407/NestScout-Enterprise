@@ -13,6 +13,7 @@ import { readSse } from '../services/kael-core/src/sse.ts';
 import { checkModelTransition, taskTransitions } from '../services/kael-core/src/tasks.ts';
 import { findTool, toolRegistry, validateArguments } from '../services/kael-core/src/tools.ts';
 import { configuredProviders, createKaelHandler } from '../services/kael-core/src/gateway.ts';
+import { executeApprovedEffect } from '../services/kael-core/src/executor.ts';
 import { parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { baseEnv, harness, scriptedProvider, users } from './kael-test-harness.mjs';
 import { developerPilotProviders, pilotRoute, pilotServedModels } from '../services/kael-core/src/developer-pilot.ts';
@@ -1027,4 +1028,62 @@ test('the gateway persists runs only through the server boundary for the account
   assert.ok(writes.every(entry => entry.authorization === serverAuthorization && entry.body.p_actor === users.customer.id));
   assert.ok(calls.filter(entry => entry.authorization === serverAuthorization).every(entry => writes.includes(entry)), 'the server credential is used for nothing else');
   assert.ok(!JSON.stringify(events).includes(baseEnv.SUPABASE_SERVICE_ROLE_KEY));
+});
+
+const quoteId = '33333333-3333-4333-8333-333333333333';
+const acceptedQuote = { tool: 'service_quote_decision', args: { decision: 'accepted', quote_id: quoteId, quote_version: 2 } };
+
+function effectRest(postResponse, readResponse) {
+  const calls = [];
+  const rest = async (path, init = {}) => {
+    calls.push({ path, method: init.method ?? 'GET' });
+    return (init.method === 'POST' ? postResponse : readResponse)();
+  };
+  return { rest, calls };
+}
+
+const databaseError = (status, code) => () => new Response(JSON.stringify({ code }), { status, headers: { 'content-type': 'application/json' } });
+const rows = value => () => new Response(JSON.stringify(value), { status: 200, headers: { 'content-type': 'application/json' } });
+
+test('a first attempt refused by the database is a definitive failure', async () => {
+  const { rest, calls } = effectRest(databaseError(500, '40001'), rows([]));
+  const outcome = await executeApprovedEffect('approval-1', { status: 'ok', ...acceptedQuote }, rest, new AbortController().signal);
+  assert.deepEqual(outcome, { status: 'failed', reason: 'backend_http_500' });
+  assert.deepEqual(calls.map(call => call.method), ['POST'], 'no evidence read is needed');
+});
+
+test('a reconciliation refused by the database reports success only when the effect is observed', async () => {
+  for (const [status, code] of [[500, '57014'], [500, '40001'], [409, 'P0001'], [403, '42501']]) {
+    const { rest, calls } = effectRest(databaseError(status, code), rows([{ id: quoteId, accepted_at: '2026-11-10T01:00:00Z', rejected_at: null }]));
+    const outcome = await executeApprovedEffect('approval-1', { status: 'reconcile', ...acceptedQuote }, rest, new AbortController().signal);
+    assert.deepEqual(outcome, { status: 'succeeded', resourceId: quoteId }, `${status} ${code}`);
+    assert.match(calls[1].path, /^service_quotes[?]select=id,accepted_at,rejected_at&id=eq[.]3333/);
+    assert.equal(calls[1].method, 'GET');
+  }
+});
+
+test('a reconciliation refused by the database stays uncertain when the effect is not observed', async () => {
+  const unobserved = [rows([{ id: quoteId, accepted_at: null, rejected_at: null }]), rows([]), databaseError(500, '57014'), () => Promise.reject(new Error('offline'))];
+  for (const read of unobserved) {
+    const { rest } = effectRest(databaseError(500, '57014'), read);
+    const outcome = await executeApprovedEffect('approval-1', { status: 'reconcile', ...acceptedQuote }, rest, new AbortController().signal);
+    assert.deepEqual(outcome, { status: 'uncertain', reason: 'backend_http_500' });
+  }
+});
+
+test('each workflow effect is recognised from the row it leaves behind', async () => {
+  const id = '44444444-4444-4444-8444-444444444444';
+  const cases = [
+    [{ tool: 'work_submission_decision', args: { submission_id: id, job_version: 3, decision: 'revision_requested', reason: 'x' } }, [{ id, decision: 'revision_requested' }], [{ id, decision: 'pending' }], /^service_submissions[?]/],
+    [{ tool: 'worker_offer_decision', args: { decision: 'accept', invitation_id: id, quote_id: quoteId, quote_version: 1 } }, [{ id }], [], /^service_jobs[?]select=id&invitation_id=eq[.]/],
+    [{ tool: 'worker_offer_decision', args: { decision: 'decline', invitation_id: id, quote_id: quoteId, quote_version: 1 } }, [{ id, state: 'declined' }], [{ id, state: 'open' }], /^service_invitations[?]/],
+    [{ tool: 'worker_job_advance', args: { job_id: id, version: 4, next: 'arrived' } }, [{ id, stage: 'arrived', version: 5 }], [{ id, stage: 'en_route', version: 4 }], /^service_jobs[?]select=id,stage,version/],
+  ];
+  for (const [effect, applied, pending, path] of cases) {
+    const seen = effectRest(databaseError(500, '40001'), rows(applied));
+    assert.deepEqual(await executeApprovedEffect('approval-1', { status: 'reconcile', ...effect }, seen.rest, new AbortController().signal), { status: 'succeeded', resourceId: id }, effect.tool);
+    assert.match(seen.calls[1].path, path);
+    const open = effectRest(databaseError(500, '40001'), rows(pending));
+    assert.equal((await executeApprovedEffect('approval-1', { status: 'reconcile', ...effect }, open.rest, new AbortController().signal)).status, 'uncertain', effect.tool);
+  }
 });

@@ -636,8 +636,11 @@ legal review. The beta does not ask users to accept them or record legal accepta
 Missing operator details in the draft therefore do not block account access or workflow
 testing.
 
-The separate Share data with AI switch in Settings › Privacy is the only way to authorize
-Kael provider requests. Before the switch, the screen explains that prompts, conversation
+Authorizing Kael provider requests is a separate, explicit choice. A signed-in account
+without an `ai_sharing` record sees one inline card above the Kael composer (not a dialog)
+that states what is sent and offers a single "Cho phép và bắt đầu" action; sending a message
+before that action sends nothing. The same choice can be changed with the Share data with AI
+switch in Settings › Privacy. Before the switch, the screen explains that prompts, conversation
 history, related request and job details, and reply preferences may be sent to the
 configured model provider. When web search is enabled, the search query may also be sent
 to Perplexity. No Kael message is sent without an `ai_sharing` record; both the app and

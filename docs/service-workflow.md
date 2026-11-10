@@ -417,7 +417,9 @@ notification delivery, automatic dispute resolution, real dispatch or Worker
 qualification process is configured. Manual controls remain available when the
 status tool is unavailable.
 
-Quotes and invitations are created only by the fixture operator commands above,
+The operator queue and candidate lists are read-only calls, so they check the operator
+without taking a lock and work inside PostgREST's read-only transactions; the issue and
+invite commands keep the locking check. Quotes and invitations are created only by the fixture operator commands above,
 for local and test use. There is no operator screen, no pricing model and no
 automatic dispatch; a commercial pricing or dispatch policy is still an owner
 decision. PostgREST reports SQLSTATE `40001` (a stale version or an
@@ -501,7 +503,13 @@ conflict, a failed verification call or an HTTP refusal the database did not
 record, is reported as uncertain, never as a definite failure when the request may
 exist.
 
-An uncertain outcome is reconciled, never retried as a new operation. The app
+An uncertain outcome is reconciled, never retried as a new operation. When the check
+itself is refused by the database or the gateway (a timeout, a serialization failure, a
+conflict or a permission refusal), the executor reads the row the effect would have
+written and reports success only when that row proves the operation (the quote
+decision, the submission decision, the accepted or declined invitation, the advanced job
+stage); otherwise the outcome stays uncertain. A first attempt that the database refuses
+remains a definite failure. The app
 shows it as a separate "Kiểm tra lại" card with no slide-to-confirm and no
 decline, and sends a `reconcile` action carrying the original approval id and
 fingerprint. `kael_consume_approval` with the `reconcile` intent accepts only an

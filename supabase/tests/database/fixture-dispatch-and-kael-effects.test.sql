@@ -68,6 +68,11 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 select is((select count(*)::integer from public.service_quotes), 0, 'The operator cannot read quote rows directly');
 select is((select count(*)::integer from public.fixture_dispatch_queue() where request_id = '11000000-0000-4000-8000-0000000000a1' and quote_state = 'issued'), 1,
   'The operator queue reports the latest issued quote');
+savepoint dispatch_reads_read_only;
+set local transaction_read_only = on;
+select lives_ok($$select * from public.fixture_dispatch_queue()$$, 'The dispatch queue is readable in the read-only transaction PostgREST uses for stable functions');
+select lives_ok($$select * from public.fixture_dispatch_candidates()$$, 'The dispatch candidates are readable in a read-only transaction');
+rollback to savepoint dispatch_reads_read_only;
 select throws_ok($$select public.invite_fixture_worker('11000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-00000000d0a1', 30)$$,
   '22023', 'agreement unavailable', 'No worker is invited before the customer accepts a quote');
 

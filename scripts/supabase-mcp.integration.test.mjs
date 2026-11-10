@@ -1784,6 +1784,11 @@ test('Kael coordinates the authorized Customer–Worker lifecycle through confir
       assert.equal((await rpc(customer, 'issue_fixture_quote', { p_request_id: requestId, p_key: randomUUID(), p_scope: 'Tự báo giá', p_amount_minor: 1, p_valid_minutes: 60 })).status, 403, 'a customer cannot price their own request');
       const quoteV1 = await issue(randomUUID(), 'Kiểm tra máy lạnh', 300000);
       const quoteV2 = await issue(randomUUID(), 'Kiểm tra và vệ sinh máy lạnh', 450000);
+      const queue = await rpc(operator, 'fixture_dispatch_queue', {});
+      assert.equal(queue.status, 200, 'the dispatch queue is readable through the REST read-only transaction');
+      assert.ok((await queue.json()).some(row => row.request_id === requestId && row.latest_quote_version === 2), 'the queue shows the latest quote of the request');
+      assert.equal((await rpc(operator, 'fixture_dispatch_candidates', {})).status, 200, 'the dispatch candidates are readable through REST');
+      assert.equal((await rpc(customer, 'fixture_dispatch_queue', {})).status, 403, 'a customer cannot read the dispatch queue');
       assert.deepEqual(await (await request(`/rest/v1/service_quotes?select=id&request_id=eq.${requestId}`, customerB.token)).json(), [], 'Customer B never sees Customer A quotes');
 
       let stale;

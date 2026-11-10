@@ -41,6 +41,9 @@ $$, 'The trusted server role reaches only the reviewed Kael-internal operations 
 select ok(not has_schema_privilege('anon','nestscout_private','usage'), 'Anonymous users cannot use the private schema');
 select ok(not has_function_privilege('authenticated','nestscout_private.lock_current_worker()','execute'),
   'Worker lock helper is not a client operation');
+select ok(not has_function_privilege('authenticated','nestscout_private.require_fixture_operator()','execute')
+  and not has_function_privilege('authenticated','nestscout_private.lock_fixture_operator()','execute'),
+  'Fixture operator checks are not client operations');
 select is_empty($$
   select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
   where n.nspname in ('public','nestscout_private') and p.proname ~* '(pay|paid|settle|refund|webhook)'

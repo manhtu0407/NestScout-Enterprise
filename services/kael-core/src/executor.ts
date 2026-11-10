@@ -390,7 +390,26 @@ export async function executeDecision(decision: Extract<Decision, { kind: 'execu
 
 export type EffectOutcome = { status: 'succeeded'; resourceId: string } | { status: 'failed' | 'uncertain'; reason: string };
 
-type EffectCall = { path: string; body: Record<string, unknown>; refusals: readonly number[]; sqlstateRefuses: boolean; resource: (value: unknown) => string | null };
+type Evidence = { path: string; observed: (row: Record<string, unknown>) => string | null };
+
+type EffectCall = { path: string; body: Record<string, unknown>; refusals: readonly number[]; sqlstateRefuses: boolean; resource: (value: unknown) => string | null; evidence: Evidence | null };
+
+const rowRead = (table: string, columns: string, key: string, value: unknown): string => `${table}?select=${columns}&${key}=eq.${encodeURIComponent(String(value))}`;
+
+async function observedEffect(evidence: Evidence, rest: Rest, signal: AbortSignal): Promise<string | null> {
+  try {
+    const response = await rest(evidence.path, { signal });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return null;
+    }
+    const rows: unknown = await response.json();
+    const row = Array.isArray(rows) && rows.length === 1 ? rows[0] as unknown : null;
+    return typeof row === 'object' && row !== null ? evidence.observed(row as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
 
 async function databaseRefused(response: Response): Promise<boolean> {
   try {
@@ -408,26 +427,34 @@ function effectCall(approvalId: string, tool: string, args: Record<string, unkno
     const description = String(args.description ?? '');
     const preferred = String(args.preferred_time ?? '');
     return {
-      path: 'rpc/submit_service_request', refusals: [400, 422], sqlstateRefuses: false, resource: textId,
+      path: 'rpc/submit_service_request', refusals: [400, 422], sqlstateRefuses: false, resource: textId, evidence: null,
       body: { p_submission_key: approvalId, p_description: preferred ? `${description}\nThời gian mong muốn: ${preferred}` : description, p_location: String(args.location ?? '') },
     };
   }
   const refusals = [400, 403, 409, 422];
   const sqlstateRefuses = true;
   if (tool === 'service_quote_decision') {
-    return { path: args.decision === 'accepted' ? 'rpc/accept_service_quote' : 'rpc/reject_service_quote', refusals, sqlstateRefuses, resource: textId,
+    const accepting = args.decision === 'accepted';
+    return { path: accepting ? 'rpc/accept_service_quote' : 'rpc/reject_service_quote', refusals, sqlstateRefuses, resource: textId,
+      evidence: { path: rowRead('service_quotes', 'id,accepted_at,rejected_at', 'id', args.quote_id), observed: row => typeof (accepting ? row.accepted_at : row.rejected_at) === 'string' ? textId(row.id) : null },
       body: { p_quote_id: args.quote_id, p_version: args.quote_version } };
   }
   if (tool === 'work_submission_decision') {
     return { path: 'rpc/decide_service_submission', refusals, sqlstateRefuses, resource: textId,
+      evidence: { path: rowRead('service_submissions', 'id,decision', 'id', args.submission_id), observed: row => row.decision === args.decision ? textId(row.id) : null },
       body: { p_submission_id: args.submission_id, p_version: args.job_version, p_decision: args.decision, p_reason: args.decision === 'accepted' ? null : args.reason } };
   }
   if (tool === 'worker_offer_decision') {
-    return { path: args.decision === 'accept' ? 'rpc/accept_service_invitation' : 'rpc/decline_service_invitation', refusals, sqlstateRefuses, resource: textId,
+    const accepting = args.decision === 'accept';
+    return { path: accepting ? 'rpc/accept_service_invitation' : 'rpc/decline_service_invitation', refusals, sqlstateRefuses, resource: textId,
+      evidence: accepting
+        ? { path: rowRead('service_jobs', 'id', 'invitation_id', args.invitation_id), observed: row => textId(row.id) }
+        : { path: rowRead('service_invitations', 'id,state', 'id', args.invitation_id), observed: row => row.state === 'declined' ? textId(row.id) : null },
       body: { p_invitation_id: args.invitation_id, p_quote_id: args.quote_id, p_quote_version: args.quote_version } };
   }
   if (tool === 'worker_job_advance') {
     return { path: 'rpc/advance_service_job', refusals, sqlstateRefuses, resource: value => Number.isSafeInteger(value) ? String(args.job_id) : null,
+      evidence: { path: rowRead('service_jobs', 'id,stage,version', 'id', args.job_id), observed: row => row.stage === args.next && typeof row.version === 'number' && row.version > Number(args.version) ? textId(row.id) : null },
       body: { p_job_id: args.job_id, p_version: args.version, p_next: args.next } };
   }
   return null;
@@ -443,6 +470,11 @@ export async function executeApprovedEffect(approvalId: string, approval: Extrac
     return { status: 'uncertain', reason: 'backend_unreachable' };
   }
   if (!response.ok) {
+    if (approval.status === 'reconcile' && call.evidence) {
+      await response.body?.cancel();
+      const resourceId = await observedEffect(call.evidence, rest, signal);
+      return resourceId ? { status: 'succeeded', resourceId } : { status: 'uncertain', reason: `backend_http_${response.status}` };
+    }
     if (call.refusals.includes(response.status)) {
       await response.body?.cancel();
       return { status: 'failed', reason: `backend_http_${response.status}` };

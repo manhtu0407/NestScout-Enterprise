@@ -161,6 +161,15 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     inputRef.current = '';
     access.clearHorizonDraft(access.userId);
   }, [access, sendToKael]);
+  const [consentBusy, setConsentBusy] = useState(false);
+  const setAiConsent = aiConsent.set;
+  const allowAi = useCallback(() => {
+    setConsentBusy(true);
+    setAiConsent(true).catch(() => setComposerError(consentFailedMessage)).finally(() => setConsentBusy(false));
+  }, [consentFailedMessage, setAiConsent]);
+  const consentCard = !onPreviewMenu && kaelAvailable && aiConsentStatus === 'ready' && !aiConsentGranted
+    ? { lead: consentStrings.consentCardLead, action: consentStrings.consentCardAction, busy: consentBusy, onAllow: allowAi }
+    : null;
   const refuseWithoutConsent = useCallback(() => {
     if (aiConsentStatus === 'ready') setComposerError(consentNeededMessage);
     else setComposerError(aiConsentStatus === 'error' ? consentFailedMessage : consentCheckingMessage);
@@ -231,7 +240,7 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
           </View>
         </Presence>
         <KaelAttentionCard attention={attention} onAction={onAttentionAction} onHeight={setAttentionHeight}/>
-        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} question={onPreviewMenu ? null : kael.question} onAnswer={sendText} onRate={onPreviewMenu ? undefined : kael.rate} onRegenerate={regenerate} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
+        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} question={onPreviewMenu ? null : kael.question} onAnswer={sendText} onRate={onPreviewMenu ? undefined : kael.rate} onRegenerate={regenerate} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} consent={consentCard} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
     {kaelUserId !== null && scope === memoryScope && <KaelMemorySettings key={scope} userId={kaelUserId} mode={kaelMode} onClose={() => setMemoryScope(null)}/>}
