@@ -273,6 +273,83 @@ This repository change does not deploy the Edge Function or create a TestFlight
 build; those steps follow PR approval. Device behavior remains unverified until
 a tester sends a real prompt in the new TestFlight build on iPhone.
 
+## Durable runtime
+
+`services/kael-core/durable/` is a native Rust service (crate `kael-durable`) that
+runs Kael turns on [Pi-durable](https://github.com/y0usaf/pi-durable-rs), pinned at
+`460649edb63d495d97c30cc69b2481d10f2b4cca`. It keeps the request, event and
+approval contracts above unchanged. It is opt-in: the Edge Function sends turns to it
+only while the `KAEL_DURABLE_URL` secret is set.
+
+| Concern | Design |
+| --- | --- |
+| Business truth | Supabase Postgres. Pi holds one SQLite journal per run (`journals/<run_id>.sqlite`, named by the Postgres run UUID) for model and tool steps, never business records |
+| Admission | `kael_durable_start_run` creates or replays the run and its lease in one transaction. A replay of a legacy run returns HTTP 421 and the Edge Function serves it from the legacy runtime |
+| Exclusive writer | Each run has an epoch and a lease. Writes carry `x-kael-lease: holder:epoch`; the database refuses them (HTTP 403) once another holder owns a newer epoch, and the process cancels the run |
+| Recovery | A killed process leaves a running run with an expired lease. Any instance, or the same client retrying the same `request_id`, claims it with a new epoch and resumes from the journal. Completed tool steps are not run again. Tools other than reads are registered as unsafe to replay, so the harness does not re-run one that was interrupted mid-call; no test kills the process during a tool call yet |
+| Events | NDJSON in `events/<run_id>.ndjson`, `seq` gap-free across restarts. `GET /v1/runs/{id}/events?after=N` and a repeated `POST /v1/turn` both replay from the log, owner-checked |
+| Identity | The caller's JWT is verified against Supabase Auth; the owner is recorded in `meta/<run_id>.json` and rechecked on every attach. Tool offers follow the verified mode and capabilities |
+| Approvals | Unchanged: the database fingerprint, consumption and reconciliation RPCs decide, so an approval survives any restart and applies once |
+| Account erasure | `erase_account_data` marks the account's journals `purge_pending`; the reconciler deletes journal, event and metadata files after a grace period and confirms with `kael_durable_mark_purged`. Files with no database row are removed as orphans |
+| Rollback | Unset `KAEL_DURABLE_URL`. New turns use the legacy runtime at once; runs already on the durable service finish, expire or are interrupted by the database sweep |
+
+Run and test it with Docker when no local Rust toolchain exists:
+
+```bash
+docker run --rm -v "$PWD/services/kael-core/durable:/w" -w /w rust:1.90-bookworm cargo test --locked --test contracts
+```
+
+`tests/process_recovery.rs` starts the real `kael-durable` binary against a live
+Supabase stack (GoTrue, PostgREST, Postgres with the repository migrations) and a
+local OpenAI-compatible model server. It signs up real users, kills the process with
+SIGKILL mid-stream, restarts it, and checks resume without a repeated effect,
+account isolation, approval application across a restart, a typed provider failure
+and journal purge after account erasure. The tests are `#[ignore]`d until
+`KAEL_TEST_GATEWAY`, `KAEL_TEST_ANON` and `KAEL_TEST_SERVICE` point at such a stack,
+then run with `cargo test --locked -- --ignored --test-threads=1`.
+
+| Setting | Effect |
+| --- | --- |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` or `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY` | Same targets and keys as the gateway; plain HTTP is accepted only for local hosts |
+| `KAEL_DURABLE_DATA_DIR` | Required absolute path on persistent storage; `/tmp` is refused unless `KAEL_DURABLE_ALLOW_TEMP=1` |
+| `KAEL_DURABLE_HOLDER`, `KAEL_DURABLE_LEASE_SECONDS` | Instance name (`[A-Za-z0-9._-]`, at most 80) and lease length from 10 to 600 seconds, default 30 |
+| `KAEL_DURABLE_BIND` | Listen address, default `127.0.0.1:8787` |
+| `KAEL_DURABLE_PURGE_GRACE_SECONDS` | Delay before a purge-pending journal is deleted, default 120 |
+| `DEEPSEEK_API_KEY`, `KAEL_DEEPSEEK_MODEL`, `ANTHROPIC_API_KEY`, `KAEL_ANTHROPIC_MODEL`, `KAEL_MODEL_ROUTE`, `PERPLEXITY_API_KEY` with `KAEL_WEB_SEARCH=enabled`, `KAEL_ENABLED_EFFECTS` | Same meaning as for the gateway. `KAEL_DEEPSEEK_BASE_URL` overrides the DeepSeek endpoint (HTTPS or local) |
+| `KAEL_DURABLE_URL` (Edge secret) | HTTPS address of the service, or a local HTTP address; any other value is ignored |
+
+`GET /ready` reports database and storage status without calling a model provider.
+The repository naming policy has no approved convention for a Dockerfile, so the
+image recipe lives here. Built from `services/kael-core/durable/` and run with the
+data volume, it started as a non-root user and reported `database: verified`
+against the local stack:
+
+```dockerfile
+FROM rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+RUN cargo build --release --locked --bin kael-durable
+
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
+RUN useradd --system --uid 10001 --home-dir /var/lib/kael kael \
+  && mkdir -p /var/lib/kael \
+  && chown kael /var/lib/kael
+COPY --from=build /src/target/release/kael-durable /usr/local/bin/kael-durable
+USER kael
+ENV KAEL_DURABLE_DATA_DIR=/var/lib/kael KAEL_DURABLE_BIND=0.0.0.0:8787
+EXPOSE 8787
+VOLUME ["/var/lib/kael"]
+ENTRYPOINT ["/usr/local/bin/kael-durable"]
+```
+
+Differences from the legacy runtime: the two Intelligence knowledge tools are not
+offered, Anthropic's server-side fallback and DeepSeek thinking mode are not
+implemented, and the final text of a run resumed after a crash replaces, rather than
+extends, any partial text streamed before the crash. The model-visible tool schemas
+drop length and pattern keywords that Pi-durable's validator does not support; the
+service enforces them before every tool call.
+
 ## Not implemented
 
 Image understanding, voice, background workers, proactive notifications,

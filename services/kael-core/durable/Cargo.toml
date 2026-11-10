@@ -1,0 +1,24 @@
+[package]
+name = "kael-durable"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+license = "UNLICENSED"
+
+[lib]
+name = "kael_durable"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kael-durable"
+path = "src/main.rs"
+
+[dependencies]
+pi-durable = { git = "https://github.com/y0usaf/pi-durable-rs", rev = "460649edb63d495d97c30cc69b2481d10f2b4cca", features = ["providers"] }
+regex = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"

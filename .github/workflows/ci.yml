@@ -147,3 +147,21 @@ jobs:
       - name: Stop isolated local stack
         if: ${{ always() && steps.stack.outcome != 'skipped' }}
         run: npm run db:stop
+
+  kael-durable:
+    name: Kael durable runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out verification revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install 1.90.0 --profile minimal --no-self-update
+      - name: Build the durable runtime from the lockfile
+        working-directory: services/kael-core/durable
+        run: cargo +1.90.0 build --locked --all-targets
+      - name: Run the durable runtime contract tests
+        working-directory: services/kael-core/durable
+        run: cargo +1.90.0 test --locked --test contracts

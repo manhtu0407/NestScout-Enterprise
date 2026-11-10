@@ -71,6 +71,29 @@ No deployment rollback exists until a deployment target and runbook are implemen
 
 For a credential incident, follow [SECURITY](../SECURITY.md): revoke/rotate first.
 
+## Kael durable runtime rollback and recovery
+
+The durable service ([design](../services/kael-core/README.md#durable-runtime)) is
+reached only while the Edge secret `KAEL_DURABLE_URL` is set. To roll back, remove
+that secret from the Supabase Edge Function secrets and redeploy nothing else. The
+gateway stops proxying at the next invocation and new turns run on the legacy
+runtime. Runs already admitted by the durable service finish if the service is still
+up; otherwise the database sweep marks them interrupted once their lease has been
+expired for 30 minutes. Applied migrations stay in place: the lease columns are
+unused by legacy runs. Re-enable by setting the secret again.
+
+To recover a stopped instance, start any instance with the same
+`KAEL_DURABLE_DATA_DIR` volume and a database that is reachable. Its reconciler
+takes over runs whose lease expired within seconds, and a client that retries its
+`request_id` reattaches. If the volume is lost, the affected runs are closed as
+`interrupted`, conversations and approvals are untouched, and the user sends the
+message again. Never run two instances against the same volume with the same
+`KAEL_DURABLE_HOLDER`.
+
+Hosted deployment of the service, its persistent volume and the secret are owner
+actions. No hosted rollback or recovery drill has been run; the evidence is local
+(see the service README).
+
 ## Git and metadata backup
 
 Run from a clean checkout after `git fetch origin --prune`. Use an absolute, new

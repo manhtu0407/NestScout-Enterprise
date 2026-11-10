@@ -1,0 +1,107 @@
+use std::time::Duration;
+
+use pi_durable::ai::http::{Request, send};
+use pi_durable::cancel::CancelToken;
+use serde_json::Value;
+
+use crate::config::Config;
+use crate::util::valid_uuid;
+
+#[derive(Clone)]
+pub struct Backend {
+    url: String,
+    anon_key: String,
+    service_key: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct Reply {
+    pub status: u16,
+    pub body: Value,
+}
+
+impl Reply {
+    pub fn ok(&self) -> bool {
+        (200..300).contains(&self.status)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lease {
+    pub holder: String,
+    pub epoch: i64,
+}
+
+impl Lease {
+    pub fn header(&self) -> String {
+        format!("{}:{}", self.holder, self.epoch)
+    }
+}
+
+impl Backend {
+    pub fn new(config: &Config) -> Self {
+        Self {
+            url: config.supabase_url.clone(),
+            anon_key: config.anon_key.clone(),
+            service_key: config.service_key.clone(),
+        }
+    }
+
+    fn execute(request: Request, cancel: Option<&CancelToken>) -> Result<Reply, String> {
+        let response = send(&request, cancel).map_err(|error| format!("transport: {error:?}"))?;
+        let status = response.status;
+        let text = response.text().map_err(|error| format!("body: {error:?}"))?;
+        let body = if text.trim().is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_str(&text).unwrap_or(Value::String(text))
+        };
+        Ok(Reply { status, body })
+    }
+
+    pub fn verify_user(&self, token: &str) -> Option<String> {
+        let request = Request::new("GET", format!("{}/auth/v1/user", self.url))
+            .header("apikey", self.anon_key.clone())
+            .header("authorization", format!("Bearer {token}"))
+            .timeout(Some(Duration::from_secs(5)));
+        let reply = Self::execute(request, None).ok()?;
+        if !reply.ok() {
+            return None;
+        }
+        let id = reply.body["id"].as_str()?;
+        (valid_uuid(id) && reply.body["is_anonymous"] != Value::Bool(true)).then(|| id.to_ascii_lowercase())
+    }
+
+    pub fn user(
+        &self,
+        token: &str,
+        method: &str,
+        path: &str,
+        body: Option<&Value>,
+        timeout: Duration,
+        cancel: Option<&CancelToken>,
+    ) -> Result<Reply, String> {
+        let mut request = Request::new(method, format!("{}/rest/v1/{path}", self.url))
+            .header("apikey", self.anon_key.clone())
+            .header("authorization", format!("Bearer {token}"))
+            .timeout(Some(timeout));
+        if let Some(body) = body {
+            request = request.json(body);
+        }
+        Self::execute(request, cancel)
+    }
+
+    pub fn service_rpc(&self, name: &str, body: &Value, lease: Option<&Lease>) -> Result<Reply, String> {
+        let mut request = Request::new("POST", format!("{}/rest/v1/rpc/{name}", self.url))
+            .header("apikey", self.service_key.clone())
+            .timeout(Some(Duration::from_secs(10)))
+            .json(body);
+        if !self.service_key.starts_with("sb_secret_") {
+            request = request.header("authorization", format!("Bearer {}", self.service_key));
+        }
+        if let Some(lease) = lease {
+            request = request.header("x-kael-lease", lease.header());
+        }
+        Self::execute(request, None)
+    }
+}
