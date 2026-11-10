@@ -1129,7 +1129,7 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
       assert.equal(response.status, 200, `RPC ${name} must succeed`);
       return response.json();
     };
-    const newUser = async () => {
+    const newUser = async ({ consent = true } = {}) => {
       const email = `${randomUUID()}@example.invalid`;
       const password = randomUUID();
       const created = await request('/auth/v1/admin/users', serviceKey, { email, password, email_confirm: true }, true);
@@ -1138,6 +1138,7 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
       assert.match(account.id, uuid);
       const user = { id: account.id, token: null };
       accounts.push(user);
+      if (consent) query(`insert into public.consent_events (user_id, purpose, granted, policy_version) values ('${account.id}', 'ai_sharing', true, '2026-11-09');`);
       const login = await request('/auth/v1/token?grant_type=password', null, { email, password });
       assert.equal(login.status, 200, 'Supported local password session must succeed');
       const session = await login.json();
@@ -1243,6 +1244,15 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
           rmSync(entry, { force: true });
           rmdirSync(directory);
         }
+      });
+      await t.test('an account without AI-sharing consent is refused before any provider call', async () => {
+        const user = await newUser({ consent: false });
+        const g = gateway([{ text: ['Không được gọi.'] }]);
+        const refused = await send(g.handle, user);
+        assert.equal(refused.status, 403);
+        assert.equal(refused.error.error.code, 'consent_required');
+        assert.equal(g.provider.requests.length, 0);
+        assert.equal(query(`select count(*) from public.kael_runs where owner_id='${user.id}';`), '0');
       });
       await t.test('real JWT roles, RLS and server-only RPC permissions enforce account boundaries', async () => {
         const customer = await newUser();
@@ -1638,9 +1648,282 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
           delete from public.notifications where request_id in (select id from public.service_requests where owner_id='${user.id}');
           delete from public.service_requests where owner_id='${user.id}';
           delete from nestscout_private.worker_dispatch_eligibility where user_id='${user.id}';
+          delete from public.consent_events where user_id='${user.id}';
           commit;`);
         const removed = await fetch(`${origin}/auth/v1/admin/users/${user.id}`, { method: 'DELETE', headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` } });
         assert.equal(removed.status, 200, 'Remove only this test-created identity');
+      }
+      assert.equal(query('select count(*) from auth.users;'), initialUsers);
+    }
+  });
+});
+
+test('Kael coordinates the authorized Customer–Worker lifecycle through confirmed effects on real Auth and PostgreSQL', { timeout: 300000 }, async () => {
+  await withLocalLock(async () => {
+    const runtime = localRuntime();
+    const stack = runtime.verify();
+    const status = runtime.status();
+    const origin = stack.endpoints['rest.http'].url.replace(/\/$/, '');
+    const publicKey = status.env.PUBLISHABLE_KEY;
+    const serviceKey = status.env.SERVICE_ROLE_KEY;
+    assert.ok(publicKey?.startsWith('sb_publishable_'));
+    assert.ok(serviceKey?.startsWith('eyJ'));
+    const containers = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/);
+    assert.equal(containers.length, 1);
+    assert.match(containers[0], /^[a-f0-9]{12,64}$/);
+    const query = sql => execFileSync('docker', ['exec', '-i', containers[0], 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], { input: sql, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    const initialUsers = query('select count(*) from auth.users;');
+    const effects = 'service_request_submit,service_quote_decision,work_submission_decision,worker_offer_decision,worker_job_advance';
+    const env = { SUPABASE_URL: `${origin}/`, SUPABASE_ANON_KEY: publicKey, SUPABASE_SERVICE_ROLE_KEY: serviceKey, KAEL_ENABLED_EFFECTS: effects };
+    const accounts = [];
+    const request = (route, token, body, admin = false) => fetch(`${origin}${route}`, {
+      method: body === undefined ? 'GET' : 'POST', signal: AbortSignal.timeout(30000),
+      headers: { apikey: admin ? serviceKey : publicKey, ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const rpc = (user, name, body = {}) => request(`/rest/v1/rpc/${name}`, user.token, body);
+    const newUser = async label => {
+      const email = `${randomUUID()}@example.invalid`;
+      const password = randomUUID();
+      const created = await request('/auth/v1/admin/users', serviceKey, { email, password, email_confirm: true }, true);
+      assert.equal(created.status, 200, `${label} provisioning`);
+      const account = await created.json();
+      const user = { id: account.id, token: null, label };
+      accounts.push(user);
+      const login = await request('/auth/v1/token?grant_type=password', null, { email, password });
+      assert.equal(login.status, 200, `${label} password session`);
+      user.token = (await login.json()).access_token;
+      return user;
+    };
+    const send = async (provider, user, action, conversation, mode) => {
+      while (Number(query(`select count(*) from public.kael_runs where owner_id='${user.id}' and started_at > clock_timestamp() - interval '1 minute';`)) >= 12) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      const handle = createKaelHandler({ env, providers: () => (provider ? [provider] : []), log: () => {} });
+      const response = await handle(new Request(`${origin}/functions/v1/kael`, {
+        method: 'POST', headers: { authorization: `Bearer ${user.token}`, apikey: publicKey, 'content-type': 'application/json' },
+        body: JSON.stringify({ request_id: randomUUID(), conversation_id: conversation, mode, action }),
+      }));
+      assert.equal(response.status, 200, `${user.label} turn is accepted`);
+      const events = (await response.text()).trim().split('\n').map(line => parseKaelEvent(line));
+      const sequence = createKaelSequence();
+      for (const event of events) {
+        assert.ok(event, 'every gateway event satisfies the mobile parser');
+        assert.equal(sequence(event), 'accept');
+      }
+      return { events, conversation: events[0].conversation_id, end: events.at(-1) };
+    };
+    const say = (user, mode, steps, conversation = null) => send(scriptedProvider('anthropic', steps), user, { type: 'message', text: 'Synthetic lifecycle message' }, conversation, mode);
+    const approve = (user, mode, approval, conversation, type = 'approve') => send(null, user, { type, approval_id: approval.id, fingerprint: approval.fingerprint }, conversation, mode);
+    const approvalOf = result => result.events.find(event => event.type === 'approval_required')?.approval;
+    const text = result => result.events.filter(event => event.type === 'message_delta').map(event => event.text).join('');
+    const one = sql => query(sql);
+    const workflowTask = (title, next) => [
+      { tools: [call('task_create', { title, kind: 'workflow_action', status: 'running', note: '' })] },
+      request => { const [created] = lastToolResults(request); return { tools: [next(created.task.id)] }; },
+      { text: ['Mời bạn xác nhận trong ứng dụng.'] },
+    ];
+    let requestId = null;
+    try {
+      const customer = await newUser('Customer A');
+      const customerB = await newUser('Customer B');
+      const workerA = await newUser('Worker A');
+      const workerB = await newUser('Worker B');
+      const operator = await newUser('Fixture operator');
+      query(`insert into public.consent_events (user_id, purpose, granted, policy_version) values
+          ('${customer.id}', 'ai_sharing', true, '2026-11-09'), ('${customerB.id}', 'ai_sharing', true, '2026-11-09'), ('${workerA.id}', 'ai_sharing', true, '2026-11-09'), ('${workerB.id}', 'ai_sharing', true, '2026-11-09');
+        insert into nestscout_private.fixture_operators (user_id, basis) values ('${operator.id}', 'local_fixture');
+        insert into public.worker_access_grants (user_id) values ('${workerA.id}'), ('${workerB.id}');
+        insert into nestscout_private.worker_dispatch_eligibility (user_id, basis, active) values ('${workerA.id}', 'local_fixture', true), ('${workerB.id}', 'local_fixture', true);
+        insert into public.worker_public_profiles (worker_id, display_name, trade, area, experience_years, about, skills, service_ids, accepting_jobs) values
+          ('${workerA.id}', 'Thợ thử A', 'Điện lạnh', 'Quận 1', 5, 'Sửa máy lạnh', array['Máy lạnh'], array['aircon'], true),
+          ('${workerB.id}', 'Thợ thử B', 'Điện lạnh', 'Quận 3', 3, 'Sửa máy lạnh', array['Máy lạnh'], array['aircon'], true);
+        insert into public.worker_documents (worker_id, kind, title, path) values
+          ('${workerA.id}', 'identity', 'CCCD', '${workerA.id}/identity.jpg'), ('${workerB.id}', 'identity', 'CCCD', '${workerB.id}/identity.jpg');`);
+
+      let intakeTask;
+      const intake = await say(customer, 'client', [
+        { tools: [call('ask_user_choice', { question: 'Bạn muốn thợ đến khi nào?', options: ['Chiều mai', 'Sáng ngày kia'], allow_date: true })] },
+        { text: ['Bạn chọn thời gian giúp Kael nhé.'] },
+      ]);
+      assert.equal(intake.end.type, 'run_completed');
+      const question = intake.events.find(event => event.type === 'question')?.question;
+      assert.deepEqual([question.prompt, question.options, question.date], ['Bạn muốn thợ đến khi nào?', ['Chiều mai', 'Sáng ngày kia'], true]);
+      const drafted = await say(customer, 'client', [
+        { tools: [call('task_create', { title: 'Sửa máy lạnh phòng ngủ', kind: 'service_request', status: 'running', note: '' })] },
+        request => {
+          intakeTask = lastToolResults(request)[0].task.id;
+          return { tools: [call('service_request_draft', { task_id: intakeTask, description: 'Máy lạnh phòng ngủ không mát', location: '12 Lê Lợi, Quận 1', preferred_time: 'Chiều mai', missing: [] })] };
+        },
+        () => ({ tools: [call('service_request_submit', { task_id: intakeTask })] }),
+        { text: ['Bạn kiểm tra rồi xác nhận gửi nhé.'] },
+      ], intake.conversation);
+      const submitApproval = approvalOf(drafted);
+      assert.equal(submitApproval.tool, 'service_request_submit');
+      assert.equal(one(`select count(*) from public.service_requests where owner_id='${customer.id}';`), '0', 'a draft and a proposed submission write no request');
+      const chatOk = await say(customer, 'client', [{ text: ['Đồng ý rồi đó.'] }], intake.conversation);
+      assert.equal(chatOk.end.type, 'run_completed');
+      assert.equal(one(`select count(*) from public.service_requests where owner_id='${customer.id}';`), '0', 'typing agreement in chat never confirms');
+      const forged = await approve(customer, 'client', { ...submitApproval, fingerprint: 'f'.repeat(64) }, intake.conversation);
+      assert.equal(forged.end.type, 'run_failed');
+      assert.equal(forged.end.code, 'approval_invalid');
+      const submitted = await approve(customer, 'client', submitApproval, intake.conversation);
+      assert.equal(submitted.end.type, 'run_completed');
+      assert.match(text(submitted), /chưa có thợ, báo giá hay lịch hẹn nào được xác nhận/);
+      requestId = one(`select id from public.service_requests where owner_id='${customer.id}' and submission_key='${submitApproval.id}';`);
+      assert.match(requestId, uuid);
+      const replayed = await approve(customer, 'client', submitApproval, intake.conversation);
+      assert.match(text(replayed), /đã được gửi trước đó/);
+      assert.equal(one(`select count(*) from public.service_requests where owner_id='${customer.id}';`), '1', 'replaying a consumed approval creates nothing');
+
+      const issue = async (key, scope, amount) => {
+        const response = await rpc(operator, 'issue_fixture_quote', { p_request_id: requestId, p_key: key, p_scope: scope, p_amount_minor: amount, p_valid_minutes: 60 });
+        assert.equal(response.status, 200, 'the fixture operator issues a quote');
+        return response.json();
+      };
+      assert.equal((await rpc(customer, 'issue_fixture_quote', { p_request_id: requestId, p_key: randomUUID(), p_scope: 'Tự báo giá', p_amount_minor: 1, p_valid_minutes: 60 })).status, 403, 'a customer cannot price their own request');
+      const quoteV1 = await issue(randomUUID(), 'Kiểm tra máy lạnh', 300000);
+      const quoteV2 = await issue(randomUUID(), 'Kiểm tra và vệ sinh máy lạnh', 450000);
+      assert.deepEqual(await (await request(`/rest/v1/service_quotes?select=id&request_id=eq.${requestId}`, customerB.token)).json(), [], 'Customer B never sees Customer A quotes');
+
+      let stale;
+      const staleAttempt = await say(customer, 'client', [
+        { tools: [call('task_create', { title: 'Chấp nhận báo giá cũ', kind: 'workflow_action', status: 'running', note: '' })] },
+        request => ({ tools: [call('service_quote_decision', { task_id: lastToolResults(request)[0].task.id, quote_id: quoteV1, quote_version: 1, decision: 'accepted' })] }),
+        request => { stale = lastToolResults(request)[0]; return { text: ['Báo giá đó đã cũ.'] }; },
+      ]);
+      assert.equal(staleAttempt.end.type, 'run_completed');
+      assert.equal(stale.error, 'quote_not_current');
+      assert.equal(approvalOf(staleAttempt), undefined, 'a superseded quote never reaches the confirmation control');
+
+      let current;
+      const quoteTurn = await say(customer, 'client', [
+        { tools: [call('customer_requests', { limit: 5 })] },
+        request => {
+          current = lastToolResults(request)[0].requests.find(row => row.request_id === requestId).quote;
+          return { tools: [call('task_create', { title: 'Chấp nhận báo giá', kind: 'workflow_action', status: 'running', note: '' })] };
+        },
+        request => ({ tools: [call('service_quote_decision', { task_id: lastToolResults(request)[0].task.id, quote_id: current.quote_id, quote_version: current.version, decision: 'accepted' })] }),
+        { text: ['Mời bạn xác nhận báo giá.'] },
+      ]);
+      assert.deepEqual([current.quote_id, current.version, current.basis], [quoteV2, 2, 'local_fixture']);
+      const quoteApproval = approvalOf(quoteTurn);
+      assert.equal(quoteApproval.details['Giá'], '450.000 ₫');
+      assert.equal(quoteApproval.details['Cơ sở báo giá'], 'Dữ liệu thử nghiệm, không phải giao dịch thật');
+      assert.equal(one(`select count(*) from public.service_quotes where request_id='${requestId}' and accepted_at is not null;`), '0', 'a proposed acceptance changes nothing');
+      const otherConversation = (await say(customerB, 'client', [{ text: ['Xin chào.'] }])).conversation;
+      assert.equal((await approve(customerB, 'client', quoteApproval, otherConversation)).end.code, 'approval_invalid', 'another account cannot use the approval');
+      const accepted = await approve(customer, 'client', quoteApproval, quoteTurn.conversation);
+      assert.match(text(accepted), /chưa có thợ nhận việc, chưa có lịch hẹn và chưa có thanh toán/);
+      assert.equal(one(`select accepted_by from public.service_quotes where id='${quoteV2}';`), customer.id);
+
+      const invite = async worker => {
+        const response = await rpc(operator, 'invite_fixture_worker', { p_request_id: requestId, p_worker_id: worker.id, p_valid_minutes: 30 });
+        assert.equal(response.status, 200, `${worker.label} is invited`);
+        return response.json();
+      };
+      const invitationA = await invite(workerA);
+      const invitationB = await invite(workerB);
+      let offer;
+      const offerTurn = await say(workerA, 'worker', [
+        { tools: [call('worker_jobs', {})] },
+        request => { offer = lastToolResults(request)[0].offers.find(row => row.invitation_id === invitationA); return { tools: [call('task_create', { title: 'Nhận việc', kind: 'workflow_action', status: 'running', note: '' })] }; },
+        request => ({ tools: [call('worker_offer_decision', { task_id: lastToolResults(request)[0].task.id, invitation_id: offer.invitation_id, quote_id: offer.quote_id, quote_version: offer.quote_version, decision: 'accept' })] }),
+        { text: ['Bạn xác nhận nhận việc nhé.'] },
+      ]);
+      assert.ok(offer.preferred_visit_at === null, 'no preferred visit time was recorded for this request');
+      const offerApproval = approvalOf(offerTurn);
+      let offerB;
+      const raceTurn = await say(workerB, 'worker', [
+        { tools: [call('worker_jobs', {})] },
+        request => { offerB = lastToolResults(request)[0].offers.find(row => row.invitation_id === invitationB); return { tools: [call('task_create', { title: 'Nhận việc', kind: 'workflow_action', status: 'running', note: '' })] }; },
+        request => ({ tools: [call('worker_offer_decision', { task_id: lastToolResults(request)[0].task.id, invitation_id: offerB.invitation_id, quote_id: offerB.quote_id, quote_version: offerB.quote_version, decision: 'accept' })] }),
+        { text: ['Bạn xác nhận nhận việc nhé.'] },
+      ]);
+      const raceApproval = approvalOf(raceTurn);
+      assert.equal(raceApproval.tool, 'worker_offer_decision', 'Worker B also holds an open offer before the assignment');
+      const assigned = await approve(workerA, 'worker', offerApproval, offerTurn.conversation);
+      assert.match(text(assigned), /công việc đã được giao cho bạn/);
+      const jobId = one(`select id from public.service_jobs where request_id='${requestId}' and worker_id='${workerA.id}';`);
+      assert.match(jobId, uuid);
+      const lateB = await rpc(workerB, 'accept_service_invitation', { p_invitation_id: invitationB, p_quote_id: quoteV2, p_quote_version: 2 });
+      assert.equal(lateB.status, 500, 'PostgREST reports SQLSTATE 40001 with HTTP 500');
+      assert.deepEqual(await lateB.json(), { code: '40001', details: null, hint: null, message: 'already assigned' }, 'Worker B loses the race for an assigned request');
+      const lostRace = await approve(workerB, 'worker', raceApproval, raceTurn.conversation);
+      assert.equal(lostRace.end.type, 'run_failed');
+      assert.match(text(lostRace), /đã có thợ khác nhận trước/, 'Kael reports the lost race as a definitive refusal, not an uncertain result');
+      assert.equal(one(`select count(*) from public.service_jobs where worker_id='${workerB.id}';`), '0');
+      assert.equal(one(`select outcome from nestscout_private.kael_approvals where id='${raceApproval.id}';`), 'failed');
+      let bJobs;
+      await say(workerB, 'worker', [{ tools: [call('worker_jobs', {})] }, request => { bJobs = lastToolResults(request)[0]; return { text: ['Không còn lời mời.'] }; }]);
+      assert.deepEqual([bJobs.offers, bJobs.jobs], [[], []], 'Worker B sees neither the offer nor Worker A job');
+      assert.notEqual((await rpc(workerB, 'advance_service_job', { p_job_id: jobId, p_version: 1, p_next: 'en_route' })).status, 200, 'Worker B cannot touch Worker A job');
+
+      const travelTurn = await say(workerA, 'worker', workflowTask('Báo đang đi', task => call('worker_job_advance', { task_id: task, job_id: jobId, version: 1, next: 'en_route' })));
+      const travel = await approve(workerA, 'worker', approvalOf(travelTurn), travelTurn.conversation);
+      assert.match(text(travel), /đang trên đường tới/);
+      assert.equal(one(`select stage || ':' || version from public.service_jobs where id='${jobId}';`), 'en_route:2');
+      assert.equal((await rpc(workerA, 'advance_service_job', { p_job_id: jobId, p_version: 2, p_next: 'arrived' })).status, 200);
+      assert.equal((await rpc(workerA, 'advance_service_job', { p_job_id: jobId, p_version: 3, p_next: 'working' })).status, 200);
+      assert.equal((await rpc(workerA, 'submit_service_work', { p_job_id: jobId, p_version: 4, p_key: randomUUID(), p_evidence: 'Đã vệ sinh dàn lạnh và kiểm tra gas' })).status, 200);
+      assert.equal(one(`select stage from public.service_jobs where id='${jobId}';`), 'submitted');
+
+      const decide = async (decision, reason) => {
+        let pending;
+        const turn = await say(customer, 'client', [
+          { tools: [call('customer_requests', { limit: 5 })] },
+          request => { pending = lastToolResults(request)[0].requests.find(row => row.request_id === requestId); return { tools: [call('task_create', { title: 'Nghiệm thu', kind: 'workflow_action', status: 'running', note: '' })] }; },
+          request => ({ tools: [call('work_submission_decision', { task_id: lastToolResults(request)[0].task.id, submission_id: pending.pending_submission.submission_id, job_version: pending.job.version, decision, reason })] }),
+          { text: ['Mời bạn xác nhận.'] },
+        ]);
+        return { approval: approvalOf(turn), conversation: turn.conversation, pending };
+      };
+      const correction = await decide('revision_requested', 'Phòng vẫn chưa mát');
+      assert.equal(correction.approval.details['Lý do'], 'Phòng vẫn chưa mát');
+      assert.match(text(await approve(customer, 'client', correction.approval, correction.conversation)), /Công việc chưa được nghiệm thu/);
+      assert.equal(one(`select decision from public.service_submissions where id='${correction.pending.pending_submission.submission_id}';`), 'revision_requested');
+      const reworkVersion = Number(one(`select version from public.service_jobs where id='${jobId}';`));
+      assert.equal(one(`select stage from public.service_jobs where id='${jobId}';`), 'working', 'a correction reopens the work');
+      assert.equal((await rpc(workerA, 'submit_service_work', { p_job_id: jobId, p_version: reworkVersion, p_key: randomUUID(), p_evidence: 'Đã nạp gas, phòng mát' })).status, 200);
+      const acceptance = await decide('accepted', '');
+      const completed = await approve(customer, 'client', acceptance.approval, acceptance.conversation);
+      assert.match(text(completed), /Việc thanh toán chưa được xác nhận trong ứng dụng/);
+      assert.equal(one(`select stage from public.service_jobs where id='${jobId}';`), 'completed');
+      assert.equal(one(`select decision || ':' || decided_by from public.service_submissions where id='${acceptance.pending.pending_submission.submission_id}';`), `accepted:${customer.id}`);
+      const earnings = await (await rpc(workerA, 'worker_earnings')).json();
+      assert.equal(earnings.length, 1, 'the accepted job is recorded as earned work');
+      assert.equal(one(`select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','nestscout_private') and c.relname ~* '(ledger|settlement|payout_request)';`), '0', 'acceptance creates no settlement or payout record');
+      assert.equal(one(`select count(*) from nestscout_private.kael_approvals a where a.owner_id in ('${customer.id}','${workerA.id}') and a.status='consumed' and a.outcome='succeeded';`), '6', 'six confirmed effects were verified');
+    } finally {
+      assert.equal(runtime.verify().id, stack.id);
+      const ids = accounts.map(user => `'${user.id}'`).join(',') || 'null';
+      query(`begin;
+        delete from nestscout_private.kael_approvals where owner_id in (${ids});
+        delete from nestscout_private.kael_tool_executions where owner_id in (${ids});
+        delete from nestscout_private.kael_tool_audit where actor_id in (${ids});
+        delete from public.kael_task_events where owner_id in (${ids});
+        delete from public.kael_tasks where owner_id in (${ids});
+        delete from public.kael_messages where owner_id in (${ids});
+        delete from public.kael_runs where owner_id in (${ids});
+        delete from public.kael_conversations where owner_id in (${ids});
+        delete from public.notifications where recipient_id in (${ids}) or request_id in (select id from public.service_requests where owner_id in (${ids}));
+        delete from public.service_cases where job_id in (select j.id from public.service_jobs j join public.service_requests r on r.id = j.request_id where r.owner_id in (${ids}));
+        delete from public.service_submissions where job_id in (select j.id from public.service_jobs j join public.service_requests r on r.id = j.request_id where r.owner_id in (${ids}));
+        delete from public.service_job_events where job_id in (select j.id from public.service_jobs j join public.service_requests r on r.id = j.request_id where r.owner_id in (${ids}));
+        delete from public.service_jobs where request_id in (select id from public.service_requests where owner_id in (${ids}));
+        delete from public.service_invitations where request_id in (select id from public.service_requests where owner_id in (${ids}));
+        delete from public.service_quotes where request_id in (select id from public.service_requests where owner_id in (${ids}));
+        delete from public.service_requests where owner_id in (${ids});
+        delete from public.worker_documents where worker_id in (${ids});
+        delete from public.worker_public_profiles where worker_id in (${ids});
+        delete from nestscout_private.worker_dispatch_eligibility where user_id in (${ids});
+        delete from public.worker_access_grants where user_id in (${ids});
+        delete from nestscout_private.fixture_operators where user_id in (${ids});
+        delete from public.consent_events where user_id in (${ids});
+        commit;`);
+      for (const user of accounts) {
+        const removed = await fetch(`${origin}/auth/v1/admin/users/${user.id}`, { method: 'DELETE', headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` } });
+        assert.equal(removed.status, 200, 'remove only this test-created identity');
       }
       assert.equal(query('select count(*) from auth.users;'), initialUsers);
     }

@@ -1,7 +1,7 @@
 import { workflowErrorFrom } from './workflow-error';
 import { authenticatedRequest } from '@/lib/authenticated-rest';
 
-export type ServiceRequest = { id: string; description: string; location: string; created_at: string };
+export type ServiceRequest = { id: string; description: string; location: string; created_at: string; preferred_visit_at?: string | null };
 export type ServiceQuote = {
   id: string;
   request_id: string;
@@ -16,13 +16,14 @@ export type ServiceQuote = {
 };
 
 export async function readRequests(userId: string, signal: AbortSignal): Promise<ServiceRequest[]> {
-  const response = await authenticatedRequest(userId, 'service_requests?select=id,description,location,created_at&order=created_at.desc', { signal });
+  const response = await authenticatedRequest(userId, 'service_requests?select=id,description,location,created_at,preferred_visit_at&order=created_at.desc', { signal });
   if (!response.ok) throw new Error('Could not read requests');
   const result: unknown = await response.json();
   if (!Array.isArray(result) || !result.every((row: unknown) => {
     if (typeof row !== 'object' || row === null) return false;
     const item = row as Record<string, unknown>;
-    return typeof item.id === 'string' && typeof item.description === 'string' && typeof item.location === 'string' && typeof item.created_at === 'string';
+    return typeof item.id === 'string' && typeof item.description === 'string' && typeof item.location === 'string' && typeof item.created_at === 'string'
+      && (item.preferred_visit_at === undefined || item.preferred_visit_at === null || (typeof item.preferred_visit_at === 'string' && !Number.isNaN(Date.parse(item.preferred_visit_at))));
   })) throw new Error('Invalid request response');
   return result as ServiceRequest[];
 }
@@ -73,5 +74,17 @@ export async function rejectQuote(userId: string, quoteId: string, version: numb
   if (!response.ok) throw await workflowErrorFrom(response);
   const result: unknown = await response.json();
   if (result !== quoteId) throw new Error('Invalid rejection response');
+  return result;
+}
+
+export async function setPreferredVisit(userId: string, requestId: string, at: Date | null, signal: AbortSignal): Promise<string | null> {
+  const response = await authenticatedRequest(userId, 'rpc/set_request_preferred_visit', {
+    method: 'POST',
+    signal,
+    body: JSON.stringify({ p_request_id: requestId, p_at: at === null ? null : at.toISOString() }),
+  });
+  if (!response.ok) throw await workflowErrorFrom(response);
+  const result: unknown = await response.json();
+  if (result !== null && (typeof result !== 'string' || Number.isNaN(Date.parse(result)))) throw new Error('Invalid preferred visit response');
   return result;
 }

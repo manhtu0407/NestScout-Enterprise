@@ -262,6 +262,45 @@ const invalidApproval: Record<string, string> = {
   invalid: 'Không tìm thấy xác nhận hợp lệ cho tài khoản này. Chưa có thao tác nào được thực hiện.',
 };
 
+type EffectCopy = { label: string; kind: string; done: (resourceId: string) => string; refused: string; uncertain: string };
+
+const workflowRefused = 'Hệ thống chưa thực hiện thao tác này vì dữ liệu đã thay đổi hoặc không còn hợp lệ. Chưa có gì thay đổi; hãy xem lại trạng thái mới nhất.';
+const workflowUncertain = 'Chưa xác định được thao tác đã được ghi nhận hay chưa, nên Kael chưa báo là đã xong. Bạn có thể bấm "Kiểm tra lại": Kael dùng lại đúng thao tác bạn đã xác nhận. Nếu hệ thống đã ghi nhận, Kael chỉ báo lại kết quả; nếu chưa, chính thao tác đó được hoàn tất. Không có thao tác thứ hai và không cần xác nhận lại.';
+
+function effectCopy(tool: string, args: Record<string, unknown>): EffectCopy {
+  if (tool === 'service_quote_decision') {
+    return args.decision === 'accepted'
+      ? { label: 'Đang chấp nhận báo giá', kind: 'service_quote', refused: workflowRefused, uncertain: workflowUncertain,
+        done: () => 'Đã chấp nhận báo giá. Đây mới là thỏa thuận về phạm vi và giá: chưa có thợ nhận việc, chưa có lịch hẹn và chưa có thanh toán nào được xác nhận.' }
+      : { label: 'Đang từ chối báo giá', kind: 'service_quote', refused: workflowRefused, uncertain: workflowUncertain,
+        done: () => 'Đã từ chối báo giá này. Yêu cầu của bạn vẫn được giữ.' };
+  }
+  if (tool === 'work_submission_decision') {
+    return args.decision === 'accepted'
+      ? { label: 'Đang nghiệm thu công việc', kind: 'service_submission', refused: workflowRefused, uncertain: workflowUncertain,
+        done: () => 'Đã nghiệm thu công việc. Việc thanh toán chưa được xác nhận trong ứng dụng.' }
+      : { label: 'Đang gửi yêu cầu sửa lại', kind: 'service_submission', refused: workflowRefused, uncertain: workflowUncertain,
+        done: () => 'Đã gửi yêu cầu thợ sửa lại kèm lý do của bạn. Công việc chưa được nghiệm thu.' };
+  }
+  if (tool === 'worker_offer_decision') {
+    return args.decision === 'accept'
+      ? { label: 'Đang nhận việc', kind: 'service_job', refused: 'Hệ thống chưa giao việc này cho bạn: lời mời đã hết hạn, đã thay đổi hoặc đã có thợ khác nhận trước. Chưa có gì thay đổi.', uncertain: workflowUncertain,
+        done: () => 'Bạn đã nhận việc; công việc đã được giao cho bạn. Lịch đến nhà khách chưa được hệ thống xác nhận, hãy cập nhật tiến độ khi bắt đầu đi.' }
+      : { label: 'Đang từ chối lời mời', kind: 'service_invitation', refused: workflowRefused, uncertain: workflowUncertain,
+        done: () => 'Đã từ chối lời mời này.' };
+  }
+  if (tool === 'worker_job_advance') {
+    const done: Record<string, string> = { en_route: 'Đã cập nhật: bạn đang trên đường tới nhà khách.', arrived: 'Đã cập nhật: bạn đã đến nơi.', working: 'Đã cập nhật: bạn đã bắt đầu làm việc.' };
+    return { label: 'Đang cập nhật tiến độ', kind: 'service_job', refused: workflowRefused, uncertain: workflowUncertain, done: () => done[String(args.next)] ?? 'Đã cập nhật tiến độ.' };
+  }
+  return {
+    label: 'Đang gửi yêu cầu dịch vụ', kind: 'service_request',
+    refused: 'Hệ thống chưa nhận yêu cầu này. Bản nháp vẫn được giữ; chưa có yêu cầu nào được gửi.',
+    uncertain: 'Chưa xác định được yêu cầu đã được ghi nhận hay chưa, nên Kael chưa báo là đã gửi. Bạn có thể bấm "Kiểm tra lại": Kael dùng lại đúng lần gửi bạn đã xác nhận với cùng mã gửi. Nếu yêu cầu đã được ghi nhận, Kael chỉ báo lại kết quả; nếu chưa, lần gửi đó được hoàn tất. Không có yêu cầu thứ hai và không cần xác nhận lại.',
+    done: resourceId => `Đã gửi yêu cầu dịch vụ (mã ${resourceId.slice(0, 8)}). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.`,
+  };
+}
+
 const closedTaskStatuses: readonly string[] = ['cancelled', 'failed'];
 const reconcilableStatuses: readonly string[] = ['running', 'paused', 'waiting_for_input', ...closedTaskStatuses];
 
@@ -288,7 +327,8 @@ export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome>
   const consumed = await input.store.consumeApproval(input.runId, input.approvalId, input.fingerprint, confirmableTools(input.actor, input.config), input.decision);
   if (consumed.status === 'consumed') {
     const resource = typeof consumed.result?.resource_id === 'string' ? consumed.result.resource_id : null;
-    say(consumed.outcome === 'succeeded' && resource
+    const submitted = consumed.result?.resource_kind === 'service_request';
+    say(consumed.outcome === 'succeeded' && resource && submitted
       ? `Yêu cầu này đã được gửi trước đó (mã ${resource.slice(0, 8)}). Kael không gửi lại lần nữa.`
       : 'Xác nhận này đã được xử lý trước đó. Kael không thực hiện lại.');
     return outcome;
@@ -296,7 +336,11 @@ export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome>
   if (consumed.status !== 'ok' && consumed.status !== 'reconcile') return refuse(consumed.status);
 
   const callId = `approval:${input.approvalId}`;
-  const label = consumed.status === 'reconcile' ? 'Đang kiểm tra lại yêu cầu đã xác nhận' : 'Đang gửi yêu cầu dịch vụ';
+  const copy = effectCopy(consumed.tool, consumed.args);
+  const submit = consumed.tool === 'service_request_submit';
+  const label = consumed.status === 'reconcile'
+    ? (submit ? 'Đang kiểm tra lại yêu cầu đã xác nhận' : 'Đang kiểm tra lại thao tác đã xác nhận')
+    : copy.label;
   input.emit({ type: 'tool_started', call_id: callId, tool: consumed.tool, label });
   const effect = await executeApprovedEffect(input.approvalId, consumed, input.rest, input.signal);
   let completion: ApprovalCompletion;
@@ -305,12 +349,12 @@ export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome>
       input.runId,
       input.approvalId,
       effect.status,
-      effect.status === 'succeeded' ? { resource_kind: 'service_request', resource_id: effect.resourceId } : { reason: effect.reason },
+      effect.status === 'succeeded' ? { resource_kind: copy.kind, resource_id: effect.resourceId } : { reason: effect.reason },
     );
   } catch {
     completion = { status: 'invalid' };
   }
-  const verdict = verifiedOutcome(effect, completion);
+  const verdict = verifiedOutcome(effect, completion, copy.kind);
   await input.store.recordTool({
     runId: input.runId, callId, taskId: consumed.task_id, tool: consumed.tool, sideEffect: 'consequential', outcome: verdict.outcome,
     fingerprint: input.fingerprint, error: verdict.outcome === 'succeeded' ? null : effect.status === 'succeeded' ? 'unverified_result' : effect.reason,
@@ -319,22 +363,24 @@ export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome>
   if (completion.status !== 'invalid' && (verdict.outcome === 'succeeded' || completion.task.status !== 'completed')) publish(completion.task);
   const closed = completion.status !== 'invalid' && closedTaskStatuses.includes(completion.task.status);
   if (verdict.outcome === 'succeeded') {
-    say(closed
+    say(closed && submit
       ? `Yêu cầu dịch vụ bạn đã xác nhận trước đó đã được hệ thống ghi nhận (mã ${verdict.resourceId.slice(0, 8)}). Việc Kael theo dõi yêu cầu này đã được đóng, nhưng điều đó không hủy yêu cầu dịch vụ; Kael không có thao tác hủy yêu cầu đã gửi.`
-      : `Đã gửi yêu cầu dịch vụ (mã ${verdict.resourceId.slice(0, 8)}). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.`);
+      : closed ? `${copy.done(verdict.resourceId)} Việc Kael theo dõi thao tác này đã được đóng trước đó.` : copy.done(verdict.resourceId));
     return outcome;
   }
   if (verdict.outcome === 'failed') {
-    say(closed
+    say(closed && submit
       ? 'Hệ thống chưa nhận yêu cầu này nên chưa có yêu cầu nào được gửi. Việc Kael theo dõi yêu cầu này đã được đóng trước đó.'
-      : 'Hệ thống chưa nhận yêu cầu này. Bản nháp vẫn được giữ; chưa có yêu cầu nào được gửi.');
+      : copy.refused);
     outcome.status = 'failed';
     outcome.error = 'internal';
     return outcome;
   }
   const reconcilable = completion.status === 'invalid' || (completion.outcome === 'uncertain' && reconcilableStatuses.includes(completion.task.status));
   if (!reconcilable) {
-    say('Chưa xác định được yêu cầu đã được ghi nhận hay chưa, và việc này đã thay đổi trong lúc gửi nên Kael không thử lại. Bạn có thể xem danh sách yêu cầu của mình để kiểm tra.');
+    say(submit
+      ? 'Chưa xác định được yêu cầu đã được ghi nhận hay chưa, và việc này đã thay đổi trong lúc gửi nên Kael không thử lại. Bạn có thể xem danh sách yêu cầu của mình để kiểm tra.'
+      : 'Chưa xác định được thao tác đã được ghi nhận hay chưa, và việc này đã thay đổi trong lúc xử lý nên Kael không thử lại. Hãy mở màn hình liên quan để xem trạng thái mới nhất.');
     return outcome;
   }
   input.emit({
@@ -344,18 +390,18 @@ export async function resolveApproval(input: ApprovalInput): Promise<RunOutcome>
       fingerprint: input.fingerprint, kind: 'reconcile', expires_at: null,
     },
   });
-  say('Chưa xác định được yêu cầu đã được ghi nhận hay chưa, nên Kael chưa báo là đã gửi. Bạn có thể bấm "Kiểm tra lại": Kael dùng lại đúng lần gửi bạn đã xác nhận với cùng mã gửi. Nếu yêu cầu đã được ghi nhận, Kael chỉ báo lại kết quả; nếu chưa, lần gửi đó được hoàn tất. Không có yêu cầu thứ hai và không cần xác nhận lại.');
+  say(copy.uncertain);
   return outcome;
 }
 
 type Verdict = { outcome: 'succeeded'; resourceId: string } | { outcome: 'failed' | 'uncertain' };
 
-function verifiedOutcome(effect: EffectOutcome, completion: ApprovalCompletion): Verdict {
+function verifiedOutcome(effect: EffectOutcome, completion: ApprovalCompletion, kind: string): Verdict {
   if (completion.status !== 'ok' && completion.status !== 'final') return { outcome: 'uncertain' };
   if (completion.outcome === 'failed') return { outcome: effect.status === 'failed' ? 'failed' : 'uncertain' };
   if (completion.outcome !== 'succeeded') return { outcome: 'uncertain' };
   const resource = completion.result?.resource_id;
-  if (typeof resource !== 'string' || completion.result?.resource_kind !== 'service_request') return { outcome: 'uncertain' };
+  if (typeof resource !== 'string' || completion.result?.resource_kind !== kind) return { outcome: 'uncertain' };
   const recorded = completion.task.status === 'completed'
     || (closedTaskStatuses.includes(completion.task.status) && completion.task.artifact?.effect_result?.resource_id === resource);
   if (!recorded) return { outcome: 'uncertain' };

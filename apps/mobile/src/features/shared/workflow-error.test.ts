@@ -24,6 +24,20 @@ test('server faults, unknown codes and unreadable bodies stay uncertain', async 
   }
 });
 
+test('PostgREST reports a version conflict as HTTP 500 with SQLSTATE 40001, which stays definitive', async () => {
+  const taken = await workflowErrorFrom(response(500, { code: '40001', message: 'already assigned' }));
+  const stale = await workflowErrorFrom(response(500, { code: '40001', message: 'stale quote' }));
+  expect([taken.failure, stale.failure]).toEqual(['unavailable', 'stale']);
+  expect(isDefinitiveFailure(taken)).toBe(true);
+  for (const body of [{}, { code: '40001', message: 'could not serialize access' }, { code: '42501', message: 'job unavailable' }, { code: 'XX000' }]) {
+    const fault = await workflowErrorFrom(response(500, body));
+    expect(fault.failure).toBe('unknown');
+    expect(isDefinitiveFailure(fault)).toBe(false);
+  }
+  const unreadable = await workflowErrorFrom({ status: 500, json: async () => { throw new Error('not json'); } } as unknown as Response);
+  expect(unreadable.failure).toBe('unknown');
+});
+
 test('network and unexpected errors are never reported as definitive', () => {
   expect(isDefinitiveFailure(new Error('offline'))).toBe(false);
   expect(failureMessage(new Error('offline'), 'uncertain')).toBe('uncertain');

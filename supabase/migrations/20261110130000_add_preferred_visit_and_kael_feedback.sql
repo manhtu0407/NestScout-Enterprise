@@ -95,7 +95,7 @@ grant select on table public.kael_message_feedback to authenticated;
 create policy kael_message_feedback_select_owner on public.kael_message_feedback for select to authenticated
   using ((select auth.uid()) = owner_id and coalesce((select auth.jwt()) ->> 'is_anonymous', 'false') = 'false');
 
-create function nestscout_private.set_kael_feedback(p_message_id uuid, p_rating text, p_reason text)
+create function nestscout_private.set_kael_feedback(p_message_id uuid, p_run_id uuid, p_rating text, p_reason text)
 returns text
 language plpgsql
 security definer
@@ -103,37 +103,40 @@ set search_path = ''
 as $$
 declare
   v_owner uuid := auth.uid();
+  v_message uuid;
 begin
   if v_owner is null or coalesce(auth.jwt() ->> 'is_anonymous', 'false') <> 'false' then
     raise exception using errcode = '42501', message = 'authentication required';
   end if;
-  if p_message_id is null or (p_rating is not null and p_rating not in ('up', 'down'))
+  if (p_message_id is null) = (p_run_id is null) or (p_rating is not null and p_rating not in ('up', 'down'))
     or (p_reason is not null and (p_rating is distinct from 'down' or p_reason not in ('inaccurate', 'too_long', 'ignored_request', 'other'))) then
     raise exception using errcode = '22023', message = 'invalid request';
   end if;
-  perform 1 from public.kael_messages m where m.id = p_message_id and m.owner_id = v_owner and m.role = 'assistant';
-  if not found then
+  select m.id into v_message from public.kael_messages m
+    where m.owner_id = v_owner and m.role = 'assistant' and (m.id = p_message_id or m.run_id = p_run_id)
+    order by m.seq desc limit 1;
+  if v_message is null then
     raise exception using errcode = '42501', message = 'message unavailable';
   end if;
   if p_rating is null then
-    delete from public.kael_message_feedback where message_id = p_message_id and owner_id = v_owner;
+    delete from public.kael_message_feedback where message_id = v_message and owner_id = v_owner;
     return null;
   end if;
   insert into public.kael_message_feedback (message_id, owner_id, rating, reason)
-    values (p_message_id, v_owner, p_rating, p_reason)
+    values (v_message, v_owner, p_rating, p_reason)
     on conflict (message_id) do update set rating = excluded.rating, reason = excluded.reason, updated_at = clock_timestamp()
     where public.kael_message_feedback.owner_id = v_owner;
   return p_rating;
 end;
 $$;
-revoke all on function nestscout_private.set_kael_feedback(uuid, text, text) from public, anon, authenticated;
-grant execute on function nestscout_private.set_kael_feedback(uuid, text, text) to authenticated;
+revoke all on function nestscout_private.set_kael_feedback(uuid, uuid, text, text) from public, anon, authenticated;
+grant execute on function nestscout_private.set_kael_feedback(uuid, uuid, text, text) to authenticated;
 
-create function public.set_kael_feedback(p_message_id uuid, p_rating text, p_reason text)
+create function public.set_kael_feedback(p_message_id uuid, p_run_id uuid, p_rating text, p_reason text)
 returns text language sql security invoker set search_path = ''
-as $$ select nestscout_private.set_kael_feedback(p_message_id, p_rating, p_reason); $$;
-revoke all on function public.set_kael_feedback(uuid, text, text) from public, anon, authenticated;
-grant execute on function public.set_kael_feedback(uuid, text, text) to authenticated;
+as $$ select nestscout_private.set_kael_feedback(p_message_id, p_run_id, p_rating, p_reason); $$;
+revoke all on function public.set_kael_feedback(uuid, uuid, text, text) from public, anon, authenticated;
+grant execute on function public.set_kael_feedback(uuid, uuid, text, text) to authenticated;
 
 create or replace function nestscout_private.export_my_data()
 returns jsonb

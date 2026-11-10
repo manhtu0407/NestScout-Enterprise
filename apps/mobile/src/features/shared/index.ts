@@ -12,7 +12,7 @@ export { readWorkerEarnings, type WorkerEarningRecord } from './worker-earnings-
 export { acceptTerms, cancelAccountDeletion, readDeletionRequest, readTermsAcceptance, requestAccountDeletion, consentPurposes, decideJobChange, exportPersonalData, readConsent, readJobChanges, recordConsent, registerPushToken, requestJobChange, unregisterPushToken, type ConsentPurpose, type JobChange, type JobChangeKind, type JobChangeStatus, type PushPlatform, type TermsDocument } from './account-compliance-repository';
 export { clearKaelHistory, markNotificationsRead, readAccountPhone, readCustomerProfile, readCustomerSettings, readJobWorkerCards, readNotifications, readPinnedRequestIds, readSavedWorkers, reviewJobWorker, saveCustomerProfile, saveCustomerSettings, saveWorker, setRequestPinned, submitSupportRequest, unsaveWorker, type CustomerNotification, type CustomerProfile, type CustomerSettings, type StoredCustomerProfile, type JobReview, type JobWorkerCard, type NotificationAudience, type NotificationKind, type SavedWorkerRecord, type WorkerNotificationKind } from './customer-data-repository';
 export { acceptedImageTypes, maxRequestPhotos, readAvatarSource, readRequestPhotos, removeAvatar, toPendingPhoto, uploadAvatar, uploadRequestPhoto, type MediaFile, type PendingPhoto } from './customer-media-repository';
-export { acceptQuote, readQuotes, readRequests, rejectQuote, submitRequest, type ServiceQuote, type ServiceRequest } from './service-request-repository';
+export { acceptQuote, readQuotes, readRequests, rejectQuote, setPreferredVisit, submitRequest, type ServiceQuote, type ServiceRequest } from './service-request-repository';
 export { consentResume, decideScope, decideSubmission, openAftercare, readCustomerActivity, type CustomerActivity, type CustomerJob, type JobPause, type Submission, type SupportCase } from './customer-activity-repository';
 export { BasisNotice } from './ui/basis-notice';
 export { DraftRecovery } from './ui/draft-recovery';
@@ -28,8 +28,8 @@ export { GlassCapsuleButton, GlassIconButton, GlassPill, GlassSegment, PressScal
 export { useGlassAccessibility, usePressFeedback } from './ui/glass-interaction';
 export { Icon, type IconName } from './ui/icon';
 export type { StorageSource } from '@/lib/authenticated-rest';
-export { loadKaelConversation, streamKaelTurn, type KaelMode, type KaelRestRequest, type KaelTurnAction, type KaelTurnOutcome, type KaelTurnRequest } from './kael-runtime-repository';
-export type { KaelApproval, KaelConversationSnapshot, KaelEvent, KaelFailureCode, KaelTask, KaelTaskStatus } from './kael-events';
+export { loadKaelConversation, setKaelFeedback, streamKaelTurn, type KaelFeedbackReason, type KaelFeedbackRating, type KaelFeedbackTarget, type KaelMode, type KaelRestRequest, type KaelTurnAction, type KaelTurnOutcome, type KaelTurnRequest } from './kael-runtime-repository';
+export type { KaelApproval, KaelConversationSnapshot, KaelEvent, KaelFailureCode, KaelQuestion, KaelTask, KaelTaskStatus } from './kael-events';
 export { Chip, StatusDot, chipColors, chipVariants, type ChipColor, type ChipVariant, type StatusDotColor } from './ui/chip';
 export { Badge, orderBadges, workerProfileBadges, highlightBadges, type BadgeSize, type BadgeTone, type HighlightKind, type OrderStatus, type WorkerProfileStatus } from './ui/badge';
 export { Avatar, AvatarGroup, initialsOf, type AvatarSize, type Person } from './ui/avatar';

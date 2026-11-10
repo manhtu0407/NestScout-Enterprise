@@ -210,14 +210,17 @@ insert into public.kael_messages (id, conversation_id, owner_id, run_id, seq, ro
     (current_setting('test.r5')::jsonb ->> 'run_id')::uuid, 99, 'assistant', 'Kael trả lời');
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000c0a1","role":"authenticated"}', true);
-select is(public.set_kael_feedback('24000000-0000-4000-8000-000000000001', 'down', 'too_long'), 'down', 'The owner rates a Kael reply');
+select is(public.set_kael_feedback('24000000-0000-4000-8000-000000000001', null, 'down', 'too_long'), 'down', 'The owner rates a Kael reply');
 select is((select reason from public.kael_message_feedback where message_id = '24000000-0000-4000-8000-000000000001'), 'too_long', 'The reason is stored');
-select throws_ok($$select public.set_kael_feedback('24000000-0000-4000-8000-000000000001', 'up', 'too_long')$$, '22023', 'invalid request', 'A reason requires a negative rating');
-select throws_ok($$select public.set_kael_feedback('24000000-0000-4000-8000-000000000001', 'down', 'free text')$$, '22023', 'invalid request', 'Only listed reasons are stored');
-select is(public.set_kael_feedback('24000000-0000-4000-8000-000000000001', null, null), null, 'The owner clears the rating');
+select throws_ok($$select public.set_kael_feedback('24000000-0000-4000-8000-000000000001', null, 'up', 'too_long')$$, '22023', 'invalid request', 'A reason requires a negative rating');
+select throws_ok($$select public.set_kael_feedback('24000000-0000-4000-8000-000000000001', null, 'down', 'free text')$$, '22023', 'invalid request', 'Only listed reasons are stored');
+select is(public.set_kael_feedback(null, (current_setting('test.r5')::jsonb ->> 'run_id')::uuid, 'up', null), 'up', 'A fresh reply is rated through its run');
+select is((select rating from public.kael_message_feedback where message_id = '24000000-0000-4000-8000-000000000001'), 'up', 'The run resolves to its assistant message');
+select throws_ok($$select public.set_kael_feedback('24000000-0000-4000-8000-000000000001', gen_random_uuid(), 'up', null)$$, '22023', 'invalid request', 'Exactly one reply reference is accepted');
+select is(public.set_kael_feedback('24000000-0000-4000-8000-000000000001', null, null, null), null, 'The owner clears the rating');
 select is((select count(*)::integer from public.kael_message_feedback), 0, 'A cleared rating leaves no row');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000c0b2","role":"authenticated"}', true);
-select throws_ok($$select public.set_kael_feedback('24000000-0000-4000-8000-000000000001', 'up', null)$$, '42501', 'message unavailable', 'Another account cannot rate the reply');
+select throws_ok($$select public.set_kael_feedback('24000000-0000-4000-8000-000000000001', null, 'up', null)$$, '42501', 'message unavailable', 'Another account cannot rate the reply');
 
 select * from finish();
 rollback;

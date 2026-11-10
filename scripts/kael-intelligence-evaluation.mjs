@@ -18,7 +18,7 @@ const json = data => new Response(JSON.stringify(data), { status: 200, headers: 
 const sourceSnapshot = await knowledgeSnapshot();
 const foreignSentinel = 'FOREIGN_ACCOUNT_PRIVATE_SENTINEL';
 
-export const evaluationReadPaths = Object.freeze({ GET: ['/auth/v1/user', '/rest/v1/service_requests', '/rest/v1/service_quotes', '/rest/v1/service_jobs'], POST: ['/rest/v1/rpc/kael_knowledge_search', '/rest/v1/rpc/worker_job_cards', '/rest/v1/rpc/worker_earnings', '/rest/v1/rpc/kael_read_context'] });
+export const evaluationReadPaths = Object.freeze({ GET: ['/auth/v1/user', '/rest/v1/service_requests', '/rest/v1/service_quotes', '/rest/v1/service_jobs', '/rest/v1/service_submissions'], POST: ['/rest/v1/rpc/kael_knowledge_search', '/rest/v1/rpc/worker_job_cards', '/rest/v1/rpc/worker_offers', '/rest/v1/rpc/worker_jobs', '/rest/v1/rpc/worker_earnings', '/rest/v1/rpc/kael_read_context'] });
 
 export function isEvaluationRead(url, init = {}, origin = 'https://project.supabase.test') {
   return url.origin === origin && !url.username && !url.password && !url.hash && (evaluationReadPaths[init.method ?? 'GET'] ?? []).includes(url.pathname);

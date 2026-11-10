@@ -7,7 +7,7 @@ export type Environment = Record<string, string | undefined>;
 
 export const deepseekFlashModel = 'deepseek-flash';
 
-export const consequentialEffects = ['service_request_submit'] as const;
+export const consequentialEffects = ['service_request_submit', 'service_quote_decision', 'work_submission_decision', 'worker_offer_decision', 'worker_job_advance'] as const;
 
 export type ConsequentialEffect = typeof consequentialEffects[number];
 

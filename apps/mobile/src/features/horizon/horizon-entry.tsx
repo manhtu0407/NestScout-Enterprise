@@ -22,7 +22,7 @@ import { useCustomerData } from './use-customer-data';
 import { useWorkerData } from './use-worker-data';
 import { workerBadgesFor } from './worker-jobs';
 import { toWorkerJobs, toWorkerProfileView } from './worker-views';
-import { useKaelConversation } from './use-kael-conversation';
+import { useKaelConversation, type KaelChatMessage } from './use-kael-conversation';
 import { useAiConsent } from './use-ai-consent';
 import { AiConsentSheet } from './ai-consent-sheet';
 import { settingsStrings } from './settings-strings';
@@ -158,6 +158,20 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     setConsentOpen(false);
     setComposerError(consentDeniedMessage);
   }, [consentDeniedMessage]);
+  const sendText = useCallback((text: string) => {
+    if (!kaelAvailable || kaelRunning) return;
+    if (!aiConsentGranted) {
+      if (aiConsentStatus === 'ready') setConsentOpen(true);
+      else setComposerError(aiConsentStatus === 'error' ? consentFailedMessage : consentCheckingMessage);
+      return;
+    }
+    sendToKael(text);
+  }, [aiConsentGranted, aiConsentStatus, consentCheckingMessage, consentFailedMessage, kaelAvailable, kaelRunning, sendToKael]);
+  const regenerate = useCallback((message: KaelChatMessage) => {
+    const index = kael.messages.findIndex(item => item.id === message.id);
+    const prompt = kael.messages.slice(0, index).reverse().find(item => item.role === 'user');
+    if (prompt && !/^(Xác nhận|Không thực hiện|Kiểm tra lại): /.test(prompt.text)) sendText(prompt.text);
+  }, [kael.messages, sendText]);
   const sendMessage = useCallback((images: readonly ComposerImage[]) => {
     if (images.length > 0) {
       setComposerError('Ảnh chưa được gửi vì chức năng phân tích ảnh chưa được kết nối.');
@@ -212,7 +226,7 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
           </View>
         </Presence>
         <KaelAttentionCard attention={attention} onAction={onAttentionAction} onHeight={setAttentionHeight}/>
-        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
+        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} question={onPreviewMenu ? null : kael.question} onAnswer={sendText} onRate={onPreviewMenu ? undefined : kael.rate} onRegenerate={regenerate} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
     <AiConsentSheet visible={consentOpen} onAllow={allowAiSharing} onDeny={denyAiSharing}/>

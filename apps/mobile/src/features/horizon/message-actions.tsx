@@ -11,8 +11,14 @@ const metrics = horizonLayout.affectLab;
 const colors = horizonColors.affectLab;
 
 export type FeedbackKind = 'up' | 'down';
+export type FeedbackReason = 'inaccurate' | 'too_long' | 'ignored_request' | 'other';
 
-export const feedbackReasons: readonly string[] = ['Không chính xác', 'Quá dài', 'Không làm theo yêu cầu', 'Khác'];
+export const feedbackReasons: readonly { id: FeedbackReason; label: string }[] = [
+  { id: 'inaccurate', label: 'Không chính xác' },
+  { id: 'too_long', label: 'Quá dài' },
+  { id: 'ignored_request', label: 'Không làm theo yêu cầu' },
+  { id: 'other', label: 'Khác' },
+];
 
 type Props = {
   text: string;
@@ -21,11 +27,11 @@ type Props = {
   onVersionChange?: (version: number) => void;
   onRegenerate?: () => void;
   regenerating?: boolean;
-  onFeedback?: (kind: FeedbackKind, reason: string | null) => void;
+  onFeedback?: (kind: FeedbackKind | null, reason: FeedbackReason | null) => Promise<boolean> | boolean | void;
   onCopy?: (text: string) => void | boolean | Promise<boolean | void>;
   speaking?: boolean;
   onSpeak?: (play: boolean) => void;
-  soon?: boolean;
+  speechFailed?: boolean;
 };
 
 function useTimedFlag(duration: number): [boolean, () => void] {
@@ -93,56 +99,67 @@ function Spinning({ spinning, children }: { spinning: boolean; children: ReactNo
   return <Animated.View style={{ transform: [{ rotate: angle.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }}>{children}</Animated.View>;
 }
 
-export function MessageActions({ text, versions, version = 0, onVersionChange, onRegenerate, regenerating = false, onFeedback, onCopy, speaking = false, onSpeak, soon = false }: Props) {
+export function MessageActions({ text, versions, version = 0, onVersionChange, onRegenerate, regenerating = false, onFeedback, onCopy, speaking = false, onSpeak, speechFailed = false }: Props) {
   const [copied, markCopied] = useTimedFlag(1400);
   const [feedback, setFeedback] = useState<FeedbackKind | null>(null);
   const [reasonOpen, setReasonOpen] = useState(false);
   const [thanks, showThanks] = useTimedFlag(1800);
+  const [saveFailed, setSaveFailed] = useState(false);
   const count = versions?.length ?? 1;
   const copy = () => {
     void Promise.resolve(onCopy?.(text)).then((written) => {
       if (written !== false) markCopied();
     });
   };
+  const save = (next: FeedbackKind | null, reason: FeedbackReason | null, previous: FeedbackKind | null, thank: boolean) => {
+    setSaveFailed(false);
+    void Promise.resolve(onFeedback?.(next, reason)).then(saved => {
+      if (saved === false) {
+        setFeedback(previous);
+        setReasonOpen(false);
+        setSaveFailed(true);
+      } else if (thank) showThanks();
+    });
+  };
   const rate = (kind: FeedbackKind) => {
+    const previous = feedback;
     const next = feedback === kind ? null : kind;
     setFeedback(next);
     setReasonOpen(next === 'down');
-    if (next !== null) onFeedback?.(next, null);
-    if (next === 'up') showThanks();
+    save(next, null, previous, next === 'up');
   };
-  const pickReason = (reason: string) => {
+  const pickReason = (reason: FeedbackReason) => {
     setReasonOpen(false);
-    onFeedback?.('down', reason);
-    showThanks();
+    save('down', reason, 'down', true);
   };
   return <View style={styles.root}>
     <View style={styles.actions}>
       <ActionButton label={copied ? 'Đã sao chép' : 'Sao chép'} onPress={copy}>
         {copied ? <Check size={metrics.actionIcon} color={colors.success} strokeWidth={2.5}/> : <Copy size={metrics.actionIcon} color={colors.muted}/>}
       </ActionButton>
-      <ActionButton label="Tạo lại câu trả lời" locked={soon} onPress={() => onRegenerate?.()}>
+      {onRegenerate && <ActionButton label="Tạo lại câu trả lời" locked={regenerating} onPress={onRegenerate}>
         <Spinning spinning={regenerating}><RefreshCw size={metrics.actionIcon} color={colors.muted}/></Spinning>
-      </ActionButton>
+      </ActionButton>}
       {count > 1 && <View style={styles.versions}>
         <Pressable accessibilityRole="button" accessibilityLabel="Phiên bản trước" disabled={version <= 0} onPress={() => onVersionChange?.(version - 1)}><ChevronLeft size={16} color={version <= 0 ? colors.faint : colors.muted}/></Pressable>
         <Text style={styles.versionText}>{version + 1}/{count}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Phiên bản sau" disabled={version >= count - 1} onPress={() => onVersionChange?.(version + 1)}><ChevronRight size={16} color={version >= count - 1 ? colors.faint : colors.muted}/></Pressable>
       </View>}
-      <RatingButton kind="up" label="Câu trả lời tốt" rating={feedback} onRate={rate} locked={soon}/>
-      <RatingButton kind="down" label="Câu trả lời chưa tốt" rating={feedback} onRate={rate} locked={soon}/>
-      <ActionButton label={speaking ? 'Dừng đọc' : 'Đọc to'} pressed={speaking} locked={soon} onPress={() => onSpeak?.(!speaking)}>
+      {onFeedback && <RatingButton kind="up" label="Câu trả lời tốt" rating={feedback} onRate={rate} locked={false}/>}
+      {onFeedback && <RatingButton kind="down" label="Câu trả lời chưa tốt" rating={feedback} onRate={rate} locked={false}/>}
+      {onSpeak && <ActionButton label={speaking ? 'Dừng đọc' : 'Đọc to'} pressed={speaking} onPress={() => onSpeak(!speaking)}>
         {speaking ? <Equalizer/> : <Volume2 size={metrics.actionIcon} color={colors.muted}/>}
-      </ActionButton>
-      {soon && <Text style={styles.soon}>Coming Soon</Text>}
+      </ActionButton>}
     </View>
     {reasonOpen && <View style={styles.reasons}>
       <Text style={styles.reasonTitle}>Có vấn đề gì?</Text>
       <View style={styles.reasonRow}>
-        {feedbackReasons.map(reason => <Pressable key={reason} accessibilityRole="button" onPress={() => pickReason(reason)} style={styles.reason}><Text style={styles.reasonText}>{reason}</Text></Pressable>)}
+        {feedbackReasons.map(reason => <Pressable key={reason.id} accessibilityRole="button" onPress={() => pickReason(reason.id)} style={styles.reason}><Text style={styles.reasonText}>{reason.label}</Text></Pressable>)}
       </View>
     </View>}
     {thanks && <Text accessibilityLiveRegion="polite" style={styles.thanks}>Cảm ơn phản hồi của bạn</Text>}
+    {saveFailed && <Text accessibilityLiveRegion="polite" style={styles.failure}>Chưa lưu được phản hồi. Bạn có thể thử lại.</Text>}
+    {speechFailed && <Text accessibilityLiveRegion="polite" style={styles.failure}>Thiết bị chưa đọc được câu trả lời này.</Text>}
   </View>;
 }
 
@@ -152,7 +169,6 @@ const styles = StyleSheet.create({
   action: { width: metrics.actionSize, height: metrics.actionSize, borderRadius: metrics.actionRadius, alignItems: 'center', justifyContent: 'center' },
   actionActive: { backgroundColor: colors.chip },
   actionLocked: { opacity: metrics.actionLockedOpacity },
-  soon: { color: colors.faint, fontSize: metrics.captionSize, fontWeight: metrics.titleWeight },
   versions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: metrics.versionWidth, gap: metrics.tinyGap },
   versionText: { color: colors.muted, fontSize: metrics.captionSize, fontWeight: metrics.titleWeight },
   equalizer: { flexDirection: 'row', alignItems: 'center', gap: metrics.equalizerGap, height: metrics.equalizerHeight },
@@ -163,4 +179,5 @@ const styles = StyleSheet.create({
   reason: { backgroundColor: colors.chip, borderRadius: metrics.reasonRadius, paddingHorizontal: metrics.reasonPaddingX, paddingVertical: metrics.reasonPaddingY },
   reasonText: { color: colors.text, fontSize: metrics.captionSize },
   thanks: { color: colors.success, fontSize: metrics.captionSize },
+  failure: { color: colors.error, fontSize: metrics.captionSize },
 });

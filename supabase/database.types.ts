@@ -941,7 +941,7 @@ isOneToOne: false
 { Args: { "p_has_avatar": boolean }; Returns: string
                            },
 "set_kael_feedback":
-{ Args: { "p_message_id": string,"p_rating": string,"p_reason": string }; Returns: string
+{ Args: { "p_message_id": string,"p_rating": string,"p_reason": string,"p_run_id": string }; Returns: string
                            },
 "set_request_pinned":
 { Args: { "p_pinned": boolean,"p_request_id": string }; Returns: boolean

@@ -16,6 +16,8 @@ export type KaelApproval = {
   expires_at: string | null;
 };
 
+export type KaelQuestion = { id: string; prompt: string; options: readonly string[]; date: boolean };
+
 export const kaelToolOutcomes = ['succeeded', 'failed', 'denied', 'approval_required', 'unavailable', 'uncertain'] as const;
 export type KaelToolOutcome = typeof kaelToolOutcomes[number];
 
@@ -32,6 +34,7 @@ export type KaelEventPayload =
   | { type: 'tool_completed'; call_id: string; tool: string; outcome: KaelToolOutcome; label: string }
   | { type: 'task_updated'; task: KaelTask }
   | { type: 'approval_required'; approval: KaelApproval }
+  | { type: 'question'; question: KaelQuestion }
   | { type: 'run_completed'; text: string }
   | { type: 'run_failed'; code: KaelFailureCode; message: string; retryable: boolean };
 
@@ -60,6 +63,14 @@ function parseApproval(value: unknown): KaelApproval | null {
   return { id, task_id, tool, summary, fingerprint, kind, expires_at: expires_at as string | null, details: Object.fromEntries(details) as Record<string, string> };
 }
 
+function parseQuestion(value: unknown): KaelQuestion | null {
+  if (!isObject(value) || !Array.isArray(value.options)) return null;
+  const { id, prompt, options, date } = value;
+  if (!isId(id) || !isText(prompt, 200) || prompt.trim() === '' || typeof date !== 'boolean' || options.length > 5
+    || !options.every(option => isText(option, 60) && option.trim() !== '') || (options.length === 0 && !date)) return null;
+  return { id, prompt, options: options as string[], date };
+}
+
 function parsePayload(value: Json): KaelEventPayload | null {
   switch (value.type) {
     case 'run_started':
@@ -80,6 +91,10 @@ function parsePayload(value: Json): KaelEventPayload | null {
     case 'approval_required': {
       const approval = parseApproval(value.approval);
       return approval ? { type: 'approval_required', approval } : null;
+    }
+    case 'question': {
+      const question = parseQuestion(value.question);
+      return question ? { type: 'question', question } : null;
     }
     case 'run_completed':
       return isText(value.text, 64000) ? { type: 'run_completed', text: value.text } : null;

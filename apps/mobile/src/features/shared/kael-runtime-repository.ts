@@ -126,3 +126,22 @@ export async function loadKaelConversation(userId: string, mode: KaelMode, signa
   if (!snapshot) throw new Error('Kael conversation state is outside the contract');
   return snapshot;
 }
+
+export type KaelFeedbackTarget = { messageId: string } | { runId: string };
+export type KaelFeedbackRating = 'up' | 'down';
+export type KaelFeedbackReason = 'inaccurate' | 'too_long' | 'ignored_request' | 'other';
+
+export async function setKaelFeedback(userId: string, target: KaelFeedbackTarget, rating: KaelFeedbackRating | null, reason: KaelFeedbackReason | null, signal: AbortSignal, request: KaelRestRequest = authenticatedRequest): Promise<void> {
+  const response = await request(userId, 'rpc/set_kael_feedback', {
+    method: 'POST',
+    signal,
+    body: JSON.stringify({
+      p_message_id: 'messageId' in target ? target.messageId : null,
+      p_run_id: 'runId' in target ? target.runId : null,
+      p_rating: rating,
+      p_reason: rating === 'down' ? reason : null,
+    }),
+  });
+  await response.body?.cancel();
+  if (!response.ok) throw new Error('Could not save feedback');
+}

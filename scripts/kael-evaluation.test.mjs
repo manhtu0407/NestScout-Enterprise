@@ -51,7 +51,7 @@ test('a greeting gets a normal streamed reply without any workflow, task or busi
   assert.deepEqual(result.events.map(event => event.seq), result.events.map((_, index) => index + 1), 'events are sequenced without gaps');
   assert.ok(result.events.every(event => event.run_id === result.runId));
   assert.equal(tasksOf(h.db).length, 0);
-  assert.deepEqual(h.primary.requests[0].tools, ['task_create', 'task_update', 'service_request_draft', 'customer_requests', 'knowledge_search', 'price_estimate_preview']);
+  assert.deepEqual(h.primary.requests[0].tools, ['task_create', 'task_update', 'service_request_draft', 'ask_user_choice', 'customer_requests', 'knowledge_search', 'price_estimate_preview']);
   assert.ok(!h.service.calls.some(entry => entry.path.startsWith('/rest/v1/service') || entry.path.includes('submit')));
 });
 
@@ -266,7 +266,7 @@ test('worker data needs verified worker capability and mode, independent of what
   const fixtures = { workerCards: [{ kind: 'job', ref_id: randomUUID(), title: 'Thay vòi nước', description: 'Bồn rửa bếp', photo_count: 0, location: 'Quận 7', customer_label: 'Lan', updated_at: null }], earnings: [{ job_id: randomUUID(), title: 'Sửa ống', amount_minor: 350000, currency: 'VND', accepted_at: null, completed_on: '2026-11-02' }] };
   const asCustomer = scripted({}, [{ tools: [call('worker_earnings', {})] }, { text: ['Không có quyền.'] }], fixtures);
   assert.equal(terminal(await asCustomer.message(users.customer, 'Thu nhập của tôi?')).type, 'run_completed');
-  const noWorker = scripted({}, [request => { assert.deepEqual(request.tools.map(tool => tool.name), ['task_create', 'task_update', 'knowledge_search', 'price_estimate_preview']); return { tools: [call('worker_jobs', {})] }; }, { text: ['Tài khoản chưa có quyền thợ.'] }], fixtures);
+  const noWorker = scripted({}, [request => { assert.deepEqual(request.tools.map(tool => tool.name), ['task_create', 'task_update', 'ask_user_choice', 'knowledge_search', 'price_estimate_preview']); return { tools: [call('worker_jobs', {})] }; }, { text: ['Tài khoản chưa có quyền thợ.'] }], fixtures);
   assert.equal(terminal(await noWorker.message(users.customer, 'Lịch hôm nay?', { mode: 'worker' })).type, 'run_completed');
   for (const h of [asCustomer, noWorker]) assert.equal(h.service.calls.filter(entry => entry.path.includes('/rpc/worker')).length, 0, 'denied tools never reach the backend');
 

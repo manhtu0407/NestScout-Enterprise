@@ -241,8 +241,11 @@ export function backend(db, options = {}) {
     if (url.pathname === '/rest/v1/service_requests') return json(200, fixtures.requests.filter(row => row.owner_id === user.id).map(({ owner_id: _owner, ...row }) => row));
     if (url.pathname === '/rest/v1/service_quotes') return json(200, fixtures.quotes.filter(row => fixtures.requests.some(r => r.id === row.request_id && r.owner_id === user.id)));
     if (url.pathname === '/rest/v1/service_jobs') return json(200, fixtures.jobs.filter(row => fixtures.requests.some(r => r.id === row.request_id && r.owner_id === user.id)));
+    if (url.pathname === '/rest/v1/service_submissions') return json(200, (fixtures.submissions ?? []).filter(row => fixtures.jobs.some(j => j.id === row.job_id && fixtures.requests.some(r => r.id === j.request_id && r.owner_id === user.id))));
     const worker = (db.capabilities.get(user.id) ?? []).includes('worker');
     if (url.pathname === '/rest/v1/rpc/worker_job_cards') return json(200, worker ? fixtures.workerCards : []);
+    if (url.pathname === '/rest/v1/rpc/worker_offers') return json(200, worker ? fixtures.workerOffers ?? [] : []);
+    if (url.pathname === '/rest/v1/rpc/worker_jobs') return json(200, worker ? fixtures.workerJobs ?? [] : []);
     if (url.pathname === '/rest/v1/rpc/worker_earnings') return json(200, worker ? fixtures.earnings : []);
     if (url.pathname === '/rest/v1/rpc/kael_read_context') return json(200, worker ? { status: 'ok', state: 'assigned' } : { status: 'unavailable' });
     if (url.pathname === '/rest/v1/rpc/kael_knowledge_search') return fixtures.knowledge ? fixtures.knowledge(JSON.parse(init.body), user, init) : json(404, {});

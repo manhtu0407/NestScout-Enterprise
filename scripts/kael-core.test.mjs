@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { anthropicEndpoint, anthropicRequestBody, anthropicVersion, createAnthropicProvider } from '../services/kael-core/src/anthropic.ts';
-import { configurationReport, defaultLimits, readKaelConfig, readKaelEdgeEnvironment } from '../services/kael-core/src/config.ts';
+import { configurationReport, consequentialEffects, defaultLimits, readKaelConfig, readKaelEdgeEnvironment } from '../services/kael-core/src/config.ts';
 import { buildSystemPrompt, buildTranscript } from '../services/kael-core/src/context.ts';
 import { createDeepSeekProvider, deepseekEndpoint } from '../services/kael-core/src/deepseek.ts';
 import { completeWithFallback, ProviderError } from '../services/kael-core/src/model.ts';
@@ -666,11 +666,16 @@ const config = (overrides = {}) => ({ ...readKaelConfig(baseEnv), ...overrides }
 test('capability selection depends on mode, verified capability and owner-enabled effects, never on the model', () => {
   const customer = { userId: users.customer.id, capabilities: new Set(['customer']), mode: 'client' };
   const names = (actor, cfg = config()) => selectTools(actor, cfg).map(tool => tool.id);
-  assert.deepEqual(names(customer), ['task_create', 'task_update', 'service_request_draft', 'customer_requests', 'knowledge_search', 'price_estimate_preview']);
+  assert.deepEqual(names(customer), ['task_create', 'task_update', 'service_request_draft', 'ask_user_choice', 'customer_requests', 'knowledge_search', 'price_estimate_preview']);
   assert.ok(names(customer, config({ enabledEffects: new Set(['service_request_submit']) })).includes('service_request_submit'));
   assert.ok(names(customer, config({ perplexity: { apiKey: 'k', maxResults: 5, timeoutMs: 1 } })).includes('web_search'));
-  assert.deepEqual(names({ ...customer, mode: 'worker' }), ['task_create', 'task_update', 'knowledge_search', 'price_estimate_preview'], 'worker mode without worker capability exposes no worker data');
-  assert.deepEqual(names({ ...customer, mode: 'worker', capabilities: new Set(['customer', 'worker']) }), ['task_create', 'task_update', 'worker_jobs', 'worker_earnings', 'worker_job_status', 'knowledge_search', 'price_estimate_preview']);
+  assert.deepEqual(names({ ...customer, mode: 'worker' }), ['task_create', 'task_update', 'ask_user_choice', 'knowledge_search', 'price_estimate_preview'], 'worker mode without worker capability exposes no worker data');
+  assert.deepEqual(names({ ...customer, mode: 'worker', capabilities: new Set(['customer', 'worker']) }), ['task_create', 'task_update', 'ask_user_choice', 'worker_jobs', 'worker_earnings', 'worker_job_status', 'knowledge_search', 'price_estimate_preview']);
+  const every = config({ enabledEffects: new Set(consequentialEffects) });
+  assert.deepEqual(names(customer, every).filter(name => findTool(name).effect !== null), ['service_request_submit', 'service_quote_decision', 'work_submission_decision'], 'a customer is offered only customer effects');
+  assert.deepEqual(names({ ...customer, mode: 'worker' }, every).filter(name => findTool(name).effect !== null), [], 'worker mode without worker capability is offered no effect');
+  assert.deepEqual(names({ ...customer, mode: 'worker', capabilities: new Set(['customer', 'worker']) }, every).filter(name => findTool(name).effect !== null), ['worker_offer_decision', 'worker_job_advance'], 'a verified worker is offered only worker effects');
+  assert.deepEqual(names(customer, config({ enabledEffects: new Set(['service_request_submit']) })).filter(name => findTool(name).effect !== null), ['service_request_submit'], 'each workflow effect needs its own owner gate');
 
   const offered = selectTools(customer, config());
   const deny = (name, input, cfg = config()) => evaluateCall({ id: 'c', name, input }, offered, customer, cfg, 0);
@@ -845,6 +850,11 @@ const validInputs = {
   task_update: { task_id: users.customer.id, status: 'paused', note: '' },
   service_request_draft: { task_id: users.customer.id, description: 'Máy lạnh rò nước', location: '', preferred_time: '', missing: ['location'] },
   service_request_submit: { task_id: users.customer.id },
+  ask_user_choice: { question: 'Thợ nên đến khi nào?', options: ['Sáng mai', 'Chiều mai'], allow_date: true },
+  service_quote_decision: { task_id: users.customer.id, quote_id: users.other.id, quote_version: 2, decision: 'accepted' },
+  work_submission_decision: { task_id: users.customer.id, submission_id: users.other.id, job_version: 4, decision: 'revision_requested', reason: 'Máy vẫn chảy nước' },
+  worker_offer_decision: { task_id: users.customer.id, invitation_id: users.other.id, quote_id: users.other.id, quote_version: 1, decision: 'accept' },
+  worker_job_advance: { task_id: users.customer.id, job_id: users.other.id, version: 1, next: 'en_route' },
   customer_requests: { limit: 3 },
   worker_jobs: {},
   worker_earnings: {},
@@ -857,7 +867,7 @@ const validInputs = {
 test('each operation has one execution class and only explicit confirmation turns a call into an approval', () => {
   assert.deepEqual(Object.keys(validInputs), toolRegistry.map(tool => tool.id), 'every registered operation has a classification case');
   const classes = ['internal_prepare', 'authorized_read', 'explicit_confirmation'];
-  const all = config({ enabledEffects: new Set(['service_request_submit']), perplexity: { apiKey: 'k', maxResults: 5, timeoutMs: 1 } });
+  const all = config({ enabledEffects: new Set(consequentialEffects), perplexity: { apiKey: 'k', maxResults: 5, timeoutMs: 1 } });
   for (const tool of toolRegistry) {
     assert.ok(classes.includes(tool.executionClass), tool.id);
     assert.equal(tool.effect !== null, tool.executionClass === 'explicit_confirmation', `${tool.id}: an owner gate exists exactly for confirmed operations`);

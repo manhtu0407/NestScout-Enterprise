@@ -34,11 +34,16 @@ function classify(code: unknown, message: unknown): WorkflowFailure {
   return 'unknown';
 }
 
+const versionConflicts: readonly string[] = ['already assigned', 'stale job', 'stale proposal', 'stale quote', 'stale terms'];
+
 export async function workflowErrorFrom(response: Response): Promise<WorkflowError> {
-  if (response.status >= 500) return new WorkflowError('unknown');
+  if (response.status > 500) return new WorkflowError('unknown');
   try {
     const body: unknown = await response.json();
     const fields = typeof body === 'object' && body !== null ? body as Record<string, unknown> : {};
+    if (response.status === 500 && !(fields.code === '40001' && typeof fields.message === 'string' && versionConflicts.includes(fields.message))) {
+      return new WorkflowError('unknown');
+    }
     return new WorkflowError(classify(fields.code, fields.message));
   } catch {
     return new WorkflowError('unknown');
