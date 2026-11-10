@@ -1,7 +1,6 @@
 import type { CustomerActivity, CustomerJob, CustomerNotification, IconName, JobWorkerCard, NotificationKind, SavedWorkerRecord, ServiceQuote, ServiceRequest as RequestRecord } from '@/features/shared';
 
 import type { NotificationItem, QuoteItem, QuoteStatus, SavedWorker } from './content';
-import type { RecentSession } from './recent-session';
 import { workflowSteps, type PhotoSource, type RequestStage, type ServiceRequest } from './requests-screen';
 
 const minuteMs = 60_000;
@@ -134,18 +133,6 @@ export function toRequestViews(records: Records, now: Date): ServiceRequest[] {
       pendingSubmission: pendingSubmissionFor(records.activity, request.id),
     };
   });
-}
-
-export function toRecentSessions(records: Records, pinnedIds: ReadonlySet<string>, now: Date): RecentSession[] {
-  const progress = progressByRequest(records, now);
-  return records.requests.map(request => ({
-    id: request.id,
-    title: requestTitle(request.description),
-    preview: progress.get(request.id)?.status ?? '',
-    timeLabel: relativeTimeLabel(request.created_at, now),
-    phase: null,
-    pinned: pinnedIds.has(request.id),
-  }));
 }
 
 function expiryLabel(quote: ServiceQuote, status: QuoteStatus, superseded: ServiceQuote | undefined, expired: boolean, now: Date): string {

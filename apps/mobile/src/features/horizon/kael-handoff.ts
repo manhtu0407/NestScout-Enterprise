@@ -1,13 +1,20 @@
-let pending: string | null = null;
+export type KaelHandoff = { prompt: string; fresh: boolean };
 
-export function handOffToKael(prompt: string): void {
-  pending = prompt.trim() || null;
+let pending: KaelHandoff | null = null;
+
+export function handOffToKael(prompt: string, options: { fresh?: boolean } = {}): void {
+  const text = prompt.trim();
+  pending = text === '' ? null : { prompt: text, fresh: options.fresh === true };
+}
+
+export function takeKaelHandoff(): KaelHandoff | null {
+  const handoff = pending;
+  pending = null;
+  return handoff;
 }
 
 export function consumeKaelHandoff(): string | null {
-  const prompt = pending;
-  pending = null;
-  return prompt;
+  return takeKaelHandoff()?.prompt ?? null;
 }
 
 export function requestPrompt(request: { title: string; status: string; nextAction: string }): string {

@@ -1,6 +1,6 @@
 import type { CustomerActivity, CustomerJob, CustomerNotification, SavedWorkerRecord, ServiceQuote, ServiceRequest } from '@/features/shared';
 
-import { countActionableQuotes, countUnreadNotifications, deriveRequestProgress, relativeTimeLabel, requestIcon, requestTitle, toNotificationItems, toQuoteItems, toRecentSessions, toRequestViews, toSavedWorkers } from './request-views';
+import { countActionableQuotes, countUnreadNotifications, deriveRequestProgress, relativeTimeLabel, requestIcon, requestTitle, toNotificationItems, toQuoteItems, toRequestViews, toSavedWorkers } from './request-views';
 
 const now = new Date('2026-11-02T10:00:00.000Z');
 const hoursAgo = (hours: number) => new Date(now.getTime() - hours * 3_600_000).toISOString();
@@ -100,14 +100,6 @@ test('request views carry the stored location and the worker of the job', () => 
   const [view] = toRequestViews({ requests: [located], quotes: [], activity: emptyActivity, workers }, now);
   expect(view?.location).toBe('12 Nguyễn Huệ, Quận 1');
   expect(view?.worker).toEqual({ jobId: 'j1', profileId: 'p1', name: 'Thợ Minh', saved: true, rating: 4, listed: true });
-});
-
-test('recent sessions mark pinned requests and keep server order', () => {
-  const second: ServiceRequest = { id: 'r2', description: 'Vệ sinh sofa', location: '', created_at: hoursAgo(30) };
-  const sessions = toRecentSessions({ requests: [request, second], quotes: [], activity: emptyActivity }, new Set(['r2']), now);
-  expect(sessions.map(session => session.id)).toEqual(['r1', 'r2']);
-  expect(sessions.map(session => session.pinned)).toEqual([false, true]);
-  expect(sessions[1]).toMatchObject({ title: 'Vệ sinh sofa', preview: 'Đang chờ báo giá', timeLabel: 'Hôm qua', phase: null });
 });
 
 test('quote items expose status, expiry and superseded versions', () => {

@@ -1,13 +1,8 @@
 import { type IconName } from '@/features/shared';
 
-export const quickServices = [
-  { title: 'Sửa điện', icon: 'bolt', prompt: 'Tôi cần sửa điện: ' },
-  { title: 'Sửa nước', icon: 'drop', prompt: 'Tôi cần sửa nước: ' },
-  { title: 'Vệ sinh nhà', icon: 'home', prompt: 'Tôi cần vệ sinh nhà: ' },
-  { title: 'Vệ sinh sofa', icon: 'sofa', prompt: 'Tôi cần vệ sinh sofa: ' },
-  { title: 'Lắp đặt & sửa chữa nhỏ', icon: 'wrench', prompt: 'Tôi cần lắp đặt hoặc sửa chữa nhỏ: ' },
-  { title: 'Dịch vụ khác', icon: 'grid', prompt: 'Tôi có một việc khác: ' }
-] as const;
+import { serviceCategories, type ServiceCategoryId } from './service-catalog';
+
+export const quickServices: readonly { id: ServiceCategoryId; title: string; icon: IconName }[] = serviceCategories.map(({ id, title, icon }) => ({ id, title, icon }));
 
 export type SidebarItem = { id: string; title: string; icon: IconName };
 

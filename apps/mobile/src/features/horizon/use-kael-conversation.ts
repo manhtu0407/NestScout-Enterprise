@@ -1,7 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { loadKaelConversation, setKaelFeedback, streamKaelTurn, type KaelApproval, type KaelConversationSnapshot, type KaelEvent, type KaelFeedbackRating, type KaelFeedbackReason, type KaelMode, type KaelQuestion, type KaelTask, type KaelTaskStatus, type KaelTurnAction, type KaelTurnOutcome } from '@/features/shared';
+import { loadKaelConversation, openKaelConversation, setKaelFeedback, streamKaelTurn, type KaelApproval, type KaelConversationSnapshot, type KaelEvent, type KaelFeedbackRating, type KaelFeedbackReason, type KaelMode, type KaelQuestion, type KaelTask, type KaelTaskStatus, type KaelTurnAction, type KaelTurnOutcome } from '@/features/shared';
 
 export type KaelChatMessage = { id: string; role: 'user' | 'assistant'; text: string; incomplete?: boolean; runId?: string; storedId?: string };
 
@@ -21,6 +21,9 @@ export type KaelConversationState = {
 type Streamer = typeof streamKaelTurn;
 type FeedbackWriter = typeof setKaelFeedback;
 type Loader = (userId: string, mode: KaelMode, signal: AbortSignal) => Promise<KaelConversationSnapshot>;
+type Opener = (userId: string, mode: KaelMode, conversationId: string, signal: AbortSignal) => Promise<KaelConversationSnapshot>;
+
+export type KaelOpening = { id: string; failed: boolean };
 
 const idleState: KaelConversationState = { messages: [], activity: null, tasks: [], approvals: [], notice: null, running: false, conversationId: null, processingTaskId: null, receipt: null, question: null };
 const interruptedNotice = 'Kết nối bị gián đoạn trước khi Kael trả lời xong. Nội dung phía trên có thể chưa đầy đủ.';
@@ -128,10 +131,13 @@ function restored(state: KaelConversationState, snapshot: KaelConversationSnapsh
   };
 }
 
-export function useKaelConversation(userId: string | null, mode: KaelMode, streamer: Streamer = streamKaelTurn, loader: Loader = loadKaelConversation, feedback: FeedbackWriter = setKaelFeedback) {
+export function useKaelConversation(userId: string | null, mode: KaelMode, streamer: Streamer = streamKaelTurn, loader: Loader = loadKaelConversation, feedback: FeedbackWriter = setKaelFeedback, opener: Opener = openKaelConversation) {
   const scope = `${userId ?? 'guest'}:${mode}`;
   const [state, setState] = useState<KaelConversationState>(idleState);
   const [seenScope, setSeenScope] = useState(scope);
+  const [opening, setOpeningState] = useState<KaelOpening | null>(null);
+  const openingRef = useRef<KaelOpening | null>(null);
+  const openController = useRef<AbortController | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const restoreRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
@@ -140,9 +146,15 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
   const interruptedRef = useRef<Interrupted | null>(null);
   const ordinalUnknownRef = useRef(true);
 
+  const setOpening = useCallback((next: KaelOpening | null) => {
+    openingRef.current = next;
+    setOpeningState(next);
+  }, []);
+
   if (seenScope !== scope) {
     setSeenScope(scope);
     setState(idleState);
+    setOpeningState(null);
   }
 
   const rehydrate = useCallback(async (expected: string | null, firstTurn = false) => {
@@ -188,6 +200,9 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
       usersAfterAnchorRef.current = 0;
       restoredTailRef.current = null;
       interruptedRef.current = null;
+      openController.current?.abort();
+      openController.current = null;
+      openingRef.current = null;
       restoreRef.current?.abort();
       restoreRef.current = null;
       controllerRef.current?.abort();
@@ -228,6 +243,9 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
   }, [nextExpiry]);
 
   const reset = useCallback(() => {
+    openController.current?.abort();
+    openController.current = null;
+    setOpening(null);
     restoreRef.current?.abort();
     restoreRef.current = null;
     controllerRef.current?.abort();
@@ -237,10 +255,10 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     restoredTailRef.current = null;
     interruptedRef.current = null;
     setState(current => ({ ...idleState, approvals: accountChecks(current.approvals) }));
-  }, []);
+  }, [setOpening]);
 
   const run = useCallback(async (action: KaelTurnAction, userText: string, decided: KaelApproval | null = null) => {
-    if (userId === null || runningRef.current) return;
+    if (userId === null || runningRef.current || openingRef.current !== null) return;
     runningRef.current = true;
     restoreRef.current?.abort();
     restoreRef.current = null;
@@ -295,6 +313,44 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     else if (decided) void verifyDecision(conversationId, decided, outcome.kind === 'terminal' && outcome.event.type === 'run_completed');
   }, [mode, rehydrate, state.conversationId, streamer, userId, verifyDecision]);
 
+  const open = useCallback(async (conversationId: string) => {
+    if (userId === null) return;
+    openController.current?.abort();
+    restoreRef.current?.abort();
+    restoreRef.current = null;
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+    runningRef.current = false;
+    usersAfterAnchorRef.current = 0;
+    restoredTailRef.current = null;
+    interruptedRef.current = null;
+    const controller = new AbortController();
+    openController.current = controller;
+    setOpening({ id: conversationId, failed: false });
+    setState(current => ({ ...idleState, approvals: accountChecks(current.approvals) }));
+    let snapshot: KaelConversationSnapshot | null = null;
+    try {
+      snapshot = await opener(userId, mode, conversationId, controller.signal);
+    } catch {
+      snapshot = null;
+    }
+    if (controller.signal.aborted || openController.current !== controller) return;
+    openController.current = null;
+    if (snapshot === null) {
+      setOpening({ id: conversationId, failed: true });
+      return;
+    }
+    ordinalUnknownRef.current = false;
+    restoredTailRef.current = snapshot.messages.at(-1)?.id ?? null;
+    setOpening(null);
+    setState(restored(idleState, snapshot, null));
+  }, [mode, opener, setOpening, userId]);
+
+  const retryOpen = useCallback(() => {
+    const target = openingRef.current;
+    if (target !== null && target.failed) void open(target.id);
+  }, [open]);
+
   const send = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -329,5 +385,5 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     }
   }, [feedback, userId]);
 
-  return { ...state, available: userId !== null, send, decide, reset, dismissNotice, refresh, rate };
+  return { ...state, available: userId !== null, opening, send, decide, reset, open, retryOpen, dismissNotice, refresh, rate };
 }
