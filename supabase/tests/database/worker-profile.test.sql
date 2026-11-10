@@ -92,7 +92,7 @@ select is((select radius_km from public.my_worker_profile()), 10, 'A rejected ch
 select is(public.set_worker_accepting(false), false, 'A worker pauses new jobs');
 select is((select accepting_jobs from public.my_worker_profile()), false, 'The availability is stored');
 select throws_ok($$select public.set_worker_accepting(null)$$, '22023', 'invalid request', 'A missing availability is rejected');
-select throws_ok($$select public.set_worker_accepting(true)$$, '22023', 'profile incomplete', 'A worker without an identity document cannot resume new jobs');
+select is(public.set_worker_accepting(true), true, 'An eligible fixture Worker can resume test jobs without uploading identity documents');
 reset role;
 insert into public.worker_documents (worker_id, kind, title, path)
   values ('00000000-0000-4000-8000-0000000000b2', 'identity', 'CCCD', '00000000-0000-4000-8000-0000000000b2/identity.jpg');

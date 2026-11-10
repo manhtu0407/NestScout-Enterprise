@@ -86,7 +86,7 @@ export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, pro
   const [saving, setSaving] = useState(false);
   const loadedProfile = loadedWorkerProfile(workerProfile);
   const confirmed = loadedProfile === null ? null : loadedProfile.accepting;
-  const missingCount = loadedProfile === null ? 0 : loadedProfile.missing.length;
+  const missingCount = loadedProfile === null ? 0 : loadedProfile.missing.filter(item => item !== 'identity').length;
   const requested = pending !== null && (saving || confirmed === pending.from) ? pending.value : null;
   const online = onlineOf(workerProfile, sampleOnline, requested);
   const toggle = () => {

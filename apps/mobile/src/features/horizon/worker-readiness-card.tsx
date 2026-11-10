@@ -39,7 +39,7 @@ export function WorkerReadinessCard({ missing, onStep }: Props) {
         <View style={styles.head}>
           <Icon name="check" size={metrics.stepIcon} color={colors.okText} strokeWidth={2.2} />
           <View style={styles.headCopy}>
-            <Text style={[styles.title, styles.titleOk]}>Hồ sơ đã đủ để nhận việc</Text>
+            <Text style={[styles.title, styles.titleOk]}>Hồ sơ công khai đã hoàn thiện</Text>
             <Text style={[styles.caption, styles.titleOk]}>Bạn có thể bật nhận việc ở menu bên trái.</Text>
           </View>
         </View>
@@ -50,8 +50,8 @@ export function WorkerReadinessCard({ missing, onStep }: Props) {
     <View accessibilityRole="summary" style={[styles.card, styles.cardWarn]}>
       <View style={styles.head}>
         <View style={styles.headCopy}>
-          <Text style={[styles.title, styles.titleWarn]}>Hoàn thiện hồ sơ để nhận việc</Text>
-          <Text style={[styles.caption, styles.titleWarn]}>Cần đủ {total} mục trước khi bật nhận việc. Đã xong {done}/{total}.</Text>
+          <Text style={[styles.title, styles.titleWarn]}>Hoàn thiện hồ sơ công khai</Text>
+          <Text style={[styles.caption, styles.titleWarn]}>Cần đủ {total} mục để niêm yết hồ sơ. Đã xong {done}/{total}.</Text>
         </View>
       </View>
       <ProgressBar fraction={done / total} ready={false} />

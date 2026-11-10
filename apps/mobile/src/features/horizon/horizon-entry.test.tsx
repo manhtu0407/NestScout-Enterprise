@@ -95,13 +95,13 @@ test('a pending confirmation shows the gray attention banner with the approval c
   expect(screen.queryByText('Đã gửi yêu cầu')).toBeNull();
 });
 
-test('without a recorded agreement the message is not sent and no consent dialog opens', async () => {
+test('without explicit AI sharing consent the message is not sent and no consent dialog opens', async () => {
   mockConsent.granted = false;
   const requests = script([started, completed('unused')]);
   await renderEntry();
   await say('Nhờ Kael giúp tôi');
   expect(requests).toHaveLength(0);
-  expect(screen.getByText(/Tin nhắn chưa được gửi. Hãy đồng ý Điều khoản/)).toBeTruthy();
+  expect(screen.getByText(/Tin nhắn chưa được gửi. Bật “Chia sẻ dữ liệu với AI”/)).toBeTruthy();
   expect(screen.queryByText('Đồng ý và tiếp tục')).toBeNull();
   expect(screen.queryByText('Không đồng ý')).toBeNull();
 });

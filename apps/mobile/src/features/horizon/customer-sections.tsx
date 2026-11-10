@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Text } from 'react-native';
 
 import { formatNational, toNationalDigits, useAccess } from '@/features/access';
-import { PressScale, decideSubmission, setPreferredVisit, acceptTerms, acceptedImageTypes, cancelAccountDeletion, exportPersonalData, readDeletionRequest, readReviewReactions, toggleReviewReaction, readTermsAcceptance, recordConsent, requestAccountDeletion, submitSupportRequest, type CustomerSettings, type ReviewReactionId } from '@/features/shared';
+import { PressScale, decideSubmission, setPreferredVisit, acceptedImageTypes, cancelAccountDeletion, exportPersonalData, readDeletionRequest, readReviewReactions, toggleReviewReaction, recordConsent, requestAccountDeletion, submitSupportRequest, type CustomerSettings, type ReviewReactionId } from '@/features/shared';
 
 import type { UserProfile } from './content';
 import { HelpScreen } from './help-screen';
@@ -59,14 +59,6 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
       read: () => readDeletionRequest(userId, new AbortController().signal),
       request: () => requestAccountDeletion(userId, new AbortController().signal),
       cancel: () => cancelAccountDeletion(userId, new AbortController().signal),
-    },
-    termsAcceptance: {
-      read: (versionId: string) => readTermsAcceptance(userId, 'terms', versionId, new AbortController().signal),
-      accept: async (versionId: string) => {
-        const acceptedAt = await acceptTerms(userId, 'terms', versionId, new AbortController().signal);
-        await recordConsent(userId, 'ai_sharing', true, legalDocument('vi', 'privacy').versionId, new AbortController().signal);
-        return acceptedAt;
-      },
     },
   }, [userId]);
   const dataExport = useMemo(() => userId === null ? undefined : () => exportPersonalData(userId, new AbortController().signal), [userId]);
@@ -207,6 +199,5 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
     accountDeletion={compliance?.accountDeletion}
     aiConsent={aiConsent}
     dataExport={dataExport}
-    termsAcceptance={compliance?.termsAcceptance}
   />;
 }

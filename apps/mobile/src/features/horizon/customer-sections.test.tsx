@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import { acceptTerms, readTermsAcceptance, recordConsent, setPreferredVisit, submitSupportRequest } from '@/features/shared';
+import { recordConsent, setPreferredVisit, submitSupportRequest } from '@/features/shared';
 
 import type { CustomerData, CustomerDataController } from './use-customer-data';
 import { CustomerSection } from './customer-sections';
@@ -9,12 +9,13 @@ import { useCustomerData } from './use-customer-data';
 jest.mock('@/features/access', () => ({ ...jest.requireActual('@/features/access'), useAccess: () => ({ identity: 'verified', userId: 'user-1', phase: 'client' }) }));
 jest.mock('./use-customer-data', () => ({ useCustomerData: jest.fn() }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }), useFocusEffect: (effect: () => void | (() => void)) => jest.requireActual<typeof import('react')>('react').useEffect(effect, [effect]) }));
-jest.mock('./use-ai-consent', () => ({ useAiConsent: () => ({ status: 'ready', granted: false, set: jest.fn() }) }));
+jest.mock('./use-ai-consent', () => ({ useAiConsent: () => ({ status: 'ready', granted: false, set: mockSetAiConsent }) }));
 jest.mock('expo-crypto', () => ({ randomUUID: () => '00000000-0000-4000-8000-000000000123' }));
 const mockPick = jest.fn();
 jest.mock('expo-image-picker', () => ({ launchImageLibraryAsync: (...args: unknown[]) => mockPick(...args) }));
-jest.mock('@/features/shared', () => ({ ...jest.requireActual('@/features/shared'), submitSupportRequest: jest.fn(), setPreferredVisit: jest.fn(), acceptTerms: jest.fn(), readTermsAcceptance: jest.fn(), recordConsent: jest.fn() }));
-jest.mock('./legal-content', () => ({ ...jest.requireActual('./legal-content'), isAcceptable: () => true }));
+jest.mock('@/features/shared', () => ({ ...jest.requireActual('@/features/shared'), submitSupportRequest: jest.fn(), setPreferredVisit: jest.fn(), recordConsent: jest.fn() }));
+
+const mockSetAiConsent = jest.fn();
 
 const empty: CustomerData = {
   requests: [], quotes: [], pinnedIds: new Set(), notifications: [], profile: null, avatar: null, photos: new Map(), savedWorkers: [], settings: null, phone: '', jobWorkers: [],
@@ -30,7 +31,10 @@ function controller(overrides: Partial<CustomerDataController> = {}): CustomerDa
 
 const request = { id: 'r1', description: 'Sửa vòi nước', location: '', created_at: new Date().toISOString() };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockSetAiConsent.mockResolvedValue(undefined);
+});
 
 test('data that has not loaded shows a loading state', async () => {
   jest.mocked(useCustomerData).mockReturnValue(controller({ loaded: false, status: 'loading' }));
@@ -252,25 +256,21 @@ test('a waiting request saves the preferred visit time through the owner command
   expect(jest.mocked(setPreferredVisit).mock.calls[0]?.slice(0, 3)).toEqual(['user-1', 'r1', null]);
 });
 
-test('agreeing to the Terms also records the AI data-sharing agreement', async () => {
+test('Terms remain readable without recording legal acceptance or AI consent', async () => {
   jest.mocked(useCustomerData).mockReturnValue(controller());
-  jest.mocked(readTermsAcceptance).mockResolvedValue(null);
-  jest.mocked(acceptTerms).mockResolvedValue('2026-11-10T01:00:00.000Z');
-  jest.mocked(recordConsent).mockResolvedValue('2026-11-10T01:00:01.000Z');
   await render(<CustomerSection id="settings" onBack={() => undefined} onNavigate={() => undefined} />);
   await fireEvent.press(screen.getByText('Điều khoản dịch vụ'));
-  await fireEvent.press(await screen.findByLabelText('Tôi đồng ý với phiên bản này'));
-  await waitFor(() => expect(recordConsent).toHaveBeenCalledWith('user-1', 'ai_sharing', true, expect.any(String), expect.anything()));
-  expect(acceptTerms).toHaveBeenCalledWith('user-1', 'terms', expect.any(String), expect.anything());
+  expect(await screen.findByText(/Bản dự thảo, chưa phải điều khoản phát hành chính thức/)).toBeTruthy();
+  expect(screen.queryByText('Tôi đồng ý với phiên bản này')).toBeNull();
+  expect(recordConsent).not.toHaveBeenCalled();
 });
 
-test('the Terms are not marked accepted when the AI agreement cannot be recorded', async () => {
+test('AI data sharing is a separate explicit privacy choice', async () => {
   jest.mocked(useCustomerData).mockReturnValue(controller());
-  jest.mocked(readTermsAcceptance).mockResolvedValue(null);
-  jest.mocked(acceptTerms).mockResolvedValue('2026-11-10T01:00:00.000Z');
-  jest.mocked(recordConsent).mockRejectedValue(new Error('offline'));
   await render(<CustomerSection id="settings" onBack={() => undefined} onNavigate={() => undefined} />);
-  await fireEvent.press(screen.getByText('Điều khoản dịch vụ'));
-  await fireEvent.press(await screen.findByLabelText('Tôi đồng ý với phiên bản này'));
-  expect(await screen.findByText(/Chưa ghi nhận được sự đồng ý/)).toBeTruthy();
+  expect(screen.getByText('Kael gửi dữ liệu cho nhà cung cấp AI')).toBeTruthy();
+  expect(screen.getByText(/Anthropic và DeepSeek/)).toBeTruthy();
+  expect(screen.getByText(/Perplexity/)).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('Chia sẻ dữ liệu với AI'));
+  expect(mockSetAiConsent).toHaveBeenCalledWith(true);
 });

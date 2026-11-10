@@ -63,11 +63,19 @@ test('the preview keeps its own local toggle and sample summary', async () => {
   expect(switchOn()).toBe(false);
 });
 
-test('a profile with missing items is sent to complete it instead of switching on', async () => {
+test('a profile with missing skills or services is sent to complete it before switching on', async () => {
   const onSetAccepting = jest.fn();
-  const onNavigate = await renderBody({ area: 'Quận 7', radiusKm: 5, accepting: false, missing: ['identity'] }, onSetAccepting);
+  const onNavigate = await renderBody({ area: 'Quận 7', radiusKm: 5, accepting: false, missing: ['skills'] }, onSetAccepting);
   expect(screen.getByText('Cần bổ sung 1 mục hồ sơ')).toBeTruthy();
   await fireEvent.press(screen.getByLabelText('Nhận việc mới'));
   expect(onNavigate).toHaveBeenCalledWith('worker-profile');
   expect(onSetAccepting).not.toHaveBeenCalled();
+});
+
+test('a fixture Worker can request availability without uploading identity documents', async () => {
+  const onSetAccepting = jest.fn().mockResolvedValue(undefined);
+  const onNavigate = await renderBody({ area: 'Quận 7', radiusKm: 5, accepting: false, missing: ['identity'] }, onSetAccepting);
+  await fireEvent.press(screen.getByLabelText('Nhận việc mới'));
+  expect(onNavigate).not.toHaveBeenCalled();
+  expect(onSetAccepting).toHaveBeenCalledWith(true);
 });

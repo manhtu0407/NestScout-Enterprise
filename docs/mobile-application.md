@@ -629,16 +629,20 @@ synthesis. A Kael question event shows tappable answers that are sent as the nex
 message. A Worker whose public profile is not listed cannot be saved, and the screen
 says so instead of reporting a connection failure.
 
-### Agreement to share data with AI providers
+### AI data sharing and legal documents
 
-Kael does not open a consent dialog. The disclosure of what is sent to the AI model
-providers is shown with the agreement button of the Terms, and agreeing there records
-the `ai_sharing` agreement together with the Terms acceptance. The same agreement can be
-turned on or withdrawn in Settings › Privacy. The Kael backend still refuses every message
-with `consent_required` until an `ai_sharing` agreement exists, so Kael tells the user
-where to agree instead of sending the message. The Terms agreement button stays disabled
-while the Terms text contains unresolved `[Chờ cung cấp…]` placeholders, so until the legal
-details are supplied the Settings switch is the way to turn Kael on.
+Terms and Privacy remain available to read in Settings and are marked as drafts pending
+legal review. The beta does not ask users to accept them or record legal acceptance.
+Missing operator details in the draft therefore do not block account access or workflow
+testing.
+
+The separate Share data with AI switch in Settings › Privacy is the only way to authorize
+Kael provider requests. Before the switch, the screen explains that prompts, conversation
+history, related request and job details, and reply preferences may be sent to the
+configured model provider. When web search is enabled, the search query may also be sent
+to Perplexity. No Kael message is sent without an `ai_sharing` record; both the app and
+the backend enforce this. Users can withdraw the choice in Settings › Privacy. Turning
+on AI sharing does not accept the Terms or Privacy Policy.
 
 ### Local Preview verification
 
@@ -651,5 +655,8 @@ database because no client can grant them. Locally the Kael Edge function has no
 credential, so a chat turn ends with `provider_unavailable`; the Kael-coordinated
 effects are verified by the real-gateway integration test in
 `scripts/supabase-mcp.integration.test.mjs`, where only the model turns are scripted.
-On web, the slide-to-confirm control needs a pointer drag with intermediate moves, and
-its accessibility action is available only to native assistive technologies.
+Fixture Worker accounts require a trusted active Worker grant and fixture eligibility,
+but can accept test invitations without uploading identity documents. A public Worker
+listing still requires an identity document. On web, the slide-to-confirm control needs
+a pointer drag with intermediate moves, and its accessibility action is available only
+to native assistive technologies.

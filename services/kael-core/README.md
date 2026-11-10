@@ -202,7 +202,7 @@ state, not open connections.
 | `KAEL_MODEL_ROUTE` | Provider order; defaults to DeepSeek followed by Anthropic when configured. Unknown or duplicate entries fail closed |
 | `PERPLEXITY_API_KEY` + `KAEL_WEB_SEARCH=enabled` | Enables the `web_search` tool |
 | `KAEL_ANTHROPIC_SERVER_FALLBACK` | Enables Anthropic's provider-side fallback for supported configured models |
-| `KAEL_ENABLED_EFFECTS` | Owner opt-in for consequential effects; only `service_request_submit` exists |
+| `KAEL_ENABLED_EFFECTS` | Owner opt-in for explicit-confirmation actions: `service_request_submit`, `service_quote_decision`, `work_submission_decision`, `worker_offer_decision` and `worker_job_advance`; omitted actions stay unavailable |
 | `KAEL_KNOWLEDGE=disabled` | Removes both Intelligence tools; general conversation stays available |
 | `KAEL_ESTIMATE_PREVIEW=local_only` | Enables numeric synthetic preview only when the configured Supabase target is loopback; default disabled |
 

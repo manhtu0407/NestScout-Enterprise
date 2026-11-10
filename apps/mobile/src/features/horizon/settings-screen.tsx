@@ -19,7 +19,6 @@ import { LiquidSwitch } from './liquid-switch';
 import { ProfileAvatar } from './profile-avatar';
 import { settingsStrings, type SettingsStrings } from './settings-strings';
 import { SupportCard, SupportRow, SupportSection, SupportShell, supportStyles } from './support-shell';
-import { TermsAcceptance, type TermsAcceptanceApi } from './terms-acceptance';
 
 const metrics = horizonLayout.supportScreens;
 const colors = horizonColors.supportScreens;
@@ -44,7 +43,6 @@ type Props = {
   accountDeletion?: AccountDeletionApi;
   aiConsent?: AiConsent;
   dataExport?: DataExportApi;
-  termsAcceptance?: TermsAcceptanceApi;
 };
 
 function OptionList<T extends string>({ options, labels, value, onSelect, note, strings }: { options: readonly T[]; labels: Record<T, string>; value: T; onSelect: (next: T) => void; note: string; strings: SettingsStrings }) {
@@ -65,7 +63,7 @@ function OptionList<T extends string>({ options, labels, value, onSelect, note, 
   );
 }
 
-function LegalView({ id, language, strings, onBack, acceptance }: { id: LegalDocumentId; language: Language; strings: SettingsStrings; onBack: () => void; acceptance?: TermsAcceptanceApi }) {
+function LegalView({ id, language, strings, onBack }: { id: LegalDocumentId; language: Language; strings: SettingsStrings; onBack: () => void }) {
   const document = legalDocument(language, id);
   return (
     <SupportShell backLabel={strings.back} title={document.title} subtitle={document.version} onBack={onBack}>
@@ -82,7 +80,6 @@ function LegalView({ id, language, strings, onBack, acceptance }: { id: LegalDoc
           {section.paragraphs.map(paragraph => <Text key={paragraph} style={styles.paragraph}>{paragraph}</Text>)}
         </SupportSection>
       ))}
-      {id === 'terms' && acceptance ? <TermsAcceptance document={document} api={acceptance} strings={strings} formatDate={dateFormatter(language)} /> : null}
     </SupportShell>
   );
 }
@@ -135,7 +132,7 @@ function ClearHistoryView({ strings, onClear, onBack }: { strings: SettingsStrin
   );
 }
 
-export function SettingsScreen({ onBack, profile, onEditProfile, settings, onChangeSettings, onClearHistory, accountDeletion, aiConsent, dataExport, termsAcceptance }: Props) {
+export function SettingsScreen({ onBack, profile, onEditProfile, settings, onChangeSettings, onClearHistory, accountDeletion, aiConsent, dataExport }: Props) {
   const preferences = usePreferences();
   const strings = settingsStrings(preferences.language);
   const [toggles, setToggles] = useState<CustomerSettings>(settings ?? defaultSettings);
@@ -184,7 +181,7 @@ export function SettingsScreen({ onBack, profile, onEditProfile, settings, onCha
   };
   const toMain = () => setView('main');
 
-  if (view === 'terms' || view === 'privacy') return <LegalView id={view} language={preferences.language} strings={strings} onBack={toMain} acceptance={termsAcceptance} />;
+  if (view === 'terms' || view === 'privacy') return <LegalView id={view} language={preferences.language} strings={strings} onBack={toMain} />;
   if (view === 'deleteAccount') return <AccountDeletionView api={accountDeletion} strings={strings} formatDate={dateFormatter(preferences.language)} onBack={toMain} />;
   if (view === 'export') return <DataExportView api={dataExport} strings={strings} onBack={toMain} />;
   if (view === 'clear') return <ClearHistoryView strings={strings} onClear={onClearHistory} onBack={toMain} />;
@@ -239,6 +236,10 @@ export function SettingsScreen({ onBack, profile, onEditProfile, settings, onCha
       <SupportSection title={strings.privacy}>
         {locationError ? <Text accessibilityLiveRegion="polite" style={styles.error}>{strings.locationOpenFailed}</Text> : null}
         {aiError ? <Text accessibilityLiveRegion="polite" style={styles.error}>{strings.aiShareFailed}</Text> : null}
+        {aiConsent ? <View style={styles.notice}>
+          <Text style={styles.noticeText}>{strings.consentTitle}</Text>
+          {strings.consentBody.map(paragraph => <Text key={paragraph} style={styles.noticeText}>{paragraph}</Text>)}
+        </View> : null}
         <SupportCard>
           {Platform.OS === 'web' ? null : <SupportRow icon="home" title={strings.location} detail={strings.locationDetail} onPress={openLocationSettings} />}
           {aiConsent ? <SupportRow icon="chat" title={strings.aiShare} detail={aiConsent.status === 'loading' ? strings.aiShareLoading : strings.aiShareDetail} trailing={<LiquidSwitch accessibilityLabel={strings.aiShare} value={aiConsent.granted} onValueChange={toggleAiSharing} />} /> : null}

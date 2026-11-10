@@ -512,7 +512,6 @@ export const horizonLayout = {
   ratingStyle: { wordTextFontWeight: '600', wordEmptyFontWeight: '500' },
   earningsSegmentsStyle: { segmentTextFontWeight: '600' },
   workerProfileScreenStyle: { heroTagsMarginTop: 4, statusTextFontWeight: '600', editTextFontWeight: '600', blockTitleFontSize: 18, blockTitleFontWeight: '600' },
-  termsAcceptanceStyle: { disabledOpacity: 0.4 }
 } as const;
 
 export const layout = {

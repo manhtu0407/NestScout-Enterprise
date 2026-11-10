@@ -17,12 +17,9 @@ insert into nestscout_private.worker_dispatch_eligibility (user_id, basis, activ
   ('00000000-0000-4000-8000-00000000d0b2', 'local_fixture', true),
   ('00000000-0000-4000-8000-00000000d0c3', 'local_fixture', true);
 insert into public.worker_public_profiles (worker_id, display_name, trade, area, experience_years, about, skills, service_ids, accepting_jobs) values
-  ('00000000-0000-4000-8000-00000000d0a1', 'Thợ A', 'Điện lạnh', 'Quận 7', 5, 'Sửa máy lạnh', array['Máy lạnh'], array['aircon'], true),
-  ('00000000-0000-4000-8000-00000000d0b2', 'Thợ B', 'Điện lạnh', 'Quận 3', 4, 'Sửa máy lạnh', array['Máy lạnh'], array['aircon'], true),
+  ('00000000-0000-4000-8000-00000000d0a1', 'Thợ A', 'Điện lạnh', 'Quận 7', 5, 'Sửa máy lạnh', array['Máy lạnh'], array['aircon'], false),
+  ('00000000-0000-4000-8000-00000000d0b2', 'Thợ B', 'Điện lạnh', 'Quận 3', 4, 'Sửa máy lạnh', array['Máy lạnh'], array['aircon'], false),
   ('00000000-0000-4000-8000-00000000d0c3', 'Thợ C', 'Điện lạnh', 'Quận 1', 2, '', array['Máy lạnh'], array['aircon'], false);
-insert into public.worker_documents (worker_id, kind, title, path) values
-  ('00000000-0000-4000-8000-00000000d0a1', 'identity', 'CCCD', '00000000-0000-4000-8000-00000000d0a1/id.jpg'),
-  ('00000000-0000-4000-8000-00000000d0b2', 'identity', 'CCCD', '00000000-0000-4000-8000-00000000d0b2/id.jpg');
 insert into public.service_requests (id, owner_id, submission_key, description, location) values
   ('11000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-00000000c0a1', '21000000-0000-4000-8000-0000000000a1', E'Máy lạnh không mát\nPhòng ngủ', 'Quận 7'),
   ('11000000-0000-4000-8000-0000000000b2', '00000000-0000-4000-8000-00000000c0b2', '21000000-0000-4000-8000-0000000000b2', 'Sửa vòi nước', 'Quận 3');
@@ -40,6 +37,15 @@ select throws_ok($$select public.invite_fixture_worker('11000000-0000-4000-8000-
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000e0a1","role":"authenticated","is_anonymous":true}', true);
 select throws_ok($$select public.issue_fixture_quote('11000000-0000-4000-8000-0000000000a1', gen_random_uuid(), 'Kiểm tra', 450000, 60)$$,
   '42501', 'operator unavailable', 'An anonymous session is never an operator');
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000d0a1","role":"authenticated"}', true);
+select is(public.set_worker_accepting(true), true, 'An explicitly eligible fixture Worker can accept test offers without uploading identity documents');
+select ok((select missing_items @> array['identity'] from public.my_worker_profile()), 'Fixture offer readiness does not remove the identity requirement for public listing');
+select is((select listed from public.my_worker_profile()), false, 'A fixture Worker without identity documents remains unlisted');
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000d0b2","role":"authenticated"}', true);
+select is(public.set_worker_accepting(true), true, 'A second eligible fixture Worker can also accept test offers without identity documents');
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000d0c3","role":"authenticated"}', true);
+select throws_ok($$select public.set_worker_accepting(true)$$, '22023', 'profile incomplete', 'Fixture eligibility does not waive missing basic profile information');
 
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000e0a1","role":"authenticated"}', true);
 select throws_ok($$select public.issue_fixture_quote('11000000-0000-4000-8000-0000000000a1', gen_random_uuid(), ' ', 450000, 60)$$,
