@@ -26,7 +26,7 @@ use crate::approval::{Resolution, failure_message, is_retryable, resolve_approva
 use crate::backend::{Backend, Lease};
 use crate::config::Config;
 use crate::context::{build_system_prompt, build_user_input};
-use crate::events::EventLog;
+use crate::events::{EventLog, event_path};
 use crate::models::{RunModels, primary_ref};
 use crate::policy::{Actor, Class, Decision, Tool, evaluate_call, harness_schema, registry, select_tools};
 use crate::request::{Action, TurnRequest, user_text_for};
@@ -355,7 +355,7 @@ impl Runtime {
         }
         if started["run_status"] == "running" {
             if started["lease_live"] == Value::Bool(true) {
-                return Admission::Reject { status: 409, code: "busy" };
+                return self.follow_owner(run_id);
             }
             let store = Store::new(self.backend.clone(), user_id, None);
             let claim = match store.durable_claim(run_id, &self.config.holder, self.config.lease_seconds) {
@@ -370,11 +370,19 @@ impl Runtime {
                         None => Admission::Reject { status: 503, code: "internal" },
                     }
                 }
-                Some("held") => Admission::Reject { status: 409, code: "busy" },
+                Some("held") => self.follow_owner(run_id),
                 _ => self.terminal_replay(started, run_id, conversation_id, &turn.request_id),
             };
         }
         self.terminal_replay(started, run_id, conversation_id, &turn.request_id)
+    }
+
+    fn follow_owner(&self, run_id: &str) -> Admission {
+        let dir = self.config.event_dir();
+        if !event_path(&dir, run_id).exists() {
+            return Admission::Reject { status: 409, code: "busy" };
+        }
+        Admission::Stream { run_id: run_id.to_owned(), log: Arc::new(EventLog::follow(&dir, run_id)), replayed: true }
     }
 
     fn terminal_replay(&self, started: &Value, run_id: &str, conversation_id: &str, request_id: &str) -> Admission {

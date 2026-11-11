@@ -1,5 +1,5 @@
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -16,6 +16,7 @@ struct State {
     lines: Vec<String>,
     closed: bool,
     file: Option<File>,
+    consumed: u64,
 }
 
 pub struct EventLog {
@@ -58,9 +59,57 @@ impl EventLog {
         Ok(Self {
             run_id: run_id.to_owned(),
             path: Some(path),
-            state: Mutex::new(State { lines, closed, file: Some(file) }),
+            state: Mutex::new(State { lines, closed, file: Some(file), consumed: complete as u64 }),
             signal: Condvar::new(),
         })
+    }
+
+    pub fn follow(dir: &Path, run_id: &str) -> Self {
+        Self {
+            run_id: run_id.to_owned(),
+            path: Some(event_path(dir, run_id)),
+            state: Mutex::new(State { lines: Vec::new(), closed: false, file: None, consumed: 0 }),
+            signal: Condvar::new(),
+        }
+    }
+
+    pub fn is_follower(&self) -> bool {
+        self.path.is_some() && lock(&self.state).file.is_none()
+    }
+
+    pub fn refresh(&self) -> io::Result<()> {
+        let Some(path) = self.path.as_deref() else { return Ok(()) };
+        let mut state = lock(&self.state);
+        if state.file.is_some() || state.closed {
+            return Ok(());
+        }
+        let mut file = match File::open(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        file.seek(SeekFrom::Start(state.consumed))?;
+        let mut fresh = Vec::new();
+        file.read_to_end(&mut fresh)?;
+        let complete = fresh.iter().rposition(|byte| *byte == b'\n').map_or(0, |index| index + 1);
+        if complete == 0 {
+            return Ok(());
+        }
+        let text = std::str::from_utf8(&fresh[..complete]).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        let mut grew = false;
+        for line in text.lines() {
+            state.lines.push(line.to_owned());
+            grew = true;
+            if serde_json::from_str::<Value>(line).is_ok_and(|value| is_terminal(&value)) {
+                state.closed = true;
+                break;
+            }
+        }
+        state.consumed += complete as u64;
+        if grew {
+            self.signal.notify_all();
+        }
+        Ok(())
     }
 
     pub fn memory(run_id: &str, lines: Vec<String>) -> Self {
@@ -71,7 +120,7 @@ impl EventLog {
         Self {
             run_id: run_id.to_owned(),
             path: None,
-            state: Mutex::new(State { lines, closed, file: None }),
+            state: Mutex::new(State { lines, closed, file: None, consumed: 0 }),
             signal: Condvar::new(),
         }
     }

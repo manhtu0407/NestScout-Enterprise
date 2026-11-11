@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use crate::approval::{failure_message, is_retryable};
-use crate::events::EventLog;
+use crate::backend::Verification;
+use crate::events::{EventLog, event_path};
 use crate::request::{MAX_BODY_CHARS, parse_turn_request};
 use crate::runner::{Admission, Runtime, read_meta};
 use crate::util::valid_uuid;
@@ -145,7 +146,11 @@ fn stream_log(
         {
             log = live;
         }
-        let (lines, closed) = log.wait_after(after, Duration::from_millis(500));
+        let follower = log.is_follower();
+        if follower {
+            log.refresh()?;
+        }
+        let (lines, closed) = log.wait_after(after, Duration::from_millis(if follower { 150 } else { 500 }));
         for line in &lines {
             let rendered = if replayed && after == 0 {
                 match serde_json::from_str::<Value>(line) {
@@ -184,7 +189,11 @@ fn handle_turn(runtime: &Arc<Runtime>, stream: &mut TcpStream, request: &Parsed)
     let Some(turn) = parse_turn_request(&raw, runtime.config.limits.max_input_chars) else {
         return failure(stream, 400, "invalid_request");
     };
-    let Some(user_id) = runtime.backend.verify_user(&token) else { return failure(stream, 401, "unauthenticated") };
+    let user_id = match runtime.backend.verify_user(&token) {
+        Verification::User(id) => id,
+        Verification::Rejected => return failure(stream, 401, "unauthenticated"),
+        Verification::Unavailable => return failure(stream, 503, "internal"),
+    };
     match runtime.admit(&token, &user_id, &turn) {
         Admission::Reject { status, code } => failure(stream, status, code),
         Admission::LegacyRun => respond_json(
@@ -193,7 +202,10 @@ fn handle_turn(runtime: &Arc<Runtime>, stream: &mut TcpStream, request: &Parsed)
             &json!({"error": {"code": "invalid_request", "message": "This request belongs to the legacy runtime.", "retryable": false}}),
             "x-kael-runtime: legacy-run\r\n",
         ),
-        Admission::Stream { run_id, log, replayed } => stream_log(stream, &log, &|| None, 0, replayed, &run_id),
+        Admission::Stream { run_id, log, replayed } => {
+            let successor = || runtime.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&run_id).map(|live| Arc::clone(&live.ctx.log));
+            stream_log(stream, &log, &successor, 0, replayed, &run_id)
+        }
     }
 }
 
@@ -203,7 +215,11 @@ fn handle_events(runtime: &Arc<Runtime>, stream: &mut TcpStream, request: &Parse
         return failure(stream, 404, "invalid_request");
     }
     let Some(token) = bearer(request) else { return failure(stream, 401, "unauthenticated") };
-    let Some(user_id) = runtime.backend.verify_user(&token) else { return failure(stream, 401, "unauthenticated") };
+    let user_id = match runtime.backend.verify_user(&token) {
+        Verification::User(id) => id,
+        Verification::Rejected => return failure(stream, 401, "unauthenticated"),
+        Verification::Unavailable => return failure(stream, 503, "internal"),
+    };
     let owner = read_meta(&runtime.config, &run_id).and_then(|meta| meta["owner_id"].as_str().map(str::to_owned));
     if owner.as_deref() != Some(user_id.as_str()) {
         return failure(stream, 404, "invalid_request");
@@ -221,10 +237,12 @@ fn handle_events(runtime: &Arc<Runtime>, stream: &mut TcpStream, request: &Parse
     }
     let log = match live {
         Some(live) => Arc::clone(&live.ctx.log),
-        None => match EventLog::open(&runtime.config.event_dir(), &run_id) {
-            Ok(log) if !log.is_empty() => Arc::new(log),
-            _ => return failure(stream, 404, "invalid_request"),
-        },
+        None => {
+            if !event_path(&runtime.config.event_dir(), &run_id).exists() {
+                return failure(stream, 404, "invalid_request");
+            }
+            Arc::new(EventLog::follow(&runtime.config.event_dir(), &run_id))
+        }
     };
     let successor = || {
         find_live().map(|live| {

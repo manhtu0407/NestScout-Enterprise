@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 use std::fs;
-use std::time::Duration;
+use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 use kael_durable::config::Config;
 use kael_durable::events::{EventLog, event_path, is_terminal, remove_event_file};
@@ -412,4 +415,155 @@ fn task_transitions_never_leave_a_terminal_state() {
     assert_eq!(check_model_transition(&json!({"status": "waiting_for_approval", "artifact": {}}), "running"), Err("not_model_settable"));
     let unobserved = json!({"status": "running", "artifact": {"effect_required": true, "effect_result": {"status": "pending"}}});
     assert_eq!(check_model_transition(&unobserved, "completed"), Err("effect_not_observed"));
+}
+
+struct Daemon {
+    child: Child,
+    addr: SocketAddr,
+}
+
+impl Drop for Daemon {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+fn start_daemon(label: &str) -> Daemon {
+    let addr = TcpListener::bind("127.0.0.1:0").expect("free port").local_addr().expect("free address");
+    let data = std::env::temp_dir().join(format!("kael-contract-{label}-{}", std::process::id()));
+    let child = Command::new(env!("CARGO_BIN_EXE_kael-durable"))
+        .env("SUPABASE_URL", "http://127.0.0.1:1")
+        .env("SUPABASE_ANON_KEY", "anon-key-value")
+        .env("SUPABASE_SERVICE_ROLE_KEY", "service-key-value")
+        .env("DEEPSEEK_API_KEY", "deepseek-key-value")
+        .env("KAEL_DURABLE_DATA_DIR", &data)
+        .env("KAEL_DURABLE_ALLOW_TEMP", "1")
+        .env("KAEL_DURABLE_BIND", addr.to_string())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn kael-durable");
+    let daemon = Daemon { child, addr };
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(20) {
+        if exchange(addr, get_health("").as_bytes()).starts_with("HTTP/1.1 200") {
+            return daemon;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    panic!("kael-durable did not become healthy");
+}
+
+fn get_health(extra_headers: &str) -> String {
+    format!("GET /health HTTP/1.1\r\nhost: kael\r\nconnection: close\r\n{extra_headers}\r\n")
+}
+
+fn exchange(addr: SocketAddr, request: &[u8]) -> String {
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(2)) else { return String::new() };
+    stream.set_read_timeout(Some(Duration::from_secs(10))).expect("read timeout");
+    let _ = stream.write_all(request);
+    let mut reply = Vec::new();
+    let _ = stream.read_to_end(&mut reply);
+    String::from_utf8_lossy(&reply).into_owned()
+}
+
+#[test]
+fn request_headers_are_capped_at_32_kib_and_the_connection_is_dropped_without_a_reply() {
+    let daemon = start_daemon("headers");
+
+    let within = format!("x-fill: {}\r\n", "a".repeat(30 * 1024));
+    assert!(exchange(daemon.addr, get_health(&within).as_bytes()).starts_with("HTTP/1.1 200"), "a header block under the cap is served");
+
+    let one_long_line = format!("x-fill: {}\r\n", "a".repeat(33 * 1024));
+    assert_eq!(exchange(daemon.addr, get_health(&one_long_line).as_bytes()), "", "a single header line over the cap gets no reply");
+
+    let many_short_lines: String = (0..800).map(|index| format!("x-pad-{index}: {}\r\n", "b".repeat(50))).collect();
+    assert!(many_short_lines.len() > 32 * 1024);
+    assert_eq!(exchange(daemon.addr, get_health(&many_short_lines).as_bytes()), "", "many short lines adding up past the cap get no reply");
+
+    let unterminated = format!("GET /health HTTP/1.1\r\nx-fill: {}", "c".repeat(64 * 1024));
+    assert_eq!(exchange(daemon.addr, unterminated.as_bytes()), "", "an endless header line gets no reply");
+
+    assert!(exchange(daemon.addr, get_health("").as_bytes()).starts_with("HTTP/1.1 200"), "the service stays healthy after refusing oversized headers");
+}
+
+#[test]
+fn a_follower_reads_complete_lines_written_by_another_log_and_never_truncates_them() {
+    let dir = std::env::temp_dir().join(format!("kael-follow-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("dir");
+    let run = "40000000-0000-4000-8000-000000000001";
+    let follower = EventLog::follow(&dir, run);
+    assert!(follower.is_follower());
+    follower.refresh().expect("a missing file is not an error");
+    assert!(follower.is_empty());
+
+    let writer = EventLog::open(&dir, run).expect("writer");
+    assert!(!writer.is_follower());
+    writer.append(json!({"type": "run_started"})).expect("append");
+    writer.append(json!({"type": "message_delta", "text": "một"})).expect("append");
+    follower.refresh().expect("refresh");
+    assert_eq!(follower.len(), 2);
+
+    let path = event_path(&dir, run);
+    let mut tail = fs::OpenOptions::new().append(true).open(&path).expect("open");
+    tail.write_all(b"{\"v\":1,\"seq\":3,\"type\":\"message_de").expect("partial write");
+    follower.refresh().expect("refresh over a partial line");
+    assert_eq!(follower.len(), 2, "an incomplete line is not delivered");
+    assert!(fs::read(&path).expect("read").ends_with(b"message_de"), "the follower never truncates the owner's file");
+
+    tail.write_all(b"lta\",\"text\":\"hai\"}\n").expect("finish the line");
+    follower.refresh().expect("refresh");
+    assert_eq!(follower.len(), 3);
+    assert!(!follower.closed());
+
+    tail.write_all(b"{\"v\":1,\"seq\":4,\"type\":\"run_completed\",\"text\":\"xong\"}\n").expect("terminal");
+    follower.refresh().expect("refresh");
+    assert_eq!(follower.len(), 4);
+    assert!(follower.closed());
+    let (lines, closed) = follower.after(2);
+    assert!(closed);
+    assert_eq!(lines.len(), 2);
+    fs::remove_dir_all(&dir).expect("cleanup");
+}
+
+fn auth_stub() -> SocketAddr {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind auth stub");
+    let addr = listener.local_addr().expect("stub address");
+    std::thread::spawn(move || {
+        for incoming in listener.incoming().flatten() {
+            let mut stream = incoming;
+            let mut buffer = [0u8; 4096];
+            let read = stream.read(&mut buffer).unwrap_or(0);
+            let request = String::from_utf8_lossy(&buffer[..read]).into_owned();
+            let (status, body) = if request.contains("Bearer good-token") {
+                ("200 OK", format!("{{\"id\":\"{OWNER}\"}}"))
+            } else if request.contains("Bearer anonymous-token") {
+                ("200 OK", format!("{{\"id\":\"{OWNER}\",\"is_anonymous\":true}}"))
+            } else if request.contains("Bearer expired-token") {
+                ("401 Unauthorized", "{}".to_owned())
+            } else {
+                ("503 Service Unavailable", "{}".to_owned())
+            };
+            let _ = write!(stream, "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+        }
+    });
+    addr
+}
+
+#[test]
+fn a_rejected_token_is_unauthenticated_but_an_unreachable_auth_service_is_not() {
+    use kael_durable::backend::{Backend, Verification};
+    let stub = auth_stub();
+    let url = format!("http://{stub}");
+    let settings = config(&[("SUPABASE_URL", url.as_str())]);
+    let backend = Backend::new(&settings);
+    assert!(matches!(backend.verify_user("good-token"), Verification::User(id) if id == OWNER));
+    assert!(matches!(backend.verify_user("expired-token"), Verification::Rejected));
+    assert!(matches!(backend.verify_user("anonymous-token"), Verification::Rejected));
+    assert!(matches!(backend.verify_user("flaky-token"), Verification::Unavailable));
+
+    let closed = TcpListener::bind("127.0.0.1:0").expect("bind").local_addr().expect("address");
+    let unreachable = Backend::new(&config(&[("SUPABASE_URL", format!("http://{closed}").as_str())]));
+    assert!(matches!(unreachable.verify_user("good-token"), Verification::Unavailable));
 }

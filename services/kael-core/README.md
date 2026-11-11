@@ -166,7 +166,8 @@ with the conversation id, which `reconcile` may leave null to check from a new
 conversation; `reconcile` only checks an approval that was already consumed and
 whose outcome is uncertain. Refusals before a run starts return JSON
 `{ "error": { "code", "message", "retryable" } }` with HTTP 400, 401, 409, 413, 429
-or 503. A started run returns `application/x-ndjson`, one event per line, each with
+or 503. A 401 means the auth service rejected the token; when it cannot be reached the
+answer is the retryable 503 `internal`. A started run returns `application/x-ndjson`, one event per line, each with
 `v: 1`, `run_id` and a gap-free `seq`:
 
 | Event | Meaning |
@@ -304,8 +305,9 @@ Supabase stack (GoTrue, PostgREST, Postgres with the repository migrations) and 
 local OpenAI-compatible model server. It signs up real users, kills the process with
 SIGKILL mid-stream, restarts it, and checks resume without a repeated effect,
 account isolation, approval application across a restart, a typed provider failure
-a tool call that was in flight at the crash, DeepSeek thinking mode and journal purge
-after account erasure. The tests are `#[ignore]`d until
+a tool call that was in flight at the crash, DeepSeek thinking mode, journal purge
+after account erasure or session deletion, and a second instance streaming a run another
+instance owns. The tests are `#[ignore]`d until
 `KAEL_TEST_GATEWAY`, `KAEL_TEST_ANON` and `KAEL_TEST_SERVICE` point at such a stack,
 then run with `cargo test --locked --test process_recovery -- --ignored --test-threads=1`.
 They must run one at a time: every started service runs the reconciler, which adopts
@@ -314,6 +316,22 @@ purge another test's runs, whose files live in a different data directory. The s
 holds in production: instances that share a database must share the data volume, or
 a run's journal is not found by the instance that claims it and the run is closed as
 interrupted.
+
+The hosted `Supabase local verification` job runs these tests against the repository's
+own isolated local stack (`KAEL_TEST_*` are exported from the verified stack's
+status, with the keys masked), so they need no separate fixture. The test client retries
+a turn or event request up to three times on `503`, the documented retryable answer when
+the auth service or database is briefly unreachable; any other status fails the test.
+
+A reconnecting client can reach any instance. The instance that holds a run's lease
+streams it from memory. An instance that does not hold the lease, but sees the run's
+event file on the shared volume, answers a same-`request_id` reconnect and
+`GET /v1/runs/{id}/events` by following that file read-only (`EventLog::follow`): it
+delivers only complete lines, never truncates or writes the owner's file, and swaps to
+the live log if its own reconciler adopts the run after the lease expires. If the event
+file is not visible (a volume that is not shared) it answers `409 busy` as before, so
+the client keeps retrying the same `request_id`. The TestFlight pilot should still run
+one instance; this behavior makes a second instance safe, not necessary.
 
 | Setting | Effect |
 | --- | --- |

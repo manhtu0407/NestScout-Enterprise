@@ -426,7 +426,113 @@ fn account_erasure_purges_the_runtime_journals() {
         assert!(started.elapsed() < Duration::from_secs(60), "journals were not purged: {:?}", files_for(&data, &run_id));
         thread::sleep(Duration::from_secs(2));
     }
-    let queue = backend.service_rpc("kael_durable_purge_queue", &json!({"p_limit": 100}), None).expect("transport");
-    let pending: Vec<&Value> = queue.body.as_array().into_iter().flatten().filter(|row| row["run_id"] == json!(run_id)).collect();
-    assert!(pending.is_empty(), "the run left the purge queue once its files were removed");
+    let queued = Instant::now();
+    loop {
+        let queue = backend.service_rpc("kael_durable_purge_queue", &json!({"p_limit": 100}), None).expect("transport");
+        let pending = queue.body.as_array().into_iter().flatten().filter(|row| row["run_id"] == json!(run_id)).count();
+        if pending == 0 {
+            break;
+        }
+        assert!(queued.elapsed() < Duration::from_secs(30), "the run stayed in the purge queue after its files were removed");
+        thread::sleep(Duration::from_secs(1));
+    }
+}
+
+#[test]
+#[ignore = "needs the live Supabase fixture stack (KAEL_TEST_GATEWAY, KAEL_TEST_ANON, KAEL_TEST_SERVICE)"]
+fn a_second_instance_streams_a_run_owned_by_another_instance_on_the_shared_volume() {
+    let stack = Stack::from_env();
+    let model = MockModel::start(vec![Step::Paced("một hai ba bốn năm sáu bảy tám chín mười mười-một mười-hai")]);
+    let data = scratch("cross-instance");
+    let owner = Service::spawn(&stack, &data, "holder-owner", model.port, 120);
+    let follower = Service::spawn(&stack, &data, "holder-follower", model.port, 120);
+    let user = stack.signup();
+    let other = stack.signup();
+    let request_id = kael_durable::util::random_uuid();
+    let mut original = owner.turn(&user, &turn_body(&request_id, "Xin chào"));
+    let run_id = run_id_of(&original);
+    original.until(Duration::from_secs(60), |event| event["type"] == "message_delta");
+
+    let mut reattached = follower.turn(&user, &turn_body(&request_id, "Xin chào"));
+    assert_eq!(reattached.status, 200, "the other instance must stream the run, not refuse it");
+    assert_eq!(run_id_of(&reattached), run_id);
+    let replayed = reattached.drain(Duration::from_secs(60));
+    assert_contiguous(&replayed);
+    assert_eq!(replayed[0]["type"], json!("run_started"));
+    assert_eq!(replayed[0]["replayed"], json!(true));
+    assert_eq!(replayed.last().expect("terminal")["type"], json!("run_completed"), "events: {replayed:?}");
+
+    let mut tail = follower.events(&user, &run_id, 0);
+    assert_eq!(tail.status, 200);
+    let again = tail.drain(Duration::from_secs(30));
+    assert_eq!(types(&again), types(&replayed));
+    assert_eq!(follower.events(&other, &run_id, 0).status, 404, "another account cannot read the run through any instance");
+
+    let finished = original.drain(Duration::from_secs(60));
+    assert_eq!(finished.last().expect("terminal")["type"], json!("run_completed"));
+    assert_eq!(model.call_count(), 1, "the follower never started a second model call");
+    let conversation_id = replayed[0]["conversation_id"].as_str().expect("conversation").to_owned();
+    let messages = stack.rows(&user, &format!("kael_messages?select=role&conversation_id=eq.{conversation_id}"));
+    assert_eq!(messages.iter().filter(|row| row["role"] == "assistant").count(), 1);
+}
+
+#[test]
+#[ignore = "needs the live Supabase fixture stack (KAEL_TEST_GATEWAY, KAEL_TEST_ANON, KAEL_TEST_SERVICE)"]
+fn an_events_reader_on_another_instance_keeps_following_the_live_log() {
+    let stack = Stack::from_env();
+    let model = MockModel::start(vec![Step::Paced("một hai ba bốn năm sáu bảy tám chín mười mười-một mười-hai")]);
+    let data = scratch("cross-events");
+    let owner = Service::spawn(&stack, &data, "holder-owner", model.port, 120);
+    let follower = Service::spawn(&stack, &data, "holder-follower", model.port, 120);
+    let user = stack.signup();
+    let request_id = kael_durable::util::random_uuid();
+    let mut original = owner.turn(&user, &turn_body(&request_id, "Xin chào"));
+    let run_id = run_id_of(&original);
+    original.until(Duration::from_secs(60), |event| event["type"] == "message_delta");
+
+    let mut tail = follower.events(&user, &run_id, 0);
+    assert_eq!(tail.status, 200);
+    let seen = tail.drain(Duration::from_secs(60));
+    assert_contiguous(&seen);
+    assert_eq!(seen.last().expect("terminal")["type"], json!("run_completed"), "events: {seen:?}");
+    let finished = original.drain(Duration::from_secs(60));
+    assert_eq!(finished.last().expect("terminal")["seq"], seen.last().expect("terminal")["seq"], "both instances saw the same final sequence");
+}
+
+#[test]
+#[ignore = "needs the live Supabase fixture stack (KAEL_TEST_GATEWAY, KAEL_TEST_ANON, KAEL_TEST_SERVICE)"]
+fn deleting_a_session_waits_for_the_run_then_purges_its_files_and_refuses_new_turns() {
+    let stack = Stack::from_env();
+    let model = MockModel::start(vec![Step::Paced("một hai ba bốn năm sáu bảy tám chín mười")]);
+    let data = scratch("session-delete");
+    let service = Service::spawn(&stack, &data, "holder-delete", model.port, 1);
+    let user = stack.signup();
+    let other = stack.signup();
+    let backend = stack.backend();
+    let delete = |account: &support::User, conversation_id: &str| {
+        backend.user(&account.token, "POST", "rpc/kael_delete_conversation", Some(&json!({"p_conversation_id": conversation_id})), Duration::from_secs(10), None).expect("transport")
+    };
+
+    let mut reply = service.turn(&user, &turn_body(&kael_durable::util::random_uuid(), "Xin chào"));
+    let run_id = run_id_of(&reply);
+    let started = reply.until(Duration::from_secs(60), |event| event["type"] == "message_delta");
+    let conversation_id = started[0]["conversation_id"].as_str().expect("conversation").to_owned();
+    assert!(!delete(&user, &conversation_id).ok(), "a conversation with a live run cannot be deleted");
+    assert!(!delete(&other, &conversation_id).ok(), "another account cannot delete the conversation");
+
+    let events = reply.drain(Duration::from_secs(60));
+    assert_eq!(events.last().expect("terminal")["type"], json!("run_completed"));
+    assert_eq!(files_for(&data, &run_id).len(), 3);
+    let deleted = delete(&user, &conversation_id);
+    assert!(deleted.ok(), "deleting a finished conversation failed with HTTP {}", deleted.status);
+
+    let waited = Instant::now();
+    while !files_for(&data, &run_id).is_empty() {
+        assert!(waited.elapsed() < Duration::from_secs(60), "journals were not purged: {:?}", files_for(&data, &run_id));
+        thread::sleep(Duration::from_secs(2));
+    }
+    assert_eq!(service.events(&user, &run_id, 0).status, 404, "the purged run has no event stream");
+    let resumed = service.turn(&user, &json!({"request_id": kael_durable::util::random_uuid(), "conversation_id": conversation_id, "mode": "client", "action": {"type": "message", "text": "Tiếp tục"}}));
+    assert_ne!(resumed.status, 200, "a deleted conversation accepts no new turn");
+    assert_eq!(model.call_count(), 1);
 }

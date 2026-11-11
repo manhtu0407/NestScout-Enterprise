@@ -55,15 +55,29 @@ impl Stack {
 
     pub fn signup(&self) -> User {
         let email = format!("kael-{}@example.test", random_uuid());
-        let request = Request::new("POST", format!("{}/auth/v1/signup", self.gateway))
-            .header("apikey", self.anon.clone())
-            .timeout(Some(Duration::from_secs(10)))
-            .json(&json!({"email": email, "password": format!("Kael-{}-Aa1", random_uuid())}));
-        let response = send(&request, None).expect("signup transport");
-        assert!(response.ok(), "signup failed with HTTP {}", response.status);
-        let body: Value = serde_json::from_str(&response.text().expect("signup body")).expect("signup json");
-        let token = body["access_token"].as_str().expect("signup returns a session").to_owned();
-        let id = body["user"]["id"].as_str().expect("signup returns a user").to_owned();
+        let password = format!("Kael-{}-Aa1", random_uuid());
+        let created = send(
+            &Request::new("POST", format!("{}/auth/v1/admin/users", self.gateway))
+                .header("apikey", self.service.clone())
+                .header("authorization", format!("Bearer {}", self.service))
+                .timeout(Some(Duration::from_secs(10)))
+                .json(&json!({"email": email, "password": password, "email_confirm": true})),
+            None,
+        )
+        .expect("user creation transport");
+        assert!(created.ok(), "user creation failed with HTTP {}", created.status);
+        let granted = send(
+            &Request::new("POST", format!("{}/auth/v1/token?grant_type=password", self.gateway))
+                .header("apikey", self.anon.clone())
+                .timeout(Some(Duration::from_secs(10)))
+                .json(&json!({"email": email, "password": password})),
+            None,
+        )
+        .expect("sign-in transport");
+        assert!(granted.ok(), "sign-in failed with HTTP {}", granted.status);
+        let body: Value = serde_json::from_str(&granted.text().expect("sign-in body")).expect("sign-in json");
+        let token = body["access_token"].as_str().expect("sign-in returns a session").to_owned();
+        let id = body["user"]["id"].as_str().expect("sign-in returns a user").to_owned();
         let user = User { id, token };
         let consent = self
             .backend()
@@ -91,6 +105,7 @@ pub enum Step {
     Text(&'static str),
     Tool { name: &'static str, arguments: Value },
     TextThenHang(&'static str),
+    Paced(&'static str),
     Fail(u16),
     Compute(fn(&Value) -> Step),
 }
@@ -165,6 +180,22 @@ fn serve_model(mut stream: TcpStream, step: Option<&Step>) {
                 if stream.write_all(b": keep\n\n").is_err() {
                     return;
                 }
+            }
+            return;
+        }
+        Some(Step::Paced(text)) => {
+            for part in text.split_inclusive(' ') {
+                frames.push(chunk(json!({"content": part}), Value::Null, None));
+            }
+            frames.push(chunk(json!({}), json!("stop"), Some(usage)));
+            frames.push("data: [DONE]
+
+".to_owned());
+            for frame in frames {
+                if stream.write_all(frame.as_bytes()).is_err() || stream.flush().is_err() {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(400));
             }
             return;
         }
@@ -279,12 +310,24 @@ impl Service {
     }
 
     pub fn turn(&self, user: &User, body: &Value) -> Reply {
-        raw(self.addr, "POST", "/v1/turn", Some(&user.token), Some(&body.to_string())).expect("turn transport")
+        retrying_unavailable(|| raw(self.addr, "POST", "/v1/turn", Some(&user.token), Some(&body.to_string())).expect("turn transport"))
     }
 
     pub fn events(&self, user: &User, run_id: &str, after: u64) -> Reply {
-        raw(self.addr, "GET", &format!("/v1/runs/{run_id}/events?after={after}"), Some(&user.token), None).expect("events transport")
+        retrying_unavailable(|| raw(self.addr, "GET", &format!("/v1/runs/{run_id}/events?after={after}"), Some(&user.token), None).expect("events transport"))
     }
+}
+
+fn retrying_unavailable(mut attempt: impl FnMut() -> Reply) -> Reply {
+    let mut reply = attempt();
+    for _ in 0..3 {
+        if reply.status != 503 {
+            break;
+        }
+        thread::sleep(Duration::from_secs(2));
+        reply = attempt();
+    }
+    reply
 }
 
 impl Drop for Service {

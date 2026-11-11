@@ -7,6 +7,12 @@ use serde_json::Value;
 use crate::config::Config;
 use crate::util::valid_uuid;
 
+pub enum Verification {
+    User(String),
+    Rejected,
+    Unavailable,
+}
+
 #[derive(Clone)]
 pub struct Backend {
     url: String,
@@ -59,17 +65,19 @@ impl Backend {
         Ok(Reply { status, body })
     }
 
-    pub fn verify_user(&self, token: &str) -> Option<String> {
+    pub fn verify_user(&self, token: &str) -> Verification {
         let request = Request::new("GET", format!("{}/auth/v1/user", self.url))
             .header("apikey", self.anon_key.clone())
             .header("authorization", format!("Bearer {token}"))
             .timeout(Some(Duration::from_secs(5)));
-        let reply = Self::execute(request, None).ok()?;
+        let Ok(reply) = Self::execute(request, None) else { return Verification::Unavailable };
         if !reply.ok() {
-            return None;
+            return if (400..500).contains(&reply.status) && reply.status != 429 { Verification::Rejected } else { Verification::Unavailable };
         }
-        let id = reply.body["id"].as_str()?;
-        (valid_uuid(id) && reply.body["is_anonymous"] != Value::Bool(true)).then(|| id.to_ascii_lowercase())
+        match reply.body["id"].as_str() {
+            Some(id) if valid_uuid(id) && reply.body["is_anonymous"] != Value::Bool(true) => Verification::User(id.to_ascii_lowercase()),
+            _ => Verification::Rejected,
+        }
     }
 
     pub fn user(
