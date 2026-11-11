@@ -41,9 +41,9 @@ Do not change account-wide budgets or payment methods as part of repo maintenanc
 ## Version and release procedure
 
 No iOS store release is evidenced. The mobile app now contains Customer/Worker,
-service-intake and Kael session flows. `apps/mobile/eas.json` configures a TestFlight
-build and submit profile, but no build, upload or device run is evidenced here. Use
-semantic versioning once an application is released:
+service-intake and Kael session flows. `apps/mobile/eas.json` configures TestFlight
+and App Store build/submit profiles, but no build, upload or device run is evidenced
+here. Use semantic versioning once an application is released:
 MAJOR for incompatible public changes, MINOR for compatible capability, PATCH for fixes.
 Do not create tags or releases to imply an application is ready today.
 
@@ -58,7 +58,8 @@ For a real release:
 
 Packages, containers, SBOMs, artifact signing, and deploy workflows wait for an actual
 artifact/hosting choice. Native private attestations and protected deployment approvals
-are not assumed available on Free. No production credentials are configured.
+are not assumed available on Free. No server credentials are stored in this repository;
+provider credentials belong only in Supabase Edge Function secrets.
 
 ## Rollback and hotfix
 
@@ -84,6 +85,12 @@ Preview, TestFlight and the App Store. Clients differ only in build target
 credential. DeepSeek and Anthropic credentials live only as Supabase Edge
 Function secrets.
 
+A read-only observation on 2026-11-11 found the project `ACTIVE_HEALTHY`, the
+`add_kael_provider_probe_window` migration applied at hosted version
+`20261111074958`, and the `kael` Edge Function `ACTIVE` at version 20 with JWT
+verification enabled. This records deployed state; it does not establish a hosted
+tester session, a native build or a TestFlight/App Store release.
+
 Release order, each step authorized by the owner:
 
 1. Merge to `main` after hosted CI passes.
@@ -92,11 +99,12 @@ Release order, each step authorized by the owner:
    compare names, not version numbers. The three pilot migrations
    (`kael_developer_pilot_budget`, `kael_pilot_reauthorization`,
    `configure_kael_pilot_request_limit`) are local-pilot scoped; do not apply
-   them to production without a separate decision. This release adds
-   `add_kael_provider_probe_window` (additive: one private table and
-   `kael_claim_provider_probe`); apply it before deploying the function. The
-   previous function ignores it, and a function deployed first reports
-   `claim_unavailable` rather than probing.
+   them to production without a separate decision. The current hosted history
+   includes `add_kael_provider_probe_window` (additive: one private table and
+   `kael_claim_provider_probe`). Check by migration name before applying it to any
+   other environment; apply the migration before deploying a function version that
+   requires it. A function deployed first reports `claim_unavailable` rather than
+   probing.
 3. Deploy the `kael` function from the merged commit. The deployed version is
    reported as `deployment` in readiness and in every `kael_run` log line.
 4. Verify with a real account: `GET /functions/v1/kael` with header
@@ -180,7 +188,7 @@ decisions and access; designate a second custodian before relying on team recove
 The selected stack and current application are recorded in the
 [architecture decisions](architecture.md) and [mobile guide](mobile-application.md):
 Expo/React Native, TypeScript, a Node 24/npm workspace, Supabase Auth/Postgres/RLS/
-Storage/RPC/Edge Functions, and an iOS-first TestFlight target. The first customer
+Storage/RPC/Edge Functions, and iOS-first TestFlight/App Store targets. The first customer
 slice includes service-request intake across the catalog; it does not claim a
 confirmed worker, price, schedule or payment.
 
@@ -191,14 +199,14 @@ repository checks and isolated Supabase local verification for PR/main events. I
 does not run an iOS build or verify a live Auth user.
 
 The connected Supabase project has applied migrations and a deployed Kael Edge
-Function, but there is no Staging Project. The EAS TestFlight profile targets the
-hosted project and has not been built or uploaded. Keep local validation on the
+Function, but there is no Staging Project. The EAS TestFlight and App Store profiles
+target the hosted project and have not been built or uploaded. Keep local validation on the
 isolated stack; never treat hosted state or a profile as a preview test or release.
 
 Keep credentials in approved secret stores. The project still needs owner decisions
-for preview/release promotion, database and Storage backup retention and restore
-objectives, health/error/cost alerts, and an app/database rollback procedure. No new
-provider, environment, deployment automation or architecture is selected here.
+for database and Storage backup retention and restore objectives, health/error/cost
+alert ownership and thresholds, and a native release/rollback drill. No new provider,
+environment, deployment automation or architecture is selected here.
 
 ## Supabase Pro readiness
 

@@ -4,8 +4,8 @@ Public NestScout repository; the Delivery Project remains private. This reposito
 contains engineering tooling and the current Expo SDK 58/React Native/TypeScript
 application. Customer service-request intake, Worker workflows, Supabase Auth and
 Kael sessions/runtime have been added since the initial Foundation V2 entry slice.
-The iOS EAS/TestFlight profile is configured, but no native build or upload is
-verified. See the [mobile application guide](mobile-application.md).
+The iOS EAS TestFlight and App Store profiles are configured, but no native build
+or upload is verified. See the [mobile application guide](mobile-application.md).
 
 ## Repository identity
 

@@ -12,9 +12,10 @@ The connected hosted Supabase project is the app backend, while the project-scop
 read-only MCP connection below is diagnostic access only. Hosted state is never a
 local-test fallback. A read-only observation on 2026-11-11 found project
 `axpdymbusiwxfzurfclg` `ACTIVE_HEALTHY`, migration history through
-`20261110224223` (`add_kael_session_management`), and `kael` Edge Function v19
-`ACTIVE` with JWT verification enabled. This audit made no hosted changes and did
-not verify a tester Auth session, real SMS, or a complete live app flow. See the
+`add_kael_provider_probe_window` (hosted version `20261111074958`), and `kael` Edge
+Function v20 `ACTIVE` with JWT verification enabled. This audit made no hosted
+changes and did not verify a tester Auth session, real SMS, or a complete live app
+flow. See the
 [environment and security contracts](foundation-contracts.md).
 
 The local `[auth]` service retains `enable_signup = false`,
@@ -67,8 +68,8 @@ read its own table; at most six of them can be attached. The app names each phot
 pending list on the device, and retries an interrupted upload under the same name, so a retry never
 creates an orphan object. Owner-authorized hosted migration application began on
 2026-11-02. A read-only history check on 2026-11-11 reached
-`20261110224223` (`add_kael_session_management`) and matched repository migration
-names and versions through that head. Hosted PostgreSQL was observed at 17.11.0.003
+`add_kael_provider_probe_window` at hosted version `20261111074958` and matched
+repository migration names through that head. Hosted PostgreSQL was observed at 17.11.0.003
 and the pinned local image at 17.11.0.006; version differences remain separate from
 migration-history parity.
 Enabled HTTP services wake on demand.

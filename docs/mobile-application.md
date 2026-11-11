@@ -9,7 +9,7 @@ Kael Edge Function boundary.
 
 These are implemented application paths with local and contract coverage, not proof
 of complete commercial dispatch, payment settlement, live SMS delivery or production
-readiness. A native iOS build, TestFlight upload and device behavior remain
+readiness. A native iOS build, TestFlight/App Store upload and device behavior remain
 unverified. See [architecture decisions](architecture.md),
 [service workflow contracts](service-workflow.md), and
 [Supabase development](supabase-development.md) for their separate boundaries.
@@ -344,8 +344,8 @@ device, and real SMS delivery. Metro serving the bundle proves bundling only.
 
 ## Known dependency advisories
 
-The Expo/Zod finding tracked by Issue #42 is resolved in the lockfile based on
-`main` `ec29ebb`: Expo remains `58.0.23`, `@expo/cli` is `58.1.19`, and the
+The Expo/Zod finding tracked by Issue #42 is resolved in the lockfile on
+`main` `9b4cc9b`: Expo remains `58.0.23`, `@expo/cli` is `58.1.19`, and the
 resolved Zod is `4.6.7`. The current `npm audit` does not report
 GHSA-mrhx-c7xc-m3w5. The previously recorded `node-forge` update remains in the
 same lockfile.
@@ -373,8 +373,8 @@ npm run verify:mobile-sdk   # expo install --check (needs the Expo API)
 npm --workspace apps/mobile run start
 ```
 
-`npm run check` includes `check:mobile`. `apps/mobile/eas.json` has a TestFlight
-store-build and submit profile, but no EAS build or upload is evidenced here.
+`npm run check` includes `check:mobile`. `apps/mobile/eas.json` has TestFlight and
+App Store build/submit profiles, but no EAS build or upload is evidenced here.
 Native device behavior, live Auth/OTP and real SMS delivery are separate checks.
 
 ## Horizon development preview

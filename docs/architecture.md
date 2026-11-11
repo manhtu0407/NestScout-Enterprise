@@ -1,6 +1,6 @@
 # Application direction and architecture decisions
 
-Status: **Architecture snapshot checked against `main` at `ec29ebb` on
+Status: **Architecture snapshot checked against `main` at `9b4cc9b` on
 2026-11-11.** The owner confirmed the product direction on 2026-10-25 and refined
 the stack decisions below on 2026-10-27. The V1/V2 descriptions below preserve
 their original decision history; they do not describe the full current application.
@@ -27,7 +27,7 @@ configuration, credentials and data are not inherited by this repository.
 | Authentication | Phone and email client flows with Supabase Auth | Live tester verification, real SMS and native Keychain behavior are not evidenced here |
 | Development/testing | Isolated Supabase Local; one connected hosted project has deployed schema and Kael components; no staging project | Hosted state is not a substitute for local tests or real-user acceptance |
 | Kael | Mobile chat, server-backed sessions and existing Supabase Edge runtime | Provider quality, complete hosted user flow and commercial side effects remain limited or unverified |
-| Platform and testing | iOS first; `apps/mobile/eas.json` has a TestFlight build/submit profile | No EAS build, upload or device verification is evidenced; Android is not configured |
+| Platform and testing | iOS first; `apps/mobile/eas.json` has TestFlight and App Store build/submit profiles | No native build, upload or device verification is evidenced; Android is not configured |
 | Visibility | Keep this repository public until the Deploy phase; the owner decides any change | Licensing; Deploy-phase visibility decision |
 
 The current mobile UI includes Horizon screens, customer service intake and Kael
@@ -48,16 +48,20 @@ of a commercial end-to-end service.
 
 The confirmed user groups, Expo/React Native and TypeScript stack, Node/npm workspace,
 Supabase boundaries, local setup, environment example, aggregate checks, CI and
-TestFlight profile are recorded in this document and the linked technical guides.
-The connected Supabase project was observed `ACTIVE_HEALTHY` on 2026-11-11; its
-migration history reached `20261110224223` (`add_kael_session_management`) and its
-`kael` Edge Function was `ACTIVE`, version 19, with JWT verification enabled. These
-are independent hosted observations, not live Auth, native-device or full-flow proof.
+TestFlight and App Store profiles are recorded in this document and the linked
+technical guides. The connected Supabase project was observed `ACTIVE_HEALTHY` on
+2026-11-11; its migration history includes `add_kael_provider_probe_window` at hosted
+version `20261111074958`, and its `kael` Edge Function was `ACTIVE`, version 20, with
+JWT verification enabled. These read-only hosted observations are not live tester
+Auth, native-device or full-flow proof.
 
 Issue #2 still needs owner decisions for database and Storage backup retention and
-restore objectives, operational health/error/cost alerts, and a concrete hosted
-release and rollback procedure. The existing guides describe the current controls
-and gaps; this audit does not choose a new environment or deployment architecture.
+restore objectives, and operational health/error/cost alert ownership and thresholds.
+The [operations guide](operations.md) now records preview/release steps, migration
+sequencing and Kael function rollback; no native build, store release or rollback
+drill is evidenced. The original README remains outdated because the repository
+guard reserves it for separate owner authorization. This audit does not choose a new
+environment or deployment architecture.
 
 ## Historical implementation baseline
 
@@ -180,7 +184,7 @@ service workflow contract and Kael guide describe the implemented boundary and g
 ## ADR 003 — Native release and recovery
 
 **Context:** CI verifies repository tooling and the isolated local database. EAS
-configuration targets TestFlight, but no native build/upload evidence exists. A
+has TestFlight and App Store profiles, but no native build/upload evidence exists. A
 passing check grants no deployment authority.
 
 **Alternatives:** Manual local signed builds; managed native builds such as EAS;
@@ -191,9 +195,9 @@ promotion can be manual or separately approved CD.
 Managed builds simplify credentials/build images with provider costs and access
 considerations. Dedicated macOS infrastructure adds maintenance and signing exposure.
 
-**Confirmed:** Prioritize iOS and use the configured EAS TestFlight profile for
-store distribution. Android is not configured. The current profile has not been
-built, uploaded or verified on a device.
+**Confirmed:** Prioritize iOS and use the configured EAS TestFlight and App Store
+profiles for store distribution. Android is not configured. Neither profile has
+been built, uploaded or verified on a device.
 
 **Recommendation:** Keep CI and CD separate: PR checks first, owner review/merge, then an explicitly
 approved release from the exact merged SHA. Store signing assets with a designated
@@ -213,7 +217,7 @@ workflow or paid runner is added before there is a reviewed artifact to deliver.
 **Reversibility:** Build providers are replaceable; signing/account custody and
 published app identifiers need careful continuity. Data changes may be irreversible.
 
-**Dependencies / status:** iOS priority and EAS/TestFlight configuration are
+**Dependencies / status:** iOS priority and EAS/TestFlight/App Store configuration are
 **CONFIRMED**. Native signing/build/upload, release budget, recovery objectives and
 device verification remain **NOT VERIFIED** or pending owner decision.
 
