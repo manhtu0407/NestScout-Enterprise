@@ -19,7 +19,8 @@ jest.mock('@/lib/supabase-client', () => ({ getSupabaseClient: () => ({ auth: {}
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }), useFocusEffect: jest.requireActual<typeof import('react')>('react').useEffect }));
 const mockConsent = { status: 'ready', granted: true };
 const mockSetConsent = jest.fn();
-jest.mock('./use-ai-consent', () => ({ useAiConsent: () => ({ ...mockConsent, set: mockSetConsent }) }));
+const mockMarkRequired = jest.fn();
+jest.mock('./use-ai-consent', () => ({ useAiConsent: () => ({ ...mockConsent, set: mockSetConsent, markRequired: mockMarkRequired }) }));
 jest.mock('./use-customer-data', () => ({
   useCustomerData: jest.fn(() => ({
     data: { requests: [], quotes: [], pinnedIds: new Set(), notifications: [], profile: null, avatar: null, activity: { jobs: [], submissions: [], cases: [], changes: [], reports: [], pauses: [] } },
@@ -247,4 +248,13 @@ test('while the approved submission is in flight the task row shows the activity
   await waitFor(() => expect(screen.queryByLabelText(/^Chờ bạn xác nhận\./)).toBeNull());
   await act(async () => { finish(); });
   await waitFor(() => expect(screen.queryByLabelText('Sửa vòi nước: Đang gửi yêu cầu dịch vụ')).toBeNull());
+});
+
+test('a server consent_required refusal for a client that believed consent was granted raises the consent card path', async () => {
+  mockStream.mockImplementationOnce(async () => ({ kind: 'refused', code: 'consent_required', message: 'Bạn cần đồng ý chia sẻ dữ liệu với AI trong Kael trước khi tiếp tục.', retryable: false }));
+  await renderEntry();
+  expect(mockMarkRequired).not.toHaveBeenCalled();
+  await say('Nhờ Kael giúp tôi');
+  expect(mockStream).toHaveBeenCalledTimes(1);
+  expect(mockMarkRequired).toHaveBeenCalled();
 });

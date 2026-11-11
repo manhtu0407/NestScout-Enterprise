@@ -14,10 +14,25 @@
       },
       "autoIncrement": true,
       "node": "24.19.0"
+    },
+    "app-store": {
+      "distribution": "store",
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_NESTSCOUT_TARGET": "app-store",
+        "EXPO_PUBLIC_APP_STORE_SUPABASE_URL": "https://axpdymbusiwxfzurfclg.supabase.co"
+      },
+      "autoIncrement": true,
+      "node": "24.19.0"
     }
   },
   "submit": {
     "testflight": {
+      "ios": {
+        "ascAppId": "6831422289"
+      }
+    },
+    "app-store": {
       "ios": {
         "ascAppId": "6831422289"
       }

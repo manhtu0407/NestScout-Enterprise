@@ -31,13 +31,13 @@ export const kaelServerOperations = [
   'kael_request_approval', 'kael_consume_approval', 'kael_complete_approval', 'kael_reject_approval',
 ] as const;
 
-export type KaelServerOperation = typeof kaelServerOperations[number] | 'kael_runtime_ready';
+export type KaelServerOperation = typeof kaelServerOperations[number] | 'kael_runtime_ready' | 'kael_claim_provider_probe';
 
 export type ServerRpc = (operation: KaelServerOperation, body: Record<string, unknown>, signal?: AbortSignal) => Promise<Response>;
 
 export function createServerRpc(config: KaelConfig, fetcher: Fetcher = fetch): ServerRpc {
   return (operation, body, signal) => {
-    if (operation !== 'kael_runtime_ready' && !(kaelServerOperations as readonly string[]).includes(operation)) throw new StoreError(String(operation), 403);
+    if (operation !== 'kael_runtime_ready' && operation !== 'kael_claim_provider_probe' && !(kaelServerOperations as readonly string[]).includes(operation)) throw new StoreError(String(operation), 403);
     return fetcher(`${config.supabaseUrl}/rest/v1/rpc/${operation}`, {
       method: 'POST', redirect: 'error',
       headers: {

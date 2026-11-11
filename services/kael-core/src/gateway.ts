@@ -5,6 +5,7 @@ import { createDeepSeekProvider } from './deepseek.ts';
 import { developerPilotProviders } from './developer-pilot.ts';
 import { encodeEvent, isTerminalEvent, kaelProtocolVersion } from './events.ts';
 import type { KaelEventBody, KaelFailureCode } from './events.ts';
+import { ProviderError } from './model.ts';
 import type { Fetcher, ModelProvider } from './model.ts';
 import type { Actor } from './policy.ts';
 import { failureMessage, isRetryable, resolveApproval, runAgentTurn } from './runtime.ts';
@@ -30,10 +31,15 @@ type TurnRequest = { request_id: string; conversation_id: string | null; mode: K
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const maxBodyChars = 16_384;
+const probeTtlMs = 60_000;
+const probeTimeoutMs = 8_000;
+
+type ProviderProbe = { status: string; http_status: number | null; latency_ms: number };
 const corsHeaders = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, x-client-info, x-kael-readiness',
   'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-expose-headers': 'x-kael-run-id, x-kael-deployment',
 };
 
 function json(status: number, body: unknown): Response {
@@ -105,6 +111,21 @@ function todayIn(now: Date): string {
   return new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
 }
 
+export async function probeProvider(provider: ModelProvider, signal: AbortSignal): Promise<ProviderProbe> {
+  const started = performance.now();
+  const latency = () => Math.round(performance.now() - started);
+  try {
+    await provider.complete({
+      system: 'Reply with the single word ok.', transcript: [{ role: 'user', text: 'ok' }], tools: [], maxOutputTokens: 16,
+      signal: AbortSignal.any([signal, AbortSignal.timeout(probeTimeoutMs)]),
+    }, () => {});
+    return { status: 'ok', http_status: 200, latency_ms: latency() };
+  } catch (error) {
+    if (error instanceof ProviderError) return { status: error.kind, http_status: error.httpStatus ?? null, latency_ms: latency() };
+    return { status: 'network', http_status: null, latency_ms: latency() };
+  }
+}
+
 export function createKaelHandler(dependencies: GatewayDependencies) {
   const fetcher = dependencies.fetcher ?? fetch;
   const now = dependencies.now ?? (() => new Date());
@@ -115,6 +136,8 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
     ? generation : undefined;
   const worker = dependencies.env.KAEL_PILOT_WORKER_ID;
   const pilotWorker = worker && /^[0-9a-f-]{36}$/.test(worker) ? worker : null;
+  const deployment = dependencies.env.KAEL_DEPLOYMENT?.trim() || 'unknown';
+  let probeBatch: { at: number; pending: Promise<Record<string, ProviderProbe> | 'throttled' | 'claim_unavailable'> } | null = null;
 
   return async function handle(request: Request): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
@@ -128,10 +151,11 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         model: deepseekFlashModel,
       }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
     }
-    const readiness = request.method === 'GET' && request.headers.get('x-kael-readiness') === '1';
+    const readinessMode = request.method === 'GET' ? request.headers.get('x-kael-readiness') : null;
+    const readiness = readinessMode === '1' || readinessMode === 'providers';
     if (request.method !== 'POST' && !readiness) return json(405, { error: { code: 'invalid_request', message: 'Method not allowed.' } });
     if (!config) {
-      log({ event: 'kael_misconfigured', ...configurationReport(dependencies.env) });
+      log({ event: 'kael_misconfigured', deployment, ...configurationReport(dependencies.env) });
       return failure(503, 'provider_unavailable');
     }
     const token = /^Bearer ([A-Za-z0-9._~+/=-]{20,4096})$/.exec(request.headers.get('authorization') ?? '')?.[1];
@@ -146,11 +170,37 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         else { database = probe.status === 401 || probe.status === 403 ? 'authorization_failed' : 'unavailable'; await probe.body?.cancel(); }
       } catch { database = 'unavailable'; }
       const route = config.route;
-      const ready = database === 'verified' && route.length > 0;
+      let providerProbe: Record<string, ProviderProbe> | 'not_run' | 'throttled' | 'claim_unavailable' = 'not_run';
+      if (readinessMode === 'providers' && route.length > 0) {
+        if (!probeBatch || now().getTime() - probeBatch.at > probeTtlMs) {
+          const providers = (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config);
+          const detached = AbortSignal.timeout(probeTimeoutMs);
+          const claim = createServerRpc(config, fetcher);
+          const pending = (async (): Promise<Record<string, ProviderProbe> | 'throttled' | 'claim_unavailable'> => {
+            let granted: boolean | null = null;
+            try {
+              const response = await claim('kael_claim_provider_probe', {}, AbortSignal.timeout(4000));
+              if (response.ok) granted = await response.json() === true;
+              else await response.body?.cancel();
+            } catch { granted = null; }
+            if (granted === null) return 'claim_unavailable';
+            if (!granted) return 'throttled';
+            const results = await Promise.all(providers.map(async provider => [provider.id, await probeProvider(provider, detached)] as const));
+            for (const [provider, probe] of results) {
+              log({ event: 'kael_provider_probe', deployment, provider, status: probe.status, http_status: probe.http_status, latency_ms: probe.latency_ms });
+            }
+            return Object.fromEntries(results);
+          })();
+          probeBatch = { at: now().getTime(), pending };
+        }
+        providerProbe = await probeBatch.pending;
+      }
+      const providersHealthy = typeof providerProbe === 'string' || Object.values(providerProbe).some(probe => probe.status === 'ok');
+      const ready = database === 'verified' && route.length > 0 && providersHealthy;
       return new Response(JSON.stringify({
-        ready, database, ...configurationReport(dependencies.env),
+        ready, database, deployment, ...configurationReport(dependencies.env),
         models: route.map(provider => ({ provider, model: provider === 'deepseek' ? config.deepseek?.model : config.anthropic?.model })),
-        readiness_scope: 'configuration_only', provider_probe: 'not_run',
+        readiness_scope: typeof providerProbe === 'string' ? 'configuration_only' : 'configuration_and_live_provider', provider_probe: providerProbe,
       }), { status: ready ? 200 : 503, headers: { ...corsHeaders, 'content-type': 'application/json', 'cache-control': 'no-store' } });
     }
     const raw = await request.text();
@@ -178,7 +228,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
       if (!capabilities.has('customer')) return failure(401, 'unauthenticated');
       started = await store.startRun(turn.request_id, turn.conversation_id, turn.mode, userTextFor(turn.action), setup);
     } catch (error) {
-      log({ event: 'kael_setup_failed', request_id: turn.request_id, http_status: error instanceof StoreError ? error.status : null });
+      log({ event: 'kael_setup_failed', deployment, request_id: turn.request_id, http_status: error instanceof StoreError ? error.status : null });
       return failure(503, 'internal');
     }
     if (started.status === 'rate_limited') return failure(429, 'rate_limited');
@@ -187,6 +237,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
     if (started.status !== 'started' && started.status !== 'replay') return failure(400, 'invalid_request');
     const replay = started.status === 'replay' ? started : null;
 
+    const runStartedAt = performance.now();
     const runId = started.run_id;
     const conversationId = started.conversation_id;
     const actor: Actor = { userId, capabilities, mode: turn.mode };
@@ -261,7 +312,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         }
       }
       log({
-        event: 'kael_run', run_id: runId, request_id: turn.request_id, action: turn.action.type, status, persisted: Number(persisted), provider: result.provider, model: result.model, requested_model: result.requestedModel,
+        event: 'kael_run', deployment, latency_ms: Math.round(performance.now() - runStartedAt), run_id: runId, request_id: turn.request_id, action: turn.action.type, status, persisted: Number(persisted), provider: result.provider, model: result.model, requested_model: result.requestedModel,
         steps: result.steps, input_tokens: result.inputTokens, output_tokens: result.outputTokens, error: result.error,
       });
       if (result.status === 'completed') emit({ type: 'run_completed', text: result.text });
@@ -273,7 +324,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
 
     return new Response(body, {
       status: 200,
-      headers: { ...corsHeaders, 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store', 'x-kael-run-id': runId },
+      headers: { ...corsHeaders, 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store', 'x-kael-run-id': runId, 'x-kael-deployment': deployment },
     });
   };
 }

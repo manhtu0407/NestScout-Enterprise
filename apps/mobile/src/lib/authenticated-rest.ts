@@ -33,18 +33,24 @@ export async function authenticatedRequest(userId: string, path: string, init: R
 export type FunctionFetch = (url: string, init: { method: 'POST'; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<Response>;
 
 export async function authenticatedFunctionRequest(userId: string, name: string, body: unknown, signal: AbortSignal, fetcher: FunctionFetch): Promise<Response> {
-  const { session, config } = await sessionFor(userId, signal);
-  return fetcher(`${config.supabaseUrl}/functions/v1/${name}`, {
+  const send = (accessToken: string, supabaseUrl: string, publishableKey: string) => fetcher(`${supabaseUrl}/functions/v1/${name}`, {
     method: 'POST',
     signal,
     headers: {
-      apikey: config.supabasePublishableKey,
-      Authorization: `Bearer ${session.access_token}`,
+      apikey: publishableKey,
+      Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
       Accept: 'application/x-ndjson',
     },
     body: JSON.stringify(body),
   });
+  const { session, config } = await sessionFor(userId, signal);
+  const first = await send(session.access_token, config.supabaseUrl, config.supabasePublishableKey);
+  if (first.status !== 401) return first;
+  await first.body?.cancel();
+  const { data, error } = await getSupabaseClient().auth.refreshSession();
+  if (signal.aborted || error || !data.session || data.session.user.id !== userId) throw new AuthSessionError();
+  return send(data.session.access_token, config.supabaseUrl, config.supabasePublishableKey);
 }
 
 export async function authenticatedStorageRequest(
