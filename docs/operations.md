@@ -88,7 +88,10 @@ takes over runs whose lease expired within seconds, and a client that retries it
 `request_id` reattaches. If the volume is lost, the affected runs are closed as
 `interrupted`, conversations and approvals are untouched, and the user sends the
 message again. Never run two instances against the same volume with the same
-`KAEL_DURABLE_HOLDER`.
+`KAEL_DURABLE_HOLDER`. Instances that share a database must share the volume: an
+instance with a different volume that claims an expired run finds no journal and
+closes the run as `interrupted`, and it marks another volume's purge-pending runs as
+purged without deleting their files.
 
 Hosted deployment of the service, its persistent volume and the secret are owner
 actions. No hosted rollback or recovery drill has been run; the evidence is local

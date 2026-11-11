@@ -2,6 +2,8 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::knowledge::refuse_unsupported_preview;
+
 pub const CONSEQUENTIAL_EFFECTS: [&str; 5] = [
     "service_request_submit",
     "service_quote_decision",
@@ -53,6 +55,9 @@ pub struct Config {
     pub anthropic: Option<ProviderConfig>,
     pub route: Vec<String>,
     pub perplexity_key: Option<String>,
+    pub deepseek_thinking: bool,
+    pub anthropic_fallback_models: Vec<String>,
+    pub knowledge_enabled: bool,
     pub enabled_effects: HashSet<String>,
     pub data_dir: PathBuf,
     pub bind: String,
@@ -73,6 +78,30 @@ fn local_http(url: &str) -> bool {
             let host = rest.split([':', '/']).next().unwrap_or("");
             !host.is_empty() && !host.contains('.') && host.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
         })
+}
+
+const SERVER_FALLBACK_MODELS: [&str; 4] = ["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"];
+
+fn valid_claude_id(id: &str) -> bool {
+    id.strip_prefix("claude-").is_some_and(|rest| {
+        (1..=72).contains(&rest.len()) && rest.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    })
+}
+
+fn server_fallback_models(enabled: bool, model: Option<&str>, listed: Option<&str>) -> Result<Vec<String>, String> {
+    if !enabled || !model.is_some_and(|id| SERVER_FALLBACK_MODELS.contains(&id)) {
+        return Ok(Vec::new());
+    }
+    let models: Vec<String> = listed
+        .unwrap_or_default()
+        .split(',')
+        .map(|item| item.trim().to_owned())
+        .filter(|item| !item.is_empty())
+        .collect();
+    if models.is_empty() || !models.iter().all(|id| valid_claude_id(id)) || models.len() > 4 {
+        return Err("KAEL_ANTHROPIC_SERVER_FALLBACK=enabled needs KAEL_ANTHROPIC_FALLBACK_MODELS: one to four comma-separated claude-* model ids".into());
+    }
+    Ok(models)
 }
 
 pub fn valid_holder(holder: &str) -> bool {
@@ -130,7 +159,19 @@ impl Config {
         }
         let deepseek = provider("DEEPSEEK_API_KEY", "KAEL_DEEPSEEK_MODEL", Some("deepseek-flash"))
             .map(|configured| ProviderConfig { base_url: deepseek_base, ..configured });
-        let anthropic = provider("ANTHROPIC_API_KEY", "KAEL_ANTHROPIC_MODEL", None);
+        let anthropic_base = value("KAEL_ANTHROPIC_BASE_URL").map(|raw| raw.trim_end_matches('/').to_owned());
+        if let Some(base) = &anthropic_base
+            && !(base.starts_with("https://") || local_http(base))
+        {
+            return Err("KAEL_ANTHROPIC_BASE_URL must be https or a local development host".into());
+        }
+        let anthropic = provider("ANTHROPIC_API_KEY", "KAEL_ANTHROPIC_MODEL", None)
+            .map(|configured| ProviderConfig { base_url: anthropic_base, ..configured });
+        let anthropic_fallback_models = server_fallback_models(
+            value("KAEL_ANTHROPIC_SERVER_FALLBACK").as_deref() == Some("enabled"),
+            anthropic.as_ref().map(|configured| configured.model.as_str()),
+            value("KAEL_ANTHROPIC_FALLBACK_MODELS").as_deref(),
+        )?;
         let requested: Vec<String> = value("KAEL_MODEL_ROUTE")
             .unwrap_or_else(|| "deepseek,anthropic".into())
             .split(',')
@@ -151,6 +192,8 @@ impl Config {
         } else {
             None
         };
+        refuse_unsupported_preview(value("KAEL_ESTIMATE_PREVIEW").as_deref())?;
+        let knowledge_enabled = value("KAEL_KNOWLEDGE").as_deref() != Some("disabled");
         let enabled_effects = value("KAEL_ENABLED_EFFECTS")
             .unwrap_or_default()
             .split(',')
@@ -165,6 +208,9 @@ impl Config {
             anthropic,
             route,
             perplexity_key,
+            deepseek_thinking: value("KAEL_DEEPSEEK_THINKING").as_deref() == Some("enabled"),
+            anthropic_fallback_models,
+            knowledge_enabled,
             enabled_effects,
             data_dir,
             bind: value("KAEL_DURABLE_BIND").unwrap_or_else(|| "127.0.0.1:8787".into()),

@@ -3,7 +3,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -235,11 +235,16 @@ pub fn free_addr() -> SocketAddr {
 
 impl Service {
     pub fn spawn(stack: &Stack, data_dir: &Path, holder: &str, model_port: u16, purge_grace: u32) -> Service {
+        Service::spawn_with(stack, data_dir, holder, model_port, purge_grace, &[])
+    }
+
+    pub fn spawn_with(stack: &Stack, data_dir: &Path, holder: &str, model_port: u16, purge_grace: u32, extra: &[(&str, &str)]) -> Service {
         let addr = free_addr();
         let log = data_dir.join(format!("{holder}.log"));
         let sink = File::create(&log).expect("service log");
         let child = Command::new(env!("CARGO_BIN_EXE_kael-durable"))
             .envs(stack.environment(data_dir, holder, addr, model_port, purge_grace))
+            .envs(extra.iter().copied())
             .stdout(Stdio::null())
             .stderr(Stdio::from(sink))
             .spawn()
@@ -286,6 +291,107 @@ impl Drop for Service {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+pub struct Gateway {
+    pub url: String,
+    armed: Arc<AtomicBool>,
+    held: Arc<AtomicBool>,
+}
+
+struct Forwarded {
+    method: String,
+    path: String,
+    head: Vec<u8>,
+    body: Vec<u8>,
+}
+
+fn read_forwarded(client: &TcpStream, upstream_authority: &str) -> Option<Forwarded> {
+    let mut reader = BufReader::new(client.try_clone().ok()?);
+    let mut first = String::new();
+    reader.read_line(&mut first).ok()?;
+    let mut parts = first.split_whitespace();
+    let (method, path) = (parts.next()?.to_owned(), parts.next()?.to_owned());
+    let mut head = format!("{method} {path} HTTP/1.1\r\n").into_bytes();
+    let mut length = 0usize;
+    loop {
+        let mut line = String::new();
+        if reader.read_line(&mut line).ok()? == 0 {
+            return None;
+        }
+        if line == "\r\n" {
+            break;
+        }
+        let (name, value) = line.split_once(':')?;
+        match name.trim().to_ascii_lowercase().as_str() {
+            "connection" | "host" => {}
+            "content-length" => {
+                length = value.trim().parse().ok()?;
+                head.extend_from_slice(line.as_bytes());
+            }
+            _ => head.extend_from_slice(line.as_bytes()),
+        }
+    }
+    head.extend_from_slice(format!("host: {upstream_authority}\r\nconnection: close\r\n\r\n").as_bytes());
+    let mut body = vec![0u8; length];
+    reader.read_exact(&mut body).ok()?;
+    Some(Forwarded { method, path, head, body })
+}
+
+impl Gateway {
+    pub fn start(upstream: &str, hold_when: fn(&str, &str, &str) -> bool) -> Gateway {
+        let authority = upstream.trim_start_matches("http://").split('/').next().unwrap_or_default().to_owned();
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind gateway");
+        let url = format!("http://{}", listener.local_addr().expect("gateway address"));
+        let armed = Arc::new(AtomicBool::new(false));
+        let held = Arc::new(AtomicBool::new(false));
+        let (armed_in, held_in) = (Arc::clone(&armed), Arc::clone(&held));
+        thread::spawn(move || {
+            for client in listener.incoming().flatten() {
+                let (authority, armed, held) = (authority.clone(), Arc::clone(&armed_in), Arc::clone(&held_in));
+                thread::spawn(move || {
+                    let Some(request) = read_forwarded(&client, &authority) else { return };
+                    let Ok(mut upstream) = TcpStream::connect(&authority) else { return };
+                    if upstream.write_all(&request.head).is_err() || upstream.write_all(&request.body).is_err() {
+                        return;
+                    }
+                    let body = String::from_utf8_lossy(&request.body);
+                    if armed.load(Ordering::SeqCst) && hold_when(&request.method, &request.path, &body) && armed.swap(false, Ordering::SeqCst) {
+                        let mut discarded = Vec::new();
+                        let _ = upstream.read_to_end(&mut discarded);
+                        held.store(true, Ordering::SeqCst);
+                        thread::sleep(Duration::from_secs(600));
+                        return;
+                    }
+                    let mut client = client;
+                    let _ = std::io::copy(&mut upstream, &mut client);
+                });
+            }
+        });
+        Gateway { url, armed, held }
+    }
+
+    pub fn arm(&self) {
+        self.held.store(false, Ordering::SeqCst);
+        self.armed.store(true, Ordering::SeqCst);
+    }
+
+    pub fn wait_held(&self, limit: Duration) -> bool {
+        let started = Instant::now();
+        while started.elapsed() < limit {
+            if self.held.load(Ordering::SeqCst) {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        false
+    }
+}
+
+impl Stack {
+    pub fn through(&self, gateway: &Gateway) -> Stack {
+        Stack { gateway: gateway.url.clone(), ..self.clone() }
     }
 }
 

@@ -19,14 +19,27 @@ pub fn build_providers(config: &Config) -> Providers {
     let mut providers = Providers::builtin();
     let mut custom = Vec::new();
     if let Some(deepseek) = &config.deepseek {
-        let mut model = Model::new("deepseek", &deepseek.model, "openai-completions", 128_000, 8192, false);
+        let mut model = Model::new("deepseek", &deepseek.model, "openai-completions", 128_000, 8192, config.deepseek_thinking);
         model.base_url = deepseek.base_url.clone().unwrap_or_else(|| "https://api.deepseek.com".to_owned());
         custom.push(model);
     }
-    if let Some(anthropic) = &config.anthropic
-        && providers.models().iter().all(|model| !(model.provider == "anthropic" && model.id == anthropic.model))
-    {
-        custom.push(Model::new("anthropic", &anthropic.model, "anthropic-messages", 200_000, 8192, false));
+    if let Some(anthropic) = &config.anthropic {
+        let mut model = providers
+            .models()
+            .iter()
+            .find(|known| known.provider == "anthropic" && known.id == anthropic.model)
+            .cloned()
+            .unwrap_or_else(|| Model::new("anthropic", &anthropic.model, "anthropic-messages", 200_000, 8192, false));
+        if let Some(base) = &anthropic.base_url {
+            model.base_url = base.clone();
+        }
+        if !config.anthropic_fallback_models.is_empty() {
+            let allowed: Vec<Value> = config.anthropic_fallback_models.iter().map(|id| json!({"model": id})).collect();
+            let mut compat = model.compat.take().and_then(|existing| existing.as_object().cloned()).unwrap_or_default();
+            compat.insert("allowedFallbackModels".into(), Value::Array(allowed));
+            model.compat = Some(Value::Object(compat));
+        }
+        custom.push(model);
     }
     providers.add_models(custom);
     let deepseek_key = config.deepseek.as_ref().map(|provider| provider.api_key.clone());
@@ -82,7 +95,7 @@ impl RunModels {
 }
 
 fn publish_text(ctx: &RunContext, delta: &str, separated: &mut bool) {
-    if ctx.overflow.load(Ordering::SeqCst) {
+    if ctx.overflow.load(Ordering::SeqCst) || ctx.hold_text.load(Ordering::SeqCst) {
         return;
     }
     let mut emitted = ctx.text_chars.load(Ordering::SeqCst);
@@ -152,7 +165,9 @@ impl Models for RunModels {
                             && let Some(alternative) = inner.get_model(provider, id)
                         {
                             switched = true;
-                            stream = inner.stream_simple(&alternative, context.clone(), options.clone());
+                            let mut unreasoned = options.clone();
+                            unreasoned.reasoning = None;
+                            stream = inner.stream_simple(&alternative, context.clone(), unreasoned);
                             continue;
                         }
                         account_usage(&ctx, error);

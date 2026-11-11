@@ -50,6 +50,8 @@ pub struct RunContext {
     pub log: Arc<EventLog>,
     pub token: Mutex<Option<String>>,
     pub tasks: Mutex<HashMap<String, Value>>,
+    pub tasks_loaded: AtomicBool,
+    pub hold_text: AtomicBool,
     pub executed: Mutex<HashMap<String, Execution>>,
     pub tool_calls: AtomicU32,
     pub model_calls: AtomicU32,
@@ -91,7 +93,32 @@ impl RunContext {
     }
 
     pub fn known_task(&self, id: &Value) -> Option<Value> {
-        id.as_str().and_then(|key| lock(&self.tasks).get(key).cloned())
+        let key = id.as_str()?;
+        if let Some(task) = lock(&self.tasks).get(key).cloned() {
+            return Some(task);
+        }
+        self.rehydrate_tasks();
+        lock(&self.tasks).get(key).cloned()
+    }
+
+    pub fn adopt_tasks(&self, tasks: &[Value]) {
+        let mut known = lock(&self.tasks);
+        for task in tasks {
+            if let Some(id) = task["id"].as_str() {
+                known.entry(id.to_owned()).or_insert_with(|| task.clone());
+            }
+        }
+        self.tasks_loaded.store(true, Ordering::SeqCst);
+    }
+
+    fn rehydrate_tasks(&self) {
+        if self.tasks_loaded.load(Ordering::SeqCst) {
+            return;
+        }
+        let body = json!({"p_conversation_id": self.conversation_id, "p_mode": self.actor.mode});
+        if let Ok(Value::Array(tasks)) = self.post("rpc/kael_context_tasks", &body) {
+            self.adopt_tasks(&tasks);
+        }
     }
 
     pub fn user_reply(&self, method: &str, path: &str, body: Option<&Value>) -> Result<Reply, Fail> {

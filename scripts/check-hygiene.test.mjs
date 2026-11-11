@@ -136,6 +136,17 @@ test('Kael backend Rust, Python and Go files and manifests have narrowly approve
   ]) assert.throws(() => checkPath(file), /No approved naming convention|Disposable document\/source name/, file);
 });
 
+test('exactly one container recipe is approved and every other Dockerfile path fails', () => {
+  assert.doesNotThrow(() => checkPath('services/kael-core/durable/Dockerfile'));
+  assert.equal(hasCommentGrammar('services/kael-core/durable/Dockerfile'), true);
+  for (const file of ['Dockerfile', 'services/kael-core/Dockerfile', 'services/kael-core/durable/src/Dockerfile',
+    'services/kael-core/durable/dockerfile', 'services/kael-core/durable/Dockerfile.prod', 'services/kael-core/durable/Dockerfile.dev',
+    'services/other/Dockerfile', 'apps/mobile/Dockerfile', 'scripts/Dockerfile', 'supabase/Dockerfile',
+    'services/kael-core/durable/.dockerignore', 'services/kael-core/durable/docker-compose.yml']) {
+    assert.throws(() => checkPath(file), /No approved naming convention/, file);
+  }
+});
+
 test('unknown architecture, case variants, scratch names, archives and unsafe paths fail', () => {
   for (const file of ['Scripts/tool.mjs', 'scripts/CheckTools.mjs', 'scripts/check_tools.mjs', 'docs/New Guide.md',
     '.github/workflows/CI.yml', 'supabase/migrations/001_example.sql', 'scripts/example.js', 'src/App.tsx',

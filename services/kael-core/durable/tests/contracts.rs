@@ -96,6 +96,34 @@ fn a_torn_final_line_is_dropped_when_the_log_is_reopened() {
 }
 
 #[test]
+fn a_write_torn_inside_a_multibyte_character_keeps_every_complete_event() {
+    let dir = tempfile::tempdir().expect("directory");
+    {
+        let log = EventLog::open(dir.path(), REQUEST).expect("open");
+        log.append(json!({"type": "run_started"})).expect("append");
+        log.append(json!({"type": "message_delta", "text": "một"})).expect("append");
+    }
+    let path = event_path(dir.path(), REQUEST);
+    let mut bytes = fs::read(&path).expect("read");
+    let torn = "{\"v\":1,\"text\":\"ệ".as_bytes();
+    bytes.extend_from_slice(&torn[..torn.len() - 1]);
+    fs::write(&path, bytes).expect("write torn bytes");
+    let reopened = EventLog::open(dir.path(), REQUEST).expect("reopen");
+    assert_eq!(reopened.len(), 2);
+    assert_eq!(reopened.append(json!({"type": "message_delta", "text": "hai"})).expect("append"), 3);
+    let raw = fs::read_to_string(&path).expect("the file is valid UTF-8 again");
+    assert_eq!(raw.lines().count(), 3);
+    assert!(raw.lines().all(|line| serde_json::from_str::<Value>(line).is_ok()));
+}
+
+#[test]
+fn an_unreadable_event_log_is_an_error_not_an_empty_log() {
+    let dir = tempfile::tempdir().expect("directory");
+    fs::create_dir(event_path(dir.path(), REQUEST)).expect("a directory where the log should be");
+    assert!(EventLog::open(dir.path(), REQUEST).is_err());
+}
+
+#[test]
 fn a_waiting_reader_is_woken_by_new_events() {
     let dir = tempfile::tempdir().expect("directory");
     let log = std::sync::Arc::new(EventLog::open(dir.path(), REQUEST).expect("open"));
@@ -167,6 +195,177 @@ fn tool_offers_follow_mode_capability_and_enabled_effects() {
     assert!(!customer.contains(&"service_request_submit".to_owned()), "a disabled consequential effect is not offered");
     let enabled = config(&[("KAEL_ENABLED_EFFECTS", "service_request_submit")]);
     assert!(select_tools(&catalog, &actor("client", &["customer"]), &enabled).iter().any(|tool| tool.id == "service_request_submit"));
+}
+
+fn knowledge_item(kind: &str) -> Value {
+    let hash = "a".repeat(64);
+    let source_id = if kind == "product_fact" { "product.payment-policy" } else { "case.leaking-tap" };
+    let mut item = json!({
+        "source_id": source_id, "source_revision": 2, "content_hash": hash,
+        "citation_ref": format!("kael:{source_id}@2#{hash}"), "title": "Tiêu đề", "excerpt": "Nội dung ngắn",
+        "corpus_version": "2026-11-04", "locale": "vi-VN", "valid_as_of": "2026-11-04",
+        "relevance_score": 0.8, "retrieval_method": "lexical", "source_kind": kind,
+        "provenance": "repository_contract", "trust_tier": "repository_verified", "source_uri": "repo:docs/policy.md", "case_data": null,
+    });
+    if kind == "synthetic_case" {
+        item["provenance"] = json!("synthetic_seed");
+        item["trust_tier"] = json!("provisional");
+        item["source_uri"] = Value::Null;
+        item["case_data"] = json!({
+            "case_id": source_id, "revision": 2, "price_prior": null,
+            "questions": ["Vòi rỉ ở đâu?"], "safety_tags": ["water"], "safe_response": "Khoá van nước trước.",
+        });
+    }
+    item
+}
+
+#[test]
+fn knowledge_tools_are_offered_validated_and_compacted() {
+    use kael_durable::knowledge::{Retrieval, parse_retrieval, tool_result, valid_item};
+    let catalog = registry();
+    let customer = actor("client", &["customer"]);
+    let offered = |settings: &Config| select_tools(&catalog, &customer, settings).iter().map(|tool| tool.id.to_owned()).collect::<Vec<_>>();
+    let on = offered(&config(&[]));
+    assert!(on.contains(&"knowledge_search".to_owned()) && on.contains(&"price_estimate_preview".to_owned()));
+    let off = offered(&config(&[("KAEL_KNOWLEDGE", "disabled")]));
+    assert!(!off.contains(&"knowledge_search".to_owned()) && !off.contains(&"price_estimate_preview".to_owned()));
+    let worker = select_tools(&catalog, &actor("worker", &["worker"]), &config(&[]));
+    assert!(!worker.iter().any(|tool| tool.id == "knowledge_search"), "knowledge retrieval needs the customer capability");
+
+    let fact = knowledge_item("product_fact");
+    let case = knowledge_item("synthetic_case");
+    assert!(valid_item(&fact) && valid_item(&case));
+    let mut forged = fact.clone();
+    forged["trust_tier"] = json!("provisional");
+    assert!(!valid_item(&forged), "a product fact cannot claim a provisional tier");
+    let mut mismatched = fact.clone();
+    mismatched["citation_ref"] = json!("kael:product.payment-policy@1#".to_owned() + &"a".repeat(64));
+    assert!(!valid_item(&mismatched), "the citation must bind source, revision and hash");
+    let mut priced = case.clone();
+    priced["case_data"]["price_prior"] = json!({"min": 1});
+    assert!(!valid_item(&priced), "retrieval never exposes price priors");
+
+    let matched = json!({"status": "matched", "items": [fact.clone(), case.clone()]});
+    let Retrieval::Found { status, items } = parse_retrieval(&matched) else { panic!("a valid response is accepted") };
+    assert_eq!((status, items.len()), ("matched", 2));
+    assert!(matches!(parse_retrieval(&json!({"status": "matched", "items": []})), Retrieval::Unavailable("invalid_retrieval_response")));
+    assert!(matches!(parse_retrieval(&json!({"status": "no_reliable_match", "items": [fact.clone()]})), Retrieval::Unavailable(_)));
+    assert!(matches!(parse_retrieval(&json!({"status": "matched", "items": [fact.clone(), fact.clone()]})), Retrieval::Unavailable(_)));
+    assert!(matches!(parse_retrieval(&json!({"status": "no_reliable_match", "items": []})), Retrieval::Found { .. }));
+
+    let rendered = tool_result("matched", &items);
+    assert_eq!(rendered["context_truncated"], json!(false));
+    assert!(rendered["notice"].as_str().is_some_and(|notice| notice.contains("untrusted")));
+    assert!(rendered["items"][1].get("case_data").is_none(), "raw case data is replaced by its compact fields");
+    assert_eq!(rendered["items"][1]["safe_response"], json!("Khoá van nước trước."));
+    let mut heavy = case.clone();
+    heavy["excerpt"] = json!("x".repeat(1600));
+    heavy["title"] = json!("t".repeat(200));
+    heavy["case_data"]["questions"] = json!(vec!["q".repeat(300); 4]);
+    heavy["case_data"]["safety_tags"] = json!(vec!["s".repeat(100); 8]);
+    heavy["case_data"]["safe_response"] = json!("r".repeat(900));
+    let many = vec![heavy; 5];
+    let truncated = tool_result("matched", &many);
+    assert_eq!(truncated["context_truncated"], json!(true));
+    let kept = truncated["items"].as_array().expect("items");
+    assert!(!kept.is_empty() && kept.len() < 5);
+    assert_eq!(kept[0]["excerpt"].as_str().map(|text| text.chars().count()), Some(1000));
+    assert_eq!(kept[0]["questions"].as_array().map(Vec::len), Some(3));
+    assert_eq!(kept[0]["safety_tags"].as_array().map(Vec::len), Some(6));
+    assert!(truncated["items"].to_string().chars().count() <= 10_000);
+}
+
+#[test]
+fn the_estimate_preview_stays_disabled_and_the_unsupported_mode_is_refused() {
+    use kael_durable::knowledge::{estimate_preview_disabled, price_estimate_preview};
+    let stub = estimate_preview_disabled();
+    assert!(stub["min_vnd"].is_null() && stub["max_vnd"].is_null());
+    assert_eq!(stub["binding"], json!(false));
+    assert_eq!(stub["quote_created"], json!(false));
+    assert_eq!(price_estimate_preview().outcome, "succeeded");
+    assert!(Config::from_env(environment(&[("KAEL_ESTIMATE_PREVIEW", "local_only")])).is_err());
+    assert!(Config::from_env(environment(&[("KAEL_ESTIMATE_PREVIEW", "disabled")])).is_ok());
+    let catalog = registry();
+    let tool = catalog.iter().find(|tool| tool.id == "price_estimate_preview").expect("price_estimate_preview");
+    let args = json!({"case_id": "case.leaking-tap", "scope_confirmed": true, "area_m2": 3, "units": 1, "material": "tile",
+        "floor_access": true, "clear_surface": true, "no_visible_damage": true});
+    assert!(validate_arguments(tool, &args));
+    let mut unknown_material = args.clone();
+    unknown_material["material"] = json!("gold");
+    assert!(!validate_arguments(tool, &unknown_material));
+    let mut bad_case = args.clone();
+    bad_case["case_id"] = json!("Not A Case");
+    assert!(!validate_arguments(tool, &bad_case));
+    let reduced = harness_schema(&tool.schema).to_string();
+    assert!(reduced.contains("enum") && !reduced.contains("pattern"));
+}
+
+#[test]
+fn provider_settings_cover_thinking_and_the_server_side_fallback() {
+    let plain = config(&[]);
+    assert!(!plain.deepseek_thinking && plain.anthropic_fallback_models.is_empty());
+    assert!(config(&[("KAEL_DEEPSEEK_THINKING", "enabled")]).deepseek_thinking);
+    let anthropic = [("ANTHROPIC_API_KEY", "anthropic-key-value"), ("KAEL_ANTHROPIC_MODEL", "claude-opus-5-5")];
+    let with = |extra: &[(&str, &str)]| {
+        let mut pairs = anthropic.to_vec();
+        pairs.extend_from_slice(extra);
+        Config::from_env(environment(&pairs))
+    };
+    assert!(with(&[]).expect("valid").anthropic_fallback_models.is_empty(), "the fallback is opt-in");
+    assert!(with(&[("KAEL_ANTHROPIC_SERVER_FALLBACK", "enabled")]).is_err(), "enabling it needs an explicit model list");
+    assert!(with(&[("KAEL_ANTHROPIC_SERVER_FALLBACK", "enabled"), ("KAEL_ANTHROPIC_FALLBACK_MODELS", "gpt-4")]).is_err());
+    assert!(with(&[("KAEL_ANTHROPIC_SERVER_FALLBACK", "enabled"), ("KAEL_ANTHROPIC_FALLBACK_MODELS", "claude-a,claude-b,claude-c,claude-d,claude-e")]).is_err());
+    let listed = with(&[("KAEL_ANTHROPIC_SERVER_FALLBACK", "enabled"), ("KAEL_ANTHROPIC_FALLBACK_MODELS", "claude-sonnet-5-5, claude-opus-5")]).expect("valid");
+    assert_eq!(listed.anthropic_fallback_models, vec!["claude-sonnet-5-5".to_owned(), "claude-opus-5".to_owned()]);
+    let unsupported = Config::from_env(environment(&[
+        ("ANTHROPIC_API_KEY", "anthropic-key-value"), ("KAEL_ANTHROPIC_MODEL", "claude-haiku-5-5"),
+        ("KAEL_ANTHROPIC_SERVER_FALLBACK", "enabled"),
+    ]))
+    .expect("valid");
+    assert!(unsupported.anthropic_fallback_models.is_empty(), "only models that support the server fallback receive it");
+    assert!(Config::from_env(environment(&[("KAEL_ANTHROPIC_BASE_URL", "http://api.example.com")])).is_err());
+}
+
+#[test]
+fn provider_models_carry_the_thinking_flag_the_fallback_list_and_the_base_urls() {
+    use kael_durable::models::build_providers;
+    let find = |providers: &pi_durable::ai::registry::Providers, provider: &str| {
+        let wanted = if provider == "anthropic" { "claude-opus-5-5" } else { "deepseek-flash" };
+        providers.models().iter().find(|model| model.provider == provider && model.id == wanted).cloned()
+    };
+    let plain = build_providers(&config(&[("KAEL_DEEPSEEK_BASE_URL", "http://127.0.0.1:9999")]));
+    let deepseek = find(&plain, "deepseek").expect("deepseek model");
+    assert!(!deepseek.reasoning);
+    assert_eq!(deepseek.base_url, "http://127.0.0.1:9999");
+    let thinking = build_providers(&config(&[("KAEL_DEEPSEEK_THINKING", "enabled")]));
+    assert!(find(&thinking, "deepseek").expect("deepseek model").reasoning);
+
+    let anthropic = [("ANTHROPIC_API_KEY", "anthropic-key-value"), ("KAEL_ANTHROPIC_MODEL", "claude-opus-5-5"), ("KAEL_ANTHROPIC_BASE_URL", "http://127.0.0.1:9998")];
+    let without = build_providers(&config(&anthropic));
+    let model = find(&without, "anthropic").expect("anthropic model");
+    assert_eq!(model.base_url, "http://127.0.0.1:9998");
+    assert!(model.compat.as_ref().is_none_or(|compat| compat.get("allowedFallbackModels").is_none()));
+    let mut listed = anthropic.to_vec();
+    listed.extend([("KAEL_ANTHROPIC_SERVER_FALLBACK", "enabled"), ("KAEL_ANTHROPIC_FALLBACK_MODELS", "claude-sonnet-5-5")]);
+    let with = build_providers(&config(&listed));
+    let model = find(&with, "anthropic").expect("anthropic model");
+    assert_eq!(model.compat.as_ref().expect("compat")["allowedFallbackModels"], json!([{"model": "claude-sonnet-5-5"}]));
+}
+
+#[test]
+fn an_interrupted_partial_reply_is_not_part_of_the_final_answer_unless_it_is_the_last() {
+    use kael_durable::runner::assistant_summary;
+    let message = |text: &str, stop: &str| json!({"role": "assistant", "content": [{"type": "text", "text": text}], "stopReason": stop});
+    let entries = |messages: Vec<Value>| Value::Array(messages.into_iter().map(|message| json!({"model": [message]})).collect());
+    let recovered = assistant_summary(&entries(vec![message("Đang xử lý", "aborted"), message("Câu trả lời đầy đủ.", "stop")]));
+    assert_eq!(recovered, ("Câu trả lời đầy đủ.".to_owned(), Some("stop".to_owned()), None));
+    let steps = assistant_summary(&entries(vec![message("Bước một.", "toolUse"), message("Bước hai.", "stop")]));
+    assert_eq!(steps.0, "Bước một.\n\nBước hai.");
+    let errored = assistant_summary(&entries(vec![message("Bản nháp", "error"), message("Bản cuối", "stop")]));
+    assert_eq!(errored.0, "Bản cuối");
+    let interrupted = assistant_summary(&entries(vec![message("Đang xử lý", "aborted")]));
+    assert_eq!((interrupted.0.as_str(), interrupted.1.as_deref()), ("Đang xử lý", Some("aborted")), "an interrupted final message stays visible so the run is reported incomplete");
+    assert_eq!(assistant_summary(&Value::Null), (String::new(), None, None));
 }
 
 #[test]

@@ -1122,6 +1122,32 @@ test('turns are routed to the durable service when it is configured', async () =
   assert.deepEqual(urls, ['https://durable.example.test/v1/turn']);
 });
 
+test('the Edge environment loader hands the durable address to the gateway in hosted and local deployments', async () => {
+  const secrets = {
+    SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: 'sb_publishable_fixture' }),
+    SUPABASE_SECRET_KEYS: JSON.stringify({ default: 'sb_secret_fixture' }),
+  };
+  const serviceClaims = btoa(JSON.stringify({ role: 'service_role' })).replaceAll('=', '');
+  const deployments = [
+    { name: 'hosted', values: { ...secrets, SUPABASE_URL: 'https://fixture.supabase.co', DENO_DEPLOYMENT_ID: 'fixture', KAEL_DURABLE_URL: 'https://durable.example.test' } },
+    { name: 'local', values: { SUPABASE_URL: 'http://127.0.0.1:31819', SUPABASE_ANON_KEY: 'fixture-anon', SUPABASE_SERVICE_ROLE_KEY: `header.${serviceClaims}.signature`, KAEL_DURABLE_URL: 'https://durable.example.test' } },
+  ];
+  for (const { name, values } of deployments) {
+    const env = readKaelEdgeEnvironment(key => values[key]);
+    assert.equal(env.KAEL_DURABLE_URL, 'https://durable.example.test', name);
+    const seen = [];
+    const { fetcher } = routingFetcher(async url => {
+      seen.push(String(url));
+      return new Response('{"v":1,"seq":1,"type":"run_started"}\n', { status: 200, headers: { 'x-kael-runtime': 'durable' } });
+    });
+    const response = await createKaelHandler({ env, fetcher })(durableRoutingRequest());
+    assert.equal(response.headers.get('x-kael-runtime'), 'durable', name);
+    assert.deepEqual(seen, ['https://durable.example.test/v1/turn'], name);
+  }
+  const unset = readKaelEdgeEnvironment(key => key === 'SUPABASE_URL' ? 'https://fixture.supabase.co' : undefined);
+  assert.equal(unset.KAEL_DURABLE_URL, undefined);
+});
+
 test('an unreachable durable service falls back to the legacy runtime before admission', async () => {
   const logs = [];
   const { fetcher, urls } = routingFetcher(async () => { throw new TypeError('connection refused'); });

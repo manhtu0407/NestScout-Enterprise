@@ -194,6 +194,26 @@ test('admitted Kael manifests use comment grammars in every Git snapshot', () =>
   assert.throws(() => checkCommittedComments(repository), error => Object.keys(clean).every(file => error.message.includes(file)));
 });
 
+test('the container recipe is inspected for comments in every Git snapshot', () => {
+  const file = 'services/kael-core/durable/Dockerfile';
+  const clean = 'FROM scratch\nENV NOTE="# quoted"\nRUN echo a # not a Dockerfile comment\n';
+  const commented = 'FROM scratch\n# build note\nUSER 65532\n';
+  assert.equal(hasCommentGrammar(file), true);
+  assert.deepEqual(violations(file, clean), []);
+  assert.deepEqual(texts(file, commented), ['# build note']);
+  assert.equal(violations(file, commented).length, 1);
+  assert.equal(violations(file, '  # indented note\nFROM scratch\n').length, 1);
+  const { repository, run, write } = repositoryFixture({ [file]: clean });
+  assert.doesNotThrow(() => checkComments(repository));
+  write(file, commented);
+  assert.throws(() => checkWorkingComments(repository), error => error.message.includes(file));
+  run(['add', '.']);
+  write(file, clean);
+  assert.throws(() => checkStagedComments(repository), error => error.message.includes(file));
+  run(['commit', '--quiet', '-m', 'chore: add container recipe note']);
+  assert.throws(() => checkCommittedComments(repository), error => error.message.includes(file));
+});
+
 test('Python shebangs pass the comment gate while explanatory comments remain prohibited', () => {
   const file = 'services/kael-core/bin/runner.py';
   const clean = '#!/usr/bin/env python3\nprint("ready")\n';

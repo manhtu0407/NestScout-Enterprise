@@ -142,6 +142,43 @@ select is(public.kael_durable_mark_purged(current_setting('test.run')::uuid), tr
 select is(public.kael_durable_mark_purged(current_setting('test.run')::uuid), false, 'A purge is recorded once');
 select is(jsonb_array_length(public.kael_durable_purge_queue(10)), 0, 'A purged journal leaves the queue');
 
+select is((select provolatile::text from pg_proc where oid = 'nestscout_private.kael_lease_ok(uuid)'::regprocedure), 'v',
+  'The lease check locks the lease row so a takeover cannot interleave with a write');
+select set_config('test.fence', public.kael_durable_start_run('00000000-0000-4000-8000-0000000000a1', '30000000-0000-4000-8000-000000000005', null, 'client', 'Giành quyền', 'holder-a', 60)::text, true);
+select set_config('test.fence_run', current_setting('test.fence')::jsonb ->> 'run_id', true);
+reset role;
+update nestscout_private.kael_durable_runs set lease_expires_at = clock_timestamp() - interval '1 second' where run_id = current_setting('test.fence_run')::uuid;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is(public.kael_durable_heartbeat('00000000-0000-4000-8000-0000000000a1', current_setting('test.fence_run')::uuid, 'holder-a', 1, 60), true,
+  'A holder whose lease lapsed before anyone claimed it renews under the same epoch');
+reset role;
+update nestscout_private.kael_durable_runs set lease_expires_at = clock_timestamp() - interval '1 second' where run_id = current_setting('test.fence_run')::uuid;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is(public.kael_durable_claim('00000000-0000-4000-8000-0000000000a1', current_setting('test.fence_run')::uuid, 'holder-a', 60) ->> 'epoch', '2',
+  'Claiming a lapsed lease bumps the epoch even for the same holder');
+select is(public.kael_durable_heartbeat('00000000-0000-4000-8000-0000000000a1', current_setting('test.fence_run')::uuid, 'holder-a', 1, 60), false,
+  'The lapsed epoch can no longer renew');
+select is(public.kael_durable_claim('00000000-0000-4000-8000-0000000000a1', current_setting('test.fence_run')::uuid, 'holder-d', 60) ->> 'status', 'held',
+  'A second claimant is turned away while the lease is live');
+reset role;
+update nestscout_private.kael_durable_runs set lease_expires_at = clock_timestamp() - interval '1 second' where run_id = current_setting('test.fence_run')::uuid;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is((select jsonb_array_length(public.kael_durable_claim_next('holder-e', 60, 5))), 1, 'Recovery claims the lapsed run');
+select is((select jsonb_array_length(public.kael_durable_claim_next('holder-f', 60, 5))), 0, 'A concurrent recoverer finds nothing left to claim');
+select is(public.kael_durable_claim('00000000-0000-4000-8000-0000000000a1', current_setting('test.fence_run')::uuid, 'holder-d', 60) ->> 'status', 'held',
+  'A late claimant is held off after recovery');
+select set_config('request.headers', '{"x-kael-lease":"holder-a:2"}', true);
+select throws_ok($$ select public.kael_record_tool('00000000-0000-4000-8000-0000000000a1', current_setting('test.fence_run')::uuid, 'call-9', null, 'task_create', 'internal', 'succeeded', repeat('c', 64), null) $$,
+  '42501', 'run lease not held', 'The writer that lost the lease to recovery is fenced out');
+select set_config('request.headers', '{"x-kael-lease":"holder-e:3"}', true);
+select is(public.kael_finish_run('00000000-0000-4000-8000-0000000000a1', current_setting('test.fence_run')::uuid, 'completed', 'Xong', true, null, null, 1, 1, 1, null), true,
+  'The recovering holder finishes the run');
+select set_config('request.headers', '{}', true);
+select is(public.kael_durable_mark_purged(current_setting('test.fence_run')::uuid), true, 'The recovered run journal purge is recorded');
+
 select set_config('test.second', public.kael_durable_start_run('00000000-0000-4000-8000-0000000000a1', '30000000-0000-4000-8000-000000000004', null, 'client', 'Lần hai', 'holder-a', 60)::text, true);
 select is(public.kael_durable_mark_purged((current_setting('test.second')::jsonb ->> 'run_id')::uuid), false, 'A running journal cannot be marked purged');
 select is(public.kael_durable_erasure_pending('00000000-0000-4000-8000-0000000000a1'), 2, 'Erasure sees both live journals');

@@ -37,7 +37,8 @@ fn read_request(stream: &TcpStream) -> io::Result<Option<Parsed>> {
     let mut total = 0usize;
     loop {
         let mut line = String::new();
-        let read = reader.read_line(&mut line)?;
+        let allowance = (MAX_HEADER_BYTES - total + 1) as u64;
+        let read = (&mut reader).take(allowance).read_line(&mut line)?;
         if read == 0 {
             return Ok(None);
         }
@@ -122,14 +123,28 @@ fn bearer(request: &Parsed) -> Option<String> {
     valid.then(|| value.to_owned())
 }
 
-fn stream_log(stream: &mut TcpStream, log: &Arc<EventLog>, mut after: u64, replayed: bool, run_id: &str) -> io::Result<()> {
+fn stream_log(
+    stream: &mut TcpStream,
+    initial: &Arc<EventLog>,
+    successor: &dyn Fn() -> Option<Arc<EventLog>>,
+    mut after: u64,
+    replayed: bool,
+    run_id: &str,
+) -> io::Result<()> {
     write!(
         stream,
         "HTTP/1.1 200 OK\r\n{CORS}content-type: application/x-ndjson; charset=utf-8\r\ncache-control: no-store\r\nx-kael-run-id: {run_id}\r\nx-kael-runtime: durable\r\nconnection: close\r\n\r\n"
     )?;
     stream.flush()?;
+    let mut log = Arc::clone(initial);
     let mut quiet_since = Instant::now();
     loop {
+        if !log.closed()
+            && let Some(live) = successor()
+            && !Arc::ptr_eq(&live, &log)
+        {
+            log = live;
+        }
         let (lines, closed) = log.wait_after(after, Duration::from_millis(500));
         for line in &lines {
             let rendered = if replayed && after == 0 {
@@ -178,7 +193,7 @@ fn handle_turn(runtime: &Arc<Runtime>, stream: &mut TcpStream, request: &Parsed)
             &json!({"error": {"code": "invalid_request", "message": "This request belongs to the legacy runtime.", "retryable": false}}),
             "x-kael-runtime: legacy-run\r\n",
         ),
-        Admission::Stream { run_id, log, replayed } => stream_log(stream, &log, 0, replayed, &run_id),
+        Admission::Stream { run_id, log, replayed } => stream_log(stream, &log, &|| None, 0, replayed, &run_id),
     }
 }
 
@@ -199,9 +214,10 @@ fn handle_events(runtime: &Arc<Runtime>, stream: &mut TcpStream, request: &Parse
         .find_map(|pair| pair.strip_prefix("after="))
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0);
-    let live = runtime.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&run_id).cloned();
+    let find_live = || runtime.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&run_id).cloned();
+    let live = find_live();
     if let Some(live) = &live {
-        live.ctx.set_token(Some(token));
+        live.ctx.set_token(Some(token.clone()));
     }
     let log = match live {
         Some(live) => Arc::clone(&live.ctx.log),
@@ -210,7 +226,13 @@ fn handle_events(runtime: &Arc<Runtime>, stream: &mut TcpStream, request: &Parse
             _ => return failure(stream, 404, "invalid_request"),
         },
     };
-    stream_log(stream, &log, after, true, &run_id)
+    let successor = || {
+        find_live().map(|live| {
+            live.ctx.set_token(Some(token.clone()));
+            Arc::clone(&live.ctx.log)
+        })
+    };
+    stream_log(stream, &log, &successor, after, true, &run_id)
 }
 
 fn handle_ready(runtime: &Arc<Runtime>, stream: &mut TcpStream) -> io::Result<()> {

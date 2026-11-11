@@ -3,6 +3,7 @@ use std::time::Duration;
 use pi_durable::ai::http::{Request, send};
 use serde_json::{Value, json};
 
+use crate::knowledge::{knowledge_search, price_estimate_preview};
 use crate::policy::{Class, Tool};
 use crate::runctx::{Execution, Fail, RunContext, failed, failed_with, succeeded, text_of};
 use crate::tasks::{check_model_transition, is_terminal, task_view};
@@ -585,6 +586,8 @@ pub fn execute_tool(ctx: &RunContext, tool: &Tool, args: &Value) -> Execution {
         "worker_earnings" => stepped(worker_earnings(ctx)),
         "worker_job_status" => stepped(worker_job_status(ctx, &text_of(&args["job_id"]))),
         "web_search" => web_search(ctx, &text_of(&args["query"])),
+        "knowledge_search" => knowledge_search(ctx, &text_of(&args["query"])),
+        "price_estimate_preview" => price_estimate_preview(),
         _ => failed_with("no_executor", None, "unavailable"),
     }
 }

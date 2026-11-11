@@ -286,7 +286,7 @@ only while the `KAEL_DURABLE_URL` secret is set.
 | Business truth | Supabase Postgres. Pi holds one SQLite journal per run (`journals/<run_id>.sqlite`, named by the Postgres run UUID) for model and tool steps, never business records |
 | Admission | `kael_durable_start_run` creates or replays the run and its lease in one transaction. A replay of a legacy run returns HTTP 421 and the Edge Function serves it from the legacy runtime |
 | Exclusive writer | Each run has an epoch and a lease. Writes carry `x-kael-lease: holder:epoch`; the database refuses them (HTTP 403) once another holder owns a newer epoch, and the process cancels the run |
-| Recovery | A killed process leaves a running run with an expired lease. Any instance, or the same client retrying the same `request_id`, claims it with a new epoch and resumes from the journal. Completed tool steps are not run again. Tools other than reads are registered as unsafe to replay, so the harness does not re-run one that was interrupted mid-call; no test kills the process during a tool call yet |
+| Recovery | A killed process leaves a running run with an expired lease. Any instance, or the same client retrying the same `request_id`, claims it with a new epoch and resumes from the journal. Completed tool steps are not run again. Tools other than reads are registered as unsafe to replay, so the harness does not re-run one that was interrupted mid-call: the model receives "interrupted and may have partially run" instead of an invented result and must check the real state with a read tool before retrying. A live test holds the task write's response at a proxy, kills the process after the database committed it, and checks that the resumed run creates no second task |
 | Events | NDJSON in `events/<run_id>.ndjson`, `seq` gap-free across restarts. `GET /v1/runs/{id}/events?after=N` and a repeated `POST /v1/turn` both replay from the log, owner-checked |
 | Identity | The caller's JWT is verified against Supabase Auth; the owner is recorded in `meta/<run_id>.json` and rechecked on every attach. Tool offers follow the verified mode and capabilities |
 | Approvals | Unchanged: the database fingerprint, consumption and reconciliation RPCs decide, so an approval survives any restart and applies once |
@@ -304,9 +304,16 @@ Supabase stack (GoTrue, PostgREST, Postgres with the repository migrations) and 
 local OpenAI-compatible model server. It signs up real users, kills the process with
 SIGKILL mid-stream, restarts it, and checks resume without a repeated effect,
 account isolation, approval application across a restart, a typed provider failure
-and journal purge after account erasure. The tests are `#[ignore]`d until
+a tool call that was in flight at the crash, DeepSeek thinking mode and journal purge
+after account erasure. The tests are `#[ignore]`d until
 `KAEL_TEST_GATEWAY`, `KAEL_TEST_ANON` and `KAEL_TEST_SERVICE` point at such a stack,
-then run with `cargo test --locked -- --ignored --test-threads=1`.
+then run with `cargo test --locked --test process_recovery -- --ignored --test-threads=1`.
+They must run one at a time: every started service runs the reconciler, which adopts
+and purges any run in the shared database, so a parallel test's service would close or
+purge another test's runs, whose files live in a different data directory. The same
+holds in production: instances that share a database must share the data volume, or
+a run's journal is not found by the instance that claims it and the run is closed as
+interrupted.
 
 | Setting | Effect |
 | --- | --- |
@@ -315,40 +322,40 @@ then run with `cargo test --locked -- --ignored --test-threads=1`.
 | `KAEL_DURABLE_HOLDER`, `KAEL_DURABLE_LEASE_SECONDS` | Instance name (`[A-Za-z0-9._-]`, at most 80) and lease length from 10 to 600 seconds, default 30 |
 | `KAEL_DURABLE_BIND` | Listen address, default `127.0.0.1:8787` |
 | `KAEL_DURABLE_PURGE_GRACE_SECONDS` | Delay before a purge-pending journal is deleted, default 120 |
-| `DEEPSEEK_API_KEY`, `KAEL_DEEPSEEK_MODEL`, `ANTHROPIC_API_KEY`, `KAEL_ANTHROPIC_MODEL`, `KAEL_MODEL_ROUTE`, `PERPLEXITY_API_KEY` with `KAEL_WEB_SEARCH=enabled`, `KAEL_ENABLED_EFFECTS` | Same meaning as for the gateway. `KAEL_DEEPSEEK_BASE_URL` overrides the DeepSeek endpoint (HTTPS or local) |
+| `DEEPSEEK_API_KEY`, `KAEL_DEEPSEEK_MODEL`, `ANTHROPIC_API_KEY`, `KAEL_ANTHROPIC_MODEL`, `KAEL_MODEL_ROUTE`, `PERPLEXITY_API_KEY` with `KAEL_WEB_SEARCH=enabled`, `KAEL_ENABLED_EFFECTS`, `KAEL_KNOWLEDGE=disabled` | Same meaning as for the gateway. `KAEL_DEEPSEEK_BASE_URL` and `KAEL_ANTHROPIC_BASE_URL` override the provider endpoints (HTTPS or local; for tests and gateways) |
+| `KAEL_DEEPSEEK_THINKING=enabled` | Requests DeepSeek thinking mode (`thinking.type=enabled`, high reasoning effort); reasoning text is replayed to the provider as Pi-durable's DeepSeek adapter does and is never shown to the user |
+| `KAEL_ANTHROPIC_SERVER_FALLBACK=enabled` with `KAEL_ANTHROPIC_FALLBACK_MODELS` | For the Fable 5.1, Opus 5.5, Opus 5 and Sonnet 5.5 models, sends Anthropic's server-side fallback with one to four explicit `claude-*` ids. The legacy runtime sent the string `default`; Pi-durable only supports the explicit list, so the list is required and startup fails without it |
+| `KAEL_ESTIMATE_PREVIEW` | `local_only` is refused at startup: the durable service has no numeric price-preview path and always returns the disabled preview |
 | `KAEL_DURABLE_URL` (Edge secret) | HTTPS address of the service, or a local HTTP address; any other value is ignored |
 
 `GET /ready` reports database and storage status without calling a model provider.
-The repository naming policy has no approved convention for a Dockerfile, so the
-image recipe lives here. Built from `services/kael-core/durable/` and run with the
-data volume, it started as a non-root user and reported `database: verified`
-against the local stack:
+[`durable/Dockerfile`](durable/Dockerfile) is the only container recipe the repository
+naming policy approves (`scripts/check-hygiene.mjs` accepts that exact path and
+applies the comment gate to it). It pins both base images by digest, builds with
+`--locked`, runs as a non-root user and keeps state in the `/var/lib/kael` volume:
 
-```dockerfile
-FROM rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f AS build
-WORKDIR /src
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-RUN cargo build --release --locked --bin kael-durable
-
-FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
-RUN useradd --system --uid 10001 --home-dir /var/lib/kael kael \
-  && mkdir -p /var/lib/kael \
-  && chown kael /var/lib/kael
-COPY --from=build /src/target/release/kael-durable /usr/local/bin/kael-durable
-USER kael
-ENV KAEL_DURABLE_DATA_DIR=/var/lib/kael KAEL_DURABLE_BIND=0.0.0.0:8787
-EXPOSE 8787
-VOLUME ["/var/lib/kael"]
-ENTRYPOINT ["/usr/local/bin/kael-durable"]
+```bash
+docker build -t kael-durable services/kael-core/durable
 ```
 
-Differences from the legacy runtime: the two Intelligence knowledge tools are not
-offered, Anthropic's server-side fallback and DeepSeek thinking mode are not
-implemented, and the final text of a run resumed after a crash replaces, rather than
-extends, any partial text streamed before the crash. The model-visible tool schemas
-drop length and pattern keywords that Pi-durable's validator does not support; the
-service enforces them before every tool call.
+Differences from the legacy runtime:
+
+- `knowledge_search` and `price_estimate_preview` are offered to the customer
+  capability and validated against the same retrieval contract. Results are never
+  cached or deduplicated within a run. The preview returns only the disabled
+  preview; the numeric local-evaluation preview is not implemented.
+- DeepSeek thinking mode and Anthropic server-side fallback are configurable (table
+  above). Neither has run against the real provider here; the checks use a local
+  OpenAI-compatible server and the model definitions Pi-durable sends. The Anthropic
+  fallback needs an explicit model list; it does not use the legacy `default` string.
+- When a crash interrupts a reply mid-text (the last logged event is a
+  `message_delta`), the resumed run drops the interrupted partial reply from the
+  final text and streams no further deltas, so the log never concatenates the old
+  partial with the new answer. The terminal `run_completed.text` is authoritative and
+  the client shows it in place of the streamed text. After any other crash point the
+  resumed run streams normally.
+- The model-visible tool schemas drop length and pattern keywords that Pi-durable's
+  validator does not support; the service enforces them before every tool call.
 
 ## Not implemented
 

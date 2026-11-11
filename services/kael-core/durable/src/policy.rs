@@ -1,8 +1,10 @@
 use std::collections::HashSet;
 
+use regex::Regex;
 use serde_json::{Map, Value, json};
 
 use crate::config::Config;
+use crate::knowledge::SCOPE_MATERIALS;
 use crate::tasks::{MODEL_SETTABLE, TASK_KINDS};
 use crate::util::valid_uuid;
 
@@ -224,7 +226,34 @@ pub fn registry() -> Vec<Tool> {
             side_effect: "external_read", class: Class::Read, requires: None, modes: BOTH, effect: None, needs_web: true,
             label: "Đang tra cứu trên web",
         }),
+        tool(Spec {
+            id: "knowledge_search",
+            description: "Optionally retrieve current permitted Vietnamese product facts and provisional synthetic service cases. Not needed for ordinary conversation. Does not read live business state. Unapproved policies have no official answer; cite returned evidence and label synthetic hypotheses.",
+            schema: schema(vec![("query", json!({"type": "string", "minLength": 2, "maxLength": 300}))]),
+            side_effect: "read", class: Class::Read, requires: Some("customer"), modes: BOTH, effect: None, needs_web: false,
+            label: "Đang tìm nguồn kiến thức",
+        }),
+        tool(Spec {
+            id: "price_estimate_preview",
+            description: "Read-only experimental estimate from one retrieved synthetic case ID. Numeric display is disabled except explicitly configured loopback evaluation. scope_confirmed means user supplied bounded scope, never authorization. No quote, worker correction, payment or workflow mutation.",
+            schema: schema(vec![
+                ("case_id", json!({"type": "string", "pattern": "^[a-z_]+\\.[a-z0-9-]+$", "maxLength": 120})),
+                ("scope_confirmed", json!({"type": "boolean"})),
+                ("area_m2", json!({"type": "integer", "minimum": 0, "maximum": 1000, "description": "User-supplied surface area, rounded up; 0 if unknown."})),
+                ("units", json!({"type": "integer", "minimum": 0, "maximum": 100, "description": "User-supplied count; 0 if unknown."})),
+                ("material", json!({"type": "string", "enum": material_options()})),
+                ("floor_access", json!({"type": "boolean"})),
+                ("clear_surface", json!({"type": "boolean"})),
+                ("no_visible_damage", json!({"type": "boolean"})),
+            ]),
+            side_effect: "read", class: Class::Read, requires: Some("customer"), modes: BOTH, effect: None, needs_web: false,
+            label: "Đang xem giả định ước tính",
+        }),
     ]
+}
+
+fn material_options() -> Vec<&'static str> {
+    std::iter::once("unknown").chain(SCOPE_MATERIALS).collect()
 }
 
 pub fn find_tool<'a>(tools: &'a [Tool], id: &str) -> Option<&'a Tool> {
@@ -241,6 +270,9 @@ fn permitted(tool: &Tool, actor: &Actor, config: &Config) -> Option<&'static str
         return Some("forbidden");
     }
     if tool.needs_web && config.perplexity_key.is_none() {
+        return Some("not_offered");
+    }
+    if matches!(tool.id, "knowledge_search" | "price_estimate_preview") && !config.knowledge_enabled {
         return Some("not_offered");
     }
     if let Some(effect) = tool.effect
@@ -336,10 +368,11 @@ fn valid_field(spec: &Value, value: &Value) -> bool {
             {
                 return false;
             }
-            if spec["pattern"].as_str() == Some(UUID_PATTERN) && !valid_uuid(text) {
-                return false;
+            match spec["pattern"].as_str() {
+                Some(UUID_PATTERN) => valid_uuid(text),
+                Some(pattern) => Regex::new(pattern).is_ok_and(|expected| expected.is_match(text)),
+                None => true,
             }
-            true
         }
         Some("integer") => {
             let Some(number) = value.as_i64().filter(|number| number.abs() <= 9_007_199_254_740_991) else {

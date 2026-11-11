@@ -22,7 +22,7 @@ revoke all on table nestscout_private.kael_durable_runs from public, anon, authe
 create function nestscout_private.kael_lease_ok(p_run_id uuid)
 returns boolean
 language plpgsql
-stable
+volatile
 security definer
 set search_path = ''
 as $$
@@ -30,7 +30,7 @@ declare
   v_durable nestscout_private.kael_durable_runs;
   v_claim text;
 begin
-  select * into v_durable from nestscout_private.kael_durable_runs d where d.run_id = p_run_id;
+  select * into v_durable from nestscout_private.kael_durable_runs d where d.run_id = p_run_id for share;
   if not found then
     return true;
   end if;
@@ -43,7 +43,7 @@ revoke all on function nestscout_private.kael_lease_ok(uuid) from public, anon, 
 create or replace function nestscout_private.kael_running_run(p_run_id uuid, p_actor uuid)
 returns public.kael_runs
 language plpgsql
-stable
+volatile
 set search_path = ''
 as $$
 declare

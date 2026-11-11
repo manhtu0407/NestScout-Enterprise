@@ -34,6 +34,7 @@ const kaelBackendManifests = new Set([
   'requirements.txt', 'pyproject.toml', 'Pipfile', 'poetry.lock', 'uv.lock', '.python-version',
   'go.mod', 'go.sum',
 ]);
+const kaelContainerRecipe = 'services/kael-core/durable/Dockerfile';
 const kaelSourceWord = '[a-z0-9]+(?:_[a-z0-9]+)*';
 const kaelSourceSegments = `(?:${kaelSourceWord}/)*`;
 const kaelSourceName = `(?:${kaelSourceWord}|__init__|__main__)`;
@@ -52,7 +53,7 @@ export function checkPath(file, artifacts = []) {
   if (file.includes('\\') || file.split('/').some(part => !part || part === '.' || part === '..') || /[\u0000-\u001f\u007f]/u.test(file)) {
     throw new Error(`Unsafe repository path: ${JSON.stringify(file)}`);
   }
-  if (fixedPaths.has(file) || file === approvedLogo.path) return;
+  if (fixedPaths.has(file) || file === approvedLogo.path || file === kaelContainerRecipe) return;
   if (mobileAssetPath.test(file)) {
     const parts = path.posix.basename(file).split('.')[0].split('-');
     if (parts.some(part => prohibitedAssetWords.has(part) || /^(?:v|version)?[0-9]+$/.test(part) || /^[0-9]+(?:x|p)$/.test(part))) throw new Error(`Prohibited mobile asset name: ${JSON.stringify(file)}`);
@@ -537,6 +538,7 @@ const commentGrammars = [
   [/\.rs$/, rustComments], [/\.(?:py|pyi|pyw)$/, pythonComments], [/\.go$/, goComments],
   [/(?:^|\/)(?:go\.mod|go\.sum)$/, goComments],
   [/(?:^|\/)(?:Cargo\.toml|Cargo\.lock|rust-toolchain(?:\.toml)?|pyproject\.toml|Pipfile|poetry\.lock|uv\.lock)$/, tomlComments],
+  [/(?:^|\/)Dockerfile$/, lineComments('#')],
   [/(?:^|\/)requirements\.txt$/, requirementsComments], [/(?:^|\/)\.python-version$/, pythonVersionComments],
   [/\.toml$/, tomlComments], [/\.ya?ml$/, yamlComments], [/\.jsonc$/, jsoncComments], [/^\.githooks\//, shellComments],
   [/(?:^|\/)\.(?:gitignore|gitattributes)$/, lineComments('#')], [/(?:^|\/)\.editorconfig$/, lineComments('#;')],

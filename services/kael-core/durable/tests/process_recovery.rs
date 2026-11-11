@@ -5,7 +5,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
-use support::{MockModel, Service, Stack, Step, assert_contiguous, scratch, types};
+use support::{Gateway, MockModel, Service, Stack, Step, assert_contiguous, scratch, types};
 
 fn turn_body(request_id: &str, text: &str) -> Value {
     json!({"request_id": request_id, "conversation_id": null, "mode": "client", "action": {"type": "message", "text": text}})
@@ -130,6 +130,8 @@ fn a_killed_process_resumes_the_run_without_repeating_effects() {
     assert_eq!(terminal["text"], json!("Mình đã ghi nhận việc cần làm."));
     assert_eq!(events.iter().filter(|event| event["type"] == "run_completed").count(), 1);
     assert_eq!(events.iter().filter(|event| event["type"] == "tool_completed").count(), 1);
+    let streamed: String = events.iter().filter(|event| event["type"] == "message_delta").filter_map(|event| event["text"].as_str()).collect();
+    assert_eq!(streamed, "Đang xử lý", "text streamed after the takeover must not be appended to the interrupted partial reply: {events:?}");
 
     let tasks = stack.rows(&user, "kael_tasks?select=id,title");
     assert_eq!(tasks.len(), 1, "the resumed run must not create the task again");
@@ -139,6 +141,92 @@ fn a_killed_process_resumes_the_run_without_repeating_effects() {
     let requests = model.requests.lock().expect("requests").clone();
     let resumed_messages = requests[2]["messages"].as_array().expect("messages");
     assert!(resumed_messages.iter().any(|message| message["role"] == "tool"), "the journaled tool result reaches the resumed model call");
+}
+
+fn holds_task_creation(method: &str, path: &str, body: &str) -> bool {
+    method == "POST" && path.ends_with("/rpc/kael_save_task") && body.contains("\"p_task_id\":null")
+}
+
+#[test]
+#[ignore = "needs the live Supabase fixture stack (KAEL_TEST_GATEWAY, KAEL_TEST_ANON, KAEL_TEST_SERVICE)"]
+fn a_tool_in_flight_at_the_crash_never_repeats_its_effect() {
+    let stack = Stack::from_env();
+    let gateway = Gateway::start(&stack.gateway, holds_task_creation);
+    let model = MockModel::start(vec![
+        Step::Tool { name: "task_create", arguments: json!({"title": "Lắp quạt trần", "kind": "general", "status": "running", "note": ""}) },
+        Step::Text("Mình đã kiểm tra lại việc cần làm."),
+        Step::Text("Mình đã kiểm tra lại việc cần làm."),
+    ]);
+    let data = scratch("inflight");
+    let mut first = Service::spawn(&stack.through(&gateway), &data, "holder-inflight-a", model.port, 120);
+    let user = stack.signup();
+    let request_id = kael_durable::util::random_uuid();
+
+    gateway.arm();
+    let reply = first.turn(&user, &turn_body(&request_id, "Tạo việc lắp quạt trần giúp mình"));
+    assert_eq!(reply.status, 200);
+    assert!(gateway.wait_held(Duration::from_secs(60)), "the task write never reached the database");
+    first.kill();
+    drop(reply);
+    assert_eq!(stack.rows(&user, "kael_tasks?select=id,title").len(), 1, "the effect committed although its result never reached the runtime");
+
+    let second = Service::spawn(&stack, &data, "holder-inflight-b", model.port, 120);
+    let started = Instant::now();
+    let mut resumed = loop {
+        let attempt = second.turn(&user, &turn_body(&request_id, "Tạo việc lắp quạt trần giúp mình"));
+        if attempt.status == 200 {
+            break attempt;
+        }
+        assert!(started.elapsed() < Duration::from_secs(90), "the run was never taken over; last status {}", attempt.status);
+        thread::sleep(Duration::from_secs(2));
+    };
+    let events = resumed.drain(Duration::from_secs(90));
+    assert_contiguous(&events);
+    let terminal = events.last().expect("terminal event");
+    assert!(is_terminal_event(terminal), "the resumed run must reach a terminal event: {events:?}");
+    assert_eq!(stack.rows(&user, "kael_tasks?select=id,title").len(), 1, "the interrupted creation must not run a second time: {events:?}");
+    let creations = events.iter().filter(|event| event["type"] == "tool_started" && event["tool"] == "task_create").count();
+    assert_eq!(creations, 1, "the unfinished tool call is reported once and not re-executed: {events:?}");
+    assert_eq!(terminal["type"], json!("run_completed"), "events: {events:?}");
+    let requests = model.requests.lock().expect("requests").clone();
+    let reported: Vec<&Value> = requests
+        .last()
+        .and_then(|request| request["messages"].as_array())
+        .into_iter()
+        .flatten()
+        .filter(|message| message["role"] == "tool")
+        .collect();
+    assert_eq!(reported.len(), 1);
+    assert!(
+        reported[0]["content"].as_str().is_some_and(|text| text.contains("interrupted and may have partially run")),
+        "the model is told the outcome is unknown instead of receiving an invented result: {reported:?}"
+    );
+}
+
+fn is_terminal_event(event: &Value) -> bool {
+    matches!(event["type"].as_str(), Some("run_completed" | "run_failed"))
+}
+
+#[test]
+#[ignore = "needs the live Supabase fixture stack (KAEL_TEST_GATEWAY, KAEL_TEST_ANON, KAEL_TEST_SERVICE)"]
+fn deepseek_thinking_mode_is_requested_only_when_enabled() {
+    let stack = Stack::from_env();
+    let model = MockModel::start(vec![Step::Text("Chào bạn."), Step::Text("Chào bạn.")]);
+    let user = stack.signup();
+    let thinking = |extra: &[(&str, &str)], label: &str| -> Value {
+        let data = scratch(label);
+        let service = Service::spawn_with(&stack, &data, &format!("holder-{label}"), model.port, 120, extra);
+        let before = model.requests.lock().expect("requests").len();
+        let mut reply = service.turn(&user, &turn_body(&kael_durable::util::random_uuid(), "Xin chào"));
+        let events = reply.drain(Duration::from_secs(60));
+        assert_eq!(events.last().expect("terminal")["type"], json!("run_completed"), "events: {events:?}");
+        model.requests.lock().expect("requests")[before].clone()
+    };
+    let enabled = thinking(&[("KAEL_DEEPSEEK_THINKING", "enabled")], "think-on");
+    assert_eq!(enabled["thinking"]["type"], json!("enabled"), "request: {enabled}");
+    assert!(enabled.get("reasoning_effort").is_some(), "request: {enabled}");
+    let plain = thinking(&[], "think-off");
+    assert!(plain.get("thinking").is_none_or(|value| value["type"] != json!("enabled")), "request: {plain}");
 }
 
 #[test]

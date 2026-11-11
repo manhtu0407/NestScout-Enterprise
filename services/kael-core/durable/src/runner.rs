@@ -7,6 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use pi_durable::ai::models::Models;
+use pi_durable::ai::types::ModelThinkingLevel;
 use pi_durable::cancel::CancelToken;
 use pi_durable::errors::Error as PiError;
 use pi_durable::harness::agent::{AgentChange, Change};
@@ -128,6 +129,8 @@ fn run_tool(ctx: &RunContext, tool: &Tool, args: &Value, call_id: &str) -> Execu
     let call: String = call_id.chars().take(128).collect();
     ctx.emit(json!({"type": "tool_started", "call_id": call_id, "tool": tool.id, "label": tool.label}));
     let key = fingerprint(&json!({"tool": tool.id, "args": args}));
+    let knowledge = is_knowledge_tool(tool);
+    let began = Instant::now();
     let execution = match decision {
         Decision::Deny(reason) => Execution {
             outcome: "denied".into(),
@@ -135,7 +138,7 @@ fn run_tool(ctx: &RunContext, tool: &Tool, args: &Value, call_id: &str) -> Execu
             task_id: None,
         },
         Decision::Execute | Decision::Approval => {
-            let previous = lock(&ctx.executed).get(&key).cloned();
+            let previous = if knowledge { None } else { lock(&ctx.executed).get(&key).cloned() };
             match previous {
                 Some(mut previous) => {
                     previous.content["duplicate_call"] = json!(true);
@@ -160,33 +163,59 @@ fn run_tool(ctx: &RunContext, tool: &Tool, args: &Value, call_id: &str) -> Execu
     ) {
         ctx.note_store_error(&failure);
     }
+    if knowledge {
+        log_knowledge(ctx, tool, &execution, began.elapsed());
+    }
     ctx.emit(json!({"type": "tool_completed", "call_id": call_id, "tool": tool.id, "outcome": execution.outcome, "label": tool.label}));
     execution
 }
 
-fn assistant_summary(entries: &Value) -> (String, Option<String>, Option<String>) {
+fn is_knowledge_tool(tool: &Tool) -> bool {
+    matches!(tool.id, "knowledge_search" | "price_estimate_preview")
+}
+
+fn log_knowledge(ctx: &RunContext, tool: &Tool, execution: &Execution, elapsed: Duration) {
+    let refs: Vec<&str> = execution.content["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| item["citation_ref"].as_str())
+        .collect();
+    let validation = ["status", "kind", "error"].iter().find_map(|key| execution.content[*key].as_str()).unwrap_or("unknown");
+    eprintln!(
+        "{}",
+        json!({
+            "event": "kael_knowledge", "run_id": ctx.run_id, "tool": tool.id, "source_refs": json!(refs).to_string(),
+            "method": if execution.content["kind"] == "disabled" { "not_run" } else { "lexical-v1" },
+            "latency_ms": elapsed.as_secs_f64() * 1000.0, "outcome": execution.outcome, "validation_status": validation,
+        })
+    );
+}
+
+pub fn assistant_summary(entries: &Value) -> (String, Option<String>, Option<String>) {
+    let messages: Vec<&Value> = entries
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|entry| entry["model"].as_array().into_iter().flatten())
+        .filter(|message| message["role"] == "assistant")
+        .collect();
     let mut texts: Vec<String> = Vec::new();
-    let mut last_stop = None;
-    let mut last_error = None;
-    for entry in entries.as_array().into_iter().flatten() {
-        for message in entry["model"].as_array().into_iter().flatten() {
-            if message["role"] != "assistant" {
-                continue;
-            }
-            let text: String = message["content"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|block| block["type"] == "text")
-                .filter_map(|block| block["text"].as_str())
-                .collect();
-            if !text.trim().is_empty() {
-                texts.push(text);
-            }
-            last_stop = message["stopReason"].as_str().map(str::to_owned);
-            last_error = message["errorMessage"].as_str().map(str::to_owned);
+    for (index, message) in messages.iter().enumerate() {
+        let superseded = index + 1 < messages.len() && matches!(message["stopReason"].as_str(), Some("aborted" | "error"));
+        let text: String = message["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|block| block["type"] == "text")
+            .filter_map(|block| block["text"].as_str())
+            .collect();
+        if !superseded && !text.trim().is_empty() {
+            texts.push(text);
         }
     }
+    let last_stop = messages.last().and_then(|message| message["stopReason"].as_str()).map(str::to_owned);
+    let last_error = messages.last().and_then(|message| message["errorMessage"].as_str()).map(str::to_owned);
     (texts.join("\n\n"), last_stop, last_error)
 }
 
@@ -232,6 +261,8 @@ impl Runtime {
             log,
             token: Mutex::new(token),
             tasks: Mutex::new(HashMap::new()),
+            tasks_loaded: AtomicBool::new(false),
+            hold_text: AtomicBool::new(false),
             executed: Mutex::new(HashMap::new()),
             tool_calls: AtomicU32::new(0),
             model_calls: AtomicU32::new(0),
@@ -380,6 +411,7 @@ impl Runtime {
         }
         let log = Arc::new(EventLog::open(&self.config.event_dir(), run_id).ok()?);
         let ctx = self.context(&identity, &lease, Arc::clone(&log), token);
+        ctx.hold_text.store(log.last_event_type().as_deref() == Some("message_delta"), Ordering::SeqCst);
         let live = self.register(ctx, lease);
         let runtime = Arc::clone(self);
         let resumable = kind == "message" && journal_path(&self.config, run_id).exists();
@@ -466,11 +498,7 @@ impl Runtime {
             for part in degraded {
                 eprintln!("{}", json!({"event": "kael_context_degraded", "run_id": ctx.run_id, "part": part}));
             }
-            for task in &tasks {
-                if let Some(id) = task["id"].as_str() {
-                    lock(&ctx.tasks).insert(id.to_owned(), task.clone());
-                }
-            }
+            ctx.adopt_tasks(&tasks);
             let latest = history.last().and_then(|row| row["content"].as_str()).unwrap_or("").to_owned();
             let system = build_system_prompt(&ctx.actor, &ctx.offered, &tasks, &ctx.conversation_id, &vietnam_date(now_ms()), &personal, &latest);
             let Some(input) = build_user_input(&history, self.config.limits.history_chars, &personal) else {
@@ -642,6 +670,11 @@ impl Runtime {
                     agent: Some(AgentChange {
                         model: Change::Set(ModelRef { provider: provider.to_owned(), model_id: model_id.to_owned() }),
                         instructions: Change::Set(system.to_owned()),
+                        thinking_level: if provider == "deepseek" && self.config.deepseek_thinking {
+                            Change::Set(ModelThinkingLevel::High)
+                        } else {
+                            Change::Keep
+                        },
                         ..Default::default()
                     }),
                     init: None,

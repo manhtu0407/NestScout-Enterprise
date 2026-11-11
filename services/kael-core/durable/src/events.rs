@@ -37,13 +37,20 @@ impl EventLog {
     pub fn open(dir: &Path, run_id: &str) -> io::Result<Self> {
         fs::create_dir_all(dir)?;
         let path = event_path(dir, run_id);
-        let existing = fs::read_to_string(&path).unwrap_or_default();
-        let complete = existing.rfind('\n').map_or(0, |index| index + 1);
+        let existing = match fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
+            Err(error) => return Err(error),
+        };
+        let complete = existing.iter().rposition(|byte| *byte == b'\n').map_or(0, |index| index + 1);
+        let intact = std::str::from_utf8(&existing[..complete])
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         let file = OpenOptions::new().create(true).append(true).read(true).open(&path)?;
         if complete < existing.len() {
             file.set_len(complete as u64)?;
+            file.sync_data()?;
         }
-        let lines: Vec<String> = existing[..complete].lines().map(str::to_owned).collect();
+        let lines: Vec<String> = intact.lines().map(str::to_owned).collect();
         let closed = lines
             .last()
             .and_then(|line| serde_json::from_str::<Value>(line).ok())
@@ -96,6 +103,12 @@ impl EventLog {
         state.closed = is_terminal(&body);
         self.signal.notify_all();
         Ok(seq)
+    }
+
+    pub fn last_event_type(&self) -> Option<String> {
+        let state = lock(&self.state);
+        let last = state.lines.last()?;
+        serde_json::from_str::<Value>(last).ok()?["type"].as_str().map(str::to_owned)
     }
 
     pub fn closed(&self) -> bool {
