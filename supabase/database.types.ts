@@ -800,6 +800,9 @@ isOneToOne: false
 "kael_actor_capabilities":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"kael_claim_provider_probe":
+{ Args: Record<PropertyKey, never>; Returns: boolean
+                           },
 "kael_complete_approval":
 { Args: { "p_actor": string,"p_approval_id": string,"p_outcome": string,"p_result": Json,"p_run_id": string }; Returns: Json
                            },

@@ -137,7 +137,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
   const worker = dependencies.env.KAEL_PILOT_WORKER_ID;
   const pilotWorker = worker && /^[0-9a-f-]{36}$/.test(worker) ? worker : null;
   const deployment = dependencies.env.KAEL_DEPLOYMENT?.trim() || 'unknown';
-  let cachedProbe: { at: number; result: Record<string, ProviderProbe> } | null = null;
+  let probeBatch: { at: number; pending: Promise<Record<string, ProviderProbe> | 'throttled'> } | null = null;
 
   return async function handle(request: Request): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
@@ -170,24 +170,36 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         else { database = probe.status === 401 || probe.status === 403 ? 'authorization_failed' : 'unavailable'; await probe.body?.cancel(); }
       } catch { database = 'unavailable'; }
       const route = config.route;
-      let providerProbe: Record<string, ProviderProbe> | 'not_run' = 'not_run';
+      let providerProbe: Record<string, ProviderProbe> | 'not_run' | 'throttled' = 'not_run';
       if (readinessMode === 'providers' && route.length > 0) {
-        if (!cachedProbe || now().getTime() - cachedProbe.at > probeTtlMs) {
+        if (!probeBatch || now().getTime() - probeBatch.at > probeTtlMs) {
           const providers = (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config);
-          const results = await Promise.all(providers.map(async provider => [provider.id, await probeProvider(provider, request.signal)] as const));
-          cachedProbe = { at: now().getTime(), result: Object.fromEntries(results) };
-          for (const [provider, probe] of results) {
-            log({ event: 'kael_provider_probe', deployment, provider, status: probe.status, http_status: probe.http_status, latency_ms: probe.latency_ms });
-          }
+          const detached = AbortSignal.timeout(probeTimeoutMs);
+          const claim = createServerRpc(config, fetcher);
+          const pending = (async (): Promise<Record<string, ProviderProbe> | 'throttled'> => {
+            let granted = false;
+            try {
+              const response = await claim('kael_claim_provider_probe', {}, AbortSignal.timeout(4000));
+              granted = response.ok && await response.json() === true;
+              if (!response.ok) await response.body?.cancel();
+            } catch { granted = false; }
+            if (!granted) return 'throttled';
+            const results = await Promise.all(providers.map(async provider => [provider.id, await probeProvider(provider, detached)] as const));
+            for (const [provider, probe] of results) {
+              log({ event: 'kael_provider_probe', deployment, provider, status: probe.status, http_status: probe.http_status, latency_ms: probe.latency_ms });
+            }
+            return Object.fromEntries(results);
+          })();
+          probeBatch = { at: now().getTime(), pending };
         }
-        providerProbe = cachedProbe.result;
+        providerProbe = await probeBatch.pending;
       }
-      const providersHealthy = providerProbe === 'not_run' || Object.values(providerProbe).some(probe => probe.status === 'ok');
+      const providersHealthy = typeof providerProbe === 'string' || Object.values(providerProbe).some(probe => probe.status === 'ok');
       const ready = database === 'verified' && route.length > 0 && providersHealthy;
       return new Response(JSON.stringify({
         ready, database, deployment, ...configurationReport(dependencies.env),
         models: route.map(provider => ({ provider, model: provider === 'deepseek' ? config.deepseek?.model : config.anthropic?.model })),
-        readiness_scope: providerProbe === 'not_run' ? 'configuration_only' : 'configuration_and_live_provider', provider_probe: providerProbe,
+        readiness_scope: typeof providerProbe === 'string' ? 'configuration_only' : 'configuration_and_live_provider', provider_probe: providerProbe,
       }), { status: ready ? 200 : 503, headers: { ...corsHeaders, 'content-type': 'application/json', 'cache-control': 'no-store' } });
     }
     const raw = await request.text();

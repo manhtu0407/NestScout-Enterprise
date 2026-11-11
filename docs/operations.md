@@ -92,8 +92,12 @@ Release order, each step authorized by the owner:
    reported as `deployment` in readiness and in every `kael_run` log line.
 4. Verify with a real account: `GET /functions/v1/kael` with header
    `x-kael-readiness: providers` runs one live call per configured provider,
-   cached for 60 seconds, and reports status, HTTP status and latency. The
-   header value `1` stays configuration-only.
+   cached for 60 seconds, and reports status, HTTP status and latency. One
+   database window (`kael_claim_provider_probe`) allows a single live probe
+   across all Edge instances every 60 seconds; other callers receive
+   `provider_probe: "throttled"` with configuration-only readiness, so probe
+   spend is bounded without limiting authenticated chat. The header value `1`
+   stays configuration-only.
 5. Build iOS with `eas build --profile testflight` or `--profile app-store`.
 
 Failure causes are structured: `kael_provider_failure` (kind, HTTP status,

@@ -237,6 +237,14 @@ export function backend(db, options = {}) {
     calls.push({ path: url.pathname + url.search, method: init.method ?? 'GET', user: user?.id ?? null, body: init.body ? JSON.parse(init.body) : null });
     if (url.hostname === 'api.perplexity.ai') return fixtures.search ? fixtures.search(init) : json(500, {});
     if (url.pathname === '/auth/v1/user') return user ? json(200, { id: user.id, is_anonymous: false }) : json(401, {});
+    const serviceCall = init.headers?.authorization === `Bearer ${baseEnv.SUPABASE_SERVICE_ROLE_KEY}` || init.headers?.apikey === baseEnv.SUPABASE_SERVICE_ROLE_KEY;
+    if (serviceCall && url.pathname === '/rest/v1/rpc/kael_runtime_ready') return json(200, true);
+    if (serviceCall && url.pathname === '/rest/v1/rpc/kael_claim_provider_probe') {
+      if (fixtures.claimFailure) return fixtures.claimFailure();
+      const granted = db.probeWindow === undefined || Date.now() - db.probeWindow >= 60_000;
+      if (granted) db.probeWindow = Date.now();
+      return json(200, granted);
+    }
     if (!user) return json(401, {});
     if (url.pathname === '/rest/v1/service_requests') return json(200, fixtures.requests.filter(row => row.owner_id === user.id).map(({ owner_id: _owner, ...row }) => row));
     if (url.pathname === '/rest/v1/service_quotes') return json(200, fixtures.quotes.filter(row => fixtures.requests.some(r => r.id === row.request_id && r.owner_id === user.id)));

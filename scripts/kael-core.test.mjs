@@ -15,7 +15,7 @@ import { findTool, toolRegistry, validateArguments } from '../services/kael-core
 import { configuredProviders, createKaelHandler, probeProvider } from '../services/kael-core/src/gateway.ts';
 import { executeApprovedEffect } from '../services/kael-core/src/executor.ts';
 import { kaelFailureCodes, parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
-import { baseEnv, harness, scriptedProvider, users } from './kael-test-harness.mjs';
+import { baseEnv, createDb, harness, scriptedProvider, users } from './kael-test-harness.mjs';
 import { developerPilotProviders, pilotRoute, pilotServedModels } from '../services/kael-core/src/developer-pilot.ts';
 import { parsePilotAuthorization, parsePilotRenewal } from './kael-developer-pilot.mjs';
 
@@ -1142,4 +1142,56 @@ test('consent_required flows from the database status through the Gateway to the
   assert.equal(provider.requests.length, 0, 'no content reaches a provider without consent');
   const unauthenticated = await app.send({ token: 'not-a-real-token-value-0000' }, { request_id: '11111111-1111-4111-8111-111111111111', conversation_id: null, mode: 'client', action: { type: 'message', text: 'x' } });
   assert.equal(unauthenticated.status, 401, 'authentication is still enforced before the consent gate');
+});
+
+test('concurrent live readiness probes share one provider batch and reuse the cache', async () => {
+  let calls = 0;
+  let release = () => {};
+  const gate = new Promise(resolve => { release = resolve; });
+  const slow = { id: 'deepseek', model: 'deepseek-fixture', async complete() {
+    calls += 1;
+    await gate;
+    return { provider: 'deepseek', model: 'deepseek-fixture', requestedModel: 'deepseek-fixture', text: 'ok', toolCalls: [], stopReason: 'end_turn', usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0 }, providerState: null };
+  } };
+  const app = harness({ env: { DEEPSEEK_API_KEY: 'fixture-deepseek' }, providers: () => [slow] });
+  const probe = () => app.handle(new Request('https://edge.test/functions/v1/kael', { method: 'GET', headers: { authorization: `Bearer ${users.customer.token}`, 'x-kael-readiness': 'providers' } }));
+  const burst = Array.from({ length: 20 }, probe);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  release();
+  const responses = await Promise.all(burst);
+  const reports = await Promise.all(responses.map(response => response.json()));
+  assert.equal(calls, 1, 'twenty concurrent requests start one paid probe');
+  assert.ok(reports.every(report => report.provider_probe.deepseek.status === 'ok'));
+  await (await probe()).json();
+  assert.equal(calls, 1, 'a later request inside the TTL uses the cached result');
+});
+
+test('live readiness probes across separate Edge instances are bounded by one shared database window', async () => {
+  const db = createDb();
+  const counted = () => {
+    const provider = scriptedProvider('deepseek', Array.from({ length: 10 }, () => ({ text: ['ok'] })));
+    return provider;
+  };
+  const first = counted();
+  const second = counted();
+  const one = harness({ db, env: { DEEPSEEK_API_KEY: 'fixture-deepseek' }, providers: () => [first] });
+  const two = harness({ db, env: { DEEPSEEK_API_KEY: 'fixture-deepseek' }, providers: () => [second] });
+  const probe = app => app.handle(new Request('https://edge.test/functions/v1/kael', { method: 'GET', headers: { authorization: `Bearer ${users.customer.token}`, 'x-kael-readiness': 'providers' } }));
+  const reports = await Promise.all([probe(one), probe(two), probe(one), probe(two)].map(async pending => (await pending).json()));
+  assert.equal(first.requests.length + second.requests.length, 1, 'only one instance spends on the provider inside the window');
+  assert.equal(reports.filter(report => report.provider_probe === 'throttled').length >= 1, true, 'the other instance reports a throttled probe');
+  const throttled = reports.find(report => report.provider_probe === 'throttled');
+  assert.equal(throttled.readiness_scope, 'configuration_only');
+  assert.equal(throttled.ready, true, 'a throttled probe does not mark a configured backend unready');
+});
+
+test('a failed or missing probe claim never reaches a provider and normal chat is unaffected', async () => {
+  const provider = scriptedProvider('deepseek', [{ text: ['ok'] }, { text: ['hello'] }]);
+  const app = harness({ env: { DEEPSEEK_API_KEY: 'fixture-deepseek' }, providers: () => [provider], fixtures: { claimFailure: () => new Response('{}', { status: 404 }) } });
+  const report = await (await app.handle(new Request('https://edge.test/functions/v1/kael', { method: 'GET', headers: { authorization: `Bearer ${users.customer.token}`, 'x-kael-readiness': 'providers' } }))).json();
+  assert.equal(report.provider_probe, 'throttled');
+  assert.equal(provider.requests.length, 0, 'no provider spend without a granted claim');
+  const reply = await app.send(users.customer, { request_id: '22222222-2222-4222-8222-222222222222', conversation_id: null, mode: 'client', action: { type: 'message', text: 'Xin chào' } });
+  assert.equal(reply.status, 200, 'chat does not depend on the probe window');
+  assert.equal(provider.requests.length, 1);
 });
