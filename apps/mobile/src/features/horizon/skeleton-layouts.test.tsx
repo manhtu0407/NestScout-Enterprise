@@ -34,7 +34,7 @@ test('the first-open placeholder keeps the busy label and shows no interactive c
   await render(<SafeAreaProvider initialMetrics={initialMetrics}><KaelHomeLoading label="Starting NestScout"/></SafeAreaProvider>);
   expect(screen.getByLabelText('Starting NestScout')).toBeTruthy();
   expect(screen.queryByRole('button')).toBeNull();
-  expect(screen.queryByPlaceholderText("What's on your home Today...?")).toBeNull();
+  expect(screen.queryByPlaceholderText("What's on your home today...?")).toBeNull();
 });
 
 test('the recent list placeholder is labelled for assistive technology', async () => {

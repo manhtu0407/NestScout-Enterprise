@@ -94,7 +94,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
         onChangeText={onChange}
         onFocus={onFocus}
         onBlur={onBlur}
-        placeholder="What's on your home Today...?"
+        placeholder="What's on your home today...?"
         placeholderTextColor={colors.placeholder}
         multiline
         maxLength={5000}

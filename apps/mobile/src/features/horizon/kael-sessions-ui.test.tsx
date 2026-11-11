@@ -105,7 +105,7 @@ test('choosing a session loads that conversation by id and the next message cont
   await waitFor(() => expect(screen.getByText('Đã ghi nhận sofa')).toBeTruthy());
   expect(screen.queryByText('Đã ghi nhận vòi nước')).toBeNull();
   expect(mockOpen).toHaveBeenCalledWith('customer-a', 'client', sessionB, expect.any(AbortSignal));
-  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home Today...?"), 'Thêm ghế bọc da');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Thêm ghế bọc da');
   await act(async () => { fireEvent.press(screen.getByLabelText('Gửi')); });
   expect(requests[0]?.conversationId).toBe(sessionB);
 });
@@ -115,13 +115,13 @@ test('a new session starts blank, creates its conversation only when a message i
   scripted(requests, '55555555-5555-4555-8555-555555555555');
   await renderEntry();
   await act(async () => { await Promise.resolve(); });
-  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home Today...?"), 'Nháp của phiên A');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Nháp của phiên A');
   await openSidebar();
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
   expect(screen.queryByText('Đã ghi nhận vòi nước')).toBeNull();
   expect(mockStream).not.toHaveBeenCalled();
   expect(screen.queryByDisplayValue('Nháp của phiên A')).toBeNull();
-  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home Today...?"), 'Tin của phiên mới');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Tin của phiên mới');
   await act(async () => { fireEvent.press(screen.getByLabelText('Gửi')); });
   expect(requests[0]?.conversationId).toBeNull();
   expect(requests[0]?.action).toEqual({ type: 'message', text: 'Tin của phiên mới' });
@@ -131,11 +131,11 @@ test('a new session starts blank, creates its conversation only when a message i
 test('an unsent draft stays with its own session across another session and back, and every new chat is blank', async () => {
   await renderEntry();
   await act(async () => { await Promise.resolve(); });
-  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home Today...?"), 'Nháp của phiên A');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Nháp của phiên A');
   await openSidebar();
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
   expect(screen.queryByDisplayValue('Nháp của phiên A')).toBeNull();
-  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home Today...?"), 'Nháp chat mới');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Nháp chat mới');
   await openSidebar();
   await waitFor(() => expect(screen.getByLabelText(/^Vệ sinh sofa, /)).toBeTruthy());
   await act(async () => { fireEvent.press(screen.getByLabelText(/^Vệ sinh sofa, /)); });
@@ -150,7 +150,7 @@ test('an unsent draft stays with its own session across another session and back
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
   expect(screen.queryByDisplayValue('Nháp chat mới')).toBeNull();
   expect(screen.queryByDisplayValue('Nháp của phiên A')).toBeNull();
-  expect(screen.getByPlaceholderText("What's on your home Today...?").props.value).toBe('');
+  expect(screen.getByPlaceholderText("What's on your home today...?").props.value).toBe('');
 });
 
 test('tapping New in a chat that is already new clears its unsent text instead of restoring it', async () => {
@@ -158,11 +158,11 @@ test('tapping New in a chat that is already new clears its unsent text instead o
   await act(async () => { await Promise.resolve(); });
   await openSidebar();
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
-  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home Today...?"), 'Chưa gửi trong chat mới');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Chưa gửi trong chat mới');
   await openSidebar();
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
   expect(screen.queryByDisplayValue('Chưa gửi trong chat mới')).toBeNull();
-  expect(screen.getByPlaceholderText("What's on your home Today...?").props.value).toBe('');
+  expect(screen.getByPlaceholderText("What's on your home today...?").props.value).toBe('');
   expect(mockAccess.clearHorizonDraft).toHaveBeenCalled();
 });
 
@@ -183,7 +183,7 @@ test('a failed open is reported with a retry that does not silently start anothe
   await waitFor(() => expect(screen.getByLabelText(/^Vệ sinh sofa, /)).toBeTruthy());
   await act(async () => { fireEvent.press(screen.getByLabelText(/^Vệ sinh sofa, /)); });
   await waitFor(() => expect(screen.getByText(/Chưa mở được cuộc trò chuyện này/)).toBeTruthy());
-  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home Today...?"), 'Tin này không được tạo phiên mới');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Tin này không được tạo phiên mới');
   await act(async () => { fireEvent.press(screen.getByLabelText('Gửi')); });
   expect(mockStream).not.toHaveBeenCalled();
   await act(async () => { fireEvent.press(screen.getByLabelText('Thử mở lại cuộc trò chuyện')); });
@@ -266,7 +266,7 @@ test('a refused delete explains why and keeps the conversation', async () => {
 
 const plumbingOpening = 'Kael ơi, mình đang gặp vấn đề về nước ở nhà. Bạn giúp mình nhé.';
 const airconOpening = 'Kael ơi, mình cần hỗ trợ về máy lạnh. Bạn tư vấn giúp mình nhé.';
-const composer = () => screen.getByPlaceholderText("What's on your home Today...?");
+const composer = () => screen.getByPlaceholderText("What's on your home today...?");
 
 async function chooseService(title: string) {
   await openSidebar();
