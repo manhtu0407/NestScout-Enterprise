@@ -32,6 +32,7 @@ import { settingsStrings } from './settings-strings';
 import { usePreferences } from '@/lib/preferences-provider';
 import { consumeSidebarReturn, markSidebarReturn } from './sidebar-return';
 import { takeKaelHandoff } from './kael-handoff';
+import { guestSendNotice, planServiceEntry } from './service-entry';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
@@ -145,11 +146,29 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   }, [resetKael, switchDraft]);
 
   useEffect(() => { newConversationRef.current = newConversation; });
+  const applyServiceEntryRef = useRef<(categoryId: string) => void>(() => undefined);
+  useEffect(() => {
+    applyServiceEntryRef.current = categoryId => {
+      if (access.phase === 'worker') return;
+      const plan = planServiceEntry(categoryId, { text: inputRef.current, hasConversation: kael.conversationId !== null || kael.messages.length > 0, canParkDraft: kael.conversationId !== null });
+      if (plan === null) return;
+      if (plan.kind === 'keep') {
+        setComposerError(plan.notice);
+        return;
+      }
+      if (plan.fresh) newConversationRef.current();
+      inputRef.current = plan.text;
+      setInput(plan.text);
+      access.updateHorizonDraft(access.userId, { text: plan.text, images: imagesRef.current });
+      setComposerError(null);
+    };
+  });
   useFocusEffect(useCallback(() => {
     const handoff = takeKaelHandoff();
     if (handoff !== null) {
       consumeSidebarReturn();
-      adoptPromptRef.current(handoff.prompt, handoff.fresh);
+      if ('service' in handoff) applyServiceEntryRef.current(handoff.service);
+      else adoptPromptRef.current(handoff.prompt, handoff.fresh);
       return undefined;
     }
     if (!consumeSidebarReturn()) return undefined;
@@ -250,7 +269,7 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
       return;
     }
     if (!kaelAvailable) {
-      setComposerError('Đăng nhập để trò chuyện với Kael. Tin nhắn của bạn chưa được gửi.');
+      setComposerError(guestSendNotice);
       return;
     }
     if (kaelOpening !== null) {
@@ -270,9 +289,8 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
 
   const openService = useCallback((categoryId: string) => {
     setDrawerOpen(false);
-    markSidebarReturn();
-    router.push({ pathname: '/service', params: { category: categoryId } });
-  }, [router]);
+    applyServiceEntryRef.current(categoryId);
+  }, []);
 
   const navigate = useCallback((id: string) => {
     setDrawerOpen(false);

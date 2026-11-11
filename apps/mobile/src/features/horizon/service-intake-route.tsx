@@ -1,18 +1,19 @@
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { useAccess } from '@/features/access';
-import { PressScale } from '@/features/shared';
-import { horizonLayout } from '@/theme/layout';
+import { loadPendingRequest } from '@/features/shared';
 import { horizonColors } from '@/theme/palette';
 
 import { useAskKael } from './horizon-sections';
+import { handOffServiceEntry } from './kael-handoff';
 import { serviceCategoryFor } from './service-catalog';
+import { readIntakeDraft } from './service-intake-drafts';
 import { ServiceIntakeScreen } from './service-intake-screen';
-import { SupportEmpty, SupportShell, supportStyles } from './support-shell';
+import { SupportEmpty, SupportShell } from './support-shell';
 
 function Frame({ children }: { children: ReactNode }) {
   return (
@@ -23,6 +24,26 @@ function Frame({ children }: { children: ReactNode }) {
   );
 }
 
+type LegacyIntake = 'checking' | 'legacy' | 'none';
+
+function useLegacyIntake(userId: string | null, categoryId: string | null): LegacyIntake {
+  const [pending, setPending] = useState<{ userId: string; found: boolean } | null>(null);
+  useEffect(() => {
+    if (userId === null) return;
+    let active = true;
+    loadPendingRequest(userId).then(
+      item => { if (active) setPending({ userId, found: item !== null }); },
+      () => { if (active) setPending({ userId, found: true }); },
+    );
+    return () => { active = false; };
+  }, [userId]);
+  if (categoryId === null) return 'checking';
+  if (userId === null) return 'none';
+  if (Object.values(readIntakeDraft(userId, categoryId)).some(value => value.trim() !== '')) return 'legacy';
+  if (pending === null || pending.userId !== userId) return 'checking';
+  return pending.found ? 'legacy' : 'none';
+}
+
 export function ServiceIntakeRoute() {
   const router = useRouter();
   const access = useAccess();
@@ -30,6 +51,14 @@ export function ServiceIntakeRoute() {
   const { category: id } = useLocalSearchParams<{ category?: string }>();
   const category = serviceCategoryFor(id);
   const back = () => router.back();
+  const verifiedUserId = access.phase === 'client' && access.identity === 'verified' ? access.userId : null;
+  const ready = category !== undefined && access.phase !== 'bootstrapping' && access.phase !== 'resolving' && access.phase !== 'worker';
+  const legacy = useLegacyIntake(ready ? verifiedUserId : null, ready ? category.id : null);
+  useEffect(() => {
+    if (!ready || legacy !== 'none') return;
+    handOffServiceEntry(category.id);
+    router.dismissTo('/');
+  }, [category, legacy, ready, router]);
 
   if (category === undefined) {
     return <Frame><SupportShell title="Dịch vụ" onBack={back}><SupportEmpty icon="grid" title="Không tìm thấy nhóm dịch vụ" body="Hãy quay lại và chọn một nhóm trong danh sách Dịch vụ." /></SupportShell></Frame>;
@@ -40,24 +69,15 @@ export function ServiceIntakeRoute() {
   if (access.phase === 'worker') {
     return <Frame><SupportShell title={category.title} onBack={back}><SupportEmpty icon="briefcase" title="Bạn đang ở vai trò Thợ" body="Chuyển sang vai trò Khách hàng trong menu để gửi yêu cầu dịch vụ." /></SupportShell></Frame>;
   }
-  if (access.phase !== 'client' || access.identity !== 'verified' || access.userId === null) {
-    return (
-      <Frame>
-        <SupportShell title={category.title} onBack={back}>
-          <SupportEmpty icon="login" title="Đăng nhập để gửi yêu cầu" body="Bạn cần đăng nhập bằng số điện thoại để gửi yêu cầu dịch vụ. Yêu cầu chưa được gửi." />
-          <PressScale accessibilityRole="button" accessibilityLabel="Đăng nhập" onPress={() => { access.setIntent('client'); router.push({ pathname: '/phone', params: { role: 'client' } }); }} style={supportStyles.primary} wrapperStyle={styles.action}>
-            <Text style={supportStyles.primaryLabel}>Đăng nhập</Text>
-          </PressScale>
-        </SupportShell>
-      </Frame>
-    );
+  if (legacy !== 'legacy' || verifiedUserId === null) {
+    return <Frame><SupportShell title={category.title} onBack={back}><SupportEmpty icon="clock" title="Đang mở Kael" body="Vui lòng đợi trong giây lát." /></SupportShell></Frame>;
   }
   return (
     <Frame>
       <ServiceIntakeScreen
-        key={`${access.userId}:${category.id}`}
+        key={`${verifiedUserId}:${category.id}`}
         category={category}
-        userId={access.userId}
+        userId={verifiedUserId}
         onBack={back}
         onOpenRequests={requestId => router.push({ pathname: '/requests', params: requestId ? { focus: requestId } : {} })}
         onAskKael={prompt => askKael(prompt, { fresh: true })}
@@ -68,5 +88,4 @@ export function ServiceIntakeRoute() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: horizonColors.bg },
-  action: { marginTop: horizonLayout.supportScreens.sectionGap },
 });

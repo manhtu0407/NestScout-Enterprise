@@ -93,6 +93,7 @@ export const horizonLayout = {
       noticeLineHeight: 19,
       noticeActionSize: 44,
     },
+    previewDemo: { top: 6, paddingHorizontal: 10, paddingVertical: 3, radius: 10, fontSize: 11, fontWeight: '600' },
     kaelHomeScreen: {
       rootPaddingHorizontal: 18,
       navHeight: 92,

@@ -59,7 +59,7 @@ export const serviceCategories: readonly ServiceCategory[] = [
       when: { field: 'danger', values: ['Mùi khét hoặc tia lửa', 'Bị giật điện', 'Nóng bất thường'] },
       text: 'Nếu có cháy, khói hoặc người bị giật điện: ngắt nguồn điện nếu an toàn và gọi 114 ngay. NestScout không phải dịch vụ cấp cứu và chưa cam kết thời gian có thợ.',
     },
-    kaelOpening: 'Tôi cần sửa điện. Hãy hỏi mình từng câu ngắn để hoàn thiện yêu cầu: thiết bị hoặc vị trí, hiện tượng, dấu hiệu nguy hiểm, địa chỉ và thời gian mong muốn.',
+    kaelOpening: 'Kael ơi, mình đang gặp vấn đề về điện ở nhà. Bạn giúp mình nhé.',
   },
   {
     id: 'plumbing',
@@ -77,7 +77,7 @@ export const serviceCategories: readonly ServiceCategory[] = [
       when: { field: 'urgency', values: ['Nước đang chảy mạnh'] },
       text: 'Nếu nước đang chảy mạnh, hãy khóa van tổng và tránh xa ổ cắm điện nếu an toàn. Việc gửi yêu cầu không đảm bảo thợ đến ngay.',
     },
-    kaelOpening: 'Tôi cần sửa nước. Hãy hỏi mình từng câu ngắn: khu vực, rò rỉ hay tắc nghẽn, mức độ khẩn, địa chỉ và thời gian mong muốn.',
+    kaelOpening: 'Kael ơi, mình đang gặp vấn đề về nước ở nhà. Bạn giúp mình nhé.',
   },
   {
     id: 'aircon',
@@ -91,7 +91,7 @@ export const serviceCategories: readonly ServiceCategory[] = [
       choice('symptom', 'Hiện tượng', ['Không lạnh', 'Chảy nước', 'Kêu to', 'Không bật được', 'Cần vệ sinh hoặc bảo dưỡng', 'Khác']),
       { id: 'count', label: 'Số máy (nếu biết)', kind: 'count', placeholder: 'Ví dụ: 2', maxLength: 2 },
     ],
-    kaelOpening: 'Tôi cần xử lý máy lạnh. Hãy hỏi mình từng câu ngắn: loại máy, hiện tượng, số máy nếu mình biết, địa chỉ và thời gian mong muốn.',
+    kaelOpening: 'Kael ơi, mình cần hỗ trợ về máy lạnh. Bạn tư vấn giúp mình nhé.',
   },
   {
     id: 'house-cleaning',
@@ -105,7 +105,7 @@ export const serviceCategories: readonly ServiceCategory[] = [
       choice('kind', 'Loại vệ sinh', ['Vệ sinh định kỳ', 'Tổng vệ sinh', 'Sau xây dựng hoặc sửa chữa', 'Chuyển nhà', 'Khác']),
       { id: 'special', label: 'Yêu cầu đặc biệt', kind: 'multiline', placeholder: 'Ví dụ: có thú cưng, cần tránh hóa chất mạnh', maxLength: 300 },
     ],
-    kaelOpening: 'Tôi cần vệ sinh nhà. Hãy hỏi mình từng câu ngắn: diện tích hoặc số phòng, loại vệ sinh, yêu cầu đặc biệt, địa chỉ và thời gian mong muốn.',
+    kaelOpening: 'Kael ơi, mình muốn tìm dịch vụ vệ sinh nhà. Bạn giúp mình nhé.',
   },
   {
     id: 'sofa-cleaning',
@@ -119,7 +119,7 @@ export const serviceCategories: readonly ServiceCategory[] = [
       choice('material', 'Chất liệu (nếu biết)', ['Vải', 'Da', 'Nỉ hoặc nhung', unknownChoice]),
       choice('stain', 'Loại vết bẩn', ['Bụi bẩn thường', 'Vết ố hoặc thức ăn', 'Dấu vết thú cưng', 'Mùi hôi', 'Khác']),
     ],
-    kaelOpening: 'Tôi cần vệ sinh sofa. Hãy hỏi mình từng câu ngắn: số chỗ ngồi, chất liệu nếu mình biết, loại vết bẩn, địa chỉ và thời gian mong muốn.',
+    kaelOpening: 'Kael ơi, mình muốn tìm dịch vụ vệ sinh sofa. Bạn tư vấn giúp mình nhé.',
   },
   {
     id: 'minor-repair',
@@ -132,7 +132,7 @@ export const serviceCategories: readonly ServiceCategory[] = [
       choice('item', 'Loại hạng mục', ['Lắp đặt đồ nội thất', 'Treo hoặc gắn đồ lên tường', 'Sửa khóa hoặc cửa', 'Sửa đồ gia dụng nhỏ', 'Khác']),
       choice('materials', 'Vật tư (nếu biết)', ['Đã có sẵn vật tư', 'Cần thợ mang theo', unknownChoice]),
     ],
-    kaelOpening: 'Tôi cần lắp đặt hoặc sửa chữa nhỏ. Hãy hỏi mình từng câu ngắn: loại hạng mục, vật tư đang có nếu mình biết, chi tiết công việc, địa chỉ và thời gian mong muốn.',
+    kaelOpening: 'Kael ơi, mình cần lắp đặt hoặc sửa vài đồ trong nhà. Bạn giúp mình nhé.',
   },
   {
     id: 'other',
@@ -142,7 +142,7 @@ export const serviceCategories: readonly ServiceCategory[] = [
     descriptionLabel: 'Bạn cần giúp việc gì?',
     descriptionPlaceholder: 'Mô tả việc cần làm, kích thước hoặc số lượng nếu có',
     fields: [],
-    kaelOpening: 'Tôi có một việc khác ngoài các nhóm dịch vụ có sẵn. Hãy giúp mình mô tả rõ việc cần làm và cho biết nó gần nhóm dịch vụ nào; nếu chưa hỗ trợ loại việc này, hãy nói thẳng.',
+    kaelOpening: 'Kael ơi, mình cần hỗ trợ một việc tại nhà nhưng chưa biết chọn dịch vụ nào. Bạn giúp mình nhé.',
   },
 ];
 

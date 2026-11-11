@@ -241,6 +241,7 @@ export const horizonColors = {
     scrim: 'rgba(0,0,0,0.12)', pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', title: '#6B7683', danger: '#D4322C',
   },
   horizonEntry: { noticeSurface: '#FDEEE6', noticeText: '#8A3B12' },
+  previewDemo: { surface: 'rgba(17,22,28,0.72)', text: '#FFFFFF' },
   signIn: {
     backdrop: '#F3F4F6',
     aurora: {

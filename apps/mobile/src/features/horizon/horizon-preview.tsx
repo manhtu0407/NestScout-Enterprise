@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BackHandler, Platform, StyleSheet, View } from 'react-native';
+import { BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
@@ -27,7 +27,9 @@ import { workerProfileTabForSidebarId, type WorkerProfileTab } from './worker-pr
 import { sampleEarningRecords, toEarningsView } from './worker-earnings';
 import { WorkerEarningsScreen, type EarningsMode } from './worker-earnings-screen';
 import { sampleWorkerBadges, workerJobStageForSidebarId, type WorkerJobStage } from './worker-jobs';
-import { serviceCategoryFor } from './service-catalog';
+import type { KaelQuestion } from '@/features/shared';
+import { demoKaelTurn, initialDemoState, workerDemoTurn } from './horizon-preview-demo';
+import { guestSendNotice, planServiceEntry } from './service-entry';
 
 type SupportScreenId = 'notifications' | 'help' | 'settings' | 'profile' | 'edit-profile' | 'quotes' | 'saved';
 
@@ -129,17 +131,50 @@ export function HorizonPreview() {
   const togglePin = (id: string) => setSessions(current => current.map(session => session.id === id ? { ...session, pinned: !session.pinned } : session));
   const [conversationKey, setConversationKey] = useState(0);
   const [composerError, setComposerError] = useState<string | null>(null);
-  const start = (images: readonly ComposerImage[]) => {
-    setComposerError(images.length > 0 ? 'Ảnh chưa được gửi vì chức năng phân tích ảnh chưa được kết nối.' : null);
+  const [demo, setDemo] = useState(initialDemoState);
+  const [question, setQuestion] = useState<KaelQuestion | null>(null);
+  const sendDemo = (text: string) => {
+    const trimmed = text.trim();
+    if (trimmed === '') return;
+    const turn = role === 'worker' ? workerDemoTurn(demo, trimmed) : demoKaelTurn(demo, trimmed);
+    setDemo(turn.state);
+    setQuestion(turn.question);
+    setMessages(current => [...current, { id: `demo-user-${turn.state.turn}`, role: 'user', text: trimmed }, { id: `demo-kael-${turn.state.turn}`, role: 'assistant', text: turn.reply }]);
   };
-  const reset = () => { setMessages([]); setInput(''); setConversationKey(key => key + 1); setComposerError(null); setDrawer(false); };
+  const start = (images: readonly ComposerImage[]) => {
+    if (images.length > 0) {
+      setComposerError('Ảnh chưa được gửi vì chức năng phân tích ảnh chưa được kết nối.');
+      return;
+    }
+    if (role === 'guest') {
+      setComposerError(guestSendNotice);
+      return;
+    }
+    setComposerError(null);
+    sendDemo(input);
+    setInput('');
+  };
+  const reset = () => { setMessages([]); setInput(''); setDemo(initialDemoState); setQuestion(null); setConversationKey(key => key + 1); setComposerError(null); setDrawer(false); };
+  const selectService = (categoryId: string) => {
+    setDrawer(false);
+    const plan = planServiceEntry(categoryId, { text: input, hasConversation: messages.length > 0, canParkDraft: false });
+    if (plan === null) return;
+    if (plan.kind === 'keep') {
+      setComposerError(plan.notice);
+      return;
+    }
+    if (plan.fresh) reset();
+    setInput(plan.text);
+    setComposerError(null);
+  };
   const homeLoading = useSimulatedLoading(true);
   const recentLoading = useSimulatedLoading(drawer);
   if (homeLoading) return <SafeAreaProvider><KaelHomeLoading label="Đang tải Kael"/></SafeAreaProvider>;
   return <SafeAreaProvider><SafeAreaView style={{ flex: 1, backgroundColor: horizonColors.bg }}>
     <View style={{ flex: 1 }}>
       <View style={screenOpen ? { display: 'none' } : { flex: 1 }}>
-        <KaelHomeScreen input={input} onInput={value => { setInput(value); setComposerError(null); }} onSubmit={start} onMenu={() => setDrawer(true)} onNew={reset} messages={messages} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} />
+        <KaelHomeScreen input={input} onInput={value => { setInput(value); setComposerError(null); }} onSubmit={start} onMenu={() => setDrawer(true)} onNew={reset} messages={messages} question={question} onAnswer={answer => { if (role === 'guest') setComposerError(guestSendNotice); else { setComposerError(null); sendDemo(answer); } }} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} />
+        <View pointerEvents="none" accessibilityRole="text" style={styles.demoBadge}><Text style={styles.demoBadgeText}>DEMO · không kết nối Kael thật</Text></View>
       </View>
       {requestsOpen && <RequestsScreen requests={sampleRequests} onBack={goBack} onViewQuotes={() => { setRequestsOpen(false); setQuotesFromRequests(true); setSupportScreen('quotes'); }} onAskKael={() => setRequestsOpen(false)} />}
       {jobsStage !== null && <SampleWorkerJobsScreen key={jobsStage} initialStage={jobsStage} onBack={goBack} onAskKael={() => setJobsStage(null)} />}
@@ -154,8 +189,15 @@ export function HorizonPreview() {
       {supportScreen === 'edit-profile' && <ProfileEditScreen profile={profile} onBack={goBack} onSave={setProfile} />}
       {supportScreen === 'profile' && <AccountScreen mode={role} profileName={role === 'guest' ? undefined : profile.name} avatarUri={role === 'guest' ? undefined : profile.avatarUri} phoneLabel={role === 'guest' ? undefined : profile.phone} onEditProfile={editProfileFrom('profile')} onBack={goBack} onSignIn={next => setSigningInAs(next)} onChangeMode={() => { setSupportScreen(null); setDrawer(true); }} onSignOut={() => { setSupportScreen(null); setRole('guest'); }} />}
     </View>
-    <Sidebar profileName={role === 'guest' ? undefined : profile.name} profileAvatarUri={role === 'guest' ? undefined : profile.avatarUri} badges={{ quotes: 2, ...sampleWorkerBadges }} recentLoading={recentLoading} recentSessions={sessions} activeSessionId="sample-1" onOpenSession={() => setDrawer(false)} onTogglePin={togglePin} onSessionMore={() => undefined} visible={drawer} onClose={() => setDrawer(false)} mode={role} modePending={false} modeNotice={null} onModeSelect={next => { setDrawer(false); if (role === 'guest') setSigningInAs(next); else setRole(next); }} onModeCancel={() => undefined} onDismissModeNotice={() => undefined} onSelectService={categoryId => { setInput(serviceCategoryFor(categoryId)?.kaelOpening ?? ''); setComposerError('Bản xem trước chỉ gợi ý lời nhắn cho Kael. Biểu mẫu gửi yêu cầu dịch vụ có trong ứng dụng thật sau khi đăng nhập.'); setDrawer(false); }} onNavigate={id => { if (id === 'new' || id === 'home') { reset(); setRequestsOpen(false); setSupportScreen(null); setJobsStage(null); setEarningsMode(null); setProfileTab(null); setWorkerKael(false); } else if (id === 'requests') { setRequestsOpen(true); setDrawer(false); } else if (id === 'notifications' || id === 'worker-notifications' || id === 'quotes' || id === 'saved' || id === 'help' || id === 'settings' || id === 'profile') { setQuotesFromRequests(false); setSupportScreen(id === 'worker-notifications' ? 'notifications' : id); setDrawer(false); } else if (workerJobStageForSidebarId(id) !== null) { setJobsStage(workerJobStageForSidebarId(id)); setDrawer(false); } else if (id === 'worker-earnings' || id === 'worker-payout') { setEarningsMode(id === 'worker-payout' ? 'payout' : 'overview'); setDrawer(false); } else if (workerProfileTabForSidebarId(id) !== null) { setProfileTab(workerProfileTabForSidebarId(id)); setDrawer(false); } else if (id === 'worker-kael') { setWorkerKael(true); setDrawer(false); } else if (id.startsWith('worker-')) { setDrawer(false); setComposerError('Tài khoản chưa được kết nối trong bản xem trước.'); } else { setInput(id); setDrawer(false); } }} />
+    <Sidebar profileName={role === 'guest' ? undefined : profile.name} profileAvatarUri={role === 'guest' ? undefined : profile.avatarUri} badges={{ quotes: 2, ...sampleWorkerBadges }} recentLoading={recentLoading} recentSessions={sessions} activeSessionId="sample-1" onOpenSession={() => setDrawer(false)} onTogglePin={togglePin} onSessionMore={() => undefined} visible={drawer} onClose={() => setDrawer(false)} mode={role} modePending={false} modeNotice={null} onModeSelect={next => { setDrawer(false); if (role === 'guest') setSigningInAs(next); else setRole(next); }} onModeCancel={() => undefined} onDismissModeNotice={() => undefined} onSelectService={selectService} onNavigate={id => { if (id === 'new' || id === 'home') { reset(); setRequestsOpen(false); setSupportScreen(null); setJobsStage(null); setEarningsMode(null); setProfileTab(null); setWorkerKael(false); } else if (id === 'requests') { setRequestsOpen(true); setDrawer(false); } else if (id === 'notifications' || id === 'worker-notifications' || id === 'quotes' || id === 'saved' || id === 'help' || id === 'settings' || id === 'profile') { setQuotesFromRequests(false); setSupportScreen(id === 'worker-notifications' ? 'notifications' : id); setDrawer(false); } else if (workerJobStageForSidebarId(id) !== null) { setJobsStage(workerJobStageForSidebarId(id)); setDrawer(false); } else if (id === 'worker-earnings' || id === 'worker-payout') { setEarningsMode(id === 'worker-payout' ? 'payout' : 'overview'); setDrawer(false); } else if (workerProfileTabForSidebarId(id) !== null) { setProfileTab(workerProfileTabForSidebarId(id)); setDrawer(false); } else if (id === 'worker-kael') { setWorkerKael(true); setDrawer(false); } else if (id.startsWith('worker-')) { setDrawer(false); setComposerError('Tài khoản chưa được kết nối trong bản xem trước.'); } else { setInput(id); setDrawer(false); } }} />
   </SafeAreaView>
   {signingInAs && <View style={StyleSheet.absoluteFill}><SignInPreview initialRole={signingInAs} onClose={() => setSigningInAs(null)} onDone={next => { kaelIntroSession.markPlayed(); setRole(next); setSigningInAs(null); }} /></View>}
   </SafeAreaProvider>;
 }
+
+const demoMetrics = horizonLayout.previewDemo;
+
+const styles = StyleSheet.create({
+  demoBadge: { position: 'absolute', top: demoMetrics.top, alignSelf: 'center', paddingHorizontal: demoMetrics.paddingHorizontal, paddingVertical: demoMetrics.paddingVertical, borderRadius: demoMetrics.radius, backgroundColor: horizonColors.previewDemo.surface },
+  demoBadgeText: { color: horizonColors.previewDemo.text, fontSize: demoMetrics.fontSize, fontWeight: demoMetrics.fontWeight },
+});
