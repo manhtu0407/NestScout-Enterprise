@@ -1,25 +1,29 @@
 # Supabase development
 
 Technical setup under the root [engineering policy](../AGENTS.md).
-The owner selected native App development, without Vercel hosting. This repository
-contains tooling and the minimal Application Foundation V2 mobile app, whose only
-database object is the technical `worker_access_grants` table. There are no
-bookings, payments, worker onboarding or Kael runtime. Do not import another
+The current app uses Expo SDK 58, React Native and TypeScript with Supabase Auth,
+Postgres/RLS, Storage, RPCs and Edge Functions. Customer service intake, Worker
+workflows and Kael sessions/runtime are implemented in the repository; payment
+settlement and commercial dispatch are not established. Do not import another
 project's schema.
 
-Engineering Foundation V1 uses **Supabase Local for development/testing**, with no
-Staging Project, additional remote environment or Production write/deploy step.
-The existing hosted read-only MCP connection below remains diagnostic access.
-It is never a local-test fallback or an App configuration source. See the
+Ordinary development and tests use **Supabase Local**. There is no Staging Project.
+The connected hosted Supabase project is the app backend, while the project-scoped
+read-only MCP connection below is diagnostic access only. Hosted state is never a
+local-test fallback. A read-only observation on 2026-11-11 found project
+`axpdymbusiwxfzurfclg` `ACTIVE_HEALTHY`, migration history through
+`20261110224223` (`add_kael_session_management`), and `kael` Edge Function v19
+`ACTIVE` with JWT verification enabled. This audit made no hosted changes and did
+not verify a tester Auth session, real SMS, or a complete live app flow. See the
 [environment and security contracts](foundation-contracts.md).
 
-The local `[auth]` service supports platform tooling; `enable_signup = false`,
-`enable_anonymous_sign_ins = false`, no extra redirects and the loopback `site_url`
-are retained. Mobile V2 implements the phone OTP client flow, but local signup
-and SMS delivery remain disabled by default; no live OTP round trip is verified.
-Guest discovery means unauthenticated access to an approved public projection
-later, not enabling anonymous Auth accounts. Enabling a provider, OAuth, signup
-or a production deep link requires separate owner approval.
+The local `[auth]` service retains `enable_signup = false`,
+`enable_anonymous_sign_ins = false`, no extra redirects and the loopback `site_url`.
+The mobile client has email/password and phone OTP flows. Local signup and SMS
+delivery remain disabled by default, and this audit did not verify a live OTP
+round trip. Guest discovery means unauthenticated access to an approved public
+projection, not enabling anonymous Auth accounts. Provider, OAuth and redirect
+configuration still need review against the relevant owner-approved flow.
 
 ## Installation and local runtime
 
@@ -39,8 +43,8 @@ npm run db:status
 
 CLI `2.122.0`, MCP SDK `1.32.2`, TOML parser `1.9.1`, and TypeScript `7.0.2` are
 pinned in npm. `supabase/supabase.lock` pins official service images by digest;
-startup uses `--frozen`. Application Foundation V2 added the Expo workspace
-dependencies in `apps/mobile`; no hosted deployment dependency exists.
+startup uses `--frozen`. The root npm workspace includes the Expo app in
+`apps/mobile`; the application also uses the connected hosted Supabase project.
 
 `supabase/config.toml` enables the **experimental managed stack** using Docker.
 This choice followed a disposable Windows proof: the legacy runtime published
@@ -61,10 +65,12 @@ backups do not cover object bytes, so treat uploaded files as outside the databa
 A request folder accepts at most twelve raw objects, counted by a definer helper because a policy cannot
 read its own table; at most six of them can be attached. The app names each photo once, keeps the
 pending list on the device, and retries an interrupted upload under the same name, so a retry never
-creates an orphan object. The eighteen migrations were applied to the hosted project on 2026-11-02
-with the owner's authorization, one by one through the Supabase MCP. The MCP recorded its own version
-numbers, so the hosted history rows were then renamed to the repository file timestamps; hosted and
-repository history now match one to one by version and name.
+creates an orphan object. Owner-authorized hosted migration application began on
+2026-11-02. A read-only history check on 2026-11-11 reached
+`20261110224223` (`add_kael_session_management`) and matched repository migration
+names and versions through that head. Hosted PostgreSQL was observed at 17.11.0.003
+and the pinned local image at 17.11.0.006; version differences remain separate from
+migration-history parity.
 Enabled HTTP services wake on demand.
 
 ```sh
@@ -106,30 +112,26 @@ print their payloads. HTTP errors and SQL errors must remain failures.
 
 ## Schema and verification limits
 
-`supabase/migrations/` is the sole application schema source; Application
-Foundation V2 adds the technical `worker_access_grants` migration, not a
-business-services schema. Hosted carries the full chain since 2026-11-02: 20 public tables
-with RLS enabled, 35 public and 35 private functions, two private buckets. Hosted metadata
-also contains `public.rls_auto_enable()` and `ensure_rls`, absent locally. Their
-definitions match Studio's optional Auto enable RLS template, are owned by
-`postgres`, and are not extension members. The installing actor/mechanism is still
-unverified; do not label them automatically maintained platform objects. Their
-`execute` grant to `public`, `anon` and `authenticated` was revoked on 2026-11-02 because the
-trigger runs without an execute check and the function must not be callable through the API; a probe
-table confirmed that row level security is still enabled automatically. Empty
-drift establishes only local application migration consistency, **not** complete
-hosted catalog parity. PostgreSQL major versions agree (17); local image release
-17.11.0.006 and hosted 17.11.0.003 differ. Generate future migration names with the pinned CLI.
+`supabase/migrations/` is the sole application schema source. It now includes
+service-request, Customer/Worker and Kael boundaries in addition to
+`worker_access_grants`; use the migration history and feature-specific tests rather
+than treating the V2 baseline as the current schema. A 2026-11-02 hosted metadata
+review found `public.rls_auto_enable()` and `ensure_rls`, absent locally, matching
+Studio's optional Auto enable RLS template, owned by `postgres` and not extension
+members. The installing actor/mechanism was unverified. Their `execute` grants to
+`public`, `anon` and `authenticated` were revoked on 2026-11-02 because the trigger
+runs without an execute check and the function must not be callable through the API;
+a probe table confirmed row-level security still enabled automatically. This is a
+dated observation, not a claim that those objects are platform-managed. Empty drift
+establishes local application migration consistency, **not** complete hosted catalog
+parity. Generate future migration names with the pinned CLI.
 
-`supabase/seed.sql` holds synthetic local fixtures only: two public worker profiles, and one
-worker with a grant and dispatch eligibility plus an open invitation and assigned, working
-and submitted jobs for the customer `Nguyễn Văn Lan`; that worker has no profile yet so the creation flow can be exercised. Add further fixtures alongside real
-product migrations. `supabase/database.types.ts` is the single generated artifact, from
-local `public`, normalized to LF without trailing whitespace. The mobile app does not
-import it yet. It includes `worker_access_grants`, regenerated with `npm run db:types`
-from the pinned images, and `db:types:check` compares it with the local database. The
-app reads that one table through an untyped boundary with runtime validation until it
-imports the artifact. `typecheck:db` checks that artifact only.
+`supabase/seed.sql` holds synthetic local Customer/Worker fixtures for service
+requests, jobs and Kael boundaries; they are not hosted customer records. Add further
+fixtures alongside real product migrations. `supabase/database.types.ts` is the
+single generated artifact from local `public`, normalized to LF without trailing
+whitespace. The mobile app uses feature repositories and runtime response validation;
+`typecheck:db` checks the generated artifact, not application query typing.
 
 pgTAP inspects actual public RLS, table/column view grants, readable snapshots,
 SECURITY DEFINER EXECUTE (ordinary RPC and hooks separately), and reviewed function
@@ -140,10 +142,10 @@ of definer functions. Exposing additional application schemas requires updating
 the configuration guard and corresponding database checks; `graphql_public` is
 the existing platform GraphQL schema, outside the application type artifact.
 Wrapper tests cover target/environment isolation, locks, diagnostic disclosure,
-image pinning and both client configurations. `worker_access_grants` has real
-allowed/denied tests in `supabase/tests/database/worker-access-grants.test.sql`
-(anonymous, other-user, self-grant and revocation denials). Customer A/B, Admin,
-payment and Kael isolation are NOT IMPLEMENTED.
+image pinning and both client configurations. Local SQL tests cover service intake
+and workflow boundaries, Customer/Worker visibility, and Kael runtime, knowledge
+and session behavior. They do not establish live hosted Auth, provider or native-app
+behavior. Admin workflows and payment settlement remain unimplemented.
 Future application migrations must enable RLS explicitly and supply the feature's
 actual role/grant/policy tests; do not rely on the optional hosted event trigger.
 Do not reuse its names, drop it, or baseline its ownership implicitly. Any decision

@@ -1,9 +1,15 @@
 # Foundation contracts
 
-Technical contracts for later application consumers, under the sole root
+Technical contracts created for the initial application foundation, under the sole root
 [engineering policy](../AGENTS.md) and the owner's
 [architecture decisions](architecture.md). These contracts introduce no runtime,
 environment loader, endpoint, schema, auth provider or additional policy.
+
+The application now implements Customer/Worker workflows and the Kael Edge runtime
+against a connected hosted Supabase project. This document remains the reference for
+environment and security boundaries; its original foundation-era statements are not
+a current inventory of implemented features. The hosted project was observed active
+on 2026-11-11; there is no Staging Project or verified native/TestFlight release.
 
 ## Environment contract
 
@@ -13,8 +19,8 @@ environment loader, endpoint, schema, auth provider or additional policy.
 | Local database/testing | `supabase/config.toml`, image lock and `scripts/supabase-local.mjs` | Checkout + branch identity, dynamic loopback endpoints, local Docker; no linked project or remote fallback |
 | Developer MCP | Existing project-scoped hosted read-only settings and guarded local bridge | Diagnostic tools only; client approval still applies; credentials stay outside Git |
 | Mobile public config | `apps/mobile/src/lib/config.ts`, `apps/mobile/.env.example` | `EXPO_PUBLIC_NESTSCOUT_TARGET=local`, a loopback or private-network API URL and a publishable key; values shipped in the bundle are public, and secret or service_role keys are rejected |
-| Future trusted execution | Operation owner, only when a real service is approved | Privileged/provider credentials stay outside clients and Git; never inferred from developer MCP access |
-| Hosted environments | Owner at the Deploy phase | No Staging Project or additional remote environment; no Production writes/deploy in this foundation |
+| Trusted execution | Supabase Edge Functions, including the Kael runtime | Privileged/provider credentials stay outside clients and Git; developer MCP access never grants runtime permissions |
+| Hosted environments | Connected Supabase project for the app; no Staging Project | Hosted schema/function deployment exists; this foundation-era document does not authorize new hosted writes |
 
 The tooling requires no `.env` file. `validateLocalFiles()` rejects root/Supabase
 dotenv variants other than `.env.example` and both CLI link formats.
@@ -66,16 +72,13 @@ clients regardless. Reuse `supabase/tests/database/security.test.sql` and genera
 `supabase/database.types.ts`; extend them with real feature contracts, without
 handwritten duplicate table types or reliance on a hosted auto-RLS hook.
 
-Phone + OTP is the confirmed sign-in direction, with Vietnam as the initial phone
-market. Application Foundation defines validation and normalization to `+84` E.164
-form before identity lookup, preserving a single canonical identity across input
-formats. It also defines abuse/rate limits, expiry/replay handling, phone-change
-reverification, recovery and account linking. No guessed phone regex, SMS traffic,
-OTP fixture credentials or role entitlement is implemented. The mobile app calls
-the Supabase Auth phone API with the normalized number; SMS delivery needs an
-owner-approved provider, so it is not configured. Google/Facebook
-remain later secondary methods; they must link through the approved account model,
-not silently create a separate account or grant a Worker capability.
+Phone + OTP remains the confirmed sign-in direction, with Vietnam as the initial
+phone market. The current mobile app also has email/password flows. Local signup and
+SMS delivery remain disabled by default; this audit does not verify real SMS,
+hosted Auth or account linking. The mobile client calls the Supabase Auth phone API
+with a normalized number. Google/Facebook remain future methods and must follow the
+approved account model, not silently create a separate account or grant a Worker
+capability.
 
 ## API conventions for future consumers
 

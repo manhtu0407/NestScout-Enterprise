@@ -40,7 +40,10 @@ Do not change account-wide budgets or payment methods as part of repo maintenanc
 
 ## Version and release procedure
 
-No product release exists, and the mobile app is an unreleased foundation. Use semantic versioning once an application is released:
+No iOS store release is evidenced. The mobile app now contains Customer/Worker,
+service-intake and Kael session flows. `apps/mobile/eas.json` configures a TestFlight
+build and submit profile, but no build, upload or device run is evidenced here. Use
+semantic versioning once an application is released:
 MAJOR for incompatible public changes, MINOR for compatible capability, PATCH for fixes.
 Do not create tags or releases to imply an application is ready today.
 
@@ -67,7 +70,9 @@ confirming the parent to retain. Never reset/force-push published `main`.
 For a repo-setting change, consult the setup evidence and saved pre-change snapshot;
 restore only the affected setting through its settings page/API. A Git revert does
 not restore GitHub settings, Projects, Issues, secrets, or external systems.
-No deployment rollback exists until a deployment target and runbook are implemented.
+No TestFlight release or app rollback drill has been performed. EAS configuration
+does not establish a published binary or a rollback path; database and Storage
+recovery also need their own approved objectives and restore evidence.
 
 For a credential incident, follow [SECURITY](../SECURITY.md): revoke/rotate first.
 
@@ -125,22 +130,30 @@ Until a retention/destination decision exists, local snapshots are a recovery dr
 not an off-device disaster recovery guarantee. The repository owner owns restore
 decisions and access; designate a second custodian before relying on team recovery.
 
-## Add the application later
+## Application stack and delivery state
 
-The intended native React Native/TypeScript/Supabase direction is recorded in the
-[architecture decisions](architecture.md): one App, guest discovery, multiple roles
-per account, backend authorization, Vietnamese phone + OTP first, and iOS first.
-Development/testing use Supabase Local without a Staging Project. Project layout,
-SDK, operation permissions and release choices belong to Application Foundation
-and the later Deploy phase. They are OUT OF SCOPE for Engineering Foundation V1.
-Resolve the applicable decisions before
-the first feature. Then add actual lint/typecheck/unit/build
-checks, lockfiles, sanitized environment examples, and a reproducible local setup.
+The selected stack and current application are recorded in the
+[architecture decisions](architecture.md) and [mobile guide](mobile-application.md):
+Expo/React Native, TypeScript, a Node 24/npm workspace, Supabase Auth/Postgres/RLS/
+Storage/RPC/Edge Functions, and an iOS-first TestFlight target. The first customer
+slice includes service-request intake across the catalog; it does not claim a
+confirmed worker, price, schedule or payment.
 
-Keep credentials in appropriate secret stores; use OIDC only where the selected
-provider supports it. Preview/deployment, smoke tests, monitoring/alerts, data backup,
-migrations, recovery objectives, and rollback require a concrete service design.
-No current repository check proves application readiness or native-device behavior.
+Use `apps/mobile/.env.example` for local public Supabase settings; it contains no
+server secrets. Reproduce setup with `npm ci --ignore-scripts`, `npm run tools:install`,
+`npm run check`, `npm run verify:negative` and `npm run verify:mobile-sdk`. CI runs
+repository checks and isolated Supabase local verification for PR/main events. It
+does not run an iOS build or verify a live Auth user.
+
+The connected Supabase project has applied migrations and a deployed Kael Edge
+Function, but there is no Staging Project. The EAS TestFlight profile targets the
+hosted project and has not been built or uploaded. Keep local validation on the
+isolated stack; never treat hosted state or a profile as a preview test or release.
+
+Keep credentials in approved secret stores. The project still needs owner decisions
+for preview/release promotion, database and Storage backup retention and restore
+objectives, health/error/cost alerts, and an app/database rollback procedure. No new
+provider, environment, deployment automation or architecture is selected here.
 
 ## Supabase Pro readiness
 
@@ -155,8 +168,9 @@ and the dated [setup evidence](setup-evidence.md#supabase-agent-setup-2026-10-24
   [pricing calculator](https://supabase.com/pricing) and
   [branching charges](https://supabase.com/docs/guides/platform/manage-your-usage/branching).
 - Preserve the verified managed-stack loopback checks and reconcile hosted platform objects
-  before using migrations for a release. Review advisor findings and actual RLS,
-  Auth, Storage, payment and role tests once those features exist.
+  before using migrations for a release. Review current RLS, Auth, Storage, worker,
+  service and Kael tests against the real implementation; local fixtures do not
+  establish hosted user behavior or payment settlement.
 - Define database recovery objectives, protected backup retention/destination and
   a disposable restore drill. Database backups do not cover Storage object bytes;
   arrange separate object protection. No production dump or restore was performed.

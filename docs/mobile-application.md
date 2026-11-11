@@ -1,10 +1,18 @@
-# Mobile application foundation
+# Mobile application
 
 Technical guide for `apps/mobile` under the root [engineering policy](../AGENTS.md).
-Application Foundation V2 implements entry, phone sign-in, role resolution and
-Client/Worker mode gates. It contains technical placeholders only: no service
-catalog, booking, worker job, earnings, pricing or Kael behavior exists, and the
-owner has not yet supplied process documents or final UI.
+The initial Application Foundation V2 entry and mode-gate slice has expanded. The
+current source includes Customer and Worker areas, service-request intake across the
+service catalog, job activity, Kael conversations and persisted Kael sessions, plus
+account and worker data flows. Supabase owns Auth, Postgres, Storage, RPCs and the
+Kael Edge Function boundary.
+
+These are implemented application paths with local and contract coverage, not proof
+of complete commercial dispatch, payment settlement, live SMS delivery or production
+readiness. A native iOS build, TestFlight upload and device behavior remain
+unverified. See [architecture decisions](architecture.md),
+[service workflow contracts](service-workflow.md), and
+[Supabase development](supabase-development.md) for their separate boundaries.
 
 ## Design fidelity contract
 
@@ -159,37 +167,37 @@ nothing is authorized or removed and the next check judges the new session. A re
 is never keyed on the account id, because two sessions of one account are different
 sessions.
 
-This is not atomic and the SDK offers nothing that would make it so. The client is
-created without the optional lock, `signOut()` removes whichever session is stored when
-it finishes, and it waits for a server request (`/logout`) before removing anything.
-A session established between the comparison and that removal, including during the
-request, is therefore still removed with the refused one. The outcome fails closed (the
-user is signed out and signs in again) and is pinned by tests that name it as a known
-limit. The SDK's own `getUser()` also removes the stored session when the server says
-`session_not_found`, whichever session that is.
+Removal is not atomic across the gateway comparison and the SDK call. If a different
+session replaces the refused one after the comparison but before `signOut()` reads
+storage, the SDK signs out the replacement too; the outcome fails closed and the
+user signs in again. In `2.119.0`, local sign-out removes the session before awaiting
+`/logout`, so a new session established while that server request waits remains stored.
+Both boundaries are pinned by tests. The SDK's `getUser()` also removes the stored
+session when the server says `session_not_found`, whichever session is then stored.
 
 ### Sign-out
 
-Access state follows the stored session, not the outcome of the sign-out call. The
-gateway calls `signOut({ scope: 'local' })`, and the SDK announces `SIGNED_OUT` only
-after it has removed the session from storage; the provider enters the guest state
-when it receives that event and not before. `AccessApi.signOut()` returns the gateway
-outcome without changing state.
+Access state follows the SDK auth event, not the sign-out result. The gateway calls
+`signOut({ scope: 'local' })`; when the SDK removes the session it emits `SIGNED_OUT`
+and the provider enters the guest state. `AccessApi.signOut()` still returns the
+gateway outcome without overriding the event-driven state.
 
-The pinned SDK returns from `signOut()` before removing anything when it cannot load
-the stored session: with an expired access token and no connectivity, the refresh
-fails with a retryable error, the SDK retries with backoff for roughly 25 seconds, and
-then returns an error with the session still stored and no event. In that case the
-account stays signed in, `SignOutControl` shows "Could not sign out" and the button
-works as the retry. The SDK also caches a failed refresh for 60 seconds, so a retry
-inside that window fails at once and a later one succeeds once connectivity is back.
-While offline with an expired token the device therefore cannot be signed out; this
-is the SDK's behavior, and the app does not delete the stored session behind the SDK's
-back. When the SDK removes the session but the server cannot be told (`/logout` fails),
-the event still fires, the app is signed out and the server-side session lapses on its
-own; the call's error is not shown because the screen that would show it is gone. A
-refused session whose removal returns an error is reported as `unreachable`, never as
-removed.
+In `@supabase/supabase-js`/`@supabase/auth-js` `2.119.0`, local sign-out removes the
+stored session before its best-effort `/logout` request. If that request fails, the
+SDK returns the network error while the app is already signed out; the server may
+retain the refresh token until expiry. If the access token has expired, the SDK
+first attempts refresh. A retryable offline/5xx failure takes roughly 25 seconds,
+then the local scope removes the session, emits `SIGNED_OUT` and returns the error.
+The app does not delete SDK storage directly or claim that the server revoked a
+refresh token when no successful server request occurred.
+
+The `2.119.0` release notes include a `global` sign-out fix, and its versioned Auth
+source also removes a local session after a retryable refresh failure. The SDK suite
+checks replacement timing, refresh, local offline removal and server logout/revocation
+against a scripted Auth server. It does not prove hosted Auth behavior. Upstream
+[issue #2795](https://github.com/supabase/supabase-js/issues/2795) records the
+original `2.118.0` behavior; compare it with the
+[versioned `2.119.0` source](https://github.com/supabase/supabase-js/blob/v2.119.0/packages/core/auth-js/src/GoTrueClient.ts).
 
 The grant table is deliberately minimal: user id, `active`/`revoked` status and
 timestamps. Only trusted backend operators (`postgres`, `service_role`) can write
@@ -318,7 +326,7 @@ the complete delivered state.
 | --- | --- | --- |
 | Reducer and route policy (`access-reducer.test.ts`, `route-policy.test.ts`) | Identity transitions, request ids, Worker predicate | Unit |
 | Provider (`access-provider*.test.tsx`) | Event ordering, deferred promises, fake timers, account switches, late answers, aborts | Unit with fake gateway |
-| `supabase-auth-gateway-sdk.test.tsx` | The real Auth client against a scripted Auth server and in-memory storage: error classification on SDK-produced errors, removal of a refused session, replacement before and after the comparison, sign-out with an expired token while offline, the retry cooldown, and the provider over the real gateway and restart. Nothing in it is evidence about the hosted or local Auth service | Unit against the real SDK, scripted server |
+| `supabase-auth-gateway-sdk.test.tsx` | The real Auth client against a scripted Auth server and in-memory storage: error classification, refused-session removal, replacement before comparison and during `/logout`, offline expired-token removal, refresh and server refresh-token rejection after successful logout, plus provider state and restart. Nothing in it is evidence about a hosted or local Auth service | Unit against the real SDK, scripted server |
 | Other gateway and repository tests | OTP contract, event forwarding and PostgREST response shapes | Unit against stubbed clients |
 | `chunked-storage.test.ts` | Fault injection at every store call, restart, corruption, concurrency | Unit against an in-memory keychain |
 | `navigation.test.tsx` | Real Expo Router tree through `renderRouter` with fake services | Component integration |
@@ -336,33 +344,25 @@ device, and real SMS delivery. Metro serving the bundle proves bundling only.
 
 ## Known dependency advisories
 
-On 2026-10-29, `npm audit` reports 13 low and six high findings. Three high findings
-are in Expo's command-line dependency chain, which
-runs on developer machines and is not part of the iOS bundle: an `expo export
---platform ios` bundle on 2026-10-27 contained no `node-forge`, `zod` or `@expo/cli`
-strings, and `npm ls --omit=dev` reaches them only through `expo` → `@expo/cli`. One advisory was resolved on 2026-10-27 by a lockfile-only update of
-`node-forge` from 1.4.0 to 1.4.1 inside the existing `^1.4.0` ranges of `@expo/cli`
-and `@expo/code-signing-certificates` (GHSA-86w9-cpqp-85rv; the 1.4.1 tarball adds the
-canonical DigestInfo check to RSA PKCS#1 v1.5 verification and nothing else of
-consequence, and its integrity matches the registry). That release is hours old, so a
-review of it before relying on it is reasonable.
+The Expo/Zod finding tracked by Issue #42 is resolved in the lockfile based on
+`main` `ec29ebb`: Expo remains `58.0.23`, `@expo/cli` is `58.1.19`, and the
+resolved Zod is `4.6.7`. The current `npm audit` does not report
+GHSA-mrhx-c7xc-m3w5. The previously recorded `node-forge` update remains in the
+same lockfile.
 
-| Advisory | Package and path | Range | Patched | Preconditions | Assessment |
-| --- | --- | --- | --- | --- | --- |
-| GHSA-mrhx-c7xc-m3w5 | `zod` 3.25.76 nested in `@expo/cli` | `<4.6.6` | 4.6.6 (4.x only) | Large arrays without length bounds reaching a schema | Memory exhaustion of a developer tool process; advisory text describes the 4.x code path, so applicability to 3.25.76 is unconfirmed |
+| Advisory | Package and path | Affected / fixed | Preconditions | Assessment |
+| --- | --- | --- | --- | --- |
+| GHSA-mrhx-c7xc-m3w5 | Zod under Expo tooling | `<4.6.6` / `4.6.6+` | Oversized collections reach a Zod schema | Resolved by the current Expo CLI dependency graph; no Expo downgrade or forced override |
+| GHSA-gg6h-894w-4m9c | `markdownlint-cli2` → `markdownlint` → `re2js` | `<2.8.7` / `2.8.7` | Lookbehind mode with repeated matching APIs | Fixed by the root `re2js` patch override; development-only, outside the mobile bundle |
 
-The other two findings (`@expo/cli`, `expo`) are only chains to that advisory.
-`@expo/cli` requires `zod@^3.25.76`, and no 3.x release is patched. `npm audit fix
---force` proposes Expo SDK 54, a major downgrade of the whole app stack, and overriding
-`zod` to a different major inside the CLI is untested; neither is applied. The
-residual risk is **unresolved and requires owner acceptance**; it is not accepted by
-the agent. Mitigations: run Expo tooling only on trusted developer machines and CI,
-and re-run `npm audit` on every Expo SDK patch update.
-
-The other three high findings are the `re2js` lookbehind denial-of-service advisory
-and its `markdownlint` and `markdownlint-cli2` dependency chains. They affect the
-repository lint path rather than the mobile bundle. `markdownlint` pins the affected
-version, and npm proposes a major downgrade; no unsupported override was applied.
+The audit on this maintenance branch found `re2js` `2.8.6` through the
+development-only `markdownlint` dependency. The root npm override pins the compatible
+patch `2.8.7`. npm's suggested `--force` fix downgrades `markdownlint-cli2`; that
+downgrade was not used. The post-fix `npm audit` on 2026-11-11 exits 1 with 1 low,
+29 moderate, no high and no critical findings. Remaining advisories include
+`glob`/`minimatch` through Expo tooling and other development dependencies; the
+named Zod and RE2JS advisories are absent. The full findings remain visible for
+separate review.
 
 ## Commands
 
@@ -373,8 +373,9 @@ npm run verify:mobile-sdk   # expo install --check (needs the Expo API)
 npm --workspace apps/mobile run start
 ```
 
-`npm run check` includes `check:mobile`. Native iOS builds, signing, TestFlight
-and real SMS delivery are not part of this foundation.
+`npm run check` includes `check:mobile`. `apps/mobile/eas.json` has a TestFlight
+store-build and submit profile, but no EAS build or upload is evidenced here.
+Native device behavior, live Auth/OTP and real SMS delivery are separate checks.
 
 ## Horizon development preview
 
@@ -478,13 +479,12 @@ Reduce Motion the sweep is stopped and the blocks stay still. Sizes and the swee
 timing live in `horizonLayout.skeleton`; the base colour and highlight stops live
 in `horizonColors.skeleton`.
 
-No conversation history source exists yet, so the real sidebar never sets
-`recentLoading`. Only the design preview (`HorizonPreview`) simulates the load,
-for `horizonLayout.skeleton.previewDuration` after the preview opens and every
-time the sidebar opens, so the states can be reviewed. When a history query is
-added, its pending flag should drive `recentLoading`. The preview timer is not a
-real loading signal. On a device, the sweep and Reduce Motion are NOT VERIFIED:
-only the web preview and Jest were exercised.
+The signed-in sidebar reads persisted Kael sessions through `useKaelSessions`;
+its session query status drives the real recent-session loading skeleton. The
+design preview (`HorizonPreview`) still simulates its own loading state for
+`horizonLayout.skeleton.previewDuration`. The preview timer is not a live-query
+signal. On a device, the sweep and Reduce Motion are NOT VERIFIED: only the web
+preview and Jest were exercised.
 
 ### Kael progress motion
 
@@ -494,8 +494,8 @@ the app already knows about and never stand in for state it does not have.
 - `KaelThinkingRow` appears in the chat only while `kaelPhase` is `clarifying` or
   `matching`. It joins a dot loader, a status line that shimmers and swaps text
   when the phase changes, and `KaelStepNotes`, the fixed description of the step.
-  The notes are shown at once and are not presented as live reasoning, because no
-  Kael runtime exists.
+  The notes are shown at once and are not presented as live reasoning. The runtime's
+  task and approval events are not mapped to these illustrative phase labels.
 - When the phase carries an issue (`needs_information`, `unmatched` or
   `unavailable`, the B01, B02 and B04 branches of the
   [service workflow](service-workflow.md)), the loader and shimmer stop and the
@@ -511,9 +511,10 @@ the app already knows about and never stand in for state it does not have.
 - A recent session in the sidebar shimmers its subtitle only while its phase is
   `clarifying` or `matching`.
 
-Nothing passes `kaelPhase` or an issue yet, so the real chat does not show these
-states. The eight phases are the current UI model; the owner's BPMN will decide the
-real states, and Kael Work is not wired. All durations and sizes live in
+These eight phase labels remain a presentation model in the motion lab. The live
+chat does not map runtime events to `kaelPhase` or its issue field; it displays the
+runtime's activity, task and approval signals instead. A dedicated Kael Work flow
+is not shipped. All durations and sizes live in
 `horizonLayout.kaelMotion` and the colours in `horizonColors.kaelMotion`. With
 Reduce Motion every animation is replaced by static text. The lab at
 `EXPO_PUBLIC_KAEL_MOTION_LAB=1` (with `EXPO_PUBLIC_DESIGN_SHOWCASE=1`) renders each
@@ -553,10 +554,11 @@ advance, pause, resume, submit, propose scope, report) through one `perform` fun
 that reloads afterwards. Submit, scope proposal and report forms generate an
 idempotency key when the form opens and reuse it for retries until the form closes. An
 invitation shows no address or customer name until the worker accepts it. A safety
-pause cannot be resumed. The Kael entry stays a mock. Sample data and local simulation
-remain only in `HorizonPreview` (`useSampleWorkerJobs`), where the screen shows its
-sample footnote. Drafts are not persisted across app restarts. Native device behavior
-is NOT VERIFIED.
+pause cannot be resumed. Worker mode uses the shared persisted Kael session and turn
+runtime; its separate prompt landing remains preview-only. Sample data and local
+simulation remain only in `HorizonPreview` (`useSampleWorkerJobs`), where the screen
+shows its sample footnote. Drafts are not persisted across app restarts. Native
+device behavior is NOT VERIFIED.
 
 ## Worker profile
 

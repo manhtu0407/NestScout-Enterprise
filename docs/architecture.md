@@ -1,11 +1,11 @@
 # Application direction and architecture decisions
 
-Status: **ENGINEERING FOUNDATION V1 plus APPLICATION FOUNDATION V2 (entry, phone
-sign-in and mode gates only)**. The owner confirmed the direction on 2026-10-25 and
-refined the decisions below on 2026-10-27. This document records decisions and
-implementation prerequisites; it authorizes no business schema, release or Kael
-runtime. The implemented V2 scope is described in
-[the mobile application guide](mobile-application.md).
+Status: **Architecture snapshot checked against `main` at `ec29ebb` on
+2026-11-11.** The owner confirmed the product direction on 2026-10-25 and refined
+the stack decisions below on 2026-10-27. The V1/V2 descriptions below preserve
+their original decision history; they do not describe the full current application.
+No architecture change or release approval follows from this status update. See
+[the mobile application guide](mobile-application.md) for current implementation.
 The root [AGENTS.md](../AGENTS.md) remains the sole repository-wide engineering policy.
 
 ## Confirmed product direction
@@ -20,21 +20,46 @@ configuration, credentials and data are not inherited by this repository.
 | Decision | Confirmed direction | Still pending |
 | --- | --- | --- |
 | Mobile framework | Expo SDK 58 and React Native in `apps/mobile` | Native iOS build and device verification |
-| Language | Strict TypeScript for the mobile app; JavaScript/ESM for tooling | Native build verification |
-| Backend | Supabase; backend enforces authorization | Business schema and operation-level access matrix |
-| App and discovery | One App for Clients and Workers; guests explore before signing in | Owner-supplied App structure, public discovery data and workflows |
-| Identity and roles | One account may hold multiple roles | Role assignment/revocation, Worker eligibility and capability rules; Admin is future scope |
-| Authentication | Vietnamese phone number + OTP client integration; Google/Facebook are future methods | SMS provider, live Auth/OTP verification and identity linking |
-| Development/testing | Isolated Supabase Local; no Staging Project | Production release design at the Deploy phase; no hosted writes now |
-| Kael | Kael Service Operator | BPMN, permissions, tools, AI provider and runtime contracts |
-| Platform and testing | iOS first; TestFlight is the later testing channel | Owner setup, signing, build provider and distribution; Android deferred |
+| Language and package manager | Strict TypeScript mobile app, Node.js 24 tooling, npm workspace and root lockfile | No separate application backend or package manager |
+| Backend and data | Supabase Auth, Postgres/RLS, Storage, RPCs and Edge Functions; service and Kael migrations exist | Payment settlement and commercial dispatch are not established by the current contracts |
+| First user-facing slice | Entry/session gates followed by Customer service-request intake for the catalog; Worker and Kael paths are also present | Live end-to-end transaction and production readiness remain unverified |
+| Identity and roles | Customer/Worker presentation modes with server-side worker grants | Worker onboarding/qualification and Admin are separate scope |
+| Authentication | Phone and email client flows with Supabase Auth | Live tester verification, real SMS and native Keychain behavior are not evidenced here |
+| Development/testing | Isolated Supabase Local; one connected hosted project has deployed schema and Kael components; no staging project | Hosted state is not a substitute for local tests or real-user acceptance |
+| Kael | Mobile chat, server-backed sessions and existing Supabase Edge runtime | Provider quality, complete hosted user flow and commercial side effects remain limited or unverified |
+| Platform and testing | iOS first; `apps/mobile/eas.json` has a TestFlight build/submit profile | No EAS build, upload or device verification is evidenced; Android is not configured |
 | Visibility | Keep this repository public until the Deploy phase; the owner decides any change | Licensing; Deploy-phase visibility decision |
 
-No interface design is approved yet. TestFlight setup and builds are deferred, and
-the Kael name alone defines no operating permissions. Earlier ADR recommendations
-below remain proposals wherever they go beyond these confirmed decisions.
+The current mobile UI includes Horizon screens, customer service intake and Kael
+session controls. A configured EAS profile is not a build or release. CI runs
+repository checks and isolated Supabase local verification on PR/main events; it
+does not run native builds or verify a live Auth account. Earlier ADR recommendations
+remain proposals wherever they go beyond the confirmed decisions.
 
-## Inspected implementation
+## Current implementation and Issue #2 acceptance review
+
+The first working customer transaction slice is manual service-request intake across
+the service catalog, preceded by the access/session gates. The merged
+[PR #122](https://github.com/manhtu0407/NestScout-Enterprise/pull/122) records the
+forms, explicit confirmation, persisted idempotency key and limits: the app does not
+claim a worker, price, schedule or payment is confirmed. Supabase migrations and
+RLS/RPC tests own the backend boundary. This is an implemented slice, not evidence
+of a commercial end-to-end service.
+
+The confirmed user groups, Expo/React Native and TypeScript stack, Node/npm workspace,
+Supabase boundaries, local setup, environment example, aggregate checks, CI and
+TestFlight profile are recorded in this document and the linked technical guides.
+The connected Supabase project was observed `ACTIVE_HEALTHY` on 2026-11-11; its
+migration history reached `20261110224223` (`add_kael_session_management`) and its
+`kael` Edge Function was `ACTIVE`, version 19, with JWT verification enabled. These
+are independent hosted observations, not live Auth, native-device or full-flow proof.
+
+Issue #2 still needs owner decisions for database and Storage backup retention and
+restore objectives, operational health/error/cost alerts, and a concrete hosted
+release and rollback procedure. The existing guides describe the current controls
+and gaps; this audit does not choose a new environment or deployment architecture.
+
+## Historical implementation baseline
 
 The Engineering Foundation V1 audit baseline is main
 `98187746fc67ea64848a544b4a938e4c643a807e` (2026-10-27): Node 24/npm
@@ -74,7 +99,8 @@ available before sign-in. An account may hold multiple roles; selecting an App
 mode grants no permissions. The backend evaluates each operation's authorization.
 Application Foundation V2 approved `apps/mobile`, Expo SDK 58, a root npm
 workspace and the four feature boundaries (`client`, `worker`, `shared`,
-`access`). The owner will supply the remaining product screens and workflows.
+`access`). Later implementation added the service-request intake, Customer/Worker
+screens and Kael sessions summarized above.
 
 **Recommendation:** Retain the approved single-app npm workspace. Add a shared
 package only when two real consumers justify it; do not create empty packages.
@@ -91,16 +117,18 @@ Tooling checks do not become device or production checks merely by sharing CI.
 **Reversibility:** Moderate; extracting packages later is straightforward if module
 APIs stay explicit. Cross-repository moves require history/access/CI review.
 
-**Dependencies / status:** One App, guest entry, multiple roles per account,
-Expo SDK 58, strict TypeScript and the npm workspace are **IMPLEMENTED** at technical
-foundation scope. Native build/release, business flows, SMS delivery and Kael
-runtime remain **NOT IMPLEMENTED or NOT VERIFIED** as applicable.
+**Dependencies / status:** One App, guest entry, Customer/Worker modes, Expo SDK 58,
+strict TypeScript and the npm workspace are **IMPLEMENTED**. Service intake, related
+backend workflow migrations and Kael sessions have since been added. Native
+build/release, real SMS, commercial dispatch and payment settlement remain
+**NOT VERIFIED or NOT IMPLEMENTED** as applicable.
 
 ## ADR 002 — Environment, data and AI trust boundaries
 
-**Context:** Local disposable stacks and hosted read-only developer MCP exist.
-Business role eligibility, operation-level authorizations, business migrations
-and Kael tools do not. One technical Worker access grant with RLS exists.
+**Context:** Local disposable stacks, a hosted developer MCP and a connected hosted
+Supabase project exist. The current repository includes service and Kael migrations,
+RLS/RPC boundaries, and server-backed Kael operations; commercial role qualification
+and payment settlement remain outside the verified contract.
 
 **Alternatives:** Shared hosted development; isolated local development plus
 separate hosted staging/Production; Supabase preview branches per change.
@@ -110,12 +138,11 @@ environments supports reproducible tests and bounded access but needs environmen
 ownership and promotion procedures. Preview branches add compute, retention and
 cleanup costs; they are optional, not an assumed requirement.
 
-**Confirmed:** Development and testing use isolated Supabase Local. No Staging
-Project or additional remote environment is planned for Engineering Foundation V1.
-Existing hosted read-only developer MCP is diagnostic access, not an application
-environment or a development/test fallback. Production writes and deployment are
-outside this task. This supersedes the earlier recommendation for distinct hosted
-staging and Production projects.
+**Confirmed:** Ordinary development and tests use isolated Supabase Local; there is
+no Staging Project. The connected hosted project has applied application migrations
+and a deployed Kael Edge Function, but it is not a fallback for local tests. The
+current task makes no hosted writes or deployment. This supersedes the earlier
+recommendation for separate hosted staging and Production projects.
 
 Version future schema changes only
 through canonical migrations, test compatibility/role denials and approve hosted
@@ -124,40 +151,37 @@ whether migrations manage it. Keep one generated database type artifact per appr
 schema contract rather than handwritten duplicate table types.
 
 The [foundation contracts](foundation-contracts.md) define environment/data
-classification, guest and multi-role boundaries, and API conventions for later
-consumers. Phone + OTP for Vietnamese numbers is the primary authentication
-direction; Google/Facebook remain future secondary methods. This decision enables
-no provider, signup flow, OAuth callback or session runtime now. Discovery without
-sign-in does not require creating anonymous Auth accounts. Application Foundation
-will define the public projection and actual operation permissions before exposing
-data. Select direct Supabase access versus a trusted service per operation; sensitive
-orchestration needs a trusted boundary, not a generic backend before requirements.
+classification, guest and multi-role boundaries, and API conventions. Mobile Auth
+and session flows now exist; live tester behavior, real SMS and identity linking are
+not established by the local SDK suite. Discovery without sign-in does not require
+creating anonymous Auth accounts. Each operation still needs its own backend
+authorization; a presentation mode or generic mobile API is not an access grant.
 
-Kael runtime access must be separate from developer MCP: bounded role-specific
-tools, validated target/input/output, audit, budgets and human approval for sensitive
-effects. Wrap future external/AI providers behind actual operation contracts with
-timeouts, redacted errors, correlation IDs and retry/idempotency rules appropriate
-to the effect. Select providers, data retention and observability destinations only
-after evaluating data handling, failure behavior and cost. No provider is chosen here.
+Kael runtime access remains separate from developer MCP. The existing Edge runtime
+has authenticated callers, session persistence and provider routing; spend windows
+and live quality checks remain bounded. Data retention, observability and release
+alerts still need explicit operational objectives before a public launch.
 
 **Consequences:** More environment/access stewardship; each product capability needs
-real allowed/denied tests and migration recovery evidence. Current empty-schema
-checks cannot prove product authorization or financial correctness.
+real allowed/denied tests and migration recovery evidence. Current feature-specific
+local tests cover defined service and Kael boundaries, but do not prove hosted user
+behavior, commercial dispatch or payment settlement.
 
 **Reversibility:** Access/schema decisions are costly after data exists; prefer
 compatible migrations and roll-forward fixes. Provider adapters are easier to replace
 when domain contracts do not expose vendor-specific state.
 
-**Dependencies / status:** Supabase Local, no Staging Project, backend authorization,
-multiple roles per account, phone/OTP direction and the name Kael Service Operator
-are **CONFIRMED**. The operation-level access matrix, hosted hook disposition,
-sensitive-action list, data retention and AI runtime remain **PROPOSED**. Detailed
-workflow and Kael behavior await the owner's BPMN before implementation planning.
+**Dependencies / status:** Supabase Local, no Staging Project, server-side
+authorization, Customer/Worker modes, phone/OTP direction and the Kael Service
+Operator are **CONFIRMED**. Role qualification, sensitive-action policies, retention
+and operational monitoring still have unverified or proposed parts. The current
+service workflow contract and Kael guide describe the implemented boundary and gaps.
 
 ## ADR 003 — Native release and recovery
 
-**Context:** CI verifies repository tooling/local DB; no native signing/build/CD
-target exists. A passing check grants no deployment authority.
+**Context:** CI verifies repository tooling and the isolated local database. EAS
+configuration targets TestFlight, but no native build/upload evidence exists. A
+passing check grants no deployment authority.
 
 **Alternatives:** Manual local signed builds; managed native builds such as EAS;
 dedicated macOS build infrastructure. App-store rollout and hosted migration
@@ -167,11 +191,11 @@ promotion can be manual or separately approved CD.
 Managed builds simplify credentials/build images with provider costs and access
 considerations. Dedicated macOS infrastructure adds maintenance and signing exposure.
 
-**Confirmed:** Prioritize iOS. TestFlight will be the testing channel after the owner
-sets it up; no build is requested now. Android is deferred.
+**Confirmed:** Prioritize iOS and use the configured EAS TestFlight profile for
+store distribution. Android is not configured. The current profile has not been
+built, uploaded or verified on a device.
 
-**Recommendation:** Choose build provider and budget after the SDK.
-Keep CI and CD separate: PR checks first, owner review/merge, then an explicitly
+**Recommendation:** Keep CI and CD separate: PR checks first, owner review/merge, then an explicitly
 approved release from the exact merged SHA. Store signing assets with a designated
 owner in an approved secret store; never in Git or generic backup exports. Promote
 verified artifacts with version/build identity and real device evidence. Decide OTA
@@ -189,16 +213,15 @@ workflow or paid runner is added before there is a reviewed artifact to deliver.
 **Reversibility:** Build providers are replaceable; signing/account custody and
 published app identifiers need careful continuity. Data changes may be irreversible.
 
-**Dependencies / status:** iOS priority and future TestFlight testing **CONFIRMED**.
-SDK, account/signing custodians, provider/budget, recovery objectives and release
-configuration remain **PROPOSED**. No Apple/EAS setup or native build is included
-in this documentation-only setup.
+**Dependencies / status:** iOS priority and EAS/TestFlight configuration are
+**CONFIRMED**. Native signing/build/upload, release budget, recovery objectives and
+device verification remain **NOT VERIFIED** or pending owner decision.
 
 ## ADR 004 — Proprietary source and repository visibility
 
 **Context:** The repository is currently public, without a selected license. Public
-history remains externally copyable after a later visibility change. Proprietary
-product code has not been introduced.
+history remains externally copyable after a later visibility change; the repository
+now contains mobile product code as well as engineering tooling.
 
 | Alternative | Benefit | Limitation / cost |
 | --- | --- | --- |
@@ -263,23 +286,13 @@ V1 added no directories or exceptions; Application Foundation V2 then added `app
 `services/kael-core` (README only), the empty `docs/processes/` marker and the matching
 narrow path rules with fixtures.
 
-### Application Foundation decisions
+### Historical Application Foundation V2 scope
 
 Engineering Foundation V1 did not include application code. Application Foundation V2
-subsequently added Expo/mobile scaffolding, guest and OTP client entry, separated
-Client/Worker presentation, a technical Worker access grant with real local RLS tests,
-and mobile lint/typecheck/unit checks. See the
-[mobile application guide](mobile-application.md) for precise verified limits.
-
-The following remain for separate owner-approved implementation:
-
-- Native iOS build, TestFlight, device Keychain and live Auth/SMS round-trip checks.
-- Guest discovery projection, Worker onboarding, service workflows, operation-specific
-  authorization and the owner's BPMN/process contracts.
-- OTP provider/cost decisions, production rate limits/recovery, account linking and
-  future secondary identity methods.
-- Kael permissions, tools, providers, memory and runtime execution.
-- Deploy-phase visibility, Production access, monitoring and recovery decisions.
+added the initial Expo entry/auth/mode-gate slice. Later work added the service intake,
+Customer/Worker data paths, and Kael runtime/session flows. Remaining gaps include
+native iOS/TestFlight evidence, live Auth/SMS behavior, commercial dispatch and
+settlement, database/Storage recovery objectives, and production health/cost alerts.
 
 The [foundation contracts](foundation-contracts.md) define trust and environment
 boundaries; they are not substitutes for the implemented Auth/RLS checks. Foundation

@@ -6,6 +6,12 @@ must derive the principal from authentication, authorize the resource and check
 the current version and state within the same transaction as the effect. Worker
 access grants are technical access, not proof of qualification.
 
+The current repository implements a subset of the reference, including Customer
+service-request intake, Worker job workflows and Kael sessions/runtime. The
+remaining rows are proposed contracts, not shipped capabilities; see the
+[mobile application guide](mobile-application.md) and the feature SQL tests for
+the current implementation boundary.
+
 ## Ownership and dependencies
 
 | Owner | Responsibility and consumer | Dependency |
@@ -15,7 +21,7 @@ access grants are technical access, not proof of qualification.
 | Worker feature | Invitation and assigned-job presentation | Backend assignment, current grant and independently approved eligibility |
 | Supabase migrations | Canonical data, authorization, guarded transactions and durable events | Actual commands and their callers |
 | Supabase database tests | Allow, deny, replay and race evidence for backend boundaries | Isolated local database and real effective identities |
-| Kael trusted boundary | Minimal delegated context and bounded actions when a real consumer exists | Explicit tool authorization; provider remains disabled without approval |
+| Kael trusted boundary | Supabase Edge runtime with authenticated sessions and bounded tools | User consent and per-tool authorization; provider quality and full live flows need separate evidence |
 
 Implement request before agreement, agreement before invitation and assignment,
 and assignment before execution and acceptance. A support case is separate from
