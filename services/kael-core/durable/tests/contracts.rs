@@ -567,3 +567,78 @@ fn a_rejected_token_is_unauthenticated_but_an_unreachable_auth_service_is_not() 
     let unreachable = Backend::new(&config(&[("SUPABASE_URL", format!("http://{closed}").as_str())]));
     assert!(matches!(unreachable.verify_user("good-token"), Verification::Unavailable));
 }
+
+const JOURNAL_RUN: &str = "50000000-0000-4000-8000-000000000001";
+
+fn journal_config(dir: &std::path::Path) -> Config {
+    config(&[("KAEL_DURABLE_DATA_DIR", dir.to_str().expect("utf-8 path")), ("KAEL_DURABLE_ALLOW_TEMP", "1")])
+}
+
+fn committed_rows(path: &std::path::Path) -> Vec<String> {
+    let connection = rusqlite::Connection::open(path).expect("open journal");
+    let mut statement = connection.prepare("SELECT value FROM entries ORDER BY id").expect("prepare");
+    statement.query_map([], |row| row.get::<_, String>(0)).expect("query").collect::<Result<_, _>>().expect("rows")
+}
+
+#[test]
+fn a_takeover_journal_is_a_snapshot_that_does_not_need_the_frozen_holders_write_lock() {
+    use kael_durable::journal;
+    let dir = tempfile::tempdir().expect("directory");
+    let settings = journal_config(dir.path());
+    let first = journal::prepare(&settings, JOURNAL_RUN, 1).expect("first journal");
+    {
+        let connection = rusqlite::Connection::open(&first).expect("create");
+        connection.pragma_update(None, "journal_mode", "WAL").expect("wal");
+        connection.execute_batch("CREATE TABLE entries (id INTEGER PRIMARY KEY, value TEXT NOT NULL); INSERT INTO entries (value) VALUES ('committed-one'), ('committed-two');").expect("seed rows");
+    }
+
+    let frozen = rusqlite::Connection::open(&first).expect("frozen holder connection");
+    frozen.execute_batch("BEGIN IMMEDIATE; INSERT INTO entries (value) VALUES ('in-flight');").expect("frozen holder starts writing");
+
+    let blocked = rusqlite::Connection::open(&first).expect("successor connection");
+    blocked.busy_timeout(Duration::from_millis(200)).expect("timeout");
+    let refusal = blocked.execute_batch("BEGIN IMMEDIATE").expect_err("the frozen holder owns the write lock");
+    assert!(refusal.to_string().contains("locked"), "unexpected refusal: {refusal}");
+
+    let second = journal::prepare(&settings, JOURNAL_RUN, 2).expect("takeover journal despite the frozen writer");
+    assert_ne!(first, second);
+    assert_eq!(committed_rows(&second), vec!["committed-one", "committed-two"], "only committed state is carried over");
+
+    let successor = rusqlite::Connection::open(&second).expect("successor journal");
+    successor.execute_batch("INSERT INTO entries (value) VALUES ('successor-write')").expect("the successor writes without waiting for the frozen holder");
+
+    frozen.execute_batch("COMMIT").expect("the holder resumes and commits to its own file");
+    assert_eq!(committed_rows(&second), vec!["committed-one", "committed-two", "successor-write"]);
+    assert_eq!(committed_rows(&first), vec!["committed-one", "committed-two", "in-flight"]);
+}
+
+#[test]
+fn journals_are_kept_per_epoch_retired_when_superseded_and_purged_with_their_companions() {
+    use kael_durable::journal;
+    let dir = tempfile::tempdir().expect("directory");
+    let settings = journal_config(dir.path());
+    let other = "50000000-0000-4000-8000-000000000002";
+    assert!(!journal::exists(&settings, JOURNAL_RUN));
+    for (run, epoch) in [(JOURNAL_RUN, 3), (JOURNAL_RUN, 1), (JOURNAL_RUN, 2), (other, 1)] {
+        fs::create_dir_all(settings.journal_dir()).expect("journals directory");
+        fs::write(journal::path(&settings, run, epoch), b"journal").expect("write journal");
+    }
+    fs::write(settings.journal_dir().join(format!("{JOURNAL_RUN}.e3.sqlite-wal")), b"log").expect("write companion");
+    fs::write(settings.journal_dir().join(format!("{JOURNAL_RUN}.e4.sqlite.seed")), b"partial").expect("write partial seed");
+
+    assert_eq!(journal::epochs(&settings, JOURNAL_RUN), vec![1, 2, 3]);
+    assert_eq!(journal::run_id_of(&format!("{JOURNAL_RUN}.e3.sqlite")), Some(JOURNAL_RUN));
+    assert_eq!(journal::run_id_of(&format!("{JOURNAL_RUN}.sqlite")), None);
+    assert_eq!(journal::run_id_of(&format!("{JOURNAL_RUN}.e3.sqlite-wal")), None);
+    assert!(journal::newest_age(&settings, JOURNAL_RUN).is_some());
+
+    journal::retire_before(&settings, JOURNAL_RUN, 3);
+    assert_eq!(journal::epochs(&settings, JOURNAL_RUN), vec![3]);
+    assert_eq!(journal::epochs(&settings, other), vec![1], "other runs are untouched");
+
+    journal::remove_all(&settings, JOURNAL_RUN).expect("purge");
+    assert!(!journal::exists(&settings, JOURNAL_RUN));
+    assert!(journal::newest_age(&settings, JOURNAL_RUN).is_none());
+    let left: Vec<String> = fs::read_dir(settings.journal_dir()).expect("list").flatten().map(|entry| entry.file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(left, vec![format!("{other}.e1.sqlite")]);
+}

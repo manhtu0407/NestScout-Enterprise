@@ -38,10 +38,17 @@ fn run_id_of(reply: &support::Reply) -> String {
 }
 
 fn files_for(data_dir: &Path, run_id: &str) -> Vec<String> {
-    [format!("journals/{run_id}.sqlite"), format!("events/{run_id}.ndjson"), format!("meta/{run_id}.json")]
+    let journals = std::fs::read_dir(data_dir.join("journals"))
         .into_iter()
-        .filter(|relative| data_dir.join(relative).exists())
-        .collect()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with(&format!("{run_id}.")))
+        .map(|name| format!("journals/{name}"));
+    let singles = [format!("events/{run_id}.ndjson"), format!("meta/{run_id}.json")]
+        .into_iter()
+        .filter(|relative| data_dir.join(relative).exists());
+    journals.chain(singles).collect()
 }
 
 #[test]

@@ -3,6 +3,7 @@ pub mod backend;
 pub mod config;
 pub mod context;
 pub mod events;
+pub mod journal;
 pub mod knowledge;
 pub mod models;
 pub mod policy;

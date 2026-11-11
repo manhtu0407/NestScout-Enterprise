@@ -1,8 +1,8 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use pi_durable::ai::http::{Request, send};
 use pi_durable::cancel::CancelToken;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::config::Config;
 use crate::util::valid_uuid;
@@ -44,6 +44,8 @@ impl Lease {
     }
 }
 
+const SLOW_CALL: Duration = Duration::from_secs(1);
+
 impl Backend {
     pub fn new(config: &Config) -> Self {
         Self {
@@ -53,7 +55,21 @@ impl Backend {
         }
     }
 
-    fn execute(request: Request, cancel: Option<&CancelToken>) -> Result<Reply, String> {
+    fn execute(target: &str, request: Request, cancel: Option<&CancelToken>) -> Result<Reply, String> {
+        let started = Instant::now();
+        let outcome = Self::exchange(request, cancel);
+        let milliseconds = started.elapsed().as_millis();
+        match &outcome {
+            Err(error) => eprintln!("{}", json!({"event": "kael_backend_call", "target": target, "outcome": "error", "ms": milliseconds, "error": error})),
+            Ok(reply) if milliseconds >= SLOW_CALL.as_millis() || reply.status >= 500 => {
+                eprintln!("{}", json!({"event": "kael_backend_call", "target": target, "outcome": reply.status, "ms": milliseconds}));
+            }
+            Ok(_) => {}
+        }
+        outcome
+    }
+
+    fn exchange(request: Request, cancel: Option<&CancelToken>) -> Result<Reply, String> {
         let response = send(&request, cancel).map_err(|error| format!("transport: {error:?}"))?;
         let status = response.status;
         let text = response.text().map_err(|error| format!("body: {error:?}"))?;
@@ -70,7 +86,7 @@ impl Backend {
             .header("apikey", self.anon_key.clone())
             .header("authorization", format!("Bearer {token}"))
             .timeout(Some(Duration::from_secs(5)));
-        let Ok(reply) = Self::execute(request, None) else { return Verification::Unavailable };
+        let Ok(reply) = Self::execute("auth/v1/user", request, None) else { return Verification::Unavailable };
         if !reply.ok() {
             return if (400..500).contains(&reply.status) && reply.status != 429 { Verification::Rejected } else { Verification::Unavailable };
         }
@@ -96,7 +112,7 @@ impl Backend {
         if let Some(body) = body {
             request = request.json(body);
         }
-        Self::execute(request, cancel)
+        Self::execute(path.split('?').next().unwrap_or(path), request, cancel)
     }
 
     pub fn service_rpc(&self, name: &str, body: &Value, lease: Option<&Lease>) -> Result<Reply, String> {
@@ -110,6 +126,6 @@ impl Backend {
         if let Some(lease) = lease {
             request = request.header("x-kael-lease", lease.header());
         }
-        Self::execute(request, None)
+        Self::execute(&format!("rpc/{name}"), request, None)
     }
 }

@@ -8,7 +8,8 @@ use serde_json::{Value, json};
 
 use crate::backend::Lease;
 use crate::events::remove_event_file;
-use crate::runner::{Identity, Runtime, journal_path};
+use crate::journal;
+use crate::runner::{Identity, Runtime};
 use crate::store::{Outcome, Store};
 use crate::util::valid_uuid;
 
@@ -35,10 +36,7 @@ fn remove_if_present(path: &Path) -> std::io::Result<()> {
 }
 
 pub fn remove_run_files(runtime: &Runtime, run_id: &str) -> std::io::Result<()> {
-    let journal = journal_path(&runtime.config, run_id);
-    for suffix in ["", "-wal", "-shm", "-journal"] {
-        remove_if_present(&Path::new(&format!("{}{suffix}", journal.display())).to_path_buf())?;
-    }
+    journal::remove_all(&runtime.config, run_id)?;
     remove_event_file(&runtime.config.event_dir(), run_id)?;
     remove_if_present(&runtime.config.meta_dir().join(format!("{run_id}.json")))
 }
@@ -104,7 +102,7 @@ pub fn purge_journals(runtime: &Arc<Runtime>) -> usize {
             continue;
         }
         let newest = [
-            age(&journal_path(&runtime.config, run_id)),
+            journal::newest_age(&runtime.config, run_id),
             age(&runtime.config.event_dir().join(format!("{run_id}.ndjson"))),
         ]
         .into_iter()
@@ -132,7 +130,7 @@ pub fn reap_orphan_files(runtime: &Arc<Runtime>) -> usize {
         .flatten()
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
-            let id = name.strip_suffix(".sqlite")?.to_owned();
+            let id = journal::run_id_of(&name)?.to_owned();
             (valid_uuid(&id) && !live.contains(&id) && age(&entry.path()).is_some_and(|elapsed| elapsed > ORPHAN_AGE)).then_some(id)
         })
         .collect();

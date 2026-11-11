@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 pi-durable = { git = "https://github.com/y0usaf/pi-durable-rs", rev = "460649edb63d495d97c30cc69b2481d10f2b4cca", features = ["providers"] }
 regex = "1"
+rusqlite = { version = "0.40", features = ["bundled", "backup"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 

@@ -27,6 +27,7 @@ use crate::backend::{Backend, Lease};
 use crate::config::Config;
 use crate::context::{build_system_prompt, build_user_input};
 use crate::events::{EventLog, event_path};
+use crate::journal;
 use crate::models::{RunModels, primary_ref};
 use crate::policy::{Actor, Class, Decision, Tool, evaluate_call, harness_schema, registry, select_tools};
 use crate::request::{Action, TurnRequest, user_text_for};
@@ -69,10 +70,6 @@ pub struct Runtime {
 
 fn meta_path(config: &Config, run_id: &str) -> PathBuf {
     config.meta_dir().join(format!("{run_id}.json"))
-}
-
-pub fn journal_path(config: &Config, run_id: &str) -> PathBuf {
-    config.journal_dir().join(format!("{run_id}.sqlite"))
 }
 
 fn write_meta(config: &Config, run_id: &str, meta: &Value) -> std::io::Result<()> {
@@ -189,6 +186,13 @@ fn log_knowledge(ctx: &RunContext, tool: &Tool, execution: &Execution, elapsed: 
             "method": if execution.content["kind"] == "disabled" { "not_run" } else { "lexical-v1" },
             "latency_ms": elapsed.as_secs_f64() * 1000.0, "outcome": execution.outcome, "validation_status": validation,
         })
+    );
+}
+
+fn log_lease(live: &LiveRun, reason: &str, since_ok: Duration) {
+    eprintln!(
+        "{}",
+        json!({"event": "kael_lease", "action": "lost", "reason": reason, "run_id": live.ctx.run_id, "holder": live.lease.holder, "epoch": live.lease.epoch, "since_last_heartbeat_ms": since_ok.as_millis()})
     );
 }
 
@@ -422,7 +426,7 @@ impl Runtime {
         ctx.hold_text.store(log.last_event_type().as_deref() == Some("message_delta"), Ordering::SeqCst);
         let live = self.register(ctx, lease);
         let runtime = Arc::clone(self);
-        let resumable = kind == "message" && journal_path(&self.config, run_id).exists();
+        let resumable = kind == "message" && journal::exists(&self.config, run_id);
         thread::spawn(move || {
             if resumable {
                 runtime.drive(&live, None);
@@ -434,6 +438,7 @@ impl Runtime {
     }
 
     fn register(&self, ctx: Arc<RunContext>, lease: Lease) -> Arc<LiveRun> {
+        eprintln!("{}", json!({"event": "kael_lease", "action": "held", "run_id": ctx.run_id, "holder": lease.holder, "epoch": lease.epoch}));
         let live = Arc::new(LiveRun { ctx, cancel: CancelToken::new(), stop: AtomicBool::new(false), lease });
         lock(&self.live).insert(live.ctx.run_id.clone(), Arc::clone(&live));
         self.start_heartbeat(&live);
@@ -457,11 +462,13 @@ impl Runtime {
                 match live.ctx.store.heartbeat(&live.ctx.run_id, &live.lease, seconds) {
                     Ok(true) => last_ok = Instant::now(),
                     Ok(false) => {
+                        log_lease(&live, "fenced", last_ok.elapsed());
                         live.ctx.lease_lost.store(true, Ordering::SeqCst);
                         live.cancel.cancel();
                         break;
                     }
                     Err(_) if last_ok.elapsed() > Duration::from_secs(u64::from(seconds)) => {
+                        log_lease(&live, "heartbeat_unreachable", last_ok.elapsed());
                         live.ctx.lease_lost.store(true, Ordering::SeqCst);
                         live.cancel.cancel();
                         break;
@@ -515,18 +522,21 @@ impl Runtime {
             prepared = Some((system, input));
         }
         let cancel = live.cancel.clone();
-        let storage_path = journal_path(&self.config, &ctx.run_id);
-        if let Err(error) = fs::create_dir_all(self.config.journal_dir()) {
-            eprintln!("{}", json!({"event": "kael_journal_dir_failed", "error": error.to_string()}));
-            return Outcome::failed("internal");
-        }
-        let harness = match self.open_harness(ctx, &storage_path.to_string_lossy()) {
-            Ok(harness) => harness,
+        let storage_path = match journal::prepare(&self.config, &ctx.run_id, live.lease.epoch) {
+            Ok(path) => path,
             Err(error) => {
-                eprintln!("{}", json!({"event": "kael_harness_open_failed", "run_id": ctx.run_id, "error": error}));
+                eprintln!("{}", json!({"event": "kael_journal_prepare_failed", "run_id": ctx.run_id, "epoch": live.lease.epoch, "error": error}));
                 return Outcome::failed("internal");
             }
         };
+        let harness = match self.open_harness(ctx, &storage_path.to_string_lossy()) {
+            Ok(harness) => harness,
+            Err(error) => {
+                eprintln!("{}", json!({"event": "kael_harness_open_failed", "run_id": ctx.run_id, "epoch": live.lease.epoch, "error": error}));
+                return Outcome::failed("internal");
+            }
+        };
+        journal::retire_before(&self.config, &ctx.run_id, live.lease.epoch);
         let conversation = match self.bind_conversation(&harness, ctx, prepared.as_ref().map(|(system, _)| system.as_str()), &provider, &model_id, &cancel) {
             Ok(conversation) => conversation,
             Err(error) => {
