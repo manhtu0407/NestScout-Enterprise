@@ -221,7 +221,7 @@ export const horizonColors = {
   supportScreens: {
     cardFill: '#F5F6F8', tileFill: '#FFFFFF', separator: 'rgba(60,60,67,0.10)',
     sectionTitle: '#6B7683', chevron: '#9AA0AB', unreadDot: '#0E9E8E', unreadTile: 'rgba(14,158,142,0.14)', unreadIcon: '#0A6F64',
-    danger: '#D4322C', switchOn: '#0E9E8E', switchOff: '#D9DCE1', switchThumb: '#FFFFFF',
+    danger: '#D4322C', valid: '#1E7B3C', switchOn: '#0E9E8E', switchOff: '#D9DCE1', switchThumb: '#FFFFFF',
     searchFill: 'rgba(118,118,128,0.12)', searchPlaceholder: '#8A8A90', searchIcon: '#5B6672',
     heroFill: '#F5F6F8', avatarFill: '#ECEEF1', avatarInitial: '#11161C', chipFill: 'rgba(118,118,128,0.12)', chipText: '#3C4650',
     primaryFill: '#0B0F14', primaryLabel: '#FFFFFF', secondaryFill: 'rgba(118,118,128,0.12)', secondaryLabel: '#11161C',

@@ -123,8 +123,8 @@ function QuoteCard({ entry, confirming, busy, failure, onReview, onCancelReview,
         <Text style={styles.scope}>{quote.scope}</Text>
       </View>
       <View style={styles.expiryRow}>
-        <Icon name="clock" size={metrics.noteIconSize} color={quote.expired ? colors.danger : colors.chevron} />
-        <Text style={[styles.expiry, quote.expired && styles.expiryExpired]}>{quote.expiresLabel}</Text>
+        <Icon name="clock" size={metrics.noteIconSize} color={quote.expired ? colors.danger : colors.valid} />
+        <Text style={[styles.expiry, quote.expired ? styles.expiryExpired : styles.expiryValid]}>{quote.expiresLabel}</Text>
       </View>
       <Text style={styles.changeNote}>Nếu phát sinh thêm việc hoặc đổi giá, bạn sẽ được hỏi và phải đồng ý trước.</Text>
       {failure ? <Text accessibilityLiveRegion="polite" style={[styles.changeNote, styles.expiryExpired]}>{failure}</Text> : null}
@@ -183,6 +183,7 @@ const styles = StyleSheet.create({
   expiryRow: { flexDirection: 'row', alignItems: 'center', gap: metrics.noteGap },
   expiry: { flex: 1, color: horizonColors.muted, fontSize: metrics.noteSize },
   expiryExpired: { color: colors.danger },
+  expiryValid: { color: colors.valid },
   changeNote: { color: horizonColors.muted, fontSize: metrics.quoteLabelSize, lineHeight: metrics.quoteNoteLineHeight },
   actions: { flexDirection: 'row', gap: metrics.buttonGap },
   action: { flex: 1 },
