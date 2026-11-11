@@ -11,13 +11,17 @@ import { KaelHomeScreen } from './kael-home-screen';
 import { KaelMemorySettings } from './kael-memory-settings';
 import { kaelIntroSession } from './kael-intro-session';
 import type { ComposerImage } from './composer-media';
+import { createComposerDrafts, emptyComposerDraft, isEmptyDraft } from './composer-drafts';
 import { KaelHomeLoading } from './skeleton-layouts';
 import { Presence, useRetained } from './motion-presence';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
 import { deriveKaelAttention } from './kael-attention';
 import type { KaelAttention } from './kael-attention';
 import { KaelAttentionCard } from './kael-attention-card';
-import { countActionableQuotes, countUnreadNotifications, toRecentSessions } from './request-views';
+import { countActionableQuotes, countUnreadNotifications } from './request-views';
+import { toSessionRows } from './session-views';
+import { useKaelSessions } from './use-kael-sessions';
+import type { SessionHandlers } from './sidebar';
 import { useCustomerData } from './use-customer-data';
 import { useWorkerData } from './use-worker-data';
 import { workerBadgesFor } from './worker-jobs';
@@ -27,7 +31,7 @@ import { useAiConsent } from './use-ai-consent';
 import { settingsStrings } from './settings-strings';
 import { usePreferences } from '@/lib/preferences-provider';
 import { consumeSidebarReturn, markSidebarReturn } from './sidebar-return';
-import { consumeKaelHandoff } from './kael-handoff';
+import { takeKaelHandoff } from './kael-handoff';
 
 const renderPending = (label: string) => <KaelHomeLoading label={label}/>;
 
@@ -52,6 +56,7 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   const kaelUserId = (access.phase === 'client' || access.phase === 'worker') && access.identity === 'verified' ? access.userId : null;
   const kaelMode = access.phase === 'worker' ? 'worker' : 'client';
   const kael = useKaelConversation(kaelUserId, kaelMode);
+  const sessions = useKaelSessions(kaelUserId, kaelMode, drawerOpen && access.phase === 'client');
   const aiConsent = useAiConsent(kaelUserId);
   const consentStrings = settingsStrings(usePreferences().language);
   const scope = kaelUserId === null ? null : `${kaelUserId}:${kaelMode}`;
@@ -70,7 +75,7 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     const timer = setInterval(() => setClock(Date.now()), horizonLayout.kaelAttention.countdownTick);
     return () => clearInterval(timer);
   }, [counting]);
-  const recentSessions = useMemo(() => toRecentSessions({ requests: data.requests, quotes: data.quotes, activity: data.activity }, data.pinnedIds, now), [data, now]);
+  const recentSessions = useMemo(() => toSessionRows(sessions.sessions, now), [sessions.sessions, now]);
   const badges = useMemo(() => ({
     quotes: countActionableQuotes(data.requests, data.quotes, now),
     notifications: countUnreadNotifications(data.notifications),
@@ -102,19 +107,49 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
 
   const openMenuRef = useRef(openMenu);
   useEffect(() => { openMenuRef.current = openMenu; });
-  const adoptPromptRef = useRef((prompt: string) => { inputRef.current = prompt; setInput(prompt); });
+  const newConversationRef = useRef<() => void>(() => undefined);
+  const adoptPromptRef = useRef<(prompt: string, fresh: boolean) => void>(() => undefined);
   useEffect(() => {
-    adoptPromptRef.current = prompt => {
-      inputRef.current = prompt;
-      setInput(prompt);
-      access.updateHorizonDraft(access.userId, { text: prompt, images: imagesRef.current });
+    adoptPromptRef.current = (prompt, fresh) => {
+      const carried = !fresh || kael.conversationId === null ? inputRef.current : '';
+      if (fresh) newConversationRef.current();
+      const text = carried.trim() === '' ? prompt : `${carried.trimEnd()}\n\n${prompt}`;
+      inputRef.current = text;
+      setInput(text);
+      access.updateHorizonDraft(access.userId, { text, images: imagesRef.current });
     };
   });
+
+  const [parkedDrafts] = useState(createComposerDrafts);
+  useEffect(() => () => parkedDrafts.clear(), [parkedDrafts, scope]);
+  const activeConversationId = kael.conversationId;
+  const switchDraft = useCallback((targetId: string | null) => {
+    const owner = scope ?? 'guest';
+    if (activeConversationId !== null) parkedDrafts.park(owner, activeConversationId, { text: inputRef.current, images: imagesRef.current });
+    const next = targetId === null ? emptyComposerDraft : parkedDrafts.recall(owner, targetId);
+    inputRef.current = next.text;
+    imagesRef.current = next.images;
+    setInput(next.text);
+    setDraftImages(next.images);
+    if (isEmptyDraft(next)) access.clearHorizonDraft(access.userId);
+    else access.updateHorizonDraft(access.userId, next);
+  }, [access, activeConversationId, parkedDrafts, scope]);
+
+  const resetKael = kael.reset;
+  const newConversation = useCallback(() => {
+    switchDraft(null);
+    resetKael();
+    setConversationKey(key => key + 1);
+    setComposerError(null);
+    setDrawerOpen(false);
+  }, [resetKael, switchDraft]);
+
+  useEffect(() => { newConversationRef.current = newConversation; });
   useFocusEffect(useCallback(() => {
-    const prompt = consumeKaelHandoff();
-    if (prompt !== null) {
+    const handoff = takeKaelHandoff();
+    if (handoff !== null) {
       consumeSidebarReturn();
-      adoptPromptRef.current(prompt);
+      adoptPromptRef.current(handoff.prompt, handoff.fresh);
       return undefined;
     }
     if (!consumeSidebarReturn()) return undefined;
@@ -122,32 +157,50 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     return () => clearTimeout(timer);
   }, []));
 
-  const openRequest = useCallback((id: string) => {
+  const openKaelSession = kael.open;
+  const openSession = useCallback((id: string) => {
+    switchDraft(id);
     setDrawerOpen(false);
-    markSidebarReturn();
-    router.push({ pathname: '/requests', params: { focus: id } });
-  }, [router]);
-
-  const togglePin = useCallback((id: string) => {
-    customer.togglePin(id).catch(() => setDataNotice('Chưa ghim được yêu cầu. Vui lòng thử lại.'));
-  }, [customer]);
-
-  const resetKael = kael.reset;
-  const newConversation = useCallback(() => {
-    resetKael();
-    setInput('');
-    inputRef.current = '';
-    imagesRef.current = [];
-    setDraftImages([]);
-    access.clearHorizonDraft(access.userId);
-    setConversationKey(key => key + 1);
     setComposerError(null);
-    setDrawerOpen(false);
-  }, [access, resetKael]);
+    setConversationKey(key => key + 1);
+    void openKaelSession(id);
+  }, [openKaelSession, switchDraft]);
+
+  const leaveIfActive = useCallback((id: string, discardDraft: boolean) => {
+    if (id !== activeConversationId) {
+      if (discardDraft) parkedDrafts.discard(scope ?? 'guest', id);
+      return;
+    }
+    if (discardDraft) {
+      inputRef.current = '';
+      imagesRef.current = [];
+    }
+    newConversation();
+  }, [activeConversationId, newConversation, parkedDrafts, scope]);
+  const { rename: renameSession, setPinned: pinSession, setSessionArchived: archiveSession, remove: removeSession, sessions: sessionList } = sessions;
+  const sessionHandlers = useMemo<SessionHandlers>(() => ({
+    rename: renameSession,
+    setPinned: pinSession,
+    setArchived: async (id, archived) => {
+      const result = await archiveSession(id, archived);
+      if (result.ok && archived) leaveIfActive(id, false);
+      return result;
+    },
+    remove: async id => {
+      const result = await removeSession(id);
+      if (result.ok) leaveIfActive(id, true);
+      return result;
+    },
+  }), [archiveSession, leaveIfActive, pinSession, removeSession, renameSession]);
+  const toggleSessionPin = useCallback((id: string) => {
+    const pinned = sessionList.find(session => session.id === id)?.pinned ?? false;
+    void pinSession(id, !pinned).then(result => { if (!result.ok) setDataNotice('Chưa ghim được cuộc trò chuyện. Vui lòng thử lại.'); });
+  }, [pinSession, sessionList]);
 
   const sendToKael = kael.send;
   const kaelAvailable = kael.available;
   const kaelRunning = kael.running;
+  const kaelOpening = kael.opening;
   const aiConsentGranted = aiConsent.granted;
   const aiConsentStatus = aiConsent.status;
   const consentCheckingMessage = consentStrings.consentChecking;
@@ -176,13 +229,13 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     else setComposerError(aiConsentStatus === 'error' ? consentFailedMessage : consentCheckingMessage);
   }, [aiConsentStatus, consentCheckingMessage, consentFailedMessage, consentNeededMessage]);
   const sendText = useCallback((text: string) => {
-    if (!kaelAvailable || kaelRunning) return;
+    if (!kaelAvailable || kaelRunning || kaelOpening !== null) return;
     if (!aiConsentGranted) {
       refuseWithoutConsent();
       return;
     }
     sendToKael(text);
-  }, [aiConsentGranted, kaelAvailable, kaelRunning, refuseWithoutConsent, sendToKael]);
+  }, [aiConsentGranted, kaelAvailable, kaelOpening, kaelRunning, refuseWithoutConsent, sendToKael]);
   const regenerate = useCallback((message: KaelChatMessage) => {
     const index = kael.messages.findIndex(item => item.id === message.id);
     const prompt = kael.messages.slice(0, index).reverse().find(item => item.role === 'user');
@@ -197,6 +250,10 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
       setComposerError('Đăng nhập để trò chuyện với Kael. Tin nhắn của bạn chưa được gửi.');
       return;
     }
+    if (kaelOpening !== null) {
+      setComposerError(kaelOpening.failed ? 'Chưa mở được cuộc trò chuyện này. Hãy thử lại hoặc bắt đầu cuộc trò chuyện mới.' : 'Đang mở cuộc trò chuyện. Vui lòng đợi trong giây lát.');
+      return;
+    }
     if (kaelRunning) {
       setComposerError('Kael đang trả lời tin nhắn trước. Vui lòng đợi trong giây lát.');
       return;
@@ -206,7 +263,13 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
       return;
     }
     deliver();
-  }, [aiConsentGranted, deliver, kaelAvailable, kaelRunning, refuseWithoutConsent]);
+  }, [aiConsentGranted, deliver, kaelAvailable, kaelOpening, kaelRunning, refuseWithoutConsent]);
+
+  const openService = useCallback((categoryId: string) => {
+    setDrawerOpen(false);
+    markSidebarReturn();
+    router.push({ pathname: '/service', params: { category: categoryId } });
+  }, [router]);
 
   const navigate = useCallback((id: string) => {
     setDrawerOpen(false);
@@ -222,9 +285,11 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   const accessMessage = access.notice === null ? null : access.notice === 'worker_unavailable'
     ? 'Không thể chuyển sang vai trò Thợ vì tài khoản chưa có quyền.'
     : 'Chưa thể xác minh quyền Thợ. Bạn có thể thử lại.';
-  const noticeMessage = useRetained(accessMessage ?? dataNotice);
-  const dismissNotice = () => { access.dismissNotice(); setDataNotice(null); };
-  const accountNoticeVisible = access.notice !== null || dataNotice !== null;
+  const openFailed = kael.opening?.failed === true;
+  const openingMessage = openFailed ? 'Chưa mở được cuộc trò chuyện này. Bạn có thể thử lại hoặc bắt đầu cuộc trò chuyện mới.' : null;
+  const noticeMessage = useRetained(accessMessage ?? dataNotice ?? openingMessage);
+  const dismissNotice = () => { access.dismissNotice(); setDataNotice(null); if (openFailed) newConversation(); };
+  const accountNoticeVisible = access.notice !== null || dataNotice !== null || openFailed;
   const attention = accountNoticeVisible ? null : deriveKaelAttention({ approvals, tasks: kael.tasks, running: kael.running, notice: kael.notice, receipt: kael.receipt, dismissedReceipt, now: clock });
   const onAttentionAction = (item: KaelAttention) => { if (item.kind === 'receipt') setDismissedReceipt(item.receiptId); };
 
@@ -234,18 +299,19 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
     <StatusBar style="dark"/>
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Presence visible={access.notice !== null || dataNotice !== null} style={styles.noticeSlot}>
+        <Presence visible={accountNoticeVisible} style={styles.noticeSlot}>
           <View accessibilityLiveRegion="polite" style={styles.notice}>
             <Text style={styles.noticeText}>{noticeMessage}</Text>
+            {openFailed && access.notice === null && dataNotice === null && <Pressable accessibilityRole="button" accessibilityLabel="Thử mở lại cuộc trò chuyện" onPress={kael.retryOpen} style={styles.noticeAction}><Text style={styles.noticeText}>Thử lại</Text></Pressable>}
             <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo" onPress={dismissNotice} style={styles.noticeAction}><Icon name="close" size={18}/></Pressable>
           </View>
         </Presence>
         <KaelAttentionCard attention={attention} onAction={onAttentionAction} onHeight={setAttentionHeight}/>
-        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} question={onPreviewMenu ? null : kael.question} onAnswer={sendText} onRate={onPreviewMenu ? undefined : kael.rate} onRegenerate={regenerate} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} consent={consentCard} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? kael.notice} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
+        <KaelHomeScreen input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} question={onPreviewMenu ? null : kael.question} onAnswer={sendText} onRate={onPreviewMenu ? undefined : kael.rate} onRegenerate={regenerate} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} consent={consentCard} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? (kaelOpening !== null && !kaelOpening.failed ? 'Đang mở cuộc trò chuyện…' : kael.notice)} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
     {kaelUserId !== null && scope === memoryScope && <KaelMemorySettings key={scope} userId={kaelUserId} mode={kaelMode} onClose={() => setMemoryScope(null)}/>}
-    {!onPreviewMenu && <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} recentLoading={customerUserId !== null && !customer.loaded && customer.status !== 'error'} badges={badges} workerProfile={workerProfile} onSetAccepting={setAccepting} onOpenSession={openRequest} onSessionMore={openRequest} onTogglePin={togglePin} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
+    {!onPreviewMenu && <Sidebar visible={drawerOpen} onClose={() => setDrawerOpen(false)} onNavigate={navigate} onSelectService={openService} recentSessions={recentSessions} profileName={data.profile?.display_name || undefined} profileAvatarUri={data.avatar?.uri} profileAvatarHeaders={data.avatar?.headers} badges={badges} workerProfile={workerProfile} onSetAccepting={setAccepting} activeSessionId={kael.conversationId ?? undefined} onOpenSession={openSession} onTogglePin={toggleSessionPin} sessionHandlers={sessionHandlers} sessionsStatus={sessions.status} sessionQuery={sessions.query} onSessionQuery={sessions.setQuery} archivedView={sessions.archived} onToggleArchivedView={() => sessions.setArchived(!sessions.archived)} onRetrySessions={sessions.reload} mode={access.phase === 'worker' ? 'worker' : access.phase === 'guest' ? 'guest' : 'client'} modePending={access.pendingMode === 'worker'} modeNotice={access.notice} onModeSelect={mode => {
       if (access.phase === 'guest') {
         kaelIntroSession.markPlayed();
         access.prepareHorizonDraftTransfer({ text: inputRef.current, images: imagesRef.current });

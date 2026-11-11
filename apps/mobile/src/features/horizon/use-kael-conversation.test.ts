@@ -749,3 +749,132 @@ test('feedback targets a streamed reply by its run and a restored reply by its s
   feedback.mockRejectedValueOnce(new Error('offline'));
   await act(async () => { expect(await result.current.rate(fresh, 'up', null)).toBe(false); });
 });
+
+const conversationB = '77777777-7777-4777-8777-777777777777';
+const stored = (id: string, role: 'user' | 'assistant', text: string) => ({ id, role, text, incomplete: false });
+const sessionA: KaelConversationSnapshot = { ...empty, conversationId: conversation, messages: [stored('a1111111-1111-4111-8111-111111111111', 'user', 'Sửa vòi nước'), stored('a2222222-2222-4222-8222-222222222222', 'assistant', 'Đã ghi nhận vòi nước')] };
+const sessionB: KaelConversationSnapshot = { ...empty, conversationId: conversationB, messages: [stored('b1111111-1111-4111-8111-111111111111', 'user', 'Vệ sinh sofa'), stored('b2222222-2222-4222-8222-222222222222', 'assistant', 'Đã ghi nhận sofa')] };
+
+test('opens a chosen session by id and continues the same conversation', async () => {
+  const opener = jest.fn(async () => sessionB);
+  const { streamer, requests } = scriptedStreamer([{ events: [{ ...started, conversation_id: conversationB }, { type: 'message_delta', text: 'Ok' }, { type: 'run_completed', text: 'Ok' }] }]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader, jest.fn(), opener));
+  await act(async () => { await result.current.open(conversationB); });
+  expect(opener).toHaveBeenCalledWith('customer-a', 'client', conversationB, expect.any(AbortSignal));
+  expect(result.current.opening).toBeNull();
+  expect(result.current.conversationId).toBe(conversationB);
+  expect(result.current.messages.map(message => message.text)).toEqual(['Vệ sinh sofa', 'Đã ghi nhận sofa']);
+  await act(async () => { result.current.send('Thêm ghế'); });
+  expect(requests[0]?.conversationId).toBe(conversationB);
+});
+
+test('a new session starts empty and creates its conversation only on the first message', async () => {
+  const opener = jest.fn(async () => sessionA);
+  const { streamer, requests } = scriptedStreamer([{ events: [{ ...started, conversation_id: conversationB }, { type: 'run_completed', text: 'Chào' }] }]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader, jest.fn(), opener));
+  await act(async () => { await result.current.open(conversation); });
+  await act(async () => { result.current.reset(); });
+  expect(result.current.conversationId).toBeNull();
+  expect(result.current.messages).toEqual([]);
+  expect(streamer).not.toHaveBeenCalled();
+  await act(async () => { result.current.send('Việc mới'); });
+  expect(requests[0]?.conversationId).toBeNull();
+});
+
+test('rapid switching keeps only the last chosen session and ignores the late reply', async () => {
+  let releaseA: (value: KaelConversationSnapshot) => void = () => undefined;
+  const slowA = new Promise<KaelConversationSnapshot>(resolve => { releaseA = resolve; });
+  const opener = jest.fn(async (_user: string, _mode: KaelMode, id: string) => (id === conversation ? slowA : sessionB));
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', scriptedStreamer([]).streamer, emptyLoader, jest.fn(), opener));
+  await act(async () => { void result.current.open(conversation); });
+  expect(result.current.opening).toEqual({ id: conversation, failed: false });
+  await act(async () => { await result.current.open(conversationB); });
+  await act(async () => { releaseA(sessionA); await slowA; });
+  expect(result.current.conversationId).toBe(conversationB);
+  expect(result.current.messages.map(message => message.text)).toEqual(['Vệ sinh sofa', 'Đã ghi nhận sofa']);
+});
+
+test('the previous session content is gone while the next one loads and sending is blocked', async () => {
+  let release: (value: KaelConversationSnapshot) => void = () => undefined;
+  const pending = new Promise<KaelConversationSnapshot>(resolve => { release = resolve; });
+  const opener = jest.fn(async (_user: string, _mode: KaelMode, id: string) => (id === conversation ? sessionA : pending));
+  const { streamer } = scriptedStreamer([]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader, jest.fn(), opener));
+  await act(async () => { await result.current.open(conversation); });
+  await act(async () => { void result.current.open(conversationB); });
+  expect(result.current.messages).toEqual([]);
+  await act(async () => { result.current.send('Không được gửi vào phiên khác'); });
+  expect(streamer).not.toHaveBeenCalled();
+  await act(async () => { release(sessionB); await pending; });
+  expect(result.current.messages.map(message => message.text)).toEqual(['Vệ sinh sofa', 'Đã ghi nhận sofa']);
+});
+
+test('a failed open is reported, blocks sending, and retries the same session', async () => {
+  const opener = jest.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(sessionA);
+  const { streamer } = scriptedStreamer([]);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader, jest.fn(), opener));
+  await act(async () => { await result.current.open(conversation); });
+  expect(result.current.opening).toEqual({ id: conversation, failed: true });
+  await act(async () => { result.current.send('Không tạo phiên mới ngầm'); });
+  expect(streamer).not.toHaveBeenCalled();
+  await act(async () => { result.current.retryOpen(); await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.opening).toBeNull();
+  expect(result.current.conversationId).toBe(conversation);
+});
+
+test('opening another session keeps an unreconciled account check visible', async () => {
+  const check = { ...approval, kind: 'reconcile' as const, expires_at: null };
+  const opener = jest.fn(async () => ({ ...sessionB, approvals: [check] }));
+  const loader = jest.fn(async () => ({ ...sessionA, approvals: [check] }));
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', scriptedStreamer([]).streamer, loader, jest.fn(), opener));
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.approvals).toHaveLength(1);
+  await act(async () => { await result.current.open(conversationB); });
+  expect(result.current.approvals.map(item => item.kind)).toEqual(['reconcile']);
+});
+
+test('switching session mid-turn cancels only the local stream and does not leak the reply into the next session', async () => {
+  let release: (outcome: KaelTurnOutcome) => void = () => undefined;
+  const gate = new Promise<KaelTurnOutcome>(resolve => { release = resolve; });
+  const streamer = jest.fn(async (_user: string, _request: KaelTurnRequest, onEvent: (event: KaelEvent) => void, signal: AbortSignal) => {
+    onEvent({ ...started, v: 1, run_id: runId, seq: 1 } as KaelEvent);
+    signal.addEventListener('abort', () => release({ kind: 'cancelled' }));
+    return gate;
+  });
+  const opener = jest.fn(async () => sessionB);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader, jest.fn(), opener));
+  await act(async () => { result.current.send('Đang chạy ở phiên A'); });
+  expect(result.current.running).toBe(true);
+  await act(async () => { await result.current.open(conversationB); });
+  expect(result.current.running).toBe(false);
+  expect(result.current.messages.map(message => message.text)).toEqual(['Vệ sinh sofa', 'Đã ghi nhận sofa']);
+  expect(result.current.conversationId).toBe(conversationB);
+});
+
+test('a failed switch during a running turn leaves no running state, blocks sending, and retries into the chosen session', async () => {
+  let release: (outcome: KaelTurnOutcome) => void = () => undefined;
+  const gate = new Promise<KaelTurnOutcome>(resolve => { release = resolve; });
+  const streamer = jest.fn(async (_user: string, _request: KaelTurnRequest, onEvent: (event: KaelEvent) => void, signal: AbortSignal) => {
+    onEvent({ ...started, v: 1, run_id: runId, seq: 1 } as KaelEvent);
+    signal.addEventListener('abort', () => release({ kind: 'cancelled' }));
+    return gate;
+  });
+  const opener = jest.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(sessionB);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, emptyLoader, jest.fn(), opener));
+  await act(async () => { result.current.send('Đang chạy ở phiên A'); });
+  expect(result.current.running).toBe(true);
+  await act(async () => { await result.current.open(conversationB); });
+  expect(result.current.opening).toEqual({ id: conversationB, failed: true });
+  expect(result.current.running).toBe(false);
+  expect(result.current.messages).toEqual([]);
+  streamer.mockClear();
+  await act(async () => { result.current.send('Không gửi vào phiên nào'); });
+  expect(streamer).not.toHaveBeenCalled();
+  await act(async () => { result.current.retryOpen(); await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.opening).toBeNull();
+  expect(result.current.running).toBe(false);
+  expect(result.current.conversationId).toBe(conversationB);
+  expect(result.current.messages.map(message => message.text)).toEqual(['Vệ sinh sofa', 'Đã ghi nhận sofa']);
+});

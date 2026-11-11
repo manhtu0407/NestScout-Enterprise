@@ -184,7 +184,7 @@ begin
   if v_conversation is null then
     insert into public.kael_conversations (owner_id, mode) values (v_actor, p_mode) returning id into v_conversation;
   else
-    select c.mode into v_mode from public.kael_conversations c where c.id = v_conversation and c.owner_id = v_actor for update;
+    select c.mode into v_mode from public.kael_conversations c where c.id = v_conversation and c.owner_id = v_actor and c.deleted_at is null for update;
     if not found or v_mode <> p_mode then
       return jsonb_build_object('status', 'invalid');
     end if;
@@ -197,7 +197,7 @@ begin
   select coalesce(max(m.seq), 0) + 1 into v_seq from public.kael_messages m where m.conversation_id = v_conversation;
   insert into public.kael_messages (conversation_id, owner_id, run_id, seq, role, content)
     values (v_conversation, v_actor, v_run.id, v_seq, 'user', btrim(p_user_text));
-  update public.kael_conversations set updated_at = clock_timestamp() where id = v_conversation;
+  update public.kael_conversations set updated_at = clock_timestamp(), archived_at = null where id = v_conversation;
   return jsonb_build_object('status', 'started', 'run_id', v_run.id, 'conversation_id', v_conversation);
 end;
 $$;
@@ -463,6 +463,52 @@ begin
   delete from public.support_requests where owner_id = p_user;
   delete from public.notifications where recipient_id = p_user;
   update auth.users set banned_until = 'infinity'::timestamptz where id = p_user;
+end;
+$$;
+
+create or replace function nestscout_private.kael_delete_conversation(p_conversation_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor uuid := nestscout_private.kael_actor();
+  v_id uuid;
+begin
+  if p_conversation_id is null then
+    raise exception using errcode = '22023', message = 'invalid request';
+  end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('kael:' || v_actor::text, 0));
+  select c.id into v_id from public.kael_conversations c
+    where c.id = p_conversation_id and c.owner_id = v_actor and c.deleted_at is null for update;
+  if v_id is null then
+    raise exception using errcode = '22023', message = 'conversation unavailable';
+  end if;
+  update public.kael_runs r set status = 'interrupted', finished_at = clock_timestamp(), error_code = 'stale'
+    where r.conversation_id = v_id and r.status = 'running'
+      and ((not exists (select 1 from nestscout_private.kael_durable_runs d where d.run_id = r.id)
+          and r.started_at < clock_timestamp() - interval '3 minutes')
+        or exists (select 1 from nestscout_private.kael_durable_runs d
+          where d.run_id = r.id and (d.lease_expires_at is null or d.lease_expires_at < clock_timestamp())
+            and r.started_at < clock_timestamp() - interval '30 minutes'));
+  if exists (select 1 from public.kael_runs r where r.conversation_id = v_id and r.status = 'running') then
+    raise exception using errcode = '22023', message = 'run active';
+  end if;
+  if exists (select 1 from nestscout_private.kael_approvals a join public.kael_tasks t on t.id = a.task_id
+    where t.conversation_id = v_id and a.status = 'consumed' and (a.outcome is null or a.outcome = 'uncertain')) then
+    raise exception using errcode = '22023', message = 'effect unresolved';
+  end if;
+  delete from public.kael_task_events e using public.kael_tasks t where e.task_id = t.id and t.conversation_id = v_id;
+  delete from nestscout_private.kael_approvals a using public.kael_tasks t where a.task_id = t.id and t.conversation_id = v_id;
+  delete from nestscout_private.kael_tool_executions x using public.kael_tasks t where x.task_id = t.id and t.conversation_id = v_id;
+  delete from nestscout_private.kael_tool_executions x using public.kael_runs r where x.run_id = r.id and r.conversation_id = v_id;
+  delete from public.kael_messages where conversation_id = v_id;
+  delete from public.kael_tasks where conversation_id = v_id;
+  update nestscout_private.kael_durable_runs set journal_state = 'purge_pending', holder = null, lease_expires_at = null, epoch = epoch + 1
+    where conversation_id = v_id and journal_state <> 'purged';
+  update public.kael_conversations set deleted_at = clock_timestamp(), title = null, pinned_at = null, archived_at = null where id = v_id;
+  return jsonb_build_object('id', v_id, 'deleted', true);
 end;
 $$;
 

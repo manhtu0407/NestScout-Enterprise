@@ -13,10 +13,10 @@ import { CustomerSection, isCustomerSection, type CustomerSectionId } from './cu
 import { WorkerSection, isWorkerSection } from './worker-sections';
 import { handOffToKael } from './kael-handoff';
 
-export function useAskKael(): (prompt: string) => void {
+export function useAskKael(): (prompt: string, options?: { fresh?: boolean }) => void {
   const router = useRouter();
-  return prompt => {
-    handOffToKael(prompt);
+  return (prompt, options) => {
+    handOffToKael(prompt, options);
     router.dismissTo('/');
   };
 }

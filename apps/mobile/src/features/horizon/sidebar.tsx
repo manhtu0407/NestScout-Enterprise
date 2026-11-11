@@ -1,7 +1,7 @@
 import { usePreferences } from '@/lib/preferences-provider';
 import { horizonLayout } from '@/theme/layout';
 import React, { useCallback, useEffect, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { GlassCapsuleButton, GlassIconButton, Icon, useGlassAccessibility, usePressFeedback } from '@/features/shared';
 import { quickServices, sidebarGroups } from './content';
 import type { SidebarItem } from './content';
@@ -17,12 +17,22 @@ import { SkeletonReveal } from './skeleton';
 import { RecentSkeleton } from './skeleton-layouts';
 import { RecentSessionRow } from './recent-session';
 import type { RecentSession } from './recent-session';
+import { SessionActions, type SessionActionResult } from './session-actions';
+
+export type SessionHandlers = {
+  rename: (id: string, title: string | null) => Promise<SessionActionResult>;
+  setPinned: (id: string, pinned: boolean) => Promise<SessionActionResult>;
+  setArchived: (id: string, archived: boolean) => Promise<SessionActionResult>;
+  remove: (id: string) => Promise<SessionActionResult>;
+};
+
+export type SessionsStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 type Props = {
   visible: boolean;
   onClose: () => void;
   onNavigate: (screen: string) => void;
-  onSelectService?: (prompt: string) => void;
+  onSelectService?: (categoryId: string) => void;
   mode: HorizonMode;
   modePending: boolean;
   modeNotice: ModeNotice;
@@ -41,6 +51,13 @@ type Props = {
   onOpenSession?: (id: string) => void;
   onTogglePin?: (id: string) => void;
   onSessionMore?: (id: string) => void;
+  sessionHandlers?: SessionHandlers;
+  sessionsStatus?: SessionsStatus;
+  sessionQuery?: string;
+  onSessionQuery?: (query: string) => void;
+  archivedView?: boolean;
+  onToggleArchivedView?: () => void;
+  onRetrySessions?: () => void;
 };
 
 const listColors = horizonColors.sidebarList;
@@ -66,16 +83,17 @@ function ItemRow({ item, onPress, badge = 0 }: { item: SidebarItem; onPress: () 
   </Animated.View>;
 }
 
-export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, profileAvatarUri, profileAvatarHeaders, recentLoading = false, badges = {}, workerProfile, onSetAccepting, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore }: Props) {
+export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, modePending, modeNotice, onModeSelect, onModeCancel, onDismissModeNotice, profileName, profileAvatarUri, profileAvatarHeaders, recentLoading = false, badges = {}, workerProfile, onSetAccepting, recentSessions = [], activeSessionId, onOpenSession, onTogglePin, onSessionMore, sessionHandlers, sessionsStatus = 'ready', sessionQuery = '', onSessionQuery, archivedView = false, onToggleArchivedView, onRetrySessions }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const topInset = Platform.select({ web: 0, default: insets.top }) ?? 0;
-  const [servicesOpen, setServicesOpen] = useState(false);
+  const [servicesOpen, setServicesOpen] = useState(true);
   const [activityOpen, setActivityOpen] = useState(true);
   const [supportOpen, setSupportOpen] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountCloseRequest, setAccountCloseRequest] = useState(0);
+  const [menuSessionId, setMenuSessionId] = useState<string | null>(null);
   const [systemReduceMotion, setReduceMotion] = useState(true);
   const preferredReduceMotion = usePreferences().reduceMotion;
   const reduceMotion = systemReduceMotion || preferredReduceMotion;
@@ -107,7 +125,7 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
   const avatarPlaceholder = initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={horizonLayout.sidebarList.accountAvatarIconSize} color={horizonColors.sidebarComponent.avatarForeground}/>;
   const pinnedSessions = recentSessions.filter(session => session.pinned);
   const unpinnedSessions = recentSessions.filter(session => !session.pinned);
-  const renderSession = (session: RecentSession) => <RecentSessionRow key={session.id} session={session} active={session.id === activeSessionId} onPress={() => onOpenSession?.(session.id)} onMore={() => onSessionMore?.(session.id)} onTogglePin={() => onTogglePin?.(session.id)}/>;
+  const renderSession = (session: RecentSession) => <RecentSessionRow key={session.id} session={session} active={session.id === activeSessionId} onPress={() => onOpenSession?.(session.id)} onMore={() => (sessionHandlers ? setMenuSessionId(session.id) : onSessionMore?.(session.id))} onTogglePin={() => onTogglePin?.(session.id)}/>;
   const pickerVisible = visible && modeOpen && !(requestedWorker && mode === 'worker');
   const closePicker = () => {
     if (requestedWorker && (modePending || !modeNotice)) onModeCancel();
@@ -116,7 +134,10 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
   };
   const closeAccount = useCallback(() => setAccountOpen(false), []);
   const chooseMode = () => { onDismissModeNotice(); setRequestedWorker(false); setModeOpen(true); };
-  const closeSidebar = () => { closePicker(); closeAccount(); onClose(); };
+  const closeSidebar = () => { closePicker(); closeAccount(); setMenuSessionId(null); onClose(); };
+  const menuSession = menuSessionId === null ? undefined : recentSessions.find(session => session.id === menuSessionId);
+  const searching = sessionQuery.trim() !== '';
+  const emptySessions = archivedView ? 'Chưa có cuộc trò chuyện nào được lưu trữ.' : searching ? 'Không có cuộc trò chuyện nào khớp với tên bạn tìm.' : 'Chưa có cuộc trò chuyện nào. Gửi tin nhắn đầu tiên để bắt đầu.';
   const selectMode = (next: HorizonMode) => {
     if (next === mode || next === 'guest') { closePicker(); return; }
     if (next === 'worker' && mode !== 'guest') setRequestedWorker(true);
@@ -143,18 +164,27 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
           <CollapsibleGroup first title={sidebarGroups[0]?.title ?? ''} expanded={activityOpen} onToggle={() => setActivityOpen(open => !open)} badge={(sidebarGroups[0]?.items ?? []).reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>
             {sidebarGroups[0]?.items.map(item => <ItemRow key={item.id} item={item} badge={badges[item.id]} onPress={() => onNavigate(item.id)}/>)}
           </CollapsibleGroup>
-          {recentSessions.length > 0 && <Group title="Đã ghim">
-            {pinnedSessions.length > 0 ? pinnedSessions.map(renderSession) : <Text style={styles.emptyText}>Bấm biểu tượng ghim để giữ cuộc trò chuyện quan trọng ở đây.</Text>}
+          {!archivedView && pinnedSessions.length > 0 && <Group title="Đã ghim">
+            {pinnedSessions.map(renderSession)}
           </Group>}
-          <Group title="Gần đây">
-            <SkeletonReveal loading={recentLoading === true} skeleton={<RecentSkeleton label="Đang tải cuộc trò chuyện gần đây"/>}>
-              {recentSessions.length === 0
-                ? <Text style={styles.emptyText}>Chưa có yêu cầu nào. Khi bạn gửi yêu cầu, nó sẽ hiện ở đây.</Text>
-                : unpinnedSessions.map(renderSession)}
+          <Group title={archivedView ? 'Lưu trữ' : 'Gần đây'}>
+            {onSessionQuery && <View style={styles.sessionTools}>
+              <View style={styles.sessionSearch}>
+                <Icon name="search" size={horizonLayout.supportScreens.searchIconSize} color={horizonColors.supportScreens.searchIcon}/>
+                <TextInput accessibilityLabel="Tìm cuộc trò chuyện theo tên" value={sessionQuery} onChangeText={onSessionQuery} placeholder="Tìm theo tên" placeholderTextColor={horizonColors.supportScreens.searchPlaceholder} autoCorrect={false} maxLength={80} style={styles.sessionSearchInput}/>
+              </View>
+              {onToggleArchivedView && <Pressable accessibilityRole="button" accessibilityState={{ selected: archivedView }} accessibilityLabel={archivedView ? 'Quay lại cuộc trò chuyện gần đây' : 'Xem cuộc trò chuyện đã lưu trữ'} onPress={onToggleArchivedView} style={styles.archiveToggle}><Icon name={archivedView ? 'back' : 'archive'} size={horizonLayout.supportScreens.searchIconSize} color={horizonColors.supportScreens.searchIcon}/></Pressable>}
+            </View>}
+            <SkeletonReveal loading={recentLoading === true || (sessionsStatus === 'loading' && recentSessions.length === 0)} skeleton={<RecentSkeleton label="Đang tải cuộc trò chuyện gần đây"/>}>
+              {sessionsStatus === 'error'
+                ? <View accessibilityLiveRegion="polite"><Text style={styles.emptyText}>Chưa tải được danh sách cuộc trò chuyện.</Text>{onRetrySessions && <Pressable accessibilityRole="button" accessibilityLabel="Thử tải lại danh sách cuộc trò chuyện" onPress={onRetrySessions} style={styles.retry}><Text style={styles.retryLabel}>Thử lại</Text></Pressable>}</View>
+                : (archivedView ? recentSessions : unpinnedSessions).length === 0 && !(pinnedSessions.length > 0 && !archivedView)
+                  ? <Text style={styles.emptyText}>{emptySessions}</Text>
+                  : (archivedView ? recentSessions : unpinnedSessions).map(renderSession)}
             </SkeletonReveal>
           </Group>
           <CollapsibleGroup title="Dịch vụ" expanded={servicesOpen} onToggle={() => setServicesOpen(open => !open)}>
-            {quickServices.map(service => <ItemRow key={service.title} item={{ id: service.title, title: service.title, icon: service.icon }} onPress={() => (onSelectService ?? onNavigate)(service.prompt)}/>)}
+            {quickServices.map(service => <ItemRow key={service.id} item={{ id: service.id, title: service.title, icon: service.icon }} onPress={() => (onSelectService ?? onNavigate)(service.id)}/>)}
           </CollapsibleGroup>
           <CollapsibleGroup title={sidebarGroups[1]?.title ?? ''} expanded={supportOpen} onToggle={() => setSupportOpen(open => !open)} badge={(sidebarGroups[1]?.items ?? []).reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>
             {sidebarGroups[1]?.items.map(item => <ItemRow key={item.id} item={item} badge={badges[item.id]} onPress={() => onNavigate(item.id)}/>)}
@@ -172,6 +202,7 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
       </Animated.View>
       <Pressable style={styles.scrim} onPress={closeSidebar} accessibilityLabel="Đóng sidebar" importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'}/>
       {visible && accountOpen && <AccountSheet closeRequest={accountCloseRequest} reduceMotion={reduceMotion} profileName={profileName} avatarUri={profileAvatarUri} avatarHeaders={profileAvatarHeaders} modeLabel={modeLabel} onClose={closeAccount}/>}
+      {visible && menuSession && sessionHandlers && <SessionActions key={menuSession.id} title={menuSession.title} pinned={menuSession.pinned} archived={archivedView} onClose={() => setMenuSessionId(null)} onRename={title => sessionHandlers.rename(menuSession.id, title)} onPin={() => sessionHandlers.setPinned(menuSession.id, !menuSession.pinned)} onArchive={() => sessionHandlers.setArchived(menuSession.id, !archivedView)} onDelete={() => sessionHandlers.remove(menuSession.id)}/>}
       {pickerVisible && <ModePicker mode={mode} pending={requestedWorker && !modeNotice} notice={modeNotice} onSelect={selectMode} onClose={closePicker}/>}
     </View>
   </Modal>;
@@ -210,6 +241,12 @@ const styles = StyleSheet.create({
   serviceRow: { minHeight: horizonLayout.sidebar.serviceRowMinHeight, flexDirection: 'row', alignItems: 'center', paddingHorizontal: horizonLayout.sidebar.serviceRowPaddingHorizontal, gap: horizonLayout.sidebar.serviceRowGap },
   serviceLabel: { color: horizonColors.sidebarComponent.serviceLabelColor, fontSize: horizonLayout.sidebar.serviceLabelFontSize },
   group: { marginTop: horizonLayout.sidebarList.groupMarginTop },
+  sessionTools: { flexDirection: 'row', alignItems: 'center', gap: horizonLayout.supportScreens.searchGap, marginBottom: horizonLayout.sidebarList.groupTitleMarginBottom, paddingHorizontal: horizonLayout.sidebarList.rowPadding },
+  sessionSearch: { flex: 1, height: horizonLayout.sidebar.searchHeight, borderRadius: horizonLayout.sidebar.searchBorderRadius, backgroundColor: horizonColors.supportScreens.searchFill, paddingHorizontal: horizonLayout.sidebar.searchPaddingHorizontal, flexDirection: 'row', alignItems: 'center', gap: horizonLayout.sidebar.searchGap },
+  sessionSearchInput: { flex: 1, color: colors.text, fontSize: horizonLayout.sidebar.searchTextFontSize, height: horizonLayout.sidebar.searchHeight },
+  archiveToggle: { width: horizonLayout.supportScreens.notificationActionHeight, height: horizonLayout.supportScreens.notificationActionHeight, alignItems: 'center', justifyContent: 'center' },
+  retry: { minHeight: horizonLayout.supportScreens.notificationActionHeight, justifyContent: 'center', paddingHorizontal: horizonLayout.sidebarList.rowPadding },
+  retryLabel: { color: horizonColors.supportScreens.actionLabel, fontSize: horizonLayout.supportScreens.notificationActionSize, fontWeight: horizonLayout.supportScreens.notificationActionWeight },
   groupTitle: { color: colors.text, fontSize: horizonLayout.sidebarList.groupTitleFontSize, fontWeight: horizonLayout.sidebarList.groupTitleFontWeight, marginBottom: horizonLayout.sidebarList.groupTitleMarginBottom, paddingHorizontal: horizonLayout.sidebarList.rowPadding },
   itemRow: { minHeight: horizonLayout.sidebarList.rowHeight, flexDirection: 'row', alignItems: 'center', gap: horizonLayout.sidebarList.rowGap, paddingHorizontal: horizonLayout.sidebarList.rowPadding, paddingVertical: horizonLayout.sidebarList.rowPaddingVertical },
   badge: { minWidth: horizonLayout.sidebarList.badgeSize, height: horizonLayout.sidebarList.badgeSize, paddingHorizontal: horizonLayout.sidebarList.badgePaddingHorizontal, borderRadius: horizonLayout.sidebarList.badgeRadius, backgroundColor: listColors.badge, alignItems: 'center', justifyContent: 'center' },

@@ -103,14 +103,14 @@ isOneToOne: false
                   ]
                 },"kael_conversations": {
                   Row: {
-                    "created_at": string,"id": string,"mode": string,"owner_id": string,"updated_at": string
+                    "archived_at": string | null,"created_at": string,"deleted_at": string | null,"id": string,"mode": string,"owner_id": string,"pinned_at": string | null,"title": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"id"?: string,"mode": string,"owner_id": string,"updated_at"?: string
+                    "archived_at"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"mode": string,"owner_id": string,"pinned_at"?: string | null,"title"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"mode"?: string,"owner_id"?: string,"updated_at"?: string
+                    "archived_at"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"mode"?: string,"owner_id"?: string,"pinned_at"?: string | null,"title"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
 
@@ -815,6 +815,9 @@ isOneToOne: false
 "kael_conversation_state":
 { Args: { "p_mode": string }; Returns: Json
                            },
+"kael_delete_conversation":
+{ Args: { "p_conversation_id": string }; Returns: Json
+                           },
 "kael_durable_claim":
 { Args: { "p_actor": string,"p_holder": string,"p_lease_seconds": number,"p_run_id": string }; Returns: Json
                            },
@@ -851,8 +854,14 @@ isOneToOne: false
 "kael_knowledge_search":
 { Args: { "p_limit"?: number,"p_query": string,"p_source_id"?: string,"p_strategy"?: string }; Returns: Json
                            },
+"kael_list_conversations":
+{ Args: { "p_archived"?: boolean,"p_before"?: string,"p_limit"?: number,"p_mode": string,"p_search"?: string }; Returns: Json
+                           },
 "kael_manage_memory":
 { Args: { "p_action": string,"p_mode": string,"p_preference"?: string,"p_previous"?: string,"p_value"?: string }; Returns: boolean
+                           },
+"kael_open_conversation":
+{ Args: { "p_conversation_id": string,"p_mode": string }; Returns: Json
                            },
 "kael_pilot_charge":
 { Args: { "p_action": string,"p_actor": string,"p_cached": number,"p_call": string,"p_input": number,"p_model": string,"p_output": number,"p_pilot": string,"p_run": string,"p_thinking": boolean }; Returns: Json
@@ -869,6 +878,9 @@ isOneToOne: false
 "kael_reject_approval":
 { Args: { "p_actor": string,"p_approval_id": string,"p_fingerprint": string,"p_run_id": string }; Returns: Json
                            },
+"kael_rename_conversation":
+{ Args: { "p_conversation_id": string,"p_title": string }; Returns: Json
+                           },
 "kael_request_approval":
 { Args: { "p_actor": string,"p_args": Json,"p_details": Json,"p_expected_version": number,"p_fingerprint": string,"p_run_id": string,"p_summary": string,"p_task_id": string,"p_tool": string,"p_ttl_seconds": number }; Returns: Json
                            },
@@ -877,6 +889,12 @@ isOneToOne: false
                            },
 "kael_save_task":
 { Args: { "p_actor": string,"p_artifact": Json,"p_conversation_id": string,"p_event": string,"p_expected_version": number,"p_kind": string,"p_run_id": string,"p_status": string,"p_summary": string,"p_task_id": string,"p_title": string }; Returns: Json
+                           },
+"kael_set_conversation_archived":
+{ Args: { "p_archived": boolean,"p_conversation_id": string }; Returns: Json
+                           },
+"kael_set_conversation_pinned":
+{ Args: { "p_conversation_id": string,"p_pinned": boolean }; Returns: Json
                            },
 "kael_start_run":
 { Args: { "p_actor": string,"p_conversation_id": string,"p_mode": string,"p_request_id": string,"p_user_text": string }; Returns: Json

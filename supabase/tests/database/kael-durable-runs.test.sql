@@ -199,6 +199,34 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}', true);
 select throws_ok($$ select public.kael_durable_purge_queue(10) $$, '42501', null, 'A client cannot read the purge queue');
+select isnt(public.set_consent('ai_sharing', true, '2026-11-09'), null, 'The second actor records AI sharing consent');
+reset role;
+
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('test.session', public.kael_durable_start_run('00000000-0000-4000-8000-0000000000b2', '30000000-0000-4000-8000-000000000005', null, 'client', 'Cuộc trò chuyện sẽ xoá', 'holder-g', 60)::text, true);
+select is(current_setting('test.session')::jsonb ->> 'status', 'started', 'A durable run is admitted for the second actor');
+select set_config('request.headers', '{"x-kael-lease":"holder-g:1"}', true);
+select is(public.kael_finish_run('00000000-0000-4000-8000-0000000000b2', (current_setting('test.session')::jsonb ->> 'run_id')::uuid, 'completed', 'Đã xong', true, null, null, 1, 1, 1, null), true,
+  'The second actor run completes');
+select set_config('request.headers', '{}', true);
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}', true);
+select is(public.kael_delete_conversation((current_setting('test.session')::jsonb ->> 'conversation_id')::uuid) ->> 'deleted', 'true', 'The actor deletes the conversation');
+reset role;
+select is((select journal_state from nestscout_private.kael_durable_runs where run_id = (current_setting('test.session')::jsonb ->> 'run_id')::uuid), 'purge_pending',
+  'Deleting a conversation queues its durable journal for purge');
+
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select ok(exists (select 1 from jsonb_array_elements(public.kael_durable_purge_queue(10)) q where q ->> 'run_id' = current_setting('test.session')::jsonb ->> 'run_id'),
+  'The purge queue lists the deleted conversation journal');
+select is(public.kael_durable_start_run('00000000-0000-4000-8000-0000000000b2', '30000000-0000-4000-8000-000000000006',
+  (current_setting('test.session')::jsonb ->> 'conversation_id')::uuid, 'client', 'Còn đó không', 'holder-g', 60) ->> 'status', 'invalid',
+  'A deleted conversation cannot receive a durable run');
+select is(public.kael_durable_mark_purged((current_setting('test.session')::jsonb ->> 'run_id')::uuid), true, 'The deleted conversation journal purge is recorded');
 reset role;
 
 select * from finish();
