@@ -38,7 +38,7 @@ async function chooseService(title: string) {
   await act(async () => { fireEvent.press(screen.getByLabelText(title)); });
 }
 
-const composer = () => screen.getByPlaceholderText('Nhắn Kael...');
+const composer = () => screen.getByPlaceholderText("What's on your home Today...?");
 
 test('the preview is labelled as a demo and a service tile only prefills the composer', async () => {
   storedRole = 'client';
