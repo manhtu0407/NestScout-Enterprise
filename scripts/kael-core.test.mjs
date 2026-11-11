@@ -12,7 +12,7 @@ import { createRest, createServerRpc, createSupabaseStore, kaelServerOperations 
 import { readSse } from '../services/kael-core/src/sse.ts';
 import { checkModelTransition, taskTransitions } from '../services/kael-core/src/tasks.ts';
 import { findTool, toolRegistry, validateArguments } from '../services/kael-core/src/tools.ts';
-import { configuredProviders, createKaelHandler } from '../services/kael-core/src/gateway.ts';
+import { configuredProviders, createKaelHandler, probeProvider } from '../services/kael-core/src/gateway.ts';
 import { executeApprovedEffect } from '../services/kael-core/src/executor.ts';
 import { parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { baseEnv, harness, scriptedProvider, users } from './kael-test-harness.mjs';
@@ -69,7 +69,7 @@ test('Anthropic receives the current saved language as policy and leaves explici
 });
 
 test('every Auth-verified user can use DeepSeek and the configured Anthropic fallback', async () => {
-  const primary = scriptedProvider('deepseek', [{ error: 'overloaded' }, { text: ['DeepSeek primary reply.'] }]);
+  const primary = scriptedProvider('deepseek', [{ error: 'overloaded' }, { error: 'overloaded' }, { text: ['DeepSeek primary reply.'] }]);
   const fallback = scriptedProvider('anthropic', [{ text: ['Anthropic fallback reply.'] }]);
   const app = harness({ env: { DEEPSEEK_API_KEY: 'fixture-deepseek', KAEL_MODEL_ROUTE: 'deepseek,anthropic',
     ANTHROPIC_API_KEY: 'fixture-anthropic', KAEL_ANTHROPIC_MODEL: 'claude-sonnet-4-5' },
@@ -80,7 +80,7 @@ test('every Auth-verified user can use DeepSeek and the configured Anthropic fal
   assert.equal(fallbackTurn.events.at(-1).text, 'Anthropic fallback reply.');
   assert.equal(primaryTurn.events.at(-1).type, 'run_completed');
   assert.equal(primaryTurn.events.at(-1).text, 'DeepSeek primary reply.');
-  assert.equal(primary.requests.length, 2);
+  assert.equal(primary.requests.length, 3);
   assert.equal(fallback.requests.length, 1);
 });
 
@@ -636,9 +636,30 @@ test('model gateway falls back only before any output and never after an interru
   assert.deepEqual(fallbacks, ['overloaded']);
   const partial = { id: 'deepseek', model: 'd', async complete(_request, onText) { onText('nửa'); throw new ProviderError('deepseek', 'incomplete', 'cut', true); } };
   await assert.rejects(completeWithFallback([partial, working], request({ signal }), () => {}), error => error.kind === 'incomplete');
-  for (const kind of ['auth', 'billing', 'bad_request', 'budget', 'cancelled']) {
+  for (const kind of ['bad_request', 'budget', 'cancelled']) {
     await assert.rejects(completeWithFallback([failing(kind), working], request({ signal }), () => {}), error => error.kind === kind);
   }
+  for (const kind of ['auth', 'billing', 'unavailable', 'rate_limit', 'timeout']) {
+    const attempts = [];
+    const counted = { id: 'deepseek', model: 'd', async complete() { attempts.push(kind); throw new ProviderError('deepseek', kind, 'x'); } };
+    const recovered = await completeWithFallback([counted, working], request({ signal }), () => {});
+    assert.equal(recovered.provider, 'anthropic', kind);
+    assert.equal(attempts.length, 1, `${kind} is not retried on the same provider`);
+  }
+  let flaky = 0;
+  const transient = { id: 'deepseek', model: 'd', async complete(_request, onText) {
+    flaky += 1;
+    if (flaky === 1) throw new ProviderError('deepseek', 'server', 'blip', false, 500);
+    onText('ok');
+    return { provider: 'deepseek', model: 'd', text: 'ok', toolCalls: [], stopReason: 'end_turn', usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0 }, providerState: null };
+  } };
+  const retried = await completeWithFallback([transient, working], request({ signal }), () => {});
+  assert.equal(retried.provider, 'deepseek');
+  assert.equal(flaky, 2, 'one bounded retry on the primary before any fallback');
+  let always = 0;
+  const down = { id: 'deepseek', model: 'd', async complete() { always += 1; throw new ProviderError('deepseek', 'network', 'down'); } };
+  assert.equal((await completeWithFallback([down, working], request({ signal }), () => {})).provider, 'anthropic');
+  assert.equal(always, 2, 'retries are bounded to one');
   const misclassified = { ...partial, async complete(_request, onText) { onText('nửa'); throw new ProviderError('deepseek', 'overloaded', 'late'); } };
   await assert.rejects(completeWithFallback([misclassified, working], request({ signal }), () => {}), error => error.outputStarted === true);
   await assert.rejects(completeWithFallback([], request({ signal }), () => {}), error => error.kind === 'unavailable');
@@ -765,8 +786,12 @@ test('server configuration defaults to Flash, routes to Anthropic when configure
   assert.ok(searchOnly.perplexity);
   assert.deepEqual(searchOnly.route, [], 'search is not a chat model');
   assert.equal(readKaelConfig({ ...baseEnv, KAEL_WEB_SEARCH: 'enabled' }).perplexity, null, 'search needs a server credential');
-  assert.deepEqual(readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, [],
-    'Anthropic cannot replace the DeepSeek primary route');
+  assert.deepEqual(readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, ['anthropic'],
+    'Anthropic takes over when the DeepSeek credential or model is unusable');
+  assert.deepEqual(readKaelConfig({ ...baseEnv, DEEPSEEK_API_KEY: 'bad key', ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, ['anthropic'],
+    'a malformed DeepSeek credential does not take Kael down');
+  assert.deepEqual(readKaelConfig({ ...baseEnv, KAEL_MODEL_ROUTE: 'deepseek', ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, [],
+    'an operator route that excludes Anthropic is respected');
   const full = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-flash', KAEL_ENABLED_EFFECTS: 'service_request_submit,mark_paid' });
   assert.deepEqual(full.route, ['deepseek', 'anthropic']);
   const fallback = serverFallback;
@@ -1086,4 +1111,16 @@ test('each workflow effect is recognised from the row it leaves behind', async (
     const open = effectRest(databaseError(500, '40001'), rows(pending));
     assert.equal((await executeApprovedEffect('approval-1', { status: 'reconcile', ...effect }, open.rest, new AbortController().signal)).status, 'uncertain', effect.tool);
   }
+});
+
+test('live provider probe reports status, HTTP status and latency without leaking secrets', async () => {
+  const signal = new AbortController().signal;
+  const ok = await probeProvider(scriptedProvider('deepseek', [{ text: ['ok'] }]), signal);
+  assert.equal(ok.status, 'ok');
+  assert.equal(ok.http_status, 200);
+  assert.ok(Number.isInteger(ok.latency_ms) && ok.latency_ms >= 0);
+  const failing = { id: 'anthropic', model: 'a', async complete() { throw new ProviderError('anthropic', 'billing', 'sk-secret-value', false, 402); } };
+  const billing = await probeProvider(failing, signal);
+  assert.deepEqual({ status: billing.status, http_status: billing.http_status }, { status: 'billing', http_status: 402 });
+  assert.ok(!JSON.stringify(billing).includes('sk-secret-value'));
 });

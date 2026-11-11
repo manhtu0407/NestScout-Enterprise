@@ -16,6 +16,7 @@ export type KaelConversationState = {
   processingTaskId: string | null;
   receipt: string | null;
   question: KaelQuestion | null;
+  consentRequired: boolean;
 };
 
 type Streamer = typeof streamKaelTurn;
@@ -25,7 +26,7 @@ type Opener = (userId: string, mode: KaelMode, conversationId: string, signal: A
 
 export type KaelOpening = { id: string; failed: boolean };
 
-const idleState: KaelConversationState = { messages: [], activity: null, tasks: [], approvals: [], notice: null, running: false, conversationId: null, processingTaskId: null, receipt: null, question: null };
+const idleState: KaelConversationState = { messages: [], activity: null, tasks: [], approvals: [], notice: null, running: false, conversationId: null, processingTaskId: null, receipt: null, question: null, consentRequired: false };
 const interruptedNotice = 'Kết nối bị gián đoạn trước khi Kael trả lời xong. Nội dung phía trên có thể chưa đầy đủ.';
 const unverifiedNotice = 'Kết nối bị gián đoạn và chưa tải lại được cuộc trò chuyện để xác minh. Nội dung phía trên có thể chưa đầy đủ.';
 const unconfirmedNotice = 'Đã tải lại cuộc trò chuyện nhưng chưa xác nhận được Kael đã trả lời xong tin nhắn bị gián đoạn. Nội dung phía trên có thể chưa đầy đủ.';
@@ -92,7 +93,7 @@ function applyEvent(state: KaelConversationState, event: KaelEvent, assistantId:
 function settle(state: KaelConversationState, outcome: KaelTurnOutcome, assistantId: string): KaelConversationState {
   if (outcome.kind === 'terminal') return state;
   const base = { ...state, activity: null, running: false, processingTaskId: null };
-  if (outcome.kind === 'refused') return { ...base, notice: outcome.message };
+  if (outcome.kind === 'refused') return { ...base, notice: outcome.message, consentRequired: outcome.code === 'consent_required' };
   if (outcome.kind === 'cancelled') return base;
   return { ...base, notice: interruptedNotice, messages: state.messages.map(message => (message.id === assistantId ? { ...message, incomplete: true } : message)) };
 }
@@ -273,6 +274,7 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
     setState(current => ({
       ...current,
       notice: null,
+      consentRequired: false,
       running: true,
       activity: busyLabel,
       processingTaskId: decided !== null && action.type !== 'reject' ? decided.task_id : null,

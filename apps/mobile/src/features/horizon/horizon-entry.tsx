@@ -217,6 +217,9 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   }, [access, sendToKael]);
   const [consentBusy, setConsentBusy] = useState(false);
   const setAiConsent = aiConsent.set;
+  const markConsentRequired = aiConsent.markRequired;
+  const serverRequiresConsent = kael.consentRequired;
+  useEffect(() => { if (serverRequiresConsent) markConsentRequired(); }, [serverRequiresConsent, markConsentRequired]);
   const allowAi = useCallback(() => {
     setConsentBusy(true);
     setAiConsent(true).then(() => setComposerError(null), () => setComposerError(consentFailedMessage)).finally(() => setConsentBusy(false));
