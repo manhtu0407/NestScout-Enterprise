@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: metrics.labelGap },
   disabled: { opacity: metrics.disabledOpacity },
   bubble: { width: metrics.bubbleSize, height: metrics.bubbleSize, borderRadius: metrics.bubbleRadius, backgroundColor: colors.fill, alignItems: 'center', justifyContent: 'center' },
-  label: { minHeight: metrics.labelMinHeight, minWidth: metrics.labelMinWidth, flexShrink: 0, paddingHorizontal: metrics.labelPaddingHorizontal, borderRadius: metrics.labelRadius, backgroundColor: colors.labelSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.labelBorder, flexDirection: 'row', alignItems: 'center', gap: metrics.labelGap },
+  label: { minHeight: metrics.labelMinHeight, minWidth: metrics.labelMinWidth, flexShrink: 0, paddingHorizontal: metrics.labelPaddingHorizontal, borderRadius: metrics.labelRadius, backgroundColor: colors.labelSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.labelBorder, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: metrics.labelGap },
   labelText: { flexShrink: 0, color: horizonColors.text, fontSize: metrics.labelFontSize, fontWeight: metrics.labelFontWeight },
   detail: { flexShrink: 0, color: colors.detail, fontSize: metrics.detailFontSize },
 });
