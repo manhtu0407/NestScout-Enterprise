@@ -17,7 +17,7 @@
         "ITSAppUsesNonExemptEncryption": false
       }
     },
-    "plugins": ["expo-router", "expo-apple-authentication", "expo-web-browser", ["expo-image-picker", { "photosPermission": "NestScout cần quyền truy cập ảnh để bạn chọn ảnh đính kèm.", "cameraPermission": "NestScout cần quyền dùng camera để bạn chụp ảnh đính kèm cho Kael.", "microphonePermission": false }]],
+    "plugins": ["expo-router", "expo-apple-authentication", "expo-web-browser", ["expo-image-picker", { "photosPermission": "NestScout cần quyền truy cập ảnh để bạn chọn ảnh đính kèm.", "cameraPermission": "NestScout cần quyền dùng camera để bạn chụp ảnh đính kèm cho Kael.", "microphonePermission": false }], ["expo-speech-recognition", { "microphonePermission": "NestScout cần quyền dùng micro để nghe lời bạn nói với Kael.", "speechRecognitionPermission": "NestScout dùng nhận dạng giọng nói của Apple để chuyển lời bạn nói thành chữ. Apple có thể xử lý âm thanh của bạn để thực hiện việc này." }]],
     "extra": {
       "eas": {
         "projectId": "d984de7d-3c69-41a5-841f-a604d10d4f11"

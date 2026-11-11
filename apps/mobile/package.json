@@ -26,6 +26,7 @@
     "expo-linking": "58.0.16",
     "expo-router": "58.0.30",
     "expo-secure-store": "58.0.2",
+    "expo-speech-recognition": "58.0.1",
     "expo-status-bar": "58.0.4",
     "expo-video": "58.0.13",
     "expo-web-browser": "58.0.7",
@@ -58,7 +59,8 @@
     "maxWorkers": 4,
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1",
-      "^lucide-react-native$": "<rootDir>/../../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js"
+      "^lucide-react-native$": "<rootDir>/../../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js",
+      "^expo-speech-recognition$": "<rootDir>/src/testing/expo-speech-recognition.ts"
     },
     "testMatch": [
       "**/src/**/*.test.ts",

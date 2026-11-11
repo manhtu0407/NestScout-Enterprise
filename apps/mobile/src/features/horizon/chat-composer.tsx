@@ -9,6 +9,7 @@ import { AttachmentStrip } from './attachment-strip';
 import { ComposerMenu } from './composer-menu';
 import { Presence, useRetained } from './motion-presence';
 import { LiquidVoiceCapsule, useLiquidVoice } from './liquid-voice';
+import { appendTranscript } from './voice-input';
 import type { ComposerMenuAnchor, ComposerMenuItem } from './composer-menu';
 
 type Props = {
@@ -28,7 +29,6 @@ type Props = {
 const metrics = horizonLayout.chatComposer;
 const menu = horizonLayout.composerMenu;
 const colors = horizonColors.chatComposer;
-const voiceUnavailable = 'Ghi âm chưa khả dụng nên Kael chưa nhận được lời nói.';
 const webScrollbarStyle = { outlineStyle: 'solid', outlineWidth: 0, scrollbarWidth: 'none' } as const;
 
 export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, initialImages, onImagesChange, mediaExternallyManaged, locked = false, onFocus, onBlur }: Props) {
@@ -53,8 +53,10 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
   const submit = () => { if (canSend) onSubmit(media.images); };
   const { reduceMotion } = useGlassAccessibility();
   const micFeedback = usePressFeedback(reduceMotion);
-  const voice = useLiquidVoice(() => setVoiceNotice(voiceUnavailable));
-  const startVoice = () => { setVoiceNotice(null); voice.start(); };
+  const valueRef = useRef(value);
+  useEffect(() => { valueRef.current = value; });
+  const voice = useLiquidVoice(text => onChange(appendTranscript(valueRef.current, text)), setVoiceNotice);
+  const startVoice = () => { setVoiceNotice(null); void voice.start(); };
   useEffect(() => {
     if (!voiceNotice) return undefined;
     const timer = setTimeout(() => setVoiceNotice(null), metrics.voiceHintDuration);

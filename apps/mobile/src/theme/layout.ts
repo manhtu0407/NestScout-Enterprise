@@ -66,7 +66,7 @@ export const horizonLayout = {
       sendBorderWidth: 1,
       sendIconSize: 16,
       sendIconStroke: 2.35,
-      voiceRadius: 20, voicePadding: 4, voiceGap: 10, voiceHintDuration: 1800,
+      voiceRadius: 20, voicePadding: 4, voiceGap: 10, voiceHintDuration: 5000,
       voiceActionSize: 32, voiceActionRadius: 16, voiceActionIconSize: 16, voiceActionStroke: 2.2, voiceActionHitSlop: 6,
       voiceBarCount: 17, voiceBarWidth: 2, voiceBarGap: 3, voiceBarRadius: 1, voiceBarHeight: 22, voiceBarRest: 0.2, voiceBarDuration: 520, voiceBarStagger: 60, voiceBarFalloff: 0.075,
       voiceEnterFrom: 0.4, voiceSpring: { damping: 20, stiffness: 240, mass: 1 },
