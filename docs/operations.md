@@ -99,6 +99,51 @@ Hosted deployment of the service, its persistent volume and the secret are owner
 actions. No hosted rollback or recovery drill has been run; the evidence is local
 (see the service README).
 
+## Kael hosted release contract
+
+One hosted backend, Supabase project `axpdymbusiwxfzurfclg`, serves Hosted
+Preview, TestFlight and the App Store. Clients differ only in build target
+(`kael-hosted-preview`, `testflight`, `app-store`) and publish no AI
+credential. DeepSeek and Anthropic credentials live only as Supabase Edge
+Function secrets.
+
+Release order, each step authorized by the owner:
+
+1. Merge to `main` after hosted CI passes.
+2. Apply migrations that exist in the repository but not in the hosted history.
+   Compare names with `list_migrations`; hosted versions are apply times, so
+   compare names, not version numbers. The three pilot migrations
+   (`kael_developer_pilot_budget`, `kael_pilot_reauthorization`,
+   `configure_kael_pilot_request_limit`) are local-pilot scoped; do not apply
+   them to production without a separate decision. This release adds
+   `add_kael_provider_probe_window` (additive: one private table and
+   `kael_claim_provider_probe`); apply it before deploying the function. The
+   previous function ignores it, and a function deployed first reports
+   `claim_unavailable` rather than probing.
+3. Deploy the `kael` function from the merged commit. The deployed version is
+   reported as `deployment` in readiness and in every `kael_run` log line.
+4. Verify with a real account: `GET /functions/v1/kael` with header
+   `x-kael-readiness: providers` runs one live call per configured provider,
+   cached for 60 seconds, and reports status, HTTP status and latency. One
+   database window (`kael_claim_provider_probe`) allows a single live probe
+   across all Edge instances every 60 seconds; other callers receive
+   `provider_probe: "throttled"` with configuration-only readiness, so probe
+   spend is bounded without limiting authenticated chat. A failed or missing
+   claim reports `claim_unavailable` and also runs no probe; only a
+   per-provider result object reflects actual provider health. The header value `1`
+   stays configuration-only.
+5. Build iOS with `eas build --profile testflight` or `--profile app-store`.
+
+Failure causes are structured: `kael_provider_failure` (kind, HTTP status,
+whether fallback ran), `kael_provider_terminal` (latency), `kael_run`
+(status, latency, deployment). Client errors are the HTTP 4xx codes in the
+JSON `error.code`; provider and backend causes appear only in these logs.
+
+Rollback: redeploy the previous function source from the prior commit; the
+migrations are additive, so the older function keeps working. Revert the
+client by shipping the previous build. Availability is a target, not a
+guarantee: both providers can be unavailable at once.
+
 ## Git and metadata backup
 
 Run from a clean checkout after `git fetch origin --prune`. Use an absolute, new

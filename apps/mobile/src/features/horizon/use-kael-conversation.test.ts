@@ -878,3 +878,18 @@ test('a failed switch during a running turn leaves no running state, blocks send
   expect(result.current.conversationId).toBe(conversationB);
   expect(result.current.messages.map(message => message.text)).toEqual(['Vệ sinh sofa', 'Đã ghi nhận sofa']);
 });
+
+test('a server consent_required refusal raises the consent flag and the next send clears it', async () => {
+  const { streamer } = scriptedStreamer([
+    { events: [], outcome: { kind: 'refused', code: 'consent_required', message: 'Bạn cần đồng ý chia sẻ dữ liệu với AI trong Kael.', retryable: false } },
+    { events: [started, { type: 'run_completed', text: 'Xin chào.' }] },
+  ]);
+  const loader = jest.fn(async () => storedSnapshot);
+  const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { result.current.send('Xin chào'); });
+  expect(result.current.consentRequired).toBe(true);
+  expect(result.current.notice).toBe('Bạn cần đồng ý chia sẻ dữ liệu với AI trong Kael.');
+  await act(async () => { result.current.send('Xin chào'); });
+  expect(result.current.consentRequired).toBe(false);
+});

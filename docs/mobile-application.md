@@ -392,15 +392,20 @@ mode picker is a visual demonstration; it does not change an account or grant
 access. Profile editing and saved profile data are not connected; the account
 sheet states that limitation and retains access to the existing account shell.
 
-For authorized Kael-only production verification, launch the same development
-web server on loopback port 8085 with `EXPO_PUBLIC_NESTSCOUT_TARGET=kael-hosted-preview`,
+For authorized Kael-only production verification, launch the web build with
+`EXPO_PUBLIC_NESTSCOUT_TARGET=kael-hosted-preview`,
 `EXPO_PUBLIC_SUPABASE_URL=https://axpdymbusiwxfzurfclg.supabase.co`, and that
 project's `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Use an authorized disposable
 Supabase Auth account in the Preview sign-in dialog. This target mounts the
 real Kael chat and memory settings with a separate Preview session. It omits
-business navigation and approval controls. Regular local targets keep their
-private-network restriction. The hosted target is unavailable to native and
-release builds and to other browser origins.
+business navigation and approval controls. The hosted target is available on
+web at any origin and in any build mode, but never to native builds, and still
+requires the pinned HTTPS origin, a publishable key and Supabase Auth. Regular
+local targets keep their private-network restriction. TestFlight
+(`testflight`) and App Store (`app-store`) builds are release iOS builds that
+read dedicated `EXPO_PUBLIC_TESTFLIGHT_SUPABASE_*` or
+`EXPO_PUBLIC_APP_STORE_SUPABASE_*` variables and accept only the same pinned
+origin. No AI provider credential exists in any client target.
 
 In the application, selecting Worker from a guest session starts phone sign-in;
 an authenticated Worker request rechecks the existing access capability. A

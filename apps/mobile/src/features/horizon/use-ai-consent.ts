@@ -11,6 +11,7 @@ export type AiConsent = {
   status: AiConsentStatus;
   granted: boolean;
   set: (granted: boolean) => Promise<void>;
+  markRequired: () => void;
 };
 
 const policyVersion = legalDocument('vi', 'privacy').versionId;
@@ -34,9 +35,13 @@ export function useAiConsent(userId: string | null): AiConsent {
     setState({ userId, status: 'ready', granted });
   }, [userId]);
 
+  const markRequired = useCallback(() => {
+    if (userId !== null) setState({ userId, status: 'ready', granted: false });
+  }, [userId]);
+
   return useMemo(() => {
-    if (userId === null) return { status: 'signed_out' as const, granted: false, set };
-    if (state.userId !== userId) return { status: 'loading' as const, granted: false, set };
-    return { status: state.status, granted: state.granted, set };
-  }, [userId, state, set]);
+    if (userId === null) return { status: 'signed_out' as const, granted: false, set, markRequired };
+    if (state.userId !== userId) return { status: 'loading' as const, granted: false, set, markRequired };
+    return { status: state.status, granted: state.granted, set, markRequired };
+  }, [userId, state, set, markRequired]);
 }

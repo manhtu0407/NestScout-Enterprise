@@ -320,3 +320,11 @@ test('cancelling while waiting to reconnect stops without another request', asyn
   await expect(pending).resolves.toEqual({ kind: 'cancelled' });
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+test('the exact Gateway consent_required refusal reaches the client as a non-retryable consent code', async () => {
+  const gatewayBody = { error: { code: 'consent_required', message: 'Bạn cần đồng ý chia sẻ dữ liệu với AI trong Kael trước khi tiếp tục. Tin nhắn chưa được gửi tới nhà cung cấp AI.', retryable: false } };
+  mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'customer-a' }, access_token: 'token-a' } }, error: null });
+  const response = { ok: false, status: 403, body: null, json: async () => gatewayBody } as unknown as Response;
+  const outcome = await streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, jest.fn(async () => response));
+  expect(outcome).toEqual({ kind: 'refused', code: 'consent_required', message: gatewayBody.error.message, retryable: false });
+});

@@ -74,6 +74,7 @@ export type Fetcher = (input: string, init: RequestInit) => Promise<Response>;
 export function classifyStatus(status: number): ProviderErrorKind {
   if (status === 401 || status === 403) return 'auth';
   if (status === 402) return 'billing';
+  if (status === 404 || status === 410) return 'unavailable';
   if (status === 408) return 'timeout';
   if (status === 429) return 'rate_limit';
   if (status === 529 || status === 503) return 'overloaded';
@@ -90,7 +91,19 @@ export function classifyThrown(provider: ProviderId, error: unknown, signal: Abo
 }
 
 export function canFallBack(error: ProviderError): boolean {
-  return !error.outputStarted && ['rate_limit', 'overloaded', 'server', 'network', 'timeout'].includes(error.kind);
+  return !error.outputStarted && ['rate_limit', 'overloaded', 'server', 'network', 'timeout', 'auth', 'billing', 'unavailable'].includes(error.kind);
+}
+
+export const retryableKinds: readonly ProviderErrorKind[] = ['overloaded', 'server', 'network'];
+export const providerRetryDelayMs = 250;
+
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise(resolve => {
+    if (signal.aborted) { resolve(); return; }
+    const timer = setTimeout(done, ms);
+    function done() { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); }
+    signal.addEventListener('abort', done, { once: true });
+  });
 }
 
 export async function completeWithFallback(
@@ -99,22 +112,31 @@ export async function completeWithFallback(
   onText: (delta: string) => void,
   onFallback?: (from: ProviderError, next: ProviderId) => void,
   onFailure?: (failure: ProviderError, requestedModel: string, fallback: boolean) => void,
+  retries = 1,
 ): Promise<ModelTurn> {
   if (providers.length === 0) throw new ProviderError('anthropic', 'unavailable', 'No model provider is configured.');
   for (const [index, provider] of providers.entries()) {
-    let started = false;
-    try {
-      return await provider.complete(request, delta => {
-        started = true;
-        onText(delta);
-      });
-    } catch (error) {
-      const failure = classifyThrown(provider.id, error, request.signal, started);
-      const next = providers[index + 1];
-      const fallback = next !== undefined && canFallBack(failure);
-      onFailure?.(failure, provider.model, fallback);
-      if (!fallback) throw failure;
-      onFallback?.(failure, next.id);
+    for (let attempt = 0; ; attempt += 1) {
+      let started = false;
+      try {
+        return await provider.complete(request, delta => {
+          started = true;
+          onText(delta);
+        });
+      } catch (error) {
+        const failure = classifyThrown(provider.id, error, request.signal, started);
+        const next = providers[index + 1];
+        const retry = attempt < retries && !failure.outputStarted && !request.signal.aborted && retryableKinds.includes(failure.kind);
+        const fallback = !retry && next !== undefined && canFallBack(failure);
+        onFailure?.(failure, provider.model, fallback);
+        if (retry) {
+          await pause(providerRetryDelayMs * (attempt + 1), request.signal);
+          continue;
+        }
+        if (!fallback) throw failure;
+        onFallback?.(failure, next.id);
+        break;
+      }
     }
   }
   throw new ProviderError('anthropic', 'unavailable', 'No model provider is configured.');

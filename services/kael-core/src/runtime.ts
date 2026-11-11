@@ -142,6 +142,7 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
       const retryTranscript: TranscriptItem[] = retryLanguageAt === outcome.steps && reply.language
         ? [...transcript, { role: 'user', text: `Answer my latest request in ${reply.language === 'en' ? 'English' : 'Vietnamese'}, starting with the first line. Keep my requested content and format.` }]
         : transcript;
+      const modelStarted = performance.now();
       const turn = await completeWithFallback(providers, {
         system, transcript: retryTranscript, tools: offered.map(toDefinition), maxOutputTokens: config.limits.maxOutputTokens, signal,
       }, delta => {
@@ -155,7 +156,8 @@ export async function runAgentTurn(input: RunInput): Promise<RunOutcome> {
         kind: failure.kind, http_status: failure.httpStatus ?? null, output_started: Number(failure.outputStarted), fallback: Number(fallback),
       }));
       input.log?.({ event: 'kael_provider_terminal', run_id: input.runId, provider: turn.provider,
-        requested_model: turn.requestedModel, served_model: turn.model, reason: turn.stopReason, http_status: turn.httpStatus ?? null });
+        requested_model: turn.requestedModel, served_model: turn.model, reason: turn.stopReason, http_status: turn.httpStatus ?? null,
+        latency_ms: Math.round(performance.now() - modelStarted) });
       providers = providers.filter(provider => provider.id === turn.provider);
       outcome.provider = turn.provider;
       outcome.model = turn.model;

@@ -12,10 +12,10 @@ import { createRest, createServerRpc, createSupabaseStore, kaelServerOperations 
 import { readSse } from '../services/kael-core/src/sse.ts';
 import { checkModelTransition, taskTransitions } from '../services/kael-core/src/tasks.ts';
 import { findTool, toolRegistry, validateArguments } from '../services/kael-core/src/tools.ts';
-import { configuredProviders, createKaelHandler } from '../services/kael-core/src/gateway.ts';
+import { configuredProviders, createKaelHandler, probeProvider } from '../services/kael-core/src/gateway.ts';
 import { executeApprovedEffect } from '../services/kael-core/src/executor.ts';
-import { parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
-import { baseEnv, harness, scriptedProvider, users } from './kael-test-harness.mjs';
+import { kaelFailureCodes, parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
+import { baseEnv, createDb, harness, scriptedProvider, users } from './kael-test-harness.mjs';
 import { developerPilotProviders, pilotRoute, pilotServedModels } from '../services/kael-core/src/developer-pilot.ts';
 import { parsePilotAuthorization, parsePilotRenewal } from './kael-developer-pilot.mjs';
 
@@ -69,7 +69,7 @@ test('Anthropic receives the current saved language as policy and leaves explici
 });
 
 test('every Auth-verified user can use DeepSeek and the configured Anthropic fallback', async () => {
-  const primary = scriptedProvider('deepseek', [{ error: 'overloaded' }, { text: ['DeepSeek primary reply.'] }]);
+  const primary = scriptedProvider('deepseek', [{ error: 'overloaded' }, { error: 'overloaded' }, { text: ['DeepSeek primary reply.'] }]);
   const fallback = scriptedProvider('anthropic', [{ text: ['Anthropic fallback reply.'] }]);
   const app = harness({ env: { DEEPSEEK_API_KEY: 'fixture-deepseek', KAEL_MODEL_ROUTE: 'deepseek,anthropic',
     ANTHROPIC_API_KEY: 'fixture-anthropic', KAEL_ANTHROPIC_MODEL: 'claude-sonnet-4-5' },
@@ -80,7 +80,7 @@ test('every Auth-verified user can use DeepSeek and the configured Anthropic fal
   assert.equal(fallbackTurn.events.at(-1).text, 'Anthropic fallback reply.');
   assert.equal(primaryTurn.events.at(-1).type, 'run_completed');
   assert.equal(primaryTurn.events.at(-1).text, 'DeepSeek primary reply.');
-  assert.equal(primary.requests.length, 2);
+  assert.equal(primary.requests.length, 3);
   assert.equal(fallback.requests.length, 1);
 });
 
@@ -636,9 +636,30 @@ test('model gateway falls back only before any output and never after an interru
   assert.deepEqual(fallbacks, ['overloaded']);
   const partial = { id: 'deepseek', model: 'd', async complete(_request, onText) { onText('nửa'); throw new ProviderError('deepseek', 'incomplete', 'cut', true); } };
   await assert.rejects(completeWithFallback([partial, working], request({ signal }), () => {}), error => error.kind === 'incomplete');
-  for (const kind of ['auth', 'billing', 'bad_request', 'budget', 'cancelled']) {
+  for (const kind of ['bad_request', 'budget', 'cancelled']) {
     await assert.rejects(completeWithFallback([failing(kind), working], request({ signal }), () => {}), error => error.kind === kind);
   }
+  for (const kind of ['auth', 'billing', 'unavailable', 'rate_limit', 'timeout']) {
+    const attempts = [];
+    const counted = { id: 'deepseek', model: 'd', async complete() { attempts.push(kind); throw new ProviderError('deepseek', kind, 'x'); } };
+    const recovered = await completeWithFallback([counted, working], request({ signal }), () => {});
+    assert.equal(recovered.provider, 'anthropic', kind);
+    assert.equal(attempts.length, 1, `${kind} is not retried on the same provider`);
+  }
+  let flaky = 0;
+  const transient = { id: 'deepseek', model: 'd', async complete(_request, onText) {
+    flaky += 1;
+    if (flaky === 1) throw new ProviderError('deepseek', 'server', 'blip', false, 500);
+    onText('ok');
+    return { provider: 'deepseek', model: 'd', text: 'ok', toolCalls: [], stopReason: 'end_turn', usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0 }, providerState: null };
+  } };
+  const retried = await completeWithFallback([transient, working], request({ signal }), () => {});
+  assert.equal(retried.provider, 'deepseek');
+  assert.equal(flaky, 2, 'one bounded retry on the primary before any fallback');
+  let always = 0;
+  const down = { id: 'deepseek', model: 'd', async complete() { always += 1; throw new ProviderError('deepseek', 'network', 'down'); } };
+  assert.equal((await completeWithFallback([down, working], request({ signal }), () => {})).provider, 'anthropic');
+  assert.equal(always, 2, 'retries are bounded to one');
   const misclassified = { ...partial, async complete(_request, onText) { onText('nửa'); throw new ProviderError('deepseek', 'overloaded', 'late'); } };
   await assert.rejects(completeWithFallback([misclassified, working], request({ signal }), () => {}), error => error.outputStarted === true);
   await assert.rejects(completeWithFallback([], request({ signal }), () => {}), error => error.kind === 'unavailable');
@@ -765,8 +786,12 @@ test('server configuration defaults to Flash, routes to Anthropic when configure
   assert.ok(searchOnly.perplexity);
   assert.deepEqual(searchOnly.route, [], 'search is not a chat model');
   assert.equal(readKaelConfig({ ...baseEnv, KAEL_WEB_SEARCH: 'enabled' }).perplexity, null, 'search needs a server credential');
-  assert.deepEqual(readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, [],
-    'Anthropic cannot replace the DeepSeek primary route');
+  assert.deepEqual(readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, ['anthropic'],
+    'Anthropic takes over when the DeepSeek credential or model is unusable');
+  assert.deepEqual(readKaelConfig({ ...baseEnv, DEEPSEEK_API_KEY: 'bad key', ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, ['anthropic'],
+    'a malformed DeepSeek credential does not take Kael down');
+  assert.deepEqual(readKaelConfig({ ...baseEnv, KAEL_MODEL_ROUTE: 'deepseek', ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5' }).route, [],
+    'an operator route that excludes Anthropic is respected');
   const full = readKaelConfig({ ...baseEnv, ANTHROPIC_API_KEY: 'secret-a', KAEL_ANTHROPIC_MODEL: 'claude-opus-5-5', DEEPSEEK_API_KEY: 'secret-d', KAEL_DEEPSEEK_MODEL: 'deepseek-flash', KAEL_ENABLED_EFFECTS: 'service_request_submit,mark_paid' });
   assert.deepEqual(full.route, ['deepseek', 'anthropic']);
   const fallback = serverFallback;
@@ -1183,4 +1208,89 @@ test('turns stay on the legacy runtime without a safe durable address and malfor
   const { fetcher, urls } = routingFetcher(async () => assert.fail('The durable service must not be called'));
   assert.equal((await createKaelHandler({ env: durableRoutingEnv, fetcher })(durableRoutingRequest('{"request_id":"x"}'))).status, 400);
   assert.deepEqual(urls, []);
+});
+
+test('live provider probe reports status, HTTP status and latency without leaking secrets', async () => {
+  const signal = new AbortController().signal;
+  const ok = await probeProvider(scriptedProvider('deepseek', [{ text: ['ok'] }]), signal);
+  assert.equal(ok.status, 'ok');
+  assert.equal(ok.http_status, 200);
+  assert.ok(Number.isInteger(ok.latency_ms) && ok.latency_ms >= 0);
+  const failing = { id: 'anthropic', model: 'a', async complete() { throw new ProviderError('anthropic', 'billing', 'sk-secret-value', false, 402); } };
+  const billing = await probeProvider(failing, signal);
+  assert.deepEqual({ status: billing.status, http_status: billing.http_status }, { status: 'billing', http_status: 402 });
+  assert.ok(!JSON.stringify(billing).includes('sk-secret-value'));
+});
+
+test('consent_required flows from the database status through the Gateway to the mobile contract without reaching a provider', async () => {
+  const migration = readFileSync(new URL('../supabase/migrations/20261110170000_add_kael_session_management.sql', import.meta.url), 'utf8');
+  assert.match(migration, /has_consent\(v_actor, 'ai_sharing'\) then\s+return jsonb_build_object\('status', 'consent_required'\)/);
+  const provider = scriptedProvider('deepseek', [{ text: ['must not run'] }]);
+  const app = harness({
+    providers: () => [provider],
+    wrapStore: store => ({ ...store, startRun: async () => ({ status: 'consent_required' }) }),
+  });
+  const refused = await app.message(users.customer, 'Xin chào Kael');
+  assert.equal(refused.status, 403);
+  assert.equal(refused.error.error.code, 'consent_required');
+  assert.equal(refused.error.error.retryable, false);
+  assert.ok(kaelFailureCodes.includes(refused.error.error.code), 'the mobile client recognizes the code');
+  assert.match(refused.error.error.message, /đồng ý chia sẻ dữ liệu với AI/);
+  assert.equal(provider.requests.length, 0, 'no content reaches a provider without consent');
+  const unauthenticated = await app.send({ token: 'not-a-real-token-value-0000' }, { request_id: '11111111-1111-4111-8111-111111111111', conversation_id: null, mode: 'client', action: { type: 'message', text: 'x' } });
+  assert.equal(unauthenticated.status, 401, 'authentication is still enforced before the consent gate');
+});
+
+test('concurrent live readiness probes share one provider batch and reuse the cache', async () => {
+  let calls = 0;
+  let release = () => {};
+  const gate = new Promise(resolve => { release = resolve; });
+  const slow = { id: 'deepseek', model: 'deepseek-fixture', async complete() {
+    calls += 1;
+    await gate;
+    return { provider: 'deepseek', model: 'deepseek-fixture', requestedModel: 'deepseek-fixture', text: 'ok', toolCalls: [], stopReason: 'end_turn', usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0 }, providerState: null };
+  } };
+  const app = harness({ env: { DEEPSEEK_API_KEY: 'fixture-deepseek' }, providers: () => [slow] });
+  const probe = () => app.handle(new Request('https://edge.test/functions/v1/kael', { method: 'GET', headers: { authorization: `Bearer ${users.customer.token}`, 'x-kael-readiness': 'providers' } }));
+  const burst = Array.from({ length: 20 }, probe);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  release();
+  const responses = await Promise.all(burst);
+  const reports = await Promise.all(responses.map(response => response.json()));
+  assert.equal(calls, 1, 'twenty concurrent requests start one paid probe');
+  assert.ok(reports.every(report => report.provider_probe.deepseek.status === 'ok'));
+  await (await probe()).json();
+  assert.equal(calls, 1, 'a later request inside the TTL uses the cached result');
+});
+
+test('live readiness probes across separate Edge instances are bounded by one shared database window', async () => {
+  const db = createDb();
+  const counted = () => {
+    const provider = scriptedProvider('deepseek', Array.from({ length: 10 }, () => ({ text: ['ok'] })));
+    return provider;
+  };
+  const first = counted();
+  const second = counted();
+  const one = harness({ db, env: { DEEPSEEK_API_KEY: 'fixture-deepseek' }, providers: () => [first] });
+  const two = harness({ db, env: { DEEPSEEK_API_KEY: 'fixture-deepseek' }, providers: () => [second] });
+  const probe = app => app.handle(new Request('https://edge.test/functions/v1/kael', { method: 'GET', headers: { authorization: `Bearer ${users.customer.token}`, 'x-kael-readiness': 'providers' } }));
+  const reports = await Promise.all([probe(one), probe(two), probe(one), probe(two)].map(async pending => (await pending).json()));
+  assert.equal(first.requests.length + second.requests.length, 1, 'only one instance spends on the provider inside the window');
+  assert.equal(reports.filter(report => report.provider_probe === 'throttled').length >= 1, true, 'the other instance reports a throttled probe');
+  assert.ok(reports.every(report => report.provider_probe === 'throttled' || report.provider_probe.deepseek?.status === 'ok'), 'every report is a real provider result or an explicit throttle');
+  const throttled = reports.find(report => report.provider_probe === 'throttled');
+  assert.equal(throttled.readiness_scope, 'configuration_only');
+  assert.equal(throttled.ready, true, 'a throttled probe does not mark a configured backend unready');
+});
+
+test('a failed or missing probe claim never reaches a provider and normal chat is unaffected', async () => {
+  const provider = scriptedProvider('deepseek', [{ text: ['ok'] }, { text: ['hello'] }]);
+  const app = harness({ env: { DEEPSEEK_API_KEY: 'fixture-deepseek' }, providers: () => [provider], fixtures: { claimFailure: () => new Response('{}', { status: 404 }) } });
+  const report = await (await app.handle(new Request('https://edge.test/functions/v1/kael', { method: 'GET', headers: { authorization: `Bearer ${users.customer.token}`, 'x-kael-readiness': 'providers' } }))).json();
+  assert.equal(report.provider_probe, 'claim_unavailable', 'a failed claim is distinguishable from a refused one');
+  assert.equal(report.readiness_scope, 'configuration_only');
+  assert.equal(provider.requests.length, 0, 'no provider spend without a granted claim');
+  const reply = await app.send(users.customer, { request_id: '22222222-2222-4222-8222-222222222222', conversation_id: null, mode: 'client', action: { type: 'message', text: 'Xin chào' } });
+  assert.equal(reply.status, 200, 'chat does not depend on the probe window');
+  assert.equal(provider.requests.length, 1);
 });

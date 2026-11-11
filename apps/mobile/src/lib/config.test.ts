@@ -124,23 +124,16 @@ test('uses dedicated TestFlight variables and never falls back to the shared pre
   }
 });
 
-test('admits the hosted Preview only on development web loopback port 8085 with its explicit target', () => {
+test('admits the hosted Preview on web at any origin or build mode, only with its explicit target', () => {
   const dev = Object.getOwnPropertyDescriptor(globalThis, '__DEV__');
-  const savedWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
   const target = process.env.EXPO_PUBLIC_NESTSCOUT_TARGET;
   const os = jest.replaceProperty(Platform, 'OS', 'web');
   try {
     process.env.EXPO_PUBLIC_NESTSCOUT_TARGET = hosted.target;
-    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: true });
-    for (const [origin, enabled] of [['http://localhost:8085', true], ['http://127.0.0.1:8085', true],
-      ['http://localhost:8086', false], ['https://localhost:8085', false], ['http://localhost:8085.example.org', false]] as const) {
-      Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin } } });
-      expect(hostedKaelPreviewEnabled()).toBe(enabled);
+    for (const mode of [true, false]) {
+      Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: mode });
+      expect(hostedKaelPreviewEnabled()).toBe(true);
     }
-    Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin: 'http://localhost:8085' } } });
-    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: false });
-    expect(hostedKaelPreviewEnabled()).toBe(false);
-    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: true });
     os.replaceValue('ios');
     expect(hostedKaelPreviewEnabled()).toBe(false);
     os.replaceValue('web');
@@ -149,9 +142,41 @@ test('admits the hosted Preview only on development web loopback port 8085 with 
   } finally {
     os.restore();
     if (dev) Object.defineProperty(globalThis, '__DEV__', dev);
-    if (savedWindow) Object.defineProperty(globalThis, 'window', savedWindow);
-    else Reflect.deleteProperty(globalThis, 'window');
     if (target === undefined) delete process.env.EXPO_PUBLIC_NESTSCOUT_TARGET;
     else process.env.EXPO_PUBLIC_NESTSCOUT_TARGET = target;
+  }
+});
+
+test('admits the App Store target only in a release iOS build with dedicated variables and the approved origin', () => {
+  const dev = Object.getOwnPropertyDescriptor(globalThis, '__DEV__');
+  const names = ['EXPO_PUBLIC_NESTSCOUT_TARGET', 'EXPO_PUBLIC_TESTFLIGHT_SUPABASE_URL', 'EXPO_PUBLIC_TESTFLIGHT_SUPABASE_PUBLISHABLE_KEY', 'EXPO_PUBLIC_APP_STORE_SUPABASE_URL', 'EXPO_PUBLIC_APP_STORE_SUPABASE_PUBLISHABLE_KEY'] as const;
+  const previous = names.map(name => process.env[name]);
+  const os = jest.replaceProperty(Platform, 'OS', 'ios');
+  try {
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: false });
+    process.env.EXPO_PUBLIC_NESTSCOUT_TARGET = 'app-store';
+    process.env.EXPO_PUBLIC_TESTFLIGHT_SUPABASE_URL = hosted.supabaseUrl;
+    process.env.EXPO_PUBLIC_TESTFLIGHT_SUPABASE_PUBLISHABLE_KEY = hosted.supabaseKey;
+    delete process.env.EXPO_PUBLIC_APP_STORE_SUPABASE_URL;
+    delete process.env.EXPO_PUBLIC_APP_STORE_SUPABASE_PUBLISHABLE_KEY;
+    expect(() => loadConfig()).toThrow('EXPO_PUBLIC_APP_STORE_SUPABASE_URL is required.');
+    process.env.EXPO_PUBLIC_APP_STORE_SUPABASE_URL = 'https://another-project.supabase.co';
+    process.env.EXPO_PUBLIC_APP_STORE_SUPABASE_PUBLISHABLE_KEY = hosted.supabaseKey;
+    expect(() => loadConfig()).toThrow(ConfigError);
+    process.env.EXPO_PUBLIC_APP_STORE_SUPABASE_URL = hosted.supabaseUrl;
+    expect(loadConfig()).toEqual({ target: 'app-store', supabaseUrl: hosted.supabaseUrl, supabasePublishableKey: hosted.supabaseKey });
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: true });
+    expect(() => loadConfig()).toThrow(ConfigError);
+    Object.defineProperty(globalThis, '__DEV__', { configurable: true, value: false });
+    os.replaceValue('android');
+    expect(() => loadConfig()).toThrow(ConfigError);
+  } finally {
+    os.restore();
+    if (dev) Object.defineProperty(globalThis, '__DEV__', dev);
+    names.forEach((name, index) => {
+      const value = previous[index];
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    });
   }
 });
