@@ -14,7 +14,7 @@ import { checkModelTransition, taskTransitions } from '../services/kael-core/src
 import { findTool, toolRegistry, validateArguments } from '../services/kael-core/src/tools.ts';
 import { configuredProviders, createKaelHandler, probeProvider } from '../services/kael-core/src/gateway.ts';
 import { executeApprovedEffect } from '../services/kael-core/src/executor.ts';
-import { parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
+import { kaelFailureCodes, parseKaelEvent } from '../apps/mobile/src/features/shared/kael-events.ts';
 import { baseEnv, harness, scriptedProvider, users } from './kael-test-harness.mjs';
 import { developerPilotProviders, pilotRoute, pilotServedModels } from '../services/kael-core/src/developer-pilot.ts';
 import { parsePilotAuthorization, parsePilotRenewal } from './kael-developer-pilot.mjs';
@@ -1123,4 +1123,23 @@ test('live provider probe reports status, HTTP status and latency without leakin
   const billing = await probeProvider(failing, signal);
   assert.deepEqual({ status: billing.status, http_status: billing.http_status }, { status: 'billing', http_status: 402 });
   assert.ok(!JSON.stringify(billing).includes('sk-secret-value'));
+});
+
+test('consent_required flows from the database status through the Gateway to the mobile contract without reaching a provider', async () => {
+  const migration = readFileSync(new URL('../supabase/migrations/20261110170000_add_kael_session_management.sql', import.meta.url), 'utf8');
+  assert.match(migration, /has_consent\(v_actor, 'ai_sharing'\) then\s+return jsonb_build_object\('status', 'consent_required'\)/);
+  const provider = scriptedProvider('deepseek', [{ text: ['must not run'] }]);
+  const app = harness({
+    providers: () => [provider],
+    wrapStore: store => ({ ...store, startRun: async () => ({ status: 'consent_required' }) }),
+  });
+  const refused = await app.message(users.customer, 'Xin chào Kael');
+  assert.equal(refused.status, 403);
+  assert.equal(refused.error.error.code, 'consent_required');
+  assert.equal(refused.error.error.retryable, false);
+  assert.ok(kaelFailureCodes.includes(refused.error.error.code), 'the mobile client recognizes the code');
+  assert.match(refused.error.error.message, /đồng ý chia sẻ dữ liệu với AI/);
+  assert.equal(provider.requests.length, 0, 'no content reaches a provider without consent');
+  const unauthenticated = await app.send({ token: 'not-a-real-token-value-0000' }, { request_id: '11111111-1111-4111-8111-111111111111', conversation_id: null, mode: 'client', action: { type: 'message', text: 'x' } });
+  assert.equal(unauthenticated.status, 401, 'authentication is still enforced before the consent gate');
 });
