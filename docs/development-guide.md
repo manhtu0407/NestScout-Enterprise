@@ -1,13 +1,11 @@
 # NestScout development guide
 
-Persistency on the tenth times...!
-
-Public, new NestScout repository. The Delivery Project remains private. This repository contains development
-workflow and security tooling. The confirmed product direction is Expo/React Native,
-TypeScript and Supabase, without Vercel. Application Foundation V2 added a minimal
-Expo mobile app (guest entry, phone OTP sign-in, Client/Worker mode gates); no
-business features, Kael runtime or release exist. See the
-[mobile application guide](mobile-application.md).
+Public NestScout repository; the Delivery Project remains private. This repository
+contains engineering tooling and the current Expo SDK 58/React Native/TypeScript
+application. Customer service-request intake, Worker workflows, Supabase Auth and
+Kael sessions/runtime have been added since the initial Foundation V2 entry slice.
+The iOS EAS TestFlight and App Store profiles are configured, but no native build
+or upload is verified. See the [mobile application guide](mobile-application.md).
 
 ## Repository identity
 
@@ -22,25 +20,27 @@ Always pass `--repo manhtu0407/NestScout-Enterprise` to GitHub CLI write command
 
 ## Application preparation
 
-[Architecture decisions](architecture.md#confirmed-product-direction) separate the
-owner-confirmed direction from pending implementation details: one App for Clients
-and Workers, guest discovery, multiple roles per account and backend authorization.
-Vietnamese phone + OTP comes first; Google/Facebook are future secondary methods.
-iOS comes first, with TestFlight later. The repository stays public until the
-Deploy-phase owner decision. Development/testing use Supabase Local, without a
-Staging Project or Production writes.
+[Architecture decisions](architecture.md#confirmed-product-direction) record the
+current direction and remaining decisions: one App for Customers and Workers,
+backend authorization, and iOS-first delivery. The mobile client includes email and
+phone Auth flows, Customer service intake, Worker work areas and Kael chat/session
+management. Ordinary development and tests use Supabase Local; the connected hosted
+Supabase project is the app backend, and there is no Staging Project. Repository
+visibility remains public by owner decision. No native iOS build or TestFlight
+upload is verified.
 
 The [foundation contracts](foundation-contracts.md) describe environment inputs,
-security boundaries and API conventions. The repository tooling needs no dotenv
-file; the mobile app's public variables are documented in `apps/mobile/.env.example`
-and the [mobile application guide](mobile-application.md). Missing BPMN, UI design,
-business permissions and release design are **OUT OF SCOPE**, not foundation blockers.
+security boundaries and API conventions; later migrations and runtime code implement
+some of those contracts. The repository tooling needs no dotenv file; the mobile
+app's public variables are documented in `apps/mobile/.env.example` and the
+[mobile application guide](mobile-application.md). Payment settlement, commercial
+dispatch, production recovery objectives and native-release evidence remain open.
 
 The [implementation preparation](architecture.md#entry-into-application-implementation)
 maps current folder responsibilities and the information needed before introducing
-a product module. Engineering Foundation V1 created no app or empty module
-directories; Application Foundation V2 added only the mobile workspace and its Expo
-dependencies. Future structure follows real responsibilities,
+a product module. Engineering Foundation V1 created no app; later work added the
+mobile workspace, Customer/Worker areas, Supabase workflows and the Kael runtime.
+Future structure follows real responsibilities,
 consumers and verification under the root policy, rather than importing the
 HomeServices implementation. Pinned tooling currently supports Windows/Linux x64;
 macOS tooling and native iOS execution have not been verified.
@@ -53,7 +53,7 @@ verification of a new branch.
 
 | Existing capability | Canonical implementation / reference | Audit disposition |
 | --- | --- | --- |
-| Local DB isolation, replay, SQL security, MCP and generated types | `scripts/supabase-local.mjs`, `supabase/`, [PR #10](https://github.com/manhtu0407/NestScout-Enterprise/pull/10) | Reuse; empty-schema tests do not prove product authorization |
+| Local DB isolation, replay, SQL security, MCP and generated types | `scripts/supabase-local.mjs`, `supabase/`, [PR #10](https://github.com/manhtu0407/NestScout-Enterprise/pull/10) | Reuse the local boundary; later feature migrations have their own SQL tests, which do not prove hosted user or commercial acceptance |
 | Backup/restore and isolated agent evaluation | `scripts/backup.mjs`, `scripts/agent-evaluation.mjs`, [PR #12](https://github.com/manhtu0407/NestScout-Enterprise/pull/12) | Reuse; no product/data recovery claim |
 | Architecture preparation | [Architecture](architecture.md), [PR #16](https://github.com/manhtu0407/NestScout-Enterprise/pull/16) | Update confirmed decisions; retire staging recommendation |
 | Tool catalog and bounded execution | [Tool library](tool-library/index.md), [PR #24](https://github.com/manhtu0407/NestScout-Enterprise/pull/24) | Reuse native tooling; no substitute framework |
@@ -90,8 +90,9 @@ npm run check
 npm run verify:negative
 ```
 
-These Node/npm commands set up repository tooling and the mobile workspace. There is
-no application server, native build or release. `npm run check` includes the mobile
+These Node/npm commands set up repository tooling and the mobile workspace. Kael
+runs through Supabase Edge Functions; there is no separate application server. No
+native iOS build or store release has been verified. `npm run check` includes the mobile
 typecheck, lint and unit tests (`check:mobile`); tooling unit tests, database artifact
 typechecking and disposable local SQL checks also exist. `npm run check:languages` enforces the language ownership map in
 `scripts/language-policy.json`. Use the commands in `package.json`. Tool downloads

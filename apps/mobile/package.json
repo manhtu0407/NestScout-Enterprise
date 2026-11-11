@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@expo/metro-runtime": "58.0.17",
-    "@supabase/supabase-js": "2.118.0",
+    "@supabase/supabase-js": "2.119.0",
     "expo": "58.0.23",
     "expo-apple-authentication": "58.0.2",
     "expo-constants": "58.0.15",
