@@ -1180,6 +1180,7 @@ test('live readiness probes across separate Edge instances are bounded by one sh
   const reports = await Promise.all([probe(one), probe(two), probe(one), probe(two)].map(async pending => (await pending).json()));
   assert.equal(first.requests.length + second.requests.length, 1, 'only one instance spends on the provider inside the window');
   assert.equal(reports.filter(report => report.provider_probe === 'throttled').length >= 1, true, 'the other instance reports a throttled probe');
+  assert.ok(reports.every(report => report.provider_probe === 'throttled' || report.provider_probe.deepseek?.status === 'ok'), 'every report is a real provider result or an explicit throttle');
   const throttled = reports.find(report => report.provider_probe === 'throttled');
   assert.equal(throttled.readiness_scope, 'configuration_only');
   assert.equal(throttled.ready, true, 'a throttled probe does not mark a configured backend unready');
@@ -1189,7 +1190,8 @@ test('a failed or missing probe claim never reaches a provider and normal chat i
   const provider = scriptedProvider('deepseek', [{ text: ['ok'] }, { text: ['hello'] }]);
   const app = harness({ env: { DEEPSEEK_API_KEY: 'fixture-deepseek' }, providers: () => [provider], fixtures: { claimFailure: () => new Response('{}', { status: 404 }) } });
   const report = await (await app.handle(new Request('https://edge.test/functions/v1/kael', { method: 'GET', headers: { authorization: `Bearer ${users.customer.token}`, 'x-kael-readiness': 'providers' } }))).json();
-  assert.equal(report.provider_probe, 'throttled');
+  assert.equal(report.provider_probe, 'claim_unavailable', 'a failed claim is distinguishable from a refused one');
+  assert.equal(report.readiness_scope, 'configuration_only');
   assert.equal(provider.requests.length, 0, 'no provider spend without a granted claim');
   const reply = await app.send(users.customer, { request_id: '22222222-2222-4222-8222-222222222222', conversation_id: null, mode: 'client', action: { type: 'message', text: 'Xin chào' } });
   assert.equal(reply.status, 200, 'chat does not depend on the probe window');

@@ -137,7 +137,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
   const worker = dependencies.env.KAEL_PILOT_WORKER_ID;
   const pilotWorker = worker && /^[0-9a-f-]{36}$/.test(worker) ? worker : null;
   const deployment = dependencies.env.KAEL_DEPLOYMENT?.trim() || 'unknown';
-  let probeBatch: { at: number; pending: Promise<Record<string, ProviderProbe> | 'throttled'> } | null = null;
+  let probeBatch: { at: number; pending: Promise<Record<string, ProviderProbe> | 'throttled' | 'claim_unavailable'> } | null = null;
 
   return async function handle(request: Request): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
@@ -170,19 +170,20 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
         else { database = probe.status === 401 || probe.status === 403 ? 'authorization_failed' : 'unavailable'; await probe.body?.cancel(); }
       } catch { database = 'unavailable'; }
       const route = config.route;
-      let providerProbe: Record<string, ProviderProbe> | 'not_run' | 'throttled' = 'not_run';
+      let providerProbe: Record<string, ProviderProbe> | 'not_run' | 'throttled' | 'claim_unavailable' = 'not_run';
       if (readinessMode === 'providers' && route.length > 0) {
         if (!probeBatch || now().getTime() - probeBatch.at > probeTtlMs) {
           const providers = (dependencies.providers ?? (value => configuredProviders(value, fetcher)))(config);
           const detached = AbortSignal.timeout(probeTimeoutMs);
           const claim = createServerRpc(config, fetcher);
-          const pending = (async (): Promise<Record<string, ProviderProbe> | 'throttled'> => {
-            let granted = false;
+          const pending = (async (): Promise<Record<string, ProviderProbe> | 'throttled' | 'claim_unavailable'> => {
+            let granted: boolean | null = null;
             try {
               const response = await claim('kael_claim_provider_probe', {}, AbortSignal.timeout(4000));
-              granted = response.ok && await response.json() === true;
-              if (!response.ok) await response.body?.cancel();
-            } catch { granted = false; }
+              if (response.ok) granted = await response.json() === true;
+              else await response.body?.cancel();
+            } catch { granted = null; }
+            if (granted === null) return 'claim_unavailable';
             if (!granted) return 'throttled';
             const results = await Promise.all(providers.map(async provider => [provider.id, await probeProvider(provider, detached)] as const));
             for (const [provider, probe] of results) {
