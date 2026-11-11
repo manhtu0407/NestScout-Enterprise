@@ -39,6 +39,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
   const canSend = !locked && (value.trim().length > 0 || media.images.length > 0);
   const [inputHeight, setInputHeight] = useState<number>(metrics.inputMinHeight);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const [inputWidth, setInputWidth] = useState(0);
   useLayoutEffect(() => {
     if (Platform.OS !== 'web' || !value) return;
     const node: unknown = inputRef.current;
@@ -48,7 +49,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
     const content = node.scrollHeight;
     node.style.height = shown;
     setInputHeight(Math.min(metrics.inputMaxHeight, Math.max(metrics.inputMinHeight, content)));
-  }, [value]);
+  }, [value, inputWidth]);
   const submit = () => { if (canSend) onSubmit(media.images); };
   const { reduceMotion } = useGlassAccessibility();
   const micFeedback = usePressFeedback(reduceMotion);
@@ -98,8 +99,8 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
         multiline
         maxLength={5000}
         numberOfLines={1}
-        onContentSizeChange={event => {
-          if (Platform.OS === 'web') setInputHeight(Math.min(metrics.inputMaxHeight, Math.max(metrics.inputMinHeight, event.nativeEvent.contentSize.height)));
+        onLayout={event => {
+          if (Platform.OS === 'web') setInputWidth(event.nativeEvent.layout.width);
         }}
         submitBehavior={Platform.OS === 'web' ? 'submit' : 'newline'}
         blurOnSubmit={Platform.OS === 'web'}
