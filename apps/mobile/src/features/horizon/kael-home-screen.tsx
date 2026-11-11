@@ -21,6 +21,8 @@ import { expressionForPhase } from './kael-phase';
 import type { KaelPhase, KaelPhaseIssue } from './kael-phase';
 import { useKaelMotion, useReduceMotion } from './kael-motion';
 import { KaelProgressSheet } from './kael-progress-sheet';
+import type { KaelProgress } from './kael-progress';
+import { shareConversation, shareNotices } from './conversation-share';
 import { KaelApprovalCard, KaelIncompleteNote, KaelRunActivity, KaelTaskList } from './kael-run-panels';
 import { KaelStreamingText } from './kael-streaming-text';
 import { isKaelThinking, KaelThinkingRow } from './kael-thinking-row';
@@ -42,6 +44,7 @@ type Props = {
   conversationKey: number;
   kaelPhase?: KaelPhase | null;
   kaelPhaseIssue?: KaelPhaseIssue | null;
+  requestProgress?: KaelProgress | null;
   onMenu: () => void;
   onMemory?: () => void;
   onNew: () => void;
@@ -65,7 +68,7 @@ export type KaelConsentCard = { lead: string; action: string; busy: boolean; onA
 const noTasks: readonly KaelTask[] = [];
 const noApprovals: readonly KaelApproval[] = [];
 
-export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, question = null, onAnswer, onRate, onRegenerate, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, draftImages, onDraftImagesChange, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null, consent = null }: Props) {
+export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, question = null, onAnswer, onRate, onRegenerate, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, requestProgress, draftImages, onDraftImagesChange, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null, consent = null }: Props) {
   const speech = useKaelSpeech();
   const pendingConfirmation = approvals.some(approval => approval.kind === 'confirm');
   const reduceMotion = useReduceMotion();
@@ -150,9 +153,8 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
   const notify = (message: string) => setMenuNotice(message);
   const startNew = () => { setMenuOpen(false); setMenuNotice(null); onNew(); };
   const share = async () => {
-    if (!hasConversation) { notify('Chưa có nội dung để chia sẻ.'); return; }
-    const transcript = messages.map(m => `${m.role === 'user' ? 'Bạn' : 'Kael'}: ${m.text}`).join('\n\n');
-    try { await Share.share({ message: transcript }); } catch { notify('Thiết bị này chưa mở được chia sẻ.'); }
+    const outcome = await shareConversation(messages);
+    if (outcome !== 'shared') notify(shareNotices[outcome]);
   };
   const copyText = async (text: string): Promise<boolean> => {
     try {
@@ -170,7 +172,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
   const menuItems: readonly ConversationMenuItem[] = [
     { id: 'new', label: 'Trò chuyện mới', icon: 'compose', onPress: startNew },
     { id: 'share', label: 'Chia sẻ', icon: 'share', onPress: share },
-    { id: 'timeline', label: 'Tiến độ', icon: 'clock', onPress: () => setTimelineOpen(true) },
+    ...(requestProgress === undefined ? [] : [{ id: 'timeline', label: 'Tiến độ', icon: 'clock' as const, onPress: () => setTimelineOpen(true) }]),
     ...(onMemory ? [{ id: 'memory', label: 'Bộ nhớ Kael', icon: 'clock' as const, onPress: () => { setMenuOpen(false); onMemory(); } }] : []),
   ];
   const firstUserMessage = messages.find(m => m.role === 'user');
@@ -218,7 +220,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
       <Text style={styles.disclaimer}>Kael có thể mắc sai sót. Hãy kiểm tra thông tin quan trọng.</Text>
     </View>
     {chatActive && <KaelChatNav onMenu={onMenu} onOptions={() => setMenuOpen(open => !open)}/>}
-    <KaelProgressSheet open={timelineOpen} phase={kaelPhase} bottomOffset={footerHeight + metrics.progressBottomInset} onClose={() => setTimelineOpen(false)}/>
+    <KaelProgressSheet open={timelineOpen} progress={requestProgress ?? null} bottomOffset={footerHeight + metrics.progressBottomInset} onClose={() => setTimelineOpen(false)}/>
     {menuOpen && <ConversationMenu title={firstUserMessage?.text ?? 'Cuộc trò chuyện mới'} items={menuItems} onClose={() => setMenuOpen(false)}/>}
   </View>;
 }

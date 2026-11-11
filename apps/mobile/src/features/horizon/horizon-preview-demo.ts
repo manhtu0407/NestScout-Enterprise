@@ -226,3 +226,16 @@ export function demoKaelTurn(previous: DemoState, rawText: string): DemoTurn {
   const body = turn.reply.slice(demoReplyLabel.length).replace(turn.question.prompt, '').trim();
   return { ...turn, reply: body === '' ? demoReplyLabel : withLabel(body) };
 }
+
+export const demoBannerNotices: Readonly<Record<'client' | 'worker', readonly { id: string; title: string; body: string }[]>> = {
+  client: [
+    { id: 'banner-quote', title: 'Báo giá mới', body: 'Yêu cầu “Sửa vòi nước bồn rửa” có báo giá mới đang chờ bạn quyết định.' },
+    { id: 'banner-assigned', title: 'Thợ đã nhận việc', body: 'Anh Hùng sẽ đến Quận 7 lúc 14:00 hôm nay để sửa vòi nước bồn rửa.' },
+    { id: 'banner-done', title: 'Việc đã hoàn tất', body: 'Yêu cầu “Thay ổ khoá cửa chính” đã hoàn tất. Hãy để lại đánh giá cho thợ.' },
+  ],
+  worker: [
+    { id: 'banner-offer', title: 'Có việc mới', body: 'Việc “Sửa ống thoát nước” ở Quận 3 đang chờ bạn phản hồi.' },
+    { id: 'banner-approved', title: 'Khách đã duyệt', body: 'Khách đã duyệt phần việc bạn nộp. Khoản thu sẽ được ghi vào thu nhập của bạn.' },
+    { id: 'banner-review', title: 'Đánh giá mới', body: 'Khách vừa đánh giá 5 sao cho việc “Lắp bóng đèn phòng khách”.' },
+  ],
+};

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
@@ -26,9 +26,13 @@ import { SampleWorkerProfileScreen } from './sample-worker-profile-screen';
 import { workerProfileTabForSidebarId, type WorkerProfileTab } from './worker-profile';
 import { sampleEarningRecords, toEarningsView } from './worker-earnings';
 import { WorkerEarningsScreen, type EarningsMode } from './worker-earnings-screen';
-import { sampleWorkerBadges, workerJobStageForSidebarId, type WorkerJobStage } from './worker-jobs';
+import { sampleWorkerBadges, sampleWorkerJobs, workerJobStageForSidebarId, type WorkerJobStage } from './worker-jobs';
 import type { KaelQuestion } from '@/features/shared';
-import { demoKaelTurn, initialDemoState, workerDemoTurn } from './horizon-preview-demo';
+import { demoBannerNotices, demoKaelTurn, initialDemoState, workerDemoTurn } from './horizon-preview-demo';
+import { NotificationBanner } from './notification-banner';
+import { pickProgressJob, pickProgressRequest, progressForRequest, progressForWorkerJob } from './kael-progress';
+import type { KaelProgress } from './kael-progress';
+import { useNotificationBanner } from './use-notification-banner';
 import { guestSendNotice, planServiceEntry } from './service-entry';
 
 type SupportScreenId = 'notifications' | 'help' | 'settings' | 'profile' | 'edit-profile' | 'quotes' | 'saved';
@@ -81,6 +85,16 @@ function writeStoredRole(role: PreviewRole) {
   } catch {
     return;
   }
+}
+
+function previewProgress(role: PreviewRole): KaelProgress | null {
+  if (role === 'guest') return null;
+  if (role === 'worker') {
+    const job = pickProgressJob(sampleWorkerJobs);
+    return job === null ? null : progressForWorkerJob(job);
+  }
+  const request = pickProgressRequest(sampleRequests);
+  return request === null ? null : progressForRequest(request);
 }
 
 function useSimulatedLoading(active: boolean) {
@@ -167,14 +181,24 @@ export function HorizonPreview() {
     setInput(plan.text);
     setComposerError(null);
   };
+  const banner = useNotificationBanner([], false, role);
+  const [bannerTurn, setBannerTurn] = useState(0);
+  const sendBanner = () => {
+    const samples = demoBannerNotices[role === 'worker' ? 'worker' : 'client'];
+    const sample = samples[bannerTurn % samples.length];
+    if (sample === undefined) return;
+    setBannerTurn(turn => turn + 1);
+    banner.show({ id: `${sample.id}-${bannerTurn}`, title: sample.title, body: sample.body, time: horizonLayout.notificationBanner.nowLabel });
+  };
   const homeLoading = useSimulatedLoading(true);
   const recentLoading = useSimulatedLoading(drawer);
   if (homeLoading) return <SafeAreaProvider><KaelHomeLoading label="Đang tải Kael"/></SafeAreaProvider>;
   return <SafeAreaProvider><SafeAreaView style={{ flex: 1, backgroundColor: horizonColors.bg }}>
     <View style={{ flex: 1 }}>
       <View style={screenOpen ? { display: 'none' } : { flex: 1 }}>
-        <KaelHomeScreen input={input} onInput={value => { setInput(value); setComposerError(null); }} onSubmit={start} onMenu={() => setDrawer(true)} onNew={reset} messages={messages} question={question} onAnswer={answer => { if (role === 'guest') setComposerError(guestSendNotice); else { setComposerError(null); sendDemo(answer); } }} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} />
+        <KaelHomeScreen requestProgress={previewProgress(role)} input={input} onInput={value => { setInput(value); setComposerError(null); }} onSubmit={start} onMenu={() => setDrawer(true)} onNew={reset} messages={messages} question={question} onAnswer={answer => { if (role === 'guest') setComposerError(guestSendNotice); else { setComposerError(null); sendDemo(answer); } }} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} />
         <View pointerEvents="none" accessibilityRole="text" style={styles.demoBadge}><Text style={styles.demoBadgeText}>DEMO · không kết nối Kael thật</Text></View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Gửi thử thông báo" onPress={sendBanner} style={styles.demoTrigger}><Text style={styles.demoBadgeText}>Gửi thử thông báo</Text></Pressable>
       </View>
       {requestsOpen && <RequestsScreen requests={sampleRequests} onBack={goBack} onViewQuotes={() => { setRequestsOpen(false); setQuotesFromRequests(true); setSupportScreen('quotes'); }} onAskKael={() => setRequestsOpen(false)} />}
       {jobsStage !== null && <SampleWorkerJobsScreen key={jobsStage} initialStage={jobsStage} onBack={goBack} onAskKael={() => setJobsStage(null)} />}
@@ -191,6 +215,7 @@ export function HorizonPreview() {
     </View>
     <Sidebar profileName={role === 'guest' ? undefined : profile.name} profileAvatarUri={role === 'guest' ? undefined : profile.avatarUri} badges={{ quotes: 2, ...sampleWorkerBadges }} recentLoading={recentLoading} recentSessions={sessions} activeSessionId="sample-1" onOpenSession={() => setDrawer(false)} onTogglePin={togglePin} onSessionMore={() => undefined} visible={drawer} onClose={() => setDrawer(false)} mode={role} modePending={false} modeNotice={null} onModeSelect={next => { setDrawer(false); if (role === 'guest') setSigningInAs(next); else setRole(next); }} onModeCancel={() => undefined} onDismissModeNotice={() => undefined} onSelectService={selectService} onNavigate={id => { if (id === 'new' || id === 'home') { reset(); setRequestsOpen(false); setSupportScreen(null); setJobsStage(null); setEarningsMode(null); setProfileTab(null); setWorkerKael(false); } else if (id === 'requests') { setRequestsOpen(true); setDrawer(false); } else if (id === 'notifications' || id === 'worker-notifications' || id === 'quotes' || id === 'saved' || id === 'help' || id === 'settings' || id === 'profile') { setQuotesFromRequests(false); setSupportScreen(id === 'worker-notifications' ? 'notifications' : id); setDrawer(false); } else if (workerJobStageForSidebarId(id) !== null) { setJobsStage(workerJobStageForSidebarId(id)); setDrawer(false); } else if (id === 'worker-earnings' || id === 'worker-payout') { setEarningsMode(id === 'worker-payout' ? 'payout' : 'overview'); setDrawer(false); } else if (workerProfileTabForSidebarId(id) !== null) { setProfileTab(workerProfileTabForSidebarId(id)); setDrawer(false); } else if (id === 'worker-kael') { setWorkerKael(true); setDrawer(false); } else if (id.startsWith('worker-')) { setDrawer(false); setComposerError('Tài khoản chưa được kết nối trong bản xem trước.'); } else { setInput(id); setDrawer(false); } }} />
   </SafeAreaView>
+  <NotificationBanner notice={banner.notice} onOpen={notice => { banner.dismiss(notice.id); setSupportScreen('notifications'); }} onDismiss={banner.dismiss} onHold={banner.hold} />
   {signingInAs && <View style={StyleSheet.absoluteFill}><SignInPreview initialRole={signingInAs} onClose={() => setSigningInAs(null)} onDone={next => { kaelIntroSession.markPlayed(); setRole(next); setSigningInAs(null); }} /></View>}
   </SafeAreaProvider>;
 }
@@ -199,5 +224,6 @@ const demoMetrics = horizonLayout.previewDemo;
 
 const styles = StyleSheet.create({
   demoBadge: { position: 'absolute', top: demoMetrics.top, alignSelf: 'center', paddingHorizontal: demoMetrics.paddingHorizontal, paddingVertical: demoMetrics.paddingVertical, borderRadius: demoMetrics.radius, backgroundColor: horizonColors.previewDemo.surface },
+  demoTrigger: { position: 'absolute', top: demoMetrics.triggerTop, alignSelf: 'center', paddingHorizontal: demoMetrics.paddingHorizontal, paddingVertical: demoMetrics.paddingVertical, borderRadius: demoMetrics.radius, backgroundColor: horizonColors.previewDemo.surface },
   demoBadgeText: { color: horizonColors.previewDemo.text, fontSize: demoMetrics.fontSize, fontWeight: demoMetrics.fontWeight },
 });

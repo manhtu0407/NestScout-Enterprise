@@ -1,7 +1,9 @@
 import type { ImageSourcePropType } from 'react-native';
 import type { KaelExpression } from './kael-phase';
 
-export const kaelPlushImage: ImageSourcePropType = require('../../../assets/horizon/kael-plush-transparent.png');
+export const appIconImage: ImageSourcePropType = require('../../../assets/horizon/app-icon.png');
+
+export const kaelPlushImage: ImageSourcePropType =require('../../../assets/horizon/kael-plush-transparent.png');
 
 export const kaelExpressionImages: Readonly<Record<KaelExpression, ImageSourcePropType>> = {
   idle: require('../../../assets/horizon/kael-expression-idle.png'),

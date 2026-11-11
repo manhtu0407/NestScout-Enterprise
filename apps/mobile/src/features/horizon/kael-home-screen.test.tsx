@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KaelHomeScreen } from './kael-home-screen';
 import { kaelIntroSession } from './kael-intro-session';
+import { progressForRequest } from './kael-progress';
 import * as kaelStage from './kael-stage';
 
 beforeEach(() => kaelIntroSession.reset());
@@ -63,4 +64,34 @@ test('a Kael question appears after the last reply and its answer is sent back',
   await fireEvent.press(screen.getByText('Chiều mai'));
   await fireEvent.press(screen.getByText('Trả lời'));
   expect(onAnswer).toHaveBeenCalledWith('Chiều mai');
+});
+
+test('the progress item appears once the screen is given a progress and opens the real request steps', async () => {
+  jest.useFakeTimers();
+  const progress = progressForRequest({ title: 'Sửa vòi nước', status: 'Có báo giá mới', step: 1 });
+  await render(<SafeAreaProvider initialMetrics={initialMetrics}><KaelHomeScreen requestProgress={progress} input="" onInput={jest.fn()} onSubmit={jest.fn()} onMenu={jest.fn()} onNew={jest.fn()} messages={[]} composerError={null} onClearComposerError={jest.fn()} conversationKey={0}/></SafeAreaProvider>);
+  await enterAfterIntro();
+  jest.useRealTimers();
+  await fireEvent.press(screen.getByLabelText('Tùy chọn cuộc trò chuyện'));
+  await fireEvent.press(screen.getByLabelText('Tiến độ'));
+  expect(await screen.findByText('Sửa vòi nước · Có báo giá mới')).toBeTruthy();
+});
+
+test('without a progress source the menu has no progress item', async () => {
+  jest.useFakeTimers();
+  await renderHome();
+  await enterAfterIntro();
+  jest.useRealTimers();
+  await fireEvent.press(screen.getByLabelText('Tùy chọn cuộc trò chuyện'));
+  expect(screen.queryByLabelText('Tiến độ')).toBeNull();
+});
+
+test('sharing an empty conversation says there is nothing to share', async () => {
+  jest.useFakeTimers();
+  await renderHome();
+  await enterAfterIntro();
+  jest.useRealTimers();
+  await fireEvent.press(screen.getByLabelText('Tùy chọn cuộc trò chuyện'));
+  await fireEvent.press(screen.getByLabelText('Chia sẻ'));
+  expect(await screen.findByText('Chưa có nội dung để chia sẻ.')).toBeTruthy();
 });

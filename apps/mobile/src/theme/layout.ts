@@ -77,6 +77,19 @@ export const horizonLayout = {
       settleSpring: { damping: 26, stiffness: 320, mass: 1 }, confirmDuration: 160, reducedDuration: 120,
       fadeDistance: 0.6, pressScale: 1.04,
     },
+    notificationBanner: {
+      inset: 8, minTop: 12, topGap: 6, radius: 26, paddingHorizontal: 14, paddingVertical: 12, gap: 12, fallbackHeight: 76, hiddenPadding: 24,
+      iconSize: 38, iconRadius: 9, titleSize: 15, titleLine: 20, titleWeight: '600', bodySize: 15, bodyLine: 20, timeSize: 13, timeLine: 20, copyGap: 1,
+      collapsedLines: 2, expandedLines: 8, nowLabel: 'Bây giờ',
+      actionHeight: 44, actionGap: 8, actionTop: 12, actionRadius: 14, actionSize: 15, actionWeight: '600',
+      autoDismiss: 5000,
+      arrivalSpring: { damping: 33, stiffness: 439, mass: 1 },
+      settleSpring: { damping: 42, stiffness: 439, mass: 1 },
+      expandSpring: { damping: 31, stiffness: 247, mass: 1 },
+      pressSpring: { damping: 30, stiffness: 520, mass: 1 }, pressScale: 0.98, reducedDuration: 120,
+      deceleration: 0.998, dismissVelocity: 300, dismissProjection: 0.5, expandVelocity: 250, expandPull: 56, tapSlop: 6,
+      rubberDimension: 120, rubberConstant: 0.55, zIndex: 30,
+    },
     horizonEntry: {
       placeholderPadding: 22,
       backHeight: 45,
@@ -93,7 +106,7 @@ export const horizonLayout = {
       noticeLineHeight: 19,
       noticeActionSize: 44,
     },
-    previewDemo: { top: 6, paddingHorizontal: 10, paddingVertical: 3, radius: 10, fontSize: 11, fontWeight: '600' },
+    previewDemo: { top: 6, triggerTop: 32, paddingHorizontal: 10, paddingVertical: 3, radius: 10, fontSize: 11, fontWeight: '600' },
     kaelHomeScreen: {
       rootPaddingHorizontal: 18,
       navHeight: 92,

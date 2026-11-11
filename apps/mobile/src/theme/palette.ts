@@ -85,6 +85,16 @@ export const horizonColors = {
     label: 'rgba(255,255,255,0.68)',
     thumbShadow: '0 2px 8px rgba(0,0,0,0.28)',
   },
+  notificationBanner: {
+    title: '#0B0F14',
+    body: 'rgba(11,15,20,0.78)',
+    time: 'rgba(60,60,67,0.62)',
+    actionFill: 'rgba(60,60,67,0.12)',
+    actionInk: '#0B0F14',
+    primaryFill: '#0E9E8E',
+    primaryInk: '#FFFFFF',
+    iconBackdrop: '#FFFFFF',
+  },
   kaelHomeScreen: {
     userBubbleBackgroundColor: '#D9F2EE',
     userBubbleText: '#0B3B36',
