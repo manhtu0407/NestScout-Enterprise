@@ -5,6 +5,8 @@ import { Platform } from 'react-native';
 export type ComposerImage = { uri: string; mimeType?: string; fileSize?: number };
 export const composerImageLimit = 5;
 
+const cameraDeniedNotice = 'NestScout chưa có quyền dùng camera. Hãy bật quyền Camera trong Cài đặt để chụp ảnh.';
+
 export function useComposerMedia(initialImages: readonly ComposerImage[] = [], onImagesChange?: (images: readonly ComposerImage[]) => void, externallyManaged = false) {
   const [images, setImages] = useState<ComposerImage[]>(() => [...initialImages]);
   const [error, setError] = useState<string | null>(null);
@@ -22,15 +24,25 @@ export function useComposerMedia(initialImages: readonly ComposerImage[] = [], o
     };
   }, []);
 
-  const pick = useCallback(async () => {
+  const acquire = useCallback(async (source: 'library' | 'camera') => {
     if (inFlight.current || images.length >= composerImageLimit) return;
     inFlight.current = true;
     setError(null);
+    const failure = source === 'camera' ? 'Không thể mở camera. Vui lòng thử lại.' : 'Không thể mở thư viện ảnh. Vui lòng thử lại.';
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'], allowsMultipleSelection: true,
-        selectionLimit: composerImageLimit - images.length, quality: 1,
-      });
+      if (source === 'camera') {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          if (active.current) setError(cameraDeniedNotice);
+          return;
+        }
+      }
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
+        : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'], allowsMultipleSelection: true,
+          selectionLimit: composerImageLimit - images.length, quality: 1,
+        });
       if (result.canceled) return;
       if (!active.current) {
         if (Platform.OS === 'web') for (const asset of result.assets) if (asset.uri.startsWith('blob:')) URL.revokeObjectURL(asset.uri);
@@ -48,11 +60,14 @@ export function useComposerMedia(initialImages: readonly ComposerImage[] = [], o
       setImages(next);
       onImagesChange?.(next);
     } catch {
-      if (active.current) setError('Không thể mở thư viện ảnh. Vui lòng thử lại.');
+      if (active.current) setError(failure);
     } finally {
       inFlight.current = false;
     }
   }, [images, onImagesChange, externallyManaged]);
+
+  const pick = useCallback(() => acquire('library'), [acquire]);
+  const capture = useCallback(() => acquire('camera'), [acquire]);
 
   const remove = useCallback((index: number) => {
     const removed = images[index];
@@ -62,5 +77,5 @@ export function useComposerMedia(initialImages: readonly ComposerImage[] = [], o
     onImagesChange?.(next);
     setError(null);
   }, [images, onImagesChange]);
-  return { images, error, pick, remove };
+  return { images, error, pick, capture, remove };
 }
