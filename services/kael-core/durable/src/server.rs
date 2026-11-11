@@ -1,6 +1,8 @@
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -10,7 +12,7 @@ use crate::approval::{failure_message, is_retryable};
 use crate::backend::Verification;
 use crate::events::{EventLog, event_path};
 use crate::request::{MAX_BODY_CHARS, parse_turn_request};
-use crate::runner::{Admission, Runtime, read_meta};
+use crate::runner::{Admission, LiveRun, Runtime, read_meta};
 use crate::util::valid_uuid;
 
 const MAX_HEADER_BYTES: usize = 32 * 1024;
@@ -124,6 +126,10 @@ fn bearer(request: &Parsed) -> Option<String> {
     valid.then(|| value.to_owned())
 }
 
+fn owned_log(live: &LiveRun) -> Option<Arc<EventLog>> {
+    (!live.ctx.lease_lost.load(Ordering::SeqCst)).then(|| Arc::clone(&live.ctx.log))
+}
+
 fn stream_log(
     stream: &mut TcpStream,
     initial: &Arc<EventLog>,
@@ -140,11 +146,16 @@ fn stream_log(
     let mut log = Arc::clone(initial);
     let mut quiet_since = Instant::now();
     loop {
-        if !log.closed()
-            && let Some(live) = successor()
-            && !Arc::ptr_eq(&live, &log)
-        {
-            log = live;
+        if !log.closed() {
+            match successor() {
+                Some(live) if !Arc::ptr_eq(&live, &log) => log = live,
+                None if !log.is_follower() => {
+                    if let Some(directory) = log.path().and_then(Path::parent) {
+                        log = Arc::new(EventLog::follow(directory, run_id));
+                    }
+                }
+                _ => {}
+            }
         }
         let follower = log.is_follower();
         if follower {
@@ -203,7 +214,7 @@ fn handle_turn(runtime: &Arc<Runtime>, stream: &mut TcpStream, request: &Parsed)
             "x-kael-runtime: legacy-run\r\n",
         ),
         Admission::Stream { run_id, log, replayed } => {
-            let successor = || runtime.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&run_id).map(|live| Arc::clone(&live.ctx.log));
+            let successor = || runtime.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&run_id).and_then(|live| owned_log(live));
             stream_log(stream, &log, &successor, 0, replayed, &run_id)
         }
     }
@@ -245,9 +256,9 @@ fn handle_events(runtime: &Arc<Runtime>, stream: &mut TcpStream, request: &Parse
         }
     };
     let successor = || {
-        find_live().map(|live| {
+        find_live().and_then(|live| {
             live.ctx.set_token(Some(token.clone()));
-            Arc::clone(&live.ctx.log)
+            owned_log(&live)
         })
     };
     stream_log(stream, &log, &successor, after, true, &run_id)

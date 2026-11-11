@@ -365,6 +365,10 @@ fn a_stalled_instance_is_fenced_out_after_another_takes_the_run() {
     assert_eq!(events.last().expect("terminal")["text"], json!("Câu trả lời cuối từ máy B"));
 
     first.signal("CONT");
+    let attached = reply.drain(Duration::from_secs(30));
+    let closing = attached.last().expect("the fenced instance's stream ends with the new owner's terminal event");
+    assert_eq!(closing["type"], json!("run_completed"), "events seen by the stream attached to the fenced instance: {attached:?}");
+    assert_eq!(closing["text"], json!("Câu trả lời cuối từ máy B"));
     thread::sleep(Duration::from_secs(15));
     let runs = stack.rows(&user, &format!("kael_runs?select=status&id=eq.{run_id}"));
     assert_eq!(runs[0]["status"], json!("completed"));
