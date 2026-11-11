@@ -1285,9 +1285,11 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         const other = await newUser();
         const primary = scriptedProvider('deepseek', [
           { error: 'overloaded' },
+          { error: 'overloaded' },
           { text: ['DeepSeek primary reply.'] },
         ]);
         const fallback = scriptedProvider('anthropic', [{ text: ['Anthropic fallback reply.'] }]);
+        const failures = [];
         const handler = createKaelHandler({
           env: { ...env, DEEPSEEK_API_KEY: 'fixture-deepseek', ANTHROPIC_API_KEY: 'fixture-anthropic',
             KAEL_ANTHROPIC_MODEL: 'claude-sonnet-4-5', KAEL_MODEL_ROUTE: 'deepseek,anthropic' },
@@ -1295,7 +1297,7 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
           fetcher: async (url, init) => {
             return fetch(url, init);
           },
-          log: () => {},
+          log: event => { if (event.event === 'kael_provider_failure') failures.push(event); },
         });
         const fallbackTurn = await send(handler, owner);
         const primaryTurn = await send(handler, other);
@@ -1303,8 +1305,10 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
         assert.equal(end(fallbackTurn).text, 'Anthropic fallback reply.');
         assert.equal(end(primaryTurn).type, 'run_completed');
         assert.equal(end(primaryTurn).text, 'DeepSeek primary reply.');
-        assert.equal(primary.requests.length, 2);
+        assert.equal(primary.requests.length, 3);
         assert.equal(fallback.requests.length, 1);
+        assert.deepEqual(failures.map(failure => [failure.provider, failure.kind, failure.fallback]), [['deepseek', 'overloaded', 0], ['deepseek', 'overloaded', 1]],
+          'one bounded retry of the primary precedes the fallback, and a healthy primary is never retried');
         assert.equal(query("select to_regclass('nestscout_private.kael_provider_budgets') is null;"), 't');
       });
 

@@ -80,6 +80,7 @@ export function readKaelEdgeEnvironment(read: (name: string) => string | undefin
   if (hosted) {
     environment.SUPABASE_PUBLISHABLE_KEY = defaultManagedKey(read('SUPABASE_PUBLISHABLE_KEYS'), 'sb_publishable_');
     environment.SUPABASE_SECRET_KEY = defaultManagedKey(read('SUPABASE_SECRET_KEYS'), 'sb_secret_');
+    environment.KAEL_DEPLOYMENT = read('DENO_DEPLOYMENT_ID')?.trim().slice(0, 64);
   }
   const settings = hosted ? [...hostedEdgeSettings, ...hostedProviderSettings] : localEdgeSettings;
   for (const name of settings) {
@@ -167,8 +168,8 @@ export function readKaelConfig(env: Environment): KaelConfig | null {
   } : null;
 
   const order = routeOf(env);
-  const route: ProviderId[] = order === null || deepseek === null ? [] : [
-    'deepseek',
+  const route: ProviderId[] = order === null ? [] : [
+    ...(deepseek ? ['deepseek' as const] : []),
     ...(order.includes('anthropic') && anthropic ? ['anthropic' as const] : []),
   ];
 
