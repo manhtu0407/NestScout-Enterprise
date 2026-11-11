@@ -113,13 +113,13 @@ test('invalid TestFlight config and Auth are definite refusals while network fai
   expect(auth).toEqual(expect.objectContaining({ kind: 'refused', code: 'unauthenticated', message: expect.stringContaining('Supabase Auth') }));
 
   const disconnected = await streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal,
-    jest.fn(async () => { throw new TypeError('Network request failed'); }));
+    jest.fn(async () => { throw new TypeError('Network request failed'); }), []);
   expect(disconnected).toEqual({ kind: 'interrupted' });
 });
 
 test('a fetch failure before response headers is an unknown server outcome, not a refusal', async () => {
   const fetcher = jest.fn(async () => { throw new TypeError('Network request failed'); });
-  await expect(streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, fetcher))
+  await expect(streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, fetcher, []))
     .resolves.toEqual({ kind: 'interrupted' });
   expect(fetcher).toHaveBeenCalledTimes(1);
 
@@ -195,6 +195,130 @@ describe('stream sequence integrity', () => {
     expect((await run([start + line(2, { type: 'run_completed', text: 'a' }, other)])).outcome).toEqual({ kind: 'interrupted' });
     expect((await run([start + line(0, { type: 'message_delta', text: 'a' })])).outcome).toEqual({ kind: 'interrupted' });
   });
+});
+
+function replyOf(chunks: string[], options: { durable?: boolean; status?: number } = {}) {
+  const { durable = true, status = 200 } = options;
+  const encoder = new TextEncoder();
+  let index = 0;
+  const body = {
+    getReader: () => ({
+      read: async () => (index < chunks.length ? { value: encoder.encode(chunks[index++]), done: false } : { value: undefined, done: true }),
+      cancel: async () => undefined,
+    }),
+  };
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (name: string) => (durable && name === 'x-kael-runtime' ? 'durable' : null) },
+    body,
+    json: async () => JSON.parse(chunks.join('')),
+  } as unknown as Response;
+}
+
+const started = line(1, { type: 'run_started', conversation_id: conversation, request_id: request.requestId, replayed: false });
+const replayedStart = line(1, { type: 'run_started', conversation_id: conversation, request_id: request.requestId, replayed: true });
+const firstDelta = line(2, { type: 'message_delta', text: 'Chào ' });
+const secondDelta = line(3, { type: 'message_delta', text: 'bạn' });
+const completed = line(4, { type: 'run_completed', text: 'Chào bạn' });
+
+test('a durable run that loses its connection is reattached by request id and each event is delivered once', async () => {
+  const fetcher = jest.fn()
+    .mockResolvedValueOnce(replyOf([started + firstDelta]))
+    .mockResolvedValueOnce(replyOf([replayedStart + firstDelta + secondDelta + completed]));
+  const events: KaelEvent[] = [];
+  const outcome = await streamKaelTurn('customer-a', request, event => events.push(event), new AbortController().signal, fetcher, [0, 0]);
+  expect(outcome).toEqual({ kind: 'terminal', event: expect.objectContaining({ type: 'run_completed', text: 'Chào bạn' }) });
+  expect(events.map(event => `${event.seq}:${event.type}`)).toEqual(['1:run_started', '2:message_delta', '3:message_delta', '4:run_completed']);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  const bodies = fetcher.mock.calls.map(call => JSON.parse((call[1] as { body: string }).body));
+  expect(bodies[1]).toEqual(bodies[0]);
+});
+
+test('a durable run is reattached through a transient busy answer while another process takes it over', async () => {
+  const busy = replyOf([JSON.stringify({ error: { code: 'busy', message: 'Kael đang xử lý yêu cầu trước đó.', retryable: true } })], { status: 409 });
+  const fetcher = jest.fn()
+    .mockResolvedValueOnce(replyOf([started + firstDelta]))
+    .mockResolvedValueOnce(busy)
+    .mockResolvedValueOnce(replyOf([replayedStart + firstDelta + secondDelta + completed]));
+  const outcome = await streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, fetcher, [0, 0, 0]);
+  expect(outcome.kind).toBe('terminal');
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+
+test('reconnection is bounded and ends interrupted when the run never comes back', async () => {
+  const fetcher = jest.fn(async () => replyOf([started + firstDelta]));
+  const events: KaelEvent[] = [];
+  const outcome = await streamKaelTurn('customer-a', request, event => events.push(event), new AbortController().signal, fetcher, [0, 0]);
+  expect(outcome).toEqual({ kind: 'interrupted' });
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  expect(events).toHaveLength(2);
+});
+
+test('a first busy answer is reported at once and a legacy run is never replayed by the client', async () => {
+  const busy = jest.fn(async () => replyOf([JSON.stringify({ error: { code: 'busy', message: 'Kael đang xử lý yêu cầu trước đó.', retryable: true } })], { status: 409 }));
+  await expect(streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, busy, [0, 0])).resolves.toEqual({
+    kind: 'refused', code: 'busy', message: 'Kael đang xử lý yêu cầu trước đó.', retryable: true,
+  });
+  expect(busy).toHaveBeenCalledTimes(1);
+  const legacy = jest.fn(async () => replyOf([started + firstDelta], { durable: false }));
+  await expect(streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, legacy, [0, 0])).resolves.toEqual({ kind: 'interrupted' });
+  expect(legacy).toHaveBeenCalledTimes(1);
+});
+
+test('a connection lost before any response header is retried with the same request id, whichever runtime answers', async () => {
+  for (const durable of [true, false]) {
+    const fetcher = jest.fn()
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(replyOf([started + firstDelta + secondDelta + completed], { durable }));
+    const events: KaelEvent[] = [];
+    const outcome = await streamKaelTurn('customer-a', request, event => events.push(event), new AbortController().signal, fetcher, [0, 0]);
+    expect(outcome.kind).toBe('terminal');
+    expect(events.map(event => event.seq)).toEqual([1, 2, 3, 4]);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const bodies = fetcher.mock.calls.map(call => JSON.parse((call[1] as { body: string }).body));
+    expect(bodies[1]).toEqual(bodies[0]);
+    expect(bodies[1].request_id).toBe(request.requestId);
+  }
+});
+
+test('retries before any response header are bounded and never turn into a refusal', async () => {
+  const fetcher = jest.fn(async () => { throw new TypeError('Network request failed'); });
+  await expect(streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, fetcher, [0, 0]))
+    .resolves.toEqual({ kind: 'interrupted' });
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+
+test('a legacy busy answer to a durable run is retried and never shown as the outcome', async () => {
+  const legacyBusy = replyOf([started + line(2, { type: 'run_failed', code: 'busy', message: 'Kael đang xử lý.', retryable: true })], { durable: false });
+  const fetcher = jest.fn()
+    .mockResolvedValueOnce(replyOf([started + firstDelta + secondDelta]))
+    .mockResolvedValueOnce(legacyBusy)
+    .mockResolvedValueOnce(replyOf([replayedStart + firstDelta + secondDelta + completed]));
+  const events: KaelEvent[] = [];
+  const outcome = await streamKaelTurn('customer-a', request, event => events.push(event), new AbortController().signal, fetcher, [0, 0, 0]);
+  expect(outcome).toEqual({ kind: 'terminal', event: expect.objectContaining({ type: 'run_completed', text: 'Chào bạn' }) });
+  expect(events.map(event => `${event.seq}:${event.type}`)).toEqual(['1:run_started', '2:message_delta', '3:message_delta', '4:run_completed']);
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+
+test('a legacy terminal answer to a durable run is delivered even though its sequence numbers restart', async () => {
+  const legacyDone = replyOf([started + line(2, { type: 'run_completed', text: 'Chào bạn' })], { durable: false });
+  const fetcher = jest.fn()
+    .mockResolvedValueOnce(replyOf([started + firstDelta + secondDelta]))
+    .mockResolvedValueOnce(legacyDone);
+  const events: KaelEvent[] = [];
+  const outcome = await streamKaelTurn('customer-a', request, event => events.push(event), new AbortController().signal, fetcher, [0]);
+  expect(outcome).toEqual({ kind: 'terminal', event: expect.objectContaining({ type: 'run_completed', seq: 4 }) });
+  expect(events.map(event => `${event.seq}:${event.type}`)).toEqual(['1:run_started', '2:message_delta', '3:message_delta', '4:run_completed']);
+});
+
+test('cancelling while waiting to reconnect stops without another request', async () => {
+  const controller = new AbortController();
+  const fetcher = jest.fn(async () => replyOf([started + firstDelta]));
+  const pending = streamKaelTurn('customer-a', request, event => { if (event.seq === 2) controller.abort(); }, controller.signal, fetcher, [60000]);
+  await expect(pending).resolves.toEqual({ kind: 'cancelled' });
+  expect(fetcher).toHaveBeenCalledTimes(1);
 });
 
 test('the exact Gateway consent_required refusal reaches the client as a non-retryable consent code', async () => {

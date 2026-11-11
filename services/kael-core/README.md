@@ -166,7 +166,8 @@ with the conversation id, which `reconcile` may leave null to check from a new
 conversation; `reconcile` only checks an approval that was already consumed and
 whose outcome is uncertain. Refusals before a run starts return JSON
 `{ "error": { "code", "message", "retryable" } }` with HTTP 400, 401, 409, 413, 429
-or 503. A started run returns `application/x-ndjson`, one event per line, each with
+or 503. A 401 means the auth service rejected the token; when it cannot be reached the
+answer is the retryable 503 `internal`. A started run returns `application/x-ndjson`, one event per line, each with
 `v: 1`, `run_id` and a gap-free `seq`:
 
 | Event | Meaning |
@@ -272,6 +273,107 @@ receive a terminal completion event, and confirm the persisted conversation.
 This repository change does not deploy the Edge Function or create a TestFlight
 build; those steps follow PR approval. Device behavior remains unverified until
 a tester sends a real prompt in the new TestFlight build on iPhone.
+
+## Durable runtime
+
+`services/kael-core/durable/` is a native Rust service (crate `kael-durable`) that
+runs Kael turns on [Pi-durable](https://github.com/y0usaf/pi-durable-rs), pinned at
+`460649edb63d495d97c30cc69b2481d10f2b4cca`. It keeps the request, event and
+approval contracts above unchanged. It is opt-in: the Edge Function sends turns to it
+only while the `KAEL_DURABLE_URL` secret is set.
+
+| Concern | Design |
+| --- | --- |
+| Business truth | Supabase Postgres. Pi holds one SQLite journal per run and lease epoch (`journals/<run_id>.e<epoch>.sqlite`, named by the Postgres run UUID) for model and tool steps, never business records |
+| Admission | `kael_durable_start_run` creates or replays the run and its lease in one transaction. A replay of a legacy run returns HTTP 421 and the Edge Function serves it from the legacy runtime |
+| Exclusive writer | Each run has an epoch and a lease. Writes carry `x-kael-lease: holder:epoch`; the database refuses them (HTTP 403) once another holder owns a newer epoch, and the process cancels the run |
+| Recovery | A killed process leaves a running run with an expired lease. Any instance, or the same client retrying the same `request_id`, claims it with a new epoch and resumes from a snapshot of the newest earlier journal, taken through a read-only SQLite backup so a predecessor frozen mid-write (which still holds the write lock of its own file) cannot block the takeover. Completed tool steps are not run again. Tools other than reads are registered as unsafe to replay, so the harness does not re-run one that was interrupted mid-call: the model receives "interrupted and may have partially run" instead of an invented result and must check the real state with a read tool before retrying. A live test holds the task write's response at a proxy, kills the process after the database committed it, and checks that the resumed run creates no second task |
+| Events | NDJSON in `events/<run_id>.ndjson`, `seq` gap-free across restarts. `GET /v1/runs/{id}/events?after=N` and a repeated `POST /v1/turn` both replay from the log, owner-checked |
+| Identity | The caller's JWT is verified against Supabase Auth; the owner is recorded in `meta/<run_id>.json` and rechecked on every attach. Tool offers follow the verified mode and capabilities |
+| Approvals | Unchanged: the database fingerprint, consumption and reconciliation RPCs decide, so an approval survives any restart and applies once |
+| Account erasure | `erase_account_data` marks the account's journals `purge_pending`; the reconciler deletes journal, event and metadata files after a grace period and confirms with `kael_durable_mark_purged`. Files with no database row are removed as orphans |
+| Rollback | Unset `KAEL_DURABLE_URL`. New turns use the legacy runtime at once; runs already on the durable service finish, expire or are interrupted by the database sweep |
+
+Run and test it with Docker when no local Rust toolchain exists:
+
+```bash
+docker run --rm -v "$PWD/services/kael-core/durable:/w" -w /w rust:1.90-bookworm cargo test --locked --test contracts
+```
+
+`tests/process_recovery.rs` starts the real `kael-durable` binary against a live
+Supabase stack (GoTrue, PostgREST, Postgres with the repository migrations) and a
+local OpenAI-compatible model server. It signs up real users, kills the process with
+SIGKILL mid-stream, restarts it, and checks resume without a repeated effect,
+account isolation, approval application across a restart, a typed provider failure
+a tool call that was in flight at the crash, DeepSeek thinking mode, journal purge
+after account erasure or session deletion, and a second instance streaming a run another
+instance owns. The tests are `#[ignore]`d until
+`KAEL_TEST_GATEWAY`, `KAEL_TEST_ANON` and `KAEL_TEST_SERVICE` point at such a stack,
+then run with `cargo test --locked --test process_recovery -- --ignored --test-threads=1`.
+They must run one at a time: every started service runs the reconciler, which adopts
+and purges any run in the shared database, so a parallel test's service would close or
+purge another test's runs, whose files live in a different data directory. The same
+holds in production: instances that share a database must share the data volume, or
+a run's journal is not found by the instance that claims it and the run is closed as
+interrupted.
+
+The hosted `Supabase local verification` job runs these tests against the repository's
+own isolated local stack (`KAEL_TEST_*` are exported from the verified stack's
+status, with the keys masked), so they need no separate fixture. The test client retries
+a turn or event request up to three times on `503`, the documented retryable answer when
+the auth service or database is briefly unreachable; any other status fails the test.
+
+A reconnecting client can reach any instance. The instance that holds a run's lease
+streams it from memory. An instance that does not hold the lease, but sees the run's
+event file on the shared volume, answers a same-`request_id` reconnect and
+`GET /v1/runs/{id}/events` by following that file read-only (`EventLog::follow`): it
+delivers only complete lines, never truncates or writes the owner's file, and swaps to
+the live log if its own reconciler adopts the run after the lease expires. If the event
+file is not visible (a volume that is not shared) it answers `409 busy` as before, so
+the client keeps retrying the same `request_id`. The TestFlight pilot should still run
+one instance; this behavior makes a second instance safe, not necessary.
+
+| Setting | Effect |
+| --- | --- |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` or `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY` | Same targets and keys as the gateway; plain HTTP is accepted only for local hosts |
+| `KAEL_DURABLE_DATA_DIR` | Required absolute path on persistent storage; `/tmp` is refused unless `KAEL_DURABLE_ALLOW_TEMP=1` |
+| `KAEL_DURABLE_HOLDER`, `KAEL_DURABLE_LEASE_SECONDS` | Instance name (`[A-Za-z0-9._-]`, at most 80) and lease length from 10 to 600 seconds, default 30 |
+| `KAEL_DURABLE_BIND` | Listen address, default `127.0.0.1:8787` |
+| `KAEL_DURABLE_PURGE_GRACE_SECONDS` | Delay before a purge-pending journal is deleted, default 120 |
+| `DEEPSEEK_API_KEY`, `KAEL_DEEPSEEK_MODEL`, `ANTHROPIC_API_KEY`, `KAEL_ANTHROPIC_MODEL`, `KAEL_MODEL_ROUTE`, `PERPLEXITY_API_KEY` with `KAEL_WEB_SEARCH=enabled`, `KAEL_ENABLED_EFFECTS`, `KAEL_KNOWLEDGE=disabled` | Same meaning as for the gateway. `KAEL_DEEPSEEK_BASE_URL` and `KAEL_ANTHROPIC_BASE_URL` override the provider endpoints (HTTPS or local; for tests and gateways) |
+| `KAEL_DEEPSEEK_THINKING=enabled` | Requests DeepSeek thinking mode (`thinking.type=enabled`, high reasoning effort); reasoning text is replayed to the provider as Pi-durable's DeepSeek adapter does and is never shown to the user |
+| `KAEL_ANTHROPIC_SERVER_FALLBACK=enabled` with `KAEL_ANTHROPIC_FALLBACK_MODELS` | For the Fable 5.1, Opus 5.5, Opus 5 and Sonnet 5.5 models, sends Anthropic's server-side fallback with one to four explicit `claude-*` ids. The legacy runtime sent the string `default`; Pi-durable only supports the explicit list, so the list is required and startup fails without it |
+| `KAEL_ESTIMATE_PREVIEW` | `local_only` is refused at startup: the durable service has no numeric price-preview path and always returns the disabled preview |
+| `KAEL_DURABLE_URL` (Edge secret) | HTTPS address of the service, or a local HTTP address; any other value is ignored |
+
+`GET /ready` reports database and storage status without calling a model provider.
+[`durable/Dockerfile`](durable/Dockerfile) is the only container recipe the repository
+naming policy approves (`scripts/check-hygiene.mjs` accepts that exact path and
+applies the comment gate to it). It pins both base images by digest, builds with
+`--locked`, runs as a non-root user and keeps state in the `/var/lib/kael` volume:
+
+```bash
+docker build -t kael-durable services/kael-core/durable
+```
+
+Differences from the legacy runtime:
+
+- `knowledge_search` and `price_estimate_preview` are offered to the customer
+  capability and validated against the same retrieval contract. Results are never
+  cached or deduplicated within a run. The preview returns only the disabled
+  preview; the numeric local-evaluation preview is not implemented.
+- DeepSeek thinking mode and Anthropic server-side fallback are configurable (table
+  above). Neither has run against the real provider here; the checks use a local
+  OpenAI-compatible server and the model definitions Pi-durable sends. The Anthropic
+  fallback needs an explicit model list; it does not use the legacy `default` string.
+- When a crash interrupts a reply mid-text (the last logged event is a
+  `message_delta`), the resumed run drops the interrupted partial reply from the
+  final text and streams no further deltas, so the log never concatenates the old
+  partial with the new answer. The terminal `run_completed.text` is authoritative and
+  the client shows it in place of the streamed text. After any other crash point the
+  resumed run streams normally.
+- The model-visible tool schemas drop length and pattern keywords that Pi-durable's
+  validator does not support; the service enforces them before every tool call.
 
 ## Not implemented
 

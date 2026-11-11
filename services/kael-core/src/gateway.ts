@@ -101,6 +101,47 @@ export function configuredProviders(config: KaelConfig, fetcher: Fetcher): Model
   });
 }
 
+const durableConnectLimitMs = 15_000;
+
+export function durableServiceUrl(raw: string | undefined): string | null {
+  const value = raw?.trim().replace(/\/+$/, '');
+  if (!value) return null;
+  return /^https:\/\/[^/\s]+$/.test(value) || /^http:\/\/(?:localhost|127\.0\.0\.1|host\.docker\.internal)(?::\d{1,5})?$/.test(value) ? value : null;
+}
+
+async function proxyDurableTurn(url: string, request: Request, token: string, raw: string, fetcher: Fetcher, log: (event: Record<string, string | number | null>) => void): Promise<Response | null> {
+  const controller = new AbortController();
+  const connectTimer = setTimeout(() => controller.abort(), durableConnectLimitMs);
+  const disconnect = () => controller.abort();
+  request.signal.addEventListener('abort', disconnect, { once: true });
+  let upstream: Response;
+  try {
+    upstream = await fetcher(`${url}/v1/turn`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: raw,
+      signal: controller.signal,
+    });
+  } catch {
+    request.signal.removeEventListener('abort', disconnect);
+    log({ event: 'kael_durable_unreachable' });
+    return null;
+  } finally {
+    clearTimeout(connectTimer);
+  }
+  if (upstream.status === 421) {
+    request.signal.removeEventListener('abort', disconnect);
+    await upstream.body?.cancel();
+    return null;
+  }
+  const headers: Record<string, string> = { ...corsHeaders, 'cache-control': 'no-store' };
+  for (const name of ['content-type', 'x-kael-run-id', 'x-kael-runtime']) {
+    const value = upstream.headers.get(name);
+    if (value) headers[name] = value;
+  }
+  return new Response(upstream.body, { status: upstream.status, headers });
+}
+
 function userTextFor(action: Action): string {
   if (action.type === 'message') return action.text;
   if (action.type === 'reconcile') return 'Kiểm tra lại thao tác đã xác nhận trước đó.';
@@ -131,6 +172,7 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
   const now = dependencies.now ?? (() => new Date());
   const log = dependencies.log ?? (event => console.log(JSON.stringify(event)));
   const config = readKaelConfig(dependencies.env);
+  const durableUrl = durableServiceUrl(dependencies.env.KAEL_DURABLE_URL);
   const generation = dependencies.env.KAEL_PILOT_GENERATION;
   const pilotGeneration = generation && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(generation)
     ? generation : undefined;
@@ -208,6 +250,10 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
     const parsed = parseTurnRequest(raw, config.limits.maxInputChars);
     if (!parsed) return failure(400, 'invalid_request');
     const turn: TurnRequest = parsed;
+    if (durableUrl && !config.developerPilotId) {
+      const proxied = await proxyDurableTurn(durableUrl, request, token, raw, fetcher, log);
+      if (proxied) return proxied;
+    }
     const userId = await verifyUser(config, token, fetcher);
     if (!userId) return failure(401, 'unauthenticated');
     if (config.developerPilotId && (turn.action.type !== 'message'
