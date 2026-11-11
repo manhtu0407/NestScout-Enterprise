@@ -8,6 +8,7 @@ export type { KaelMatrixVariant } from './kael-matrix-loader';
 export { kaelPhaseEntries, kaelPhaseIssueNotes } from './kael-phase';
 export type { KaelPhase, KaelPhaseIssue } from './kael-phase';
 export { KaelProgressSheet } from './kael-progress-sheet';
+export { progressForPhase } from './kael-progress';
 export { KaelSpinnerCheck } from './kael-progress-motion';
 export { KaelShimmerText } from './kael-shimmer-text';
 export { KaelStreamingText } from './kael-streaming-text';

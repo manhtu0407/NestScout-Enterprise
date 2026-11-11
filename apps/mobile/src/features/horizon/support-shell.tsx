@@ -43,13 +43,13 @@ export function SupportSection({ title, children }: { title?: string; children: 
   );
 }
 
-export function SupportCard({ children }: { children: ReactNode }) {
+export function SupportCard({ children, flush = false }: { children: ReactNode; flush?: boolean }) {
   const rows = Children.toArray(children);
   return (
     <View style={styles.card}>
       {rows.map((row, index) => (
         <Fragment key={index}>
-          {index > 0 ? <View style={styles.separator} /> : null}
+          {index > 0 ? <View style={[styles.separator, flush && styles.separatorFlush]} /> : null}
           {row}
         </Fragment>
       ))}
@@ -118,6 +118,7 @@ const styles = StyleSheet.create({
   sectionTitle: { color: colors.sectionTitle, fontSize: metrics.sectionTitleSize, fontWeight: metrics.sectionTitleWeight, marginBottom: metrics.sectionTitleGap, marginLeft: metrics.sectionTitleInset },
   card: { borderRadius: metrics.cardRadius, backgroundColor: colors.cardFill, overflow: 'hidden' },
   separator: { height: metrics.separatorHeight, marginLeft: metrics.separatorInset, backgroundColor: colors.separator },
+  separatorFlush: { marginLeft: metrics.optionSeparatorInset },
   row: { minHeight: metrics.rowMinHeight, flexDirection: 'row', alignItems: 'center', gap: metrics.rowGap, paddingHorizontal: metrics.rowPaddingHorizontal, paddingVertical: metrics.rowPaddingVertical },
   tile: { width: metrics.tileSize, height: metrics.tileSize, borderRadius: metrics.tileRadius, backgroundColor: colors.tileFill, alignItems: 'center', justifyContent: 'center' },
   tileHighlighted: { backgroundColor: colors.unreadTile },

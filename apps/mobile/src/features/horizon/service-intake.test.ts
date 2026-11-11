@@ -80,5 +80,6 @@ test('the Kael prompt starts from the category and carries what the user already
 
 test('the open category does not promise unsupported work', () => {
   expect(category('other').intro).toMatch(/chưa đảm bảo/);
-  expect(category('other').kaelOpening).toMatch(/chưa hỗ trợ/);
+  expect(category('other').kaelOpening).toMatch(/chưa biết chọn dịch vụ nào/);
+  for (const item of serviceCategories.filter(entry => entry.id !== 'other')) expect(category('other').kaelOpening.toLowerCase()).not.toContain(item.title.toLowerCase());
 });

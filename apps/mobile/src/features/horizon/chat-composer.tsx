@@ -1,6 +1,6 @@
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ComponentRef } from 'react';
 import { Animated, Dimensions, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { composerImageLimit, useComposerMedia, type ComposerImage } from './composer-media';
@@ -9,6 +9,7 @@ import { AttachmentStrip } from './attachment-strip';
 import { ComposerMenu } from './composer-menu';
 import { Presence, useRetained } from './motion-presence';
 import { LiquidVoiceCapsule, useLiquidVoice } from './liquid-voice';
+import { appendTranscript } from './voice-input';
 import type { ComposerMenuAnchor, ComposerMenuItem } from './composer-menu';
 
 type Props = {
@@ -28,7 +29,6 @@ type Props = {
 const metrics = horizonLayout.chatComposer;
 const menu = horizonLayout.composerMenu;
 const colors = horizonColors.chatComposer;
-const voiceUnavailable = 'Ghi âm chưa khả dụng nên Kael chưa nhận được lời nói.';
 const webScrollbarStyle = { outlineStyle: 'solid', outlineWidth: 0, scrollbarWidth: 'none' } as const;
 
 export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, initialImages, onImagesChange, mediaExternallyManaged, locked = false, onFocus, onBlur }: Props) {
@@ -38,11 +38,25 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
   const retainedError = useRetained(errorText);
   const canSend = !locked && (value.trim().length > 0 || media.images.length > 0);
   const [inputHeight, setInputHeight] = useState<number>(metrics.inputMinHeight);
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const [inputWidth, setInputWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'web' || !value) return;
+    const node: unknown = inputRef.current;
+    if (typeof HTMLTextAreaElement === 'undefined' || !(node instanceof HTMLTextAreaElement)) return;
+    const shown = node.style.height;
+    node.style.height = '0px';
+    const content = node.scrollHeight;
+    node.style.height = shown;
+    setInputHeight(Math.min(metrics.inputMaxHeight, Math.max(metrics.inputMinHeight, content)));
+  }, [value, inputWidth]);
   const submit = () => { if (canSend) onSubmit(media.images); };
   const { reduceMotion } = useGlassAccessibility();
   const micFeedback = usePressFeedback(reduceMotion);
-  const voice = useLiquidVoice(() => setVoiceNotice(voiceUnavailable));
-  const startVoice = () => { setVoiceNotice(null); voice.start(); };
+  const valueRef = useRef(value);
+  useEffect(() => { valueRef.current = value; });
+  const voice = useLiquidVoice(text => onChange(appendTranscript(valueRef.current, text)), setVoiceNotice);
+  const startVoice = () => { setVoiceNotice(null); void voice.start(); };
   useEffect(() => {
     if (!voiceNotice) return undefined;
     const timer = setTimeout(() => setVoiceNotice(null), metrics.voiceHintDuration);
@@ -57,7 +71,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
   const photoUnavailable = locked || media.images.length >= composerImageLimit;
   const menuItems: readonly ComposerMenuItem[] = [
     { id: 'photos', label: 'Thêm ảnh/tệp', icon: 'attach', disabled: photoUnavailable, onPress: () => { onMediaChange?.(); setTimeout(() => { void media.pick(); }, menu.pickerLaunchDelay); } },
-    { id: 'camera', label: 'Chụp ảnh', icon: 'camera', detail: 'Sắp có', disabled: true, onPress: () => undefined },
+    { id: 'camera', label: 'Chụp ảnh', icon: 'camera', disabled: photoUnavailable, onPress: () => { onMediaChange?.(); setTimeout(() => { void media.capture(); }, menu.pickerLaunchDelay); } },
   ];
   return <View>
     <Presence visible={Boolean(errorText)} style={styles.errorSlot}>
@@ -74,6 +88,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
     {menuAnchor && <ComposerMenu anchor={menuAnchor} items={menuItems} onClose={() => setMenuAnchor(null)}/>}
     <View style={styles.inputSlot}>
       <TextInput
+        ref={inputRef}
         accessibilityLabel="Nhắn Kael"
         style={[styles.input, Platform.OS === 'web' && webScrollbarStyle, Platform.OS === 'web' && { height: value ? inputHeight : metrics.inputMinHeight }]}
         value={value}
@@ -81,13 +96,13 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
         onChangeText={onChange}
         onFocus={onFocus}
         onBlur={onBlur}
-        placeholder="Nhắn Kael..."
+        placeholder="What's on your home today...?"
         placeholderTextColor={colors.placeholder}
         multiline
         maxLength={5000}
         numberOfLines={1}
-        onContentSizeChange={event => {
-          if (Platform.OS === 'web') setInputHeight(Math.min(metrics.inputMaxHeight, Math.max(metrics.inputMinHeight, event.nativeEvent.contentSize.height)));
+        onLayout={event => {
+          if (Platform.OS === 'web') setInputWidth(event.nativeEvent.layout.width);
         }}
         submitBehavior={Platform.OS === 'web' ? 'submit' : 'newline'}
         blurOnSubmit={Platform.OS === 'web'}
@@ -128,7 +143,7 @@ const styles = StyleSheet.create({
   errorSlot: { position: 'absolute', left: metrics.errorInsetLeft, right: 0, bottom: metrics.errorBottom, marginBottom: metrics.errorGap },
   error: { color: colors.noticeText, fontSize: metrics.errorSize, lineHeight: metrics.errorLineHeight, textAlign: 'right' },
   media: { height: metrics.mediaSize, width: metrics.mediaSize, borderRadius: metrics.mediaRadius, alignItems: 'center', justifyContent: 'center' },
-  input: { flex: 1, minWidth: 0, minHeight: metrics.inputMinHeight, maxHeight: metrics.inputMaxHeight, fontSize: metrics.inputFontSize, lineHeight: metrics.inputLineHeight, paddingHorizontal: metrics.inputPaddingHorizontal, paddingVertical: metrics.inputPaddingVertical, color: colors.inputText, textAlignVertical: 'top', outlineWidth: 0, outlineColor: 'transparent' },
+  input: { alignSelf: 'stretch', minWidth: 0, minHeight: metrics.inputMinHeight, maxHeight: metrics.inputMaxHeight, fontSize: metrics.inputFontSize, lineHeight: metrics.inputLineHeight, paddingHorizontal: metrics.inputPaddingHorizontal, paddingVertical: metrics.inputPaddingVertical, color: colors.inputText, textAlignVertical: 'top', outlineWidth: 0, outlineColor: 'transparent' },
   inputSlot: { flex: 1, minWidth: 0, justifyContent: 'center' },
   voiceLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, flexDirection: 'row' },
   sendSlot: { height: metrics.sendSlotSize, width: metrics.sendSlotSize, alignItems: 'center', justifyContent: 'center' },

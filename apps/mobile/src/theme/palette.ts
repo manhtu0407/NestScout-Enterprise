@@ -85,6 +85,16 @@ export const horizonColors = {
     label: 'rgba(255,255,255,0.68)',
     thumbShadow: '0 2px 8px rgba(0,0,0,0.28)',
   },
+  notificationBanner: {
+    title: '#0B0F14',
+    body: 'rgba(11,15,20,0.78)',
+    time: 'rgba(60,60,67,0.62)',
+    actionFill: 'rgba(60,60,67,0.12)',
+    actionInk: '#0B0F14',
+    primaryFill: '#0E9E8E',
+    primaryInk: '#FFFFFF',
+    iconBackdrop: '#FFFFFF',
+  },
   kaelHomeScreen: {
     userBubbleBackgroundColor: '#D9F2EE',
     userBubbleText: '#0B3B36',
@@ -221,7 +231,7 @@ export const horizonColors = {
   supportScreens: {
     cardFill: '#F5F6F8', tileFill: '#FFFFFF', separator: 'rgba(60,60,67,0.10)',
     sectionTitle: '#6B7683', chevron: '#9AA0AB', unreadDot: '#0E9E8E', unreadTile: 'rgba(14,158,142,0.14)', unreadIcon: '#0A6F64',
-    danger: '#D4322C', switchOn: '#0E9E8E', switchOff: '#D9DCE1', switchThumb: '#FFFFFF',
+    danger: '#D4322C', valid: '#1E7B3C', switchOn: '#0E9E8E', switchOff: '#D9DCE1', switchThumb: '#FFFFFF',
     searchFill: 'rgba(118,118,128,0.12)', searchPlaceholder: '#8A8A90', searchIcon: '#5B6672',
     heroFill: '#F5F6F8', avatarFill: '#ECEEF1', avatarInitial: '#11161C', chipFill: 'rgba(118,118,128,0.12)', chipText: '#3C4650',
     primaryFill: '#0B0F14', primaryLabel: '#FFFFFF', secondaryFill: 'rgba(118,118,128,0.12)', secondaryLabel: '#11161C',
@@ -241,6 +251,7 @@ export const horizonColors = {
     scrim: 'rgba(0,0,0,0.12)', pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', title: '#6B7683', danger: '#D4322C',
   },
   horizonEntry: { noticeSurface: '#FDEEE6', noticeText: '#8A3B12' },
+  previewDemo: { surface: 'rgba(17,22,28,0.72)', text: '#FFFFFF' },
   signIn: {
     backdrop: '#F3F4F6',
     aurora: {

@@ -12,18 +12,21 @@
     "verify:sdk": "expo install --check"
   },
   "dependencies": {
+    "@expo-google-fonts/inter": "0.4.2",
     "@expo/metro-runtime": "58.0.17",
     "@supabase/supabase-js": "2.119.0",
     "expo": "58.0.23",
     "expo-apple-authentication": "58.0.2",
     "expo-constants": "58.0.15",
     "expo-crypto": "58.0.7",
+    "expo-font": "58.0.11",
     "expo-glass-effect": "58.0.5",
     "expo-haptics": "58.0.7",
     "expo-image-picker": "58.0.10",
     "expo-linking": "58.0.16",
     "expo-router": "58.0.30",
     "expo-secure-store": "58.0.2",
+    "expo-speech-recognition": "58.0.1",
     "expo-status-bar": "58.0.4",
     "expo-video": "58.0.13",
     "expo-web-browser": "58.0.7",
@@ -56,7 +59,8 @@
     "maxWorkers": 4,
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1",
-      "^lucide-react-native$": "<rootDir>/../../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js"
+      "^lucide-react-native$": "<rootDir>/../../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js",
+      "^expo-speech-recognition$": "<rootDir>/src/testing/expo-speech-recognition.ts"
     },
     "testMatch": [
       "**/src/**/*.test.ts",

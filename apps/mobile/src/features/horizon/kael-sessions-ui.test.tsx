@@ -2,10 +2,11 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { KaelEvent, KaelSession, KaelTurnRequest } from '@/features/shared';
-import { deleteKaelSession, KaelSessionError, listKaelSessions, loadKaelConversation, openKaelConversation, renameKaelSession, setKaelSessionArchived, setKaelSessionPinned, streamKaelTurn } from '@/features/shared';
+import { deleteKaelSession, KaelSessionError, listKaelSessions, loadKaelConversation, loadPendingRequest, openKaelConversation, renameKaelSession, setKaelSessionArchived, setKaelSessionPinned, streamKaelTurn } from '@/features/shared';
 
 import { HorizonEntry } from './horizon-entry';
-import { handOffToKael } from './kael-handoff';
+import { handOffServiceEntry, handOffToKael } from './kael-handoff';
+import { serviceEntryKeptNotice } from './service-entry';
 
 const mockAccess = {
   phase: 'client', identity: 'verified', userId: 'customer-a', horizonDraft: null, notice: null, pendingMode: null,
@@ -32,7 +33,7 @@ jest.mock('./use-worker-data', () => ({
 }));
 jest.mock('@/features/shared', () => ({
   ...jest.requireActual('@/features/shared'),
-  streamKaelTurn: jest.fn(), loadKaelConversation: jest.fn(), openKaelConversation: jest.fn(), listKaelSessions: jest.fn(),
+  streamKaelTurn: jest.fn(), loadKaelConversation: jest.fn(), openKaelConversation: jest.fn(), listKaelSessions: jest.fn(), loadPendingRequest: jest.fn(),
   renameKaelSession: jest.fn(), setKaelSessionPinned: jest.fn(), setKaelSessionArchived: jest.fn(), deleteKaelSession: jest.fn(),
 }));
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
@@ -55,6 +56,7 @@ const row = (id: string, title: string, extra: Partial<KaelSession> = {}): KaelS
 const metrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
 const renderEntry = () => render(<SafeAreaProvider initialMetrics={metrics}><HorizonEntry/></SafeAreaProvider>);
 const mockList = jest.mocked(listKaelSessions);
+const mockPending = jest.mocked(loadPendingRequest);
 const mockOpen = jest.mocked(openKaelConversation);
 const mockLoad = jest.mocked(loadKaelConversation);
 const mockStream = jest.mocked(streamKaelTurn);
@@ -77,6 +79,7 @@ async function openSidebar() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockPending.mockResolvedValue(null);
   mockLoad.mockResolvedValue(snapshot(sessionA, ['Sửa vòi nước', 'Đã ghi nhận vòi nước']));
   mockList.mockResolvedValue([row(sessionA, 'Sửa vòi nước'), row(sessionB, 'Vệ sinh sofa', { pinned: true })]);
   mockOpen.mockImplementation(async (_user, _mode, id) => (id === sessionB ? snapshot(sessionB, ['Vệ sinh sofa', 'Đã ghi nhận sofa']) : snapshot(sessionA, ['Sửa vòi nước', 'Đã ghi nhận vòi nước'])));
@@ -104,7 +107,7 @@ test('choosing a session loads that conversation by id and the next message cont
   await waitFor(() => expect(screen.getByText('Đã ghi nhận sofa')).toBeTruthy());
   expect(screen.queryByText('Đã ghi nhận vòi nước')).toBeNull();
   expect(mockOpen).toHaveBeenCalledWith('customer-a', 'client', sessionB, expect.any(AbortSignal));
-  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Thêm ghế bọc da');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Thêm ghế bọc da');
   await act(async () => { fireEvent.press(screen.getByLabelText('Gửi')); });
   expect(requests[0]?.conversationId).toBe(sessionB);
 });
@@ -114,13 +117,13 @@ test('a new session starts blank, creates its conversation only when a message i
   scripted(requests, '55555555-5555-4555-8555-555555555555');
   await renderEntry();
   await act(async () => { await Promise.resolve(); });
-  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Nháp của phiên A');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Nháp của phiên A');
   await openSidebar();
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
   expect(screen.queryByText('Đã ghi nhận vòi nước')).toBeNull();
   expect(mockStream).not.toHaveBeenCalled();
   expect(screen.queryByDisplayValue('Nháp của phiên A')).toBeNull();
-  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Tin của phiên mới');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Tin của phiên mới');
   await act(async () => { fireEvent.press(screen.getByLabelText('Gửi')); });
   expect(requests[0]?.conversationId).toBeNull();
   expect(requests[0]?.action).toEqual({ type: 'message', text: 'Tin của phiên mới' });
@@ -130,11 +133,11 @@ test('a new session starts blank, creates its conversation only when a message i
 test('an unsent draft stays with its own session across another session and back, and every new chat is blank', async () => {
   await renderEntry();
   await act(async () => { await Promise.resolve(); });
-  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Nháp của phiên A');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Nháp của phiên A');
   await openSidebar();
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
   expect(screen.queryByDisplayValue('Nháp của phiên A')).toBeNull();
-  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Nháp chat mới');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Nháp chat mới');
   await openSidebar();
   await waitFor(() => expect(screen.getByLabelText(/^Vệ sinh sofa, /)).toBeTruthy());
   await act(async () => { fireEvent.press(screen.getByLabelText(/^Vệ sinh sofa, /)); });
@@ -149,7 +152,7 @@ test('an unsent draft stays with its own session across another session and back
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
   expect(screen.queryByDisplayValue('Nháp chat mới')).toBeNull();
   expect(screen.queryByDisplayValue('Nháp của phiên A')).toBeNull();
-  expect(screen.getByPlaceholderText('Nhắn Kael...').props.value).toBe('');
+  expect(screen.getByPlaceholderText("What's on your home today...?").props.value).toBe('');
 });
 
 test('tapping New in a chat that is already new clears its unsent text instead of restoring it', async () => {
@@ -157,11 +160,11 @@ test('tapping New in a chat that is already new clears its unsent text instead o
   await act(async () => { await Promise.resolve(); });
   await openSidebar();
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
-  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Chưa gửi trong chat mới');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Chưa gửi trong chat mới');
   await openSidebar();
   await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
   expect(screen.queryByDisplayValue('Chưa gửi trong chat mới')).toBeNull();
-  expect(screen.getByPlaceholderText('Nhắn Kael...').props.value).toBe('');
+  expect(screen.getByPlaceholderText("What's on your home today...?").props.value).toBe('');
   expect(mockAccess.clearHorizonDraft).toHaveBeenCalled();
 });
 
@@ -182,7 +185,7 @@ test('a failed open is reported with a retry that does not silently start anothe
   await waitFor(() => expect(screen.getByLabelText(/^Vệ sinh sofa, /)).toBeTruthy());
   await act(async () => { fireEvent.press(screen.getByLabelText(/^Vệ sinh sofa, /)); });
   await waitFor(() => expect(screen.getByText(/Chưa mở được cuộc trò chuyện này/)).toBeTruthy());
-  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), 'Tin này không được tạo phiên mới');
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), 'Tin này không được tạo phiên mới');
   await act(async () => { fireEvent.press(screen.getByLabelText('Gửi')); });
   expect(mockStream).not.toHaveBeenCalled();
   await act(async () => { fireEvent.press(screen.getByLabelText('Thử mở lại cuộc trò chuyện')); });
@@ -263,12 +266,115 @@ test('a refused delete explains why and keeps the conversation', async () => {
   expect(screen.getByText('Đã ghi nhận vòi nước')).toBeTruthy();
 });
 
-test('the service entries open their own routes, one per category', async () => {
+const plumbingOpening = 'Kael ơi, mình đang gặp vấn đề về nước ở nhà. Bạn giúp mình nhé.';
+const airconOpening = 'Kael ơi, mình cần hỗ trợ về máy lạnh. Bạn tư vấn giúp mình nhé.';
+const composer = () => screen.getByPlaceholderText("What's on your home today...?");
+
+async function chooseService(title: string) {
+  await openSidebar();
+  await act(async () => { fireEvent.press(screen.getByLabelText(title)); });
+  await act(async () => { await Promise.resolve(); });
+}
+
+test('every service entry fills the Kael composer instead of opening a form, and sends nothing', async () => {
+  mockLoad.mockResolvedValue(snapshot(null, []));
   await renderEntry();
   await act(async () => { await Promise.resolve(); });
   await openSidebar();
   const titles = ['Sửa điện', 'Sửa nước', 'Máy lạnh', 'Vệ sinh nhà', 'Vệ sinh sofa', 'Lắp đặt & sửa chữa nhỏ', 'Dịch vụ khác'];
   for (const title of titles) expect(screen.getByLabelText(title)).toBeTruthy();
   await act(async () => { fireEvent.press(screen.getByLabelText('Máy lạnh')); });
-  expect(mockPush).toHaveBeenCalledWith({ pathname: '/service', params: { category: 'aircon' } });
+  await act(async () => { await Promise.resolve(); });
+  expect(composer().props.value).toBe(airconOpening);
+  expect(mockPush).not.toHaveBeenCalled();
+  expect(mockStream).not.toHaveBeenCalled();
+  expect(mockAccess.updateHorizonDraft).toHaveBeenLastCalledWith('customer-a', { text: airconOpening, images: [] });
+  await chooseService('Máy lạnh');
+  expect(composer().props.value).toBe(airconOpening);
+  await chooseService('Sửa nước');
+  expect(composer().props.value).toBe(plumbingOpening);
+  expect(mockStream).not.toHaveBeenCalled();
+});
+
+test('a customer with an unsent or uncertain intake submission is sent to the recovery form instead of a prefill', async () => {
+  mockLoad.mockResolvedValue(snapshot(null, []));
+  mockPending.mockResolvedValue({ key: 'k1', description: 'Vòi nước rò', location: 'Quận 1' });
+  await renderEntry();
+  await act(async () => { await Promise.resolve(); });
+  await chooseService('Sửa nước');
+  expect(mockPush).toHaveBeenCalledWith({ pathname: '/service', params: { category: 'plumbing' } });
+  expect(composer().props.value).toBe('');
+});
+
+test('the customer can rewrite the prefilled message and only their own words are sent', async () => {
+  mockLoad.mockResolvedValue(snapshot(null, []));
+  const requests: KaelTurnRequest[] = [];
+  scripted(requests, '66666666-6666-4666-8666-666666666666');
+  await renderEntry();
+  await act(async () => { await Promise.resolve(); });
+  await chooseService('Sửa nước');
+  await fireEvent.changeText(composer(), 'Mình muốn luyện tiếng Trung.');
+  await act(async () => { fireEvent.press(screen.getByLabelText('Gửi')); });
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.action).toEqual({ type: 'message', text: 'Mình muốn luyện tiếng Trung.' });
+});
+
+test('an unsent message typed before choosing a service is kept, not overwritten or merged', async () => {
+  mockLoad.mockResolvedValue(snapshot(null, []));
+  await renderEntry();
+  await act(async () => { await Promise.resolve(); });
+  await fireEvent.changeText(composer(), 'Câu hỏi đang soạn dở');
+  await chooseService('Sửa điện');
+  expect(composer().props.value).toBe('Câu hỏi đang soạn dở');
+  expect(screen.getByText(serviceEntryKeptNotice)).toBeTruthy();
+  expect(mockStream).not.toHaveBeenCalled();
+});
+
+test('a service chosen during a saved conversation starts a separate chat and the old draft returns with its session', async () => {
+  await renderEntry();
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.getByText('Đã ghi nhận vòi nước')).toBeTruthy();
+  await fireEvent.changeText(composer(), 'Nháp trong phiên vòi nước');
+  await chooseService('Vệ sinh sofa');
+  expect(screen.queryByText('Đã ghi nhận vòi nước')).toBeNull();
+  expect(composer().props.value).toBe('Kael ơi, mình muốn tìm dịch vụ vệ sinh sofa. Bạn tư vấn giúp mình nhé.');
+  await openSidebar();
+  await waitFor(() => expect(screen.getByLabelText(/^Sửa vòi nước, /)).toBeTruthy());
+  await act(async () => { fireEvent.press(screen.getByLabelText(/^Sửa vòi nước, /)); });
+  await waitFor(() => expect(screen.getByText('Đã ghi nhận vòi nước')).toBeTruthy());
+  expect(composer().props.value).toBe('Nháp trong phiên vòi nước');
+  expect(mockStream).not.toHaveBeenCalled();
+});
+
+test('the old service link hands the category to Kael as a prefill on arrival', async () => {
+  mockLoad.mockResolvedValue(snapshot(null, []));
+  handOffServiceEntry('other');
+  await renderEntry();
+  await act(async () => { await Promise.resolve(); });
+  expect(composer().props.value).toBe('Kael ơi, mình cần hỗ trợ một việc tại nhà nhưng chưa biết chọn dịch vụ nào. Bạn giúp mình nhé.');
+  expect(mockStream).not.toHaveBeenCalled();
+});
+
+test('starting a normal new chat after choosing a service does not carry the service message', async () => {
+  mockLoad.mockResolvedValue(snapshot(null, []));
+  await renderEntry();
+  await act(async () => { await Promise.resolve(); });
+  await chooseService('Sửa nước');
+  await openSidebar();
+  await act(async () => { fireEvent.press(screen.getByLabelText('Chat')); });
+  expect(composer().props.value).toBe('');
+});
+
+test('a service hand-off is ignored in Worker mode so no customer flow starts there', async () => {
+  mockLoad.mockResolvedValue(snapshot(null, []));
+  mockAccess.phase = 'worker';
+  try {
+    handOffServiceEntry('plumbing');
+    await renderEntry();
+    await act(async () => { await Promise.resolve(); });
+    expect(composer().props.value).toBe('');
+    expect(mockStream).not.toHaveBeenCalled();
+  } finally {
+    mockAccess.phase = 'client';
+  }
 });

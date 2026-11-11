@@ -8,10 +8,10 @@ const initialMetrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets:
 const headers = { apikey: 'key', Authorization: 'Bearer token' };
 const uri = 'https://example.test/storage/v1/object/authenticated/avatars/u1/avatar?v=1';
 
-function renderSidebar(avatar: { uri?: string; headers?: Record<string, string> }) {
+function renderSidebar(avatar: { uri?: string; headers?: Record<string, string> }, mode: 'client' | 'worker' = 'client') {
   return render(
     <SafeAreaProvider initialMetrics={initialMetrics}>
-      <Sidebar visible onClose={jest.fn()} onNavigate={jest.fn()} mode="client" modePending={false} modeNotice={null} onModeSelect={jest.fn()} onModeCancel={jest.fn()} onDismissModeNotice={jest.fn()} profileName="Nguyễn Minh" profileAvatarUri={avatar.uri} profileAvatarHeaders={avatar.headers} />
+      <Sidebar visible onClose={jest.fn()} onNavigate={jest.fn()} mode={mode} modePending={false} modeNotice={null} onModeSelect={jest.fn()} onModeCancel={jest.fn()} onDismissModeNotice={jest.fn()} profileName="Nguyễn Minh" profileAvatarUri={avatar.uri} profileAvatarHeaders={avatar.headers} />
     </SafeAreaProvider>,
   );
 }
@@ -35,4 +35,17 @@ test('without an avatar the sidebar shows the initial of the profile name', asyn
   await renderSidebar({});
   expect(screen.queryByLabelText('Ảnh đại diện')).toBeNull();
   expect(screen.getByText('N')).toBeTruthy();
+});
+
+test('the worker sidebar shows the stored avatar in its profile header and account button', async () => {
+  await renderSidebar({ uri, headers }, 'worker');
+  const images = screen.getAllByLabelText('Ảnh đại diện');
+  expect(images).toHaveLength(2);
+  for (const image of images) expect(image.props.source).toEqual({ uri, headers });
+});
+
+test('the worker sidebar falls back to the initial without a stored avatar', async () => {
+  await renderSidebar({}, 'worker');
+  expect(screen.queryByLabelText('Ảnh đại diện')).toBeNull();
+  expect(screen.getAllByText('N').length).toBeGreaterThan(0);
 });

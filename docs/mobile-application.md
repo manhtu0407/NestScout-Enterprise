@@ -418,6 +418,17 @@ the prior account's Horizon draft. Browser object URLs are released when images
 are removed or their owning draft is cleared. Drafts do not survive an app
 restart. Chat and image analysis are not connected; an attempted send preserves
 the draft and reports that it was not sent.
+
+The composer menu can attach a photo taken with the camera (`expo-image-picker`,
+`NSCameraUsageDescription`); it joins the same attachments as a library photo and is
+not sent. The microphone converts speech to text on the client
+(`expo-speech-recognition`, language `vi-VN`, `NSMicrophoneUsageDescription` and
+`NSSpeechRecognitionUsageDescription`). Stopping places the transcript in the composer
+for the user to edit and send; cancelling discards it, and nothing is sent
+automatically. No audio is recorded, stored or uploaded by the application. On iOS the
+operating system may process the speech with Apple. Both features need a native
+rebuild for the permission strings; they have not been run on a device, and Vietnamese
+accuracy and on-device processing are not verified.
 Browser rendering does not verify the native iOS runtime.
 
 ### Liquid Glass controls

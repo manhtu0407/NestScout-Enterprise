@@ -77,7 +77,7 @@ const metrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top:
 const renderEntry = () => render(<SafeAreaProvider initialMetrics={metrics}><HorizonEntry/></SafeAreaProvider>);
 
 async function say(text: string) {
-  await fireEvent.changeText(screen.getByPlaceholderText('Nhắn Kael...'), text);
+  await fireEvent.changeText(screen.getByPlaceholderText("What's on your home today...?"), text);
   await act(async () => { fireEvent.press(screen.getByLabelText('Gửi')); });
 }
 

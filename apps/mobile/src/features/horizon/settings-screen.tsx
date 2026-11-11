@@ -49,7 +49,7 @@ function OptionList<T extends string>({ options, labels, value, onSelect, note, 
   return (
     <>
       <SupportSection>
-        <SupportCard>
+        <SupportCard flush>
           {options.map(option => (
             <PressScale key={option} accessibilityRole="radio" accessibilityLabel={labels[option]} accessibilityState={{ selected: option === value }} onPress={() => onSelect(option)} style={styles.option}>
               <Text style={styles.optionLabel}>{labels[option]}</Text>
@@ -195,7 +195,9 @@ export function SettingsScreen({ onBack, profile, onEditProfile, settings, onCha
   if (view === 'appearance') {
     return (
       <SupportShell backLabel={strings.back} title={strings.appearance} onBack={toMain}>
-        <ThemeSwitch theme={resolvedAppearance} onThemeChange={appearance => update({ appearance })} label={resolvedAppearance === 'dark' ? strings.themeToLight : strings.themeToDark} accessibilityLabel={resolvedAppearance === 'dark' ? strings.themeToLight : strings.themeToDark} />
+        <SupportSection>
+          <ThemeSwitch theme={resolvedAppearance} onThemeChange={appearance => update({ appearance })} label={resolvedAppearance === 'dark' ? strings.themeToLight : strings.themeToDark} accessibilityLabel={resolvedAppearance === 'dark' ? strings.themeToLight : strings.themeToDark} />
+        </SupportSection>
         <OptionList<Appearance> options={appearances} labels={strings.appearanceNames} value={preferences.appearance} onSelect={appearance => update({ appearance })} note={strings.appearanceNote} strings={strings} />
       </SupportShell>
     );

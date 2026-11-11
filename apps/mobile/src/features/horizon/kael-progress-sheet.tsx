@@ -2,8 +2,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 import { Icon } from '@/features/shared';
-import { kaelPhaseEntries, kaelPhases } from './kael-phase';
-import type { KaelPhase } from './kael-phase';
+import type { KaelProgress } from './kael-progress';
 import { KaelPopIn, KaelSpinnerCheck } from './kael-progress-motion';
 
 const metrics = horizonLayout.kaelCompanion;
@@ -11,21 +10,19 @@ const colors = horizonColors.kaelCompanion;
 
 type Props = {
   open: boolean;
-  phase: KaelPhase | null;
+  progress: KaelProgress | null;
   bottomOffset: number;
   onClose: () => void;
 };
 
-export function KaelProgressSheet({ open, phase, bottomOffset, onClose }: Props) {
+export function KaelProgressSheet({ open, progress, bottomOffset, onClose }: Props) {
   if (!open) return null;
-  const current = phase === null ? -1 : kaelPhases.indexOf(phase);
-  const step = `Bước ${current + 1} / ${kaelPhases.length}`;
-  const hint = phase === null ? 'Chưa có yêu cầu đặt dịch vụ nào đang diễn ra' : phase === 'completed' ? `${step} · Chưa xác nhận thanh toán` : step;
+  const hint = progress === null ? 'Chưa có yêu cầu đặt dịch vụ nào đang diễn ra' : progress.hint;
   return <>
     <Pressable accessible={false} onPress={onClose} style={styles.scrim}/>
     <View accessibilityViewIsModal accessibilityLabel="Tiến độ đặt dịch vụ" style={[styles.sheet, { bottom: bottomOffset }]}>
       <View style={styles.head}>
-        {phase !== null && <KaelSpinnerCheck done={phase === 'completed'} label={phase === 'completed' ? 'Công việc đã hoàn tất, chưa xác nhận thanh toán' : 'Đang tiến hành'}/>}
+        {progress !== null && <KaelSpinnerCheck done={progress.finished} label={progress.spinnerLabel}/>}
         <View style={styles.headCopy}>
           <Text style={styles.title}>Tiến độ</Text>
           <Text style={styles.hint}>{hint}</Text>
@@ -35,17 +32,17 @@ export function KaelProgressSheet({ open, phase, bottomOffset, onClose }: Props)
         </Pressable>
       </View>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
-        {kaelPhaseEntries.map((entry, index) => {
-          const past = index < current;
-          const active = index === current;
+        {progress?.steps.map((label, index) => {
+          const past = index < progress.current;
+          const active = index === progress.current;
           const status = past ? 'Đã hoàn thành' : active ? 'Bạn đang ở bước này' : 'Chưa đến bước';
-          return <View key={entry.id} accessible accessibilityLabel={`${entry.control}. ${status}`} accessibilityState={{ selected: active }} style={styles.item}>
+          return <View key={label} accessible accessibilityLabel={`${label}. ${status}`} accessibilityState={{ selected: active }} style={styles.item}>
             <KaelPopIn enabled={past || active} index={index} style={[styles.marker, past && styles.markerDone, active && styles.markerCurrent]}>
               {past && <Icon name="check" size={metrics.progressMarkerGlyph} color={colors.progressMarkerGlyph}/>}
               {active && <View style={styles.dot}/>}
             </KaelPopIn>
             <View style={styles.itemCopy}>
-              <Text style={[styles.itemTitle, (past || active) && styles.itemTitleActive, active && styles.itemTitleCurrent]}>{entry.control}</Text>
+              <Text style={[styles.itemTitle, (past || active) && styles.itemTitleActive, active && styles.itemTitleCurrent]}>{label}</Text>
               {active && <Text style={styles.note}>{status}</Text>}
             </View>
           </View>;

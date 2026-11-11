@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react-native';
 import { KaelMatrixLoader, matrixDelay, matrixStops } from './kael-matrix-loader';
 import type { KaelMatrixVariant } from './kael-matrix-loader';
+import { progressForPhase } from './kael-progress';
 import { KaelProgressSheet } from './kael-progress-sheet';
 import { KaelSpinnerCheck } from './kael-progress-motion';
 
@@ -52,11 +53,11 @@ test('the spinner reports whether the request is still moving or finished', asyn
 });
 
 test('the progress sheet shows a spinner while a request is in progress and none without one', async () => {
-  const view = await render(<KaelProgressSheet open phase="matching" bottomOffset={0} onClose={jest.fn()}/>);
+  const view = await render(<KaelProgressSheet open progress={progressForPhase('matching')} bottomOffset={0} onClose={jest.fn()}/>);
   expect(screen.getByLabelText('Đang tiến hành')).toBeTruthy();
-  await view.rerender(<KaelProgressSheet open phase="completed" bottomOffset={0} onClose={jest.fn()}/>);
+  await view.rerender(<KaelProgressSheet open progress={progressForPhase('completed')} bottomOffset={0} onClose={jest.fn()}/>);
   expect(screen.getByLabelText('Công việc đã hoàn tất, chưa xác nhận thanh toán')).toBeTruthy();
   expect(screen.getByText('Bước 8 / 8 · Chưa xác nhận thanh toán')).toBeTruthy();
-  await view.rerender(<KaelProgressSheet open phase={null} bottomOffset={0} onClose={jest.fn()}/>);
+  await view.rerender(<KaelProgressSheet open progress={null} bottomOffset={0} onClose={jest.fn()}/>);
   expect(screen.queryByLabelText('Đang tiến hành')).toBeNull();
 });

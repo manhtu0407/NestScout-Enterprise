@@ -1,32 +1,83 @@
 import * as Haptics from 'expo-haptics';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 
 import { Icon, useGlassAccessibility } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
+import { startVoiceInput, voiceFailureNotice, type VoiceSession } from './voice-input';
+
 const metrics = horizonLayout.chatComposer;
 const colors = horizonColors.chatComposer;
 const middle = (metrics.voiceBarCount - 1) / 2;
 const envelopes = Array.from({ length: metrics.voiceBarCount }, (_, index) => 1 - Math.abs(index - middle) * metrics.voiceBarFalloff);
 
-export function useLiquidVoice(onFinish: () => void) {
-  const [recording, setRecording] = useState(false);
-  const start = () => {
+type VoicePhase = 'idle' | 'requesting' | 'listening' | 'finishing';
+
+export function useLiquidVoice(onTranscript: (text: string) => void, onNotice: (text: string) => void) {
+  const [phase, setPhase] = useState<VoicePhase>('idle');
+  const phaseRef = useRef<VoicePhase>('idle');
+  const sessionRef = useRef<VoiceSession | null>(null);
+  const generationRef = useRef(0);
+  const callbacks = useRef({ onTranscript, onNotice });
+  useEffect(() => { callbacks.current = { onTranscript, onNotice }; });
+  const move = useCallback((next: VoicePhase) => { phaseRef.current = next; setPhase(next); }, []);
+
+  useEffect(() => () => {
+    generationRef.current += 1;
+    sessionRef.current?.abort();
+  }, []);
+
+  const start = useCallback(async () => {
+    if (phaseRef.current !== 'idle') return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setRecording(true);
-  };
-  const cancel = () => {
+    generationRef.current += 1;
+    const generation = generationRef.current;
+    const current = () => generationRef.current === generation;
+    move('requesting');
+    const session = await startVoiceInput({
+      onTranscript: () => undefined,
+      onEnd: transcript => {
+        if (!current()) return;
+        sessionRef.current = null;
+        move('idle');
+        callbacks.current.onTranscript(transcript);
+      },
+      onFailure: failure => {
+        if (!current()) return;
+        move('idle');
+        callbacks.current.onNotice(voiceFailureNotice[failure]);
+      },
+    });
+    if (session === null) {
+      if (current()) move('idle');
+      return;
+    }
+    if (!current()) {
+      session.abort();
+      return;
+    }
+    sessionRef.current = session;
+    move('listening');
+  }, [move]);
+
+  const cancel = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setRecording(false);
-  };
-  const finish = () => {
+    generationRef.current += 1;
+    sessionRef.current?.abort();
+    sessionRef.current = null;
+    move('idle');
+  }, [move]);
+
+  const finish = useCallback(() => {
+    if (phaseRef.current !== 'listening') return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setRecording(false);
-    onFinish();
-  };
-  return { recording, start, cancel, finish };
+    move('finishing');
+    sessionRef.current?.stop();
+  }, [move]);
+
+  return { recording: phase !== 'idle', finishing: phase === 'finishing', start, cancel, finish };
 }
 
 function Waveform() {
@@ -81,7 +132,7 @@ export function LiquidVoiceCapsule({ onCancel, onSend }: CapsuleProps) {
       <View accessible accessibilityLabel="Đang nghe" style={styles.waveSlot}>
         <Waveform />
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Dừng và gửi lời nói" hitSlop={metrics.voiceActionHitSlop} onPress={onSend} style={[styles.action, styles.send]}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Dừng và đưa lời nói vào ô nhập" hitSlop={metrics.voiceActionHitSlop} onPress={onSend} style={[styles.action, styles.send]}>
         <Icon name="arrowUp" size={metrics.voiceActionIconSize} strokeWidth={metrics.voiceActionStroke} color={colors.voiceSendIcon} />
       </Pressable>
     </Animated.View>

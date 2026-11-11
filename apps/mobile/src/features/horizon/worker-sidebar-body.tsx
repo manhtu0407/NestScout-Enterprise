@@ -6,6 +6,7 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 import { AvailabilitySwitch } from './availability-switch';
+import { AvatarImage } from './avatar-image';
 import { workerPreviewSummary, workerSidebarGroups } from './content';
 import { CollapsibleGroup } from './sidebar-group';
 import { PopBadge } from './motion-count';
@@ -13,6 +14,8 @@ import type { SidebarItem } from './content';
 import { GlassCapsuleButton, GlassIconButton, Icon, useGlassAccessibility, usePressFeedback, type WorkerMissingItem } from '@/features/shared';
 
 type Props = {
+  profileAvatarUri?: string;
+  profileAvatarHeaders?: Readonly<Record<string, string>>;
   onNavigate: (id: string) => void;
   onOpenAccount: () => void;
   onChooseMode: () => void;
@@ -47,12 +50,13 @@ function WorkerRow({ item, badge = 0, onPress }: { item: SidebarItem; badge?: nu
   </Animated.View>;
 }
 
-function Profile({ profileName, roleLine, online, goHint, missingCount, onToggle }: { profileName?: string; roleLine: string; online: boolean; goHint?: string; missingCount: number; onToggle: () => void }) {
+function Profile({ profileName, avatarUri, avatarHeaders, roleLine, online, goHint, missingCount, onToggle }: { profileName?: string; avatarUri?: string; avatarHeaders?: Readonly<Record<string, string>>; roleLine: string; online: boolean; goHint?: string; missingCount: number; onToggle: () => void }) {
   const initial = profileName?.trim().charAt(0).toLocaleUpperCase();
+  const initialOrIcon = initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={list.avatarIconSize + 2} color={avatarColors.avatarInitial}/>;
   return <View style={styles.profile}>
     <View style={styles.identity}>
       <View>
-        <View style={styles.avatar}>{initial ? <Text style={styles.avatarInitial}>{initial}</Text> : <Icon name="user" size={list.avatarIconSize + 2} color={avatarColors.avatarInitial}/>}</View>
+        <View style={styles.avatar}>{avatarUri ? <AvatarImage uri={avatarUri} headers={avatarHeaders} fallback={initialOrIcon}/> : initialOrIcon}</View>
         <View style={[styles.presence, { backgroundColor: online ? colors.online : colors.offline }]}/>
       </View>
       <View style={styles.identityCopy}>
@@ -80,7 +84,7 @@ function onlineOf(profile: WorkerSidebarState | undefined, sampleOnline: boolean
   return profile !== null && profile !== 'loading' && profile.accepting;
 }
 
-export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, profileName, accountLabel, badges = {}, workerProfile, onSetAccepting }: Props) {
+export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, profileName, profileAvatarUri, profileAvatarHeaders, accountLabel, badges = {}, workerProfile, onSetAccepting }: Props) {
   const [sampleOnline, setSampleOnline] = useState(true);
   const [pending, setPending] = useState<{ value: boolean; from: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -105,6 +109,7 @@ export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, pro
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set(workerSidebarGroups.slice(0, 1).map(group => group.title)));
   const toggleGroup = (title: string) => setOpenGroups(current => { const next = new Set(current); if (!next.delete(title)) next.add(title); return next; });
   const initial = profileName?.trim().charAt(0).toLocaleUpperCase();
+  const floatingPlaceholder = initial ? <Text style={styles.floatingInitial}>{initial}</Text> : <Icon name="user" size={list.avatarIconSize} color={avatarColors.avatarInitial}/>;
   return <>
     <View style={styles.heading}>
       <View style={styles.brand}>
@@ -114,7 +119,7 @@ export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, pro
       </View>
     </View>
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Profile profileName={profileName} roleLine={roleLineFor(workerProfile)} online={online} goHint={workerProfile === null ? 'Chưa có hồ sơ nghề. Chạm để tạo hồ sơ' : undefined} missingCount={missingCount} onToggle={toggle}/>
+      <Profile profileName={profileName} avatarUri={profileAvatarUri} avatarHeaders={profileAvatarHeaders} roleLine={roleLineFor(workerProfile)} online={online} goHint={workerProfile === null ? 'Chưa có hồ sơ nghề. Chạm để tạo hồ sơ' : undefined} missingCount={missingCount} onToggle={toggle}/>
       <View style={styles.groups}>{workerSidebarGroups.map((group, index) => <CollapsibleGroup first={index === 0} key={group.title} title={group.title} expanded={openGroups.has(group.title)} onToggle={() => toggleGroup(group.title)} badge={group.items.reduce((total, item) => total + (badges[item.id] ?? 0), 0)}>
         {group.items.map(item => <WorkerRow key={item.id} item={item} badge={badges[item.id]} onPress={() => onNavigate(item.id)}/>)}
         {group.title === supportGroupTitle && <>
@@ -125,7 +130,7 @@ export function WorkerSidebarBody({ onNavigate, onOpenAccount, onChooseMode, pro
     </ScrollView>
     <View pointerEvents="box-none" style={styles.floating}>
       <GlassIconButton label={accountLabel} hint="Mở tài khoản và chuyển vai trò" onPress={onOpenAccount}>
-        <View style={styles.floatingAvatar}>{initial ? <Text style={styles.floatingInitial}>{initial}</Text> : <Icon name="user" size={list.avatarIconSize} color={avatarColors.avatarInitial}/>}</View>
+        <View style={styles.floatingAvatar}>{profileAvatarUri ? <AvatarImage uri={profileAvatarUri} headers={profileAvatarHeaders} fallback={floatingPlaceholder}/> : floatingPlaceholder}</View>
       </GlassIconButton>
       <GlassCapsuleButton label="Chat" tone="light" radius={list.floatingRadius} onPress={() => onNavigate('new')} style={styles.newChat}>
         <Icon name="plus" size={22} color={listColors.onAccent} strokeWidth={2}/><Text style={styles.newChatLabel}>Chat</Text>
@@ -143,7 +148,7 @@ const styles = StyleSheet.create({
   content: { paddingTop: metrics.contentTop, paddingBottom: list.listBottomPadding },
   profile: { gap: metrics.profileGap, paddingBottom: metrics.profileGap, borderBottomWidth: metrics.hairlineWidth, borderBottomColor: colors.hairline },
   identity: { flexDirection: 'row', alignItems: 'center', gap: metrics.identityGap },
-  avatar: { width: metrics.avatarSize, height: metrics.avatarSize, borderRadius: metrics.avatarRadius, backgroundColor: avatarColors.avatarFill, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: metrics.avatarSize, height: metrics.avatarSize, borderRadius: metrics.avatarRadius, backgroundColor: avatarColors.avatarFill, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarInitial: { color: avatarColors.avatarInitial, fontSize: metrics.avatarInitialSize, fontWeight: list.avatarFontWeight },
   presence: { position: 'absolute', right: -metrics.presenceRing, bottom: -metrics.presenceRing, width: metrics.presenceSize, height: metrics.presenceSize, borderRadius: metrics.presenceRadius, borderWidth: metrics.presenceRing, borderColor: colors.surface },
   identityCopy: { flex: 1, gap: metrics.identityCopyGap },
@@ -156,7 +161,7 @@ const styles = StyleSheet.create({
   badge: { minWidth: list.badgeSize, height: list.badgeSize, paddingHorizontal: list.badgePaddingHorizontal, borderRadius: list.badgeRadius, backgroundColor: colors.badge, alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: colors.onBadge, fontSize: list.badgeFontSize, fontWeight: list.badgeFontWeight },
   floating: { position: 'absolute', left: horizonLayout.sidebar.drawerPaddingHorizontal, right: horizonLayout.sidebar.drawerPaddingHorizontal, bottom: list.floatingBottom, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  floatingAvatar: { width: list.avatarDiscSize, height: list.avatarDiscSize, borderRadius: list.avatarDiscRadius, backgroundColor: avatarColors.avatarFill, alignItems: 'center', justifyContent: 'center' },
+  floatingAvatar: { width: list.avatarDiscSize, height: list.avatarDiscSize, borderRadius: list.avatarDiscRadius, backgroundColor: avatarColors.avatarFill, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   floatingInitial: { color: avatarColors.avatarInitial, fontSize: list.avatarInitialSize, fontWeight: list.avatarFontWeight },
   newChat: { height: list.floatingHeight, paddingHorizontal: list.floatingPaddingHorizontal, flexDirection: 'row', alignItems: 'center', gap: list.floatingGap },
   newChatLabel: { color: listColors.onAccent, fontSize: list.floatingFontSize, fontWeight: list.floatingFontWeight },

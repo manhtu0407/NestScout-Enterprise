@@ -152,7 +152,7 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
     <View pointerEvents={visible ? 'auto' : 'none'} style={styles.full}>
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dim, { opacity: progress }]}/>
       <Animated.View pointerEvents={pickerVisible || accountOpen ? 'none' : 'auto'} accessibilityElementsHidden={pickerVisible || accountOpen} importantForAccessibility={pickerVisible || accountOpen ? 'no-hide-descendants' : 'auto'} aria-hidden={pickerVisible || accountOpen} style={[styles.drawer, drawerMotion, { width: drawerWidth, paddingTop: topInset, paddingBottom: Math.max(insets.bottom, horizonLayout.sidebar.drawerMinimumBottom) }]}>
-        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={badges} workerProfile={workerProfile} onSetAccepting={onSetAccepting}/> : <>
+        {mode === 'worker' ? <WorkerSidebarBody onNavigate={onNavigate} onOpenAccount={() => { setAccountCloseRequest(0); setAccountOpen(true); }} onChooseMode={chooseMode} profileName={profileName} profileAvatarUri={profileAvatarUri} profileAvatarHeaders={profileAvatarHeaders} accountLabel={`Tài khoản ${accountName}, đang dùng: ${modeLabel}`} badges={badges} workerProfile={workerProfile} onSetAccepting={onSetAccepting}/> : <>
         <View style={styles.heading}>
           <View style={styles.brand}>
             <View accessible accessibilityRole="header" accessibilityLabel="NestScout Horizon" style={styles.lockup}>
