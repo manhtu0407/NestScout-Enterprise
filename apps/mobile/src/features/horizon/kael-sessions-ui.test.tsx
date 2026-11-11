@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { KaelEvent, KaelSession, KaelTurnRequest } from '@/features/shared';
-import { deleteKaelSession, KaelSessionError, listKaelSessions, loadKaelConversation, openKaelConversation, renameKaelSession, setKaelSessionArchived, setKaelSessionPinned, streamKaelTurn } from '@/features/shared';
+import { deleteKaelSession, KaelSessionError, listKaelSessions, loadKaelConversation, loadPendingRequest, openKaelConversation, renameKaelSession, setKaelSessionArchived, setKaelSessionPinned, streamKaelTurn } from '@/features/shared';
 
 import { HorizonEntry } from './horizon-entry';
 import { handOffServiceEntry, handOffToKael } from './kael-handoff';
@@ -33,7 +33,7 @@ jest.mock('./use-worker-data', () => ({
 }));
 jest.mock('@/features/shared', () => ({
   ...jest.requireActual('@/features/shared'),
-  streamKaelTurn: jest.fn(), loadKaelConversation: jest.fn(), openKaelConversation: jest.fn(), listKaelSessions: jest.fn(),
+  streamKaelTurn: jest.fn(), loadKaelConversation: jest.fn(), openKaelConversation: jest.fn(), listKaelSessions: jest.fn(), loadPendingRequest: jest.fn(),
   renameKaelSession: jest.fn(), setKaelSessionPinned: jest.fn(), setKaelSessionArchived: jest.fn(), deleteKaelSession: jest.fn(),
 }));
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
@@ -56,6 +56,7 @@ const row = (id: string, title: string, extra: Partial<KaelSession> = {}): KaelS
 const metrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
 const renderEntry = () => render(<SafeAreaProvider initialMetrics={metrics}><HorizonEntry/></SafeAreaProvider>);
 const mockList = jest.mocked(listKaelSessions);
+const mockPending = jest.mocked(loadPendingRequest);
 const mockOpen = jest.mocked(openKaelConversation);
 const mockLoad = jest.mocked(loadKaelConversation);
 const mockStream = jest.mocked(streamKaelTurn);
@@ -78,6 +79,7 @@ async function openSidebar() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockPending.mockResolvedValue(null);
   mockLoad.mockResolvedValue(snapshot(sessionA, ['Sửa vòi nước', 'Đã ghi nhận vòi nước']));
   mockList.mockResolvedValue([row(sessionA, 'Sửa vòi nước'), row(sessionB, 'Vệ sinh sofa', { pinned: true })]);
   mockOpen.mockImplementation(async (_user, _mode, id) => (id === sessionB ? snapshot(sessionB, ['Vệ sinh sofa', 'Đã ghi nhận sofa']) : snapshot(sessionA, ['Sửa vòi nước', 'Đã ghi nhận vòi nước'])));
@@ -271,6 +273,7 @@ const composer = () => screen.getByPlaceholderText("What's on your home today...
 async function chooseService(title: string) {
   await openSidebar();
   await act(async () => { fireEvent.press(screen.getByLabelText(title)); });
+  await act(async () => { await Promise.resolve(); });
 }
 
 test('every service entry fills the Kael composer instead of opening a form, and sends nothing', async () => {
@@ -281,6 +284,7 @@ test('every service entry fills the Kael composer instead of opening a form, and
   const titles = ['Sửa điện', 'Sửa nước', 'Máy lạnh', 'Vệ sinh nhà', 'Vệ sinh sofa', 'Lắp đặt & sửa chữa nhỏ', 'Dịch vụ khác'];
   for (const title of titles) expect(screen.getByLabelText(title)).toBeTruthy();
   await act(async () => { fireEvent.press(screen.getByLabelText('Máy lạnh')); });
+  await act(async () => { await Promise.resolve(); });
   expect(composer().props.value).toBe(airconOpening);
   expect(mockPush).not.toHaveBeenCalled();
   expect(mockStream).not.toHaveBeenCalled();
@@ -290,6 +294,16 @@ test('every service entry fills the Kael composer instead of opening a form, and
   await chooseService('Sửa nước');
   expect(composer().props.value).toBe(plumbingOpening);
   expect(mockStream).not.toHaveBeenCalled();
+});
+
+test('a customer with an unsent or uncertain intake submission is sent to the recovery form instead of a prefill', async () => {
+  mockLoad.mockResolvedValue(snapshot(null, []));
+  mockPending.mockResolvedValue({ key: 'k1', description: 'Vòi nước rò', location: 'Quận 1' });
+  await renderEntry();
+  await act(async () => { await Promise.resolve(); });
+  await chooseService('Sửa nước');
+  expect(mockPush).toHaveBeenCalledWith({ pathname: '/service', params: { category: 'plumbing' } });
+  expect(composer().props.value).toBe('');
 });
 
 test('the customer can rewrite the prefilled message and only their own words are sent', async () => {

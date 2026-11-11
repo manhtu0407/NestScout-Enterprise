@@ -103,3 +103,28 @@ test('a second tap on the mic while listening does not start another session', a
   await fireEvent.press(screen.getByLabelText('Nói với Kael'));
   expect(mockStart).toHaveBeenCalledTimes(1);
 });
+
+test('a cancelled start that resolves late is aborted and cannot disturb the newer recording', async () => {
+  let release: (session: VoiceSession) => void = () => undefined;
+  const late = { stop: jest.fn(), abort: jest.fn() };
+  const sessions: VoiceHandlers[] = [];
+  mockStart.mockReset();
+  mockStart.mockImplementationOnce(async (handlers: VoiceHandlers) => {
+    sessions.push(handlers);
+    return new Promise<VoiceSession>(resolve => { release = resolve; });
+  });
+  mockStart.mockImplementationOnce(async (handlers: VoiceHandlers) => {
+    sessions.push(handlers);
+    return { stop: jest.fn(), abort: jest.fn() };
+  });
+  await render(<Harness initial="giữ nguyên" />);
+  await fireEvent.press(screen.getByLabelText('Nói với Kael'));
+  await fireEvent.press(screen.getByLabelText('Hủy ghi âm'));
+  await fireEvent.press(screen.getByLabelText('Nói với Kael'));
+  expect(mockStart).toHaveBeenCalledTimes(2);
+  await act(async () => { release(late); });
+  expect(late.abort).toHaveBeenCalledTimes(1);
+  await act(async () => { sessions[0]?.onEnd('không được dùng'); });
+  expect(screen.getByLabelText('Đang nghe')).toBeTruthy();
+  expect(field().props.value).toBe('giữ nguyên');
+});

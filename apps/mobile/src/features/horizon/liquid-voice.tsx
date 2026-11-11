@@ -19,48 +19,52 @@ export function useLiquidVoice(onTranscript: (text: string) => void, onNotice: (
   const [phase, setPhase] = useState<VoicePhase>('idle');
   const phaseRef = useRef<VoicePhase>('idle');
   const sessionRef = useRef<VoiceSession | null>(null);
-  const discardRef = useRef(false);
+  const generationRef = useRef(0);
   const callbacks = useRef({ onTranscript, onNotice });
   useEffect(() => { callbacks.current = { onTranscript, onNotice }; });
   const move = useCallback((next: VoicePhase) => { phaseRef.current = next; setPhase(next); }, []);
 
   useEffect(() => () => {
-    discardRef.current = true;
+    generationRef.current += 1;
     sessionRef.current?.abort();
   }, []);
 
   const start = useCallback(async () => {
     if (phaseRef.current !== 'idle') return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    discardRef.current = false;
+    generationRef.current += 1;
+    const generation = generationRef.current;
+    const current = () => generationRef.current === generation;
     move('requesting');
     const session = await startVoiceInput({
       onTranscript: () => undefined,
       onEnd: transcript => {
+        if (!current()) return;
         sessionRef.current = null;
         move('idle');
-        if (!discardRef.current) callbacks.current.onTranscript(transcript);
+        callbacks.current.onTranscript(transcript);
       },
       onFailure: failure => {
+        if (!current()) return;
         move('idle');
-        if (!discardRef.current) callbacks.current.onNotice(voiceFailureNotice[failure]);
+        callbacks.current.onNotice(voiceFailureNotice[failure]);
       },
     });
     if (session === null) {
-      move('idle');
+      if (current()) move('idle');
       return;
     }
-    sessionRef.current = session;
-    if (discardRef.current) {
+    if (!current()) {
       session.abort();
       return;
     }
+    sessionRef.current = session;
     move('listening');
   }, [move]);
 
   const cancel = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    discardRef.current = true;
+    generationRef.current += 1;
     sessionRef.current?.abort();
     sessionRef.current = null;
     move('idle');

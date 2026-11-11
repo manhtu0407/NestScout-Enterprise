@@ -154,7 +154,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
   const startNew = () => { setMenuOpen(false); setMenuNotice(null); onNew(); };
   const share = async () => {
     const outcome = await shareConversation(messages);
-    if (outcome !== 'shared') notify(shareNotices[outcome]);
+    if (outcome !== 'shared' && outcome !== 'cancelled') notify(shareNotices[outcome]);
   };
   const copyText = async (text: string): Promise<boolean> => {
     try {

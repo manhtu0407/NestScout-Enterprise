@@ -37,6 +37,10 @@ export function voiceInputAvailable(): boolean {
   }
 }
 
+export function joinUtterances(parts: readonly string[]): string {
+  return parts.map(part => part.trim()).filter(part => part !== '').join(' ');
+}
+
 export async function startVoiceInput(handlers: VoiceHandlers): Promise<VoiceSession | null> {
   if (!voiceInputAvailable()) {
     handlers.onFailure('unsupported');
@@ -49,12 +53,20 @@ export async function startVoiceInput(handlers: VoiceHandlers): Promise<VoiceSes
       return null;
     }
   }
-  let transcript = '';
+  const finalized: string[] = [];
+  let interim = '';
+  const spoken = () => joinUtterances([...finalized, interim]);
   let settled = false;
   const subscriptions = [
     ExpoSpeechRecognitionModule.addListener('result', event => {
-      transcript = event.results[0]?.transcript ?? transcript;
-      handlers.onTranscript(transcript);
+      const heard = event.results[0]?.transcript ?? '';
+      if (event.isFinal) {
+        if (heard.trim() !== '') finalized.push(heard);
+        interim = '';
+      } else {
+        interim = heard;
+      }
+      handlers.onTranscript(spoken());
     }),
     ExpoSpeechRecognitionModule.addListener('error', event => {
       const failure = failureForCode(event.error);
@@ -64,7 +76,7 @@ export async function startVoiceInput(handlers: VoiceHandlers): Promise<VoiceSes
       if (settled) return;
       settled = true;
       for (const subscription of subscriptions) subscription.remove();
-      handlers.onEnd(transcript);
+      handlers.onEnd(spoken());
     }),
   ];
   try {

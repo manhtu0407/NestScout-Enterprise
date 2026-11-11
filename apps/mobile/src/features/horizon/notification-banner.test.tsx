@@ -64,3 +64,13 @@ test('the expanded actions stay out of the accessibility tree until the banner i
   await act(async () => { await render(banner({ notice })); });
   expect(screen.queryByLabelText('Bỏ qua thông báo')).toBeNull();
 });
+
+test('replacing or removing the notification releases the countdown hold', async () => {
+  const onHold = jest.fn();
+  const view = await render(banner({ notice, onHold }));
+  await view.rerender(banner({ notice: later, onHold }));
+  await waitFor(() => expect(onHold).toHaveBeenCalledWith(false));
+  onHold.mockClear();
+  await view.rerender(banner({ notice: null, onHold }));
+  await waitFor(() => expect(onHold).toHaveBeenCalledWith(false));
+});

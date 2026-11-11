@@ -38,3 +38,14 @@ test('sharing reports failure when neither the share sheet nor the clipboard wor
   Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true });
   expect(await shareConversation(messages)).toBe('failed');
 });
+
+test('cancelling the share sheet neither copies the transcript nor reports a failure', async () => {
+  const abort = Object.assign(new Error('cancelled'), { name: 'AbortError' });
+  jest.spyOn(Share, 'share').mockRejectedValue(abort);
+  const writeText = jest.fn().mockResolvedValue(undefined);
+  Object.defineProperty(globalThis, 'navigator', { value: { clipboard: { writeText } }, configurable: true });
+  const platform = jest.replaceProperty(Platform, 'OS', 'web');
+  expect(await shareConversation(messages)).toBe('cancelled');
+  expect(writeText).not.toHaveBeenCalled();
+  platform.restore();
+});

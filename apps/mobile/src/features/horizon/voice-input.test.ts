@@ -1,6 +1,6 @@
 import { ExpoSpeechRecognitionModule, clearSpeechListeners, emitSpeechEvent } from '@/testing/expo-speech-recognition';
 
-import { appendTranscript, failureForCode, startVoiceInput, voiceInputAvailable, voiceLanguage } from './voice-input';
+import { appendTranscript, failureForCode, joinUtterances, startVoiceInput, voiceInputAvailable, voiceLanguage } from './voice-input';
 
 const module = jest.mocked(ExpoSpeechRecognitionModule);
 
@@ -48,6 +48,18 @@ test('listens in Vietnamese with interim results and returns the latest transcri
   emitSpeechEvent('end', null);
   expect(target.onTranscript).toHaveBeenLastCalledWith('nhà mình bị rò nước');
   expect(target.onEnd).toHaveBeenCalledWith('nhà mình bị rò nước');
+});
+
+test('keeps every finalized utterance of a continuous session and the phrase still being spoken', async () => {
+  const target = handlers();
+  await startVoiceInput(target);
+  emitSpeechEvent('result', { isFinal: true, results: [{ transcript: 'vòi nước bị rò' }] });
+  emitSpeechEvent('result', { isFinal: false, results: [{ transcript: 'cần thợ' }] });
+  expect(target.onTranscript).toHaveBeenLastCalledWith('vòi nước bị rò cần thợ');
+  emitSpeechEvent('result', { isFinal: true, results: [{ transcript: 'cần thợ đến sớm' }] });
+  emitSpeechEvent('end', null);
+  expect(target.onEnd).toHaveBeenCalledWith('vòi nước bị rò cần thợ đến sớm');
+  expect(joinUtterances([' a ', '', 'b'])).toBe('a b');
 });
 
 test('end is delivered once and stops listening for later events', async () => {

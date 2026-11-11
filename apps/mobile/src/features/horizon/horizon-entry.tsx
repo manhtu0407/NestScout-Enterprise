@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { EntryRedirect, useAccess } from '@/features/access';
 import { Sidebar } from './sidebar';
-import { Icon } from '@/features/shared';
+import { Icon, loadPendingRequest } from '@/features/shared';
 import { KaelHomeScreen } from './kael-home-screen';
 import { KaelMemorySettings } from './kael-memory-settings';
 import { kaelIntroSession } from './kael-intro-session';
@@ -21,6 +21,7 @@ import { KaelAttentionCard } from './kael-attention-card';
 import { countActionableQuotes, countUnreadNotifications, toNotificationItems, toRequestViews } from './request-views';
 import { pickProgressJob, pickProgressRequest, progressForRequest, progressForWorkerJob } from './kael-progress';
 import type { KaelProgress } from './kael-progress';
+import { readIntakeDraft } from './service-intake-drafts';
 import { NotificationBanner } from './notification-banner';
 import type { BannerNotice } from './notification-banner-model';
 import { useNotificationBanner } from './use-notification-banner';
@@ -312,8 +313,20 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
 
   const openService = useCallback((categoryId: string) => {
     setDrawerOpen(false);
-    applyServiceEntryRef.current(categoryId);
-  }, []);
+    if (customerUserId === null) {
+      applyServiceEntryRef.current(categoryId);
+      return;
+    }
+    const recover = () => router.push({ pathname: '/service', params: { category: categoryId } });
+    if (Object.values(readIntakeDraft(customerUserId, categoryId)).some(value => value.trim() !== '')) {
+      recover();
+      return;
+    }
+    loadPendingRequest(customerUserId).then(
+      item => { if (item === null) applyServiceEntryRef.current(categoryId); else recover(); },
+      recover,
+    );
+  }, [customerUserId, router]);
 
   const navigate = useCallback((id: string) => {
     setDrawerOpen(false);

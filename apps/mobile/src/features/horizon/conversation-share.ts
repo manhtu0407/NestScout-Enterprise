@@ -1,9 +1,9 @@
 import { Platform, Share } from 'react-native';
 
 export type ShareableMessage = { role: 'user' | 'assistant'; text: string };
-export type ShareOutcome = 'shared' | 'copied' | 'empty' | 'failed';
+export type ShareOutcome = 'shared' | 'cancelled' | 'copied' | 'empty' | 'failed';
 
-export const shareNotices: Readonly<Record<Exclude<ShareOutcome, 'shared'>, string>> = {
+export const shareNotices: Readonly<Record<Exclude<ShareOutcome, 'shared' | 'cancelled'>, string>> = {
   copied: 'Đã sao chép nội dung cuộc trò chuyện.',
   empty: 'Chưa có nội dung để chia sẻ.',
   failed: 'Thiết bị này chưa mở được chia sẻ.',
@@ -32,7 +32,8 @@ export async function shareConversation(messages: readonly ShareableMessage[]): 
   try {
     await Share.share({ message: transcript });
     return 'shared';
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') return 'cancelled';
     return await copyToClipboard(transcript) ? 'copied' : 'failed';
   }
 }

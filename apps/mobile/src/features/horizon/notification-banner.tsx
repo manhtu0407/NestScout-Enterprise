@@ -64,14 +64,16 @@ export function NotificationBanner({ notice, onOpen, onDismiss, onHold }: Props)
   }, [fade, live, y]);
 
   const reveal = useCallback((next: BannerNotice) => {
+    live.onHold(false);
     setExpanded(false);
     setShown(next);
-  }, []);
+  }, [live]);
 
   const clear = useCallback(() => {
+    live.onHold(false);
     setExpanded(false);
     setShown(null);
-  }, []);
+  }, [live]);
 
   if (notice !== null && shown === null) setShown(notice);
 
@@ -130,7 +132,7 @@ export function NotificationBanner({ notice, onOpen, onDismiss, onHold }: Props)
       if (outcome === 'open') {
         const current = live.shown;
         if (current !== null) live.onOpen(current);
-        live.onHold(live.expanded);
+        live.onHold(false);
       } else if (outcome === 'expand') {
         setExpanded(true);
         live.sync({ expanded: true });
