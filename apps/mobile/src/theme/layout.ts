@@ -342,7 +342,7 @@ export const horizonLayout = {
       sectionTitleSize: 13, sectionTitleWeight: '600', sectionTitleGap: 8, sectionTitleInset: 6,
       cardRadius: 20, rowMinHeight: 58, rowPaddingHorizontal: 14, rowPaddingVertical: 10, rowGap: 14,
       tileSize: 38, tileRadius: 19, tileIconSize: 19, rowTitleSize: 15, rowTitleWeight: '500', rowDetailSize: 13, rowDetailLineHeight: 18, rowDetailGap: 2,
-      chevronSize: 18, separatorInset: 66, separatorHeight: 1,
+      chevronSize: 18, separatorInset: 66, optionSeparatorInset: 14, separatorHeight: 1,
       notificationDot: 8, notificationActionHeight: 44, notificationActionPadding: 4, notificationActionSize: 15, notificationActionWeight: '600',
       emptyPaddingTop: 72, emptyPaddingHorizontal: 24, emptyGap: 8, emptyIconSize: 30, emptyTitleSize: 16, emptyTitleWeight: '600', emptyBodySize: 14, emptyBodyLineHeight: 21,
       searchHeight: 48, searchRadius: 24, searchPaddingHorizontal: 16, searchGap: 10, searchIconSize: 20, searchFontSize: 15, searchMarginBottom: 20,
