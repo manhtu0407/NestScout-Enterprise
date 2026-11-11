@@ -1,11 +1,13 @@
 # Workflow coverage and historical scope
 
-## Current navigation — 2026-10-25
+## Current navigation — 2026-11-11
 
 Classic main protection and both required checks are enabled; the earlier coverage
-register is historical. Current procedures live in [operations](operations.md),
-agent behavior methodology in [agent evaluation](agent-evaluation.md), and unresolved
-product choices in [architecture decisions](architecture.md). The
+register is historical. The current repository includes the Expo mobile app and a
+connected Supabase backend; implementation status is in [architecture](architecture.md),
+[mobile application](mobile-application.md) and [Supabase development](supabase-development.md).
+Current procedures live in [operations](operations.md), agent behavior methodology
+in [agent evaluation](agent-evaluation.md), and remaining product choices in [architecture decisions](architecture.md). The
 [hardening evidence](setup-evidence.md#foundation-hardening-2026-10-25) records fresh
 checks separately from earlier setup runs. These references add no task authority.
 

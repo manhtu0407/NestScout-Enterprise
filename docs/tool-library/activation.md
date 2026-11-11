@@ -1,12 +1,12 @@
 # Product activation and architectural references
 
-These entries remain discoverable before a product exists. Doctor reports
-NOT_APPLICABLE, installed/available unknown and verified false; it performs no installs or app
-commands. No empty application, fake service, app test config or product schema is
-created to exercise a CLI. Pick versions/licenses/platforms after an actual consumer
-and owner-approved SDK/architecture exist; use the same manifest/lockfile principle.
-All product smoke, performance and native behavior below are NOT RUN; costs and
-reliability are NOT MEASURED. A local CLI version cannot change those statuses.
+These references include paths for an existing Expo SDK 58/React Native app and
+Supabase Edge runtime. Doctor remains a discovery tool: it reports installation and
+availability and does not run app workflows. The project uses Jest/RNTL and its
+`npm run check` covers mobile lint, typecheck and unit tests. The EAS TestFlight
+profile exists, but no native build, upload or device run is verified. Product
+performance, store-release behavior and hosted user flows remain NOT RUN or NOT
+MEASURED. A local CLI version cannot change those statuses.
 
 ## Tier C selection and activation workflows
 
@@ -19,9 +19,9 @@ Mac/device build; Windows browser/static evidence cannot prove it.
 
 | Trigger / preferred tool | Provenance, native discovery and families | Prerequisite, smoke and failure boundary |
 | --- | --- | --- |
-| Expo / React Native app lifecycle | [Expo CLI](https://docs.expo.dev/more/expo-cli/) / [source](https://github.com/expo/expo) MIT; [React Native](https://reactnative.dev/docs/environment-setup) MIT. Installed `expo --help`: start, export, run, config, prebuild, install; doctor is SDK-specific tooling | Actual SDK, app, target and approved native runtime. Start a real app, verify revision/rendered path; prebuild/install mutate native/dependency files. No `npx` auto-fetch before compatible pin |
+| Expo / React Native app lifecycle | [Expo CLI](https://docs.expo.dev/more/expo-cli/) / [source](https://github.com/expo/expo) MIT; [React Native](https://reactnative.dev/docs/environment-setup) MIT. The app pins Expo SDK 58; installed `expo --help` covers start, export, run, config, prebuild and install | Keep commands on the pinned SDK and owned local target. Verify revision/rendered path; prebuild/install mutate native/dependency files. No `npx` auto-fetch before a compatible pin |
 | Lint / format application source | [ESLint](https://eslint.org/docs/latest/use/command-line-interface) MIT; inspect `eslint --help`, print-config, lint paths, fix/config/cache options | Actual compiler/source/config. Pin selected linter, assert valid and invalid app example; fix writes files, new config/rules need real consumers. Existing Markdown/YAML checks remain canonical |
-| Unit / component behavior | [Jest](https://jestjs.io/docs/cli) MIT / [Vitest](https://vitest.dev/guide/cli.html) MIT / [RNTL](https://callstack.github.io/react-native-testing-library/) MIT; help, run/watch, reporters, coverage, selection | Choose with Expo/RN compatibility, not two redundant runners. Real component/user-visible assertion plus denied/failure case; timers/resources clean up. Snapshot PASS alone is weak behavior evidence |
+| Unit / component behavior | Project-pinned [Jest](https://jestjs.io/docs/cli) and [RNTL](https://callstack.github.io/react-native-testing-library/) | Extend the existing mobile suites for real component/user-visible and denied/failure behavior; timers/resources clean up. Snapshot PASS alone is weak behavior evidence |
 | Device end-to-end | [Maestro](https://docs.maestro.dev/) Apache-2.0 / [Detox](https://wix.github.io/Detox/) MIT; installed help for build/test/device/record/diagnostics | Choose one after real simulator/device app and harness exist. Drive real flow and capture device output; no device build is BLOCKED. Do not claim CLI/help smoke proves native UI |
 | Runtime performance/debugging | [React Native DevTools](https://reactnative.dev/docs/react-native-devtools), RN MIT; supported DevTools UI and profiler, inspector/network/performance families depend on RN version | Running app and supported device. Capture reproducible trace and user flow before/after; private logs/heap artifacts need bounded retention. No unsupported device claims |
 | Source security | [CodeQL](https://codeql.github.com/docs/) / [CLI terms](https://github.com/github/codeql-cli-binaries/blob/main/LICENSE.md), [Semgrep](https://semgrep.dev/docs/) / [source](https://github.com/semgrep/semgrep) LGPL-2.1 engine plus separate rule/service terms. Inspect database/analyze/query or scan/rule help | Real source/languages/rules and license review. Known positive/negative findings with false-positive baseline; hosted/private use and commercial rules may differ. No secret upload or paid job |

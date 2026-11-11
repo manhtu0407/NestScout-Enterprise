@@ -23,6 +23,8 @@ type Request = { method: string; path: string; scope: string | null; token: stri
 
 function createAuthServer() {
   const owners = new Map<string, string>();
+  const refreshForAccess = new Map<string, string>();
+  const revokedRefreshTokens = new Set<string>();
   const rejections = new Map<string, { status: number; code?: string }>();
   const requests: Request[] = [];
   const gates: { user?: Hold; logout?: Hold } = {};
@@ -38,6 +40,7 @@ function createAuthServer() {
     const tokens = { access: `access-${issued}`, refresh: `refresh-${issued}` };
     owners.set(tokens.access, userId);
     owners.set(tokens.refresh, userId);
+    refreshForAccess.set(tokens.access, tokens.refresh);
     return { access_token: tokens.access, refresh_token: tokens.refresh, expires_in: 3600, token_type: 'bearer', user: { id: userId, aud: 'authenticated' } };
   }
 
@@ -60,12 +63,16 @@ function createAuthServer() {
     }
     if (method === 'POST' && url.pathname === '/auth/v1/verify') return json(200, issue(nextUser));
     if (method === 'POST' && url.pathname === '/auth/v1/token') {
-      const owner = refreshRefused ? undefined : owners.get((JSON.parse(init?.body ?? '{}') as { refresh_token?: string }).refresh_token ?? '');
+      const refreshToken = (JSON.parse(init?.body ?? '{}') as { refresh_token?: string }).refresh_token ?? '';
+      const owner = refreshRefused || revokedRefreshTokens.has(refreshToken) ? undefined : owners.get(refreshToken);
       return owner ? json(200, issue(owner)) : json(400, { code: 400, error_code: 'refresh_token_not_found', msg: 'unknown refresh token' });
     }
     if (method === 'POST' && url.pathname === '/auth/v1/logout') {
       await gates.logout?.promise;
-      return logoutAnswer ? logoutAnswer() : new Response(null, { status: 204 });
+      if (logoutAnswer) return logoutAnswer();
+      const refreshToken = bearer === null ? undefined : refreshForAccess.get(bearer);
+      if (refreshToken !== undefined) revokedRefreshTokens.add(refreshToken);
+      return new Response(null, { status: 204 });
     }
     return json(404, { code: 404, error_code: 'not_found', msg: url.pathname });
   };
@@ -292,7 +299,7 @@ describe('removing a refused session', () => {
     expect(harness.server.logouts()).toHaveLength(0);
   });
 
-  describe('known SDK limit: replacement after the comparison', () => {
+  describe('session replacement around SDK removal', () => {
     test('between the comparison and the start of signOut(), the new session is signed out and revoked', async () => {
       const harness = await start();
       harness.server.reject(harness.token, 'bad_jwt');
@@ -324,7 +331,7 @@ describe('removing a refused session', () => {
       expect(harness.server.logouts()).toHaveLength(0);
     });
 
-    test('while signOut() waits for the server, a new session is removed with the refused one', async () => {
+    test('while signOut() waits for the server, a replacement session remains stored', async () => {
       const harness = await start();
       harness.server.reject(harness.token, 'bad_jwt');
       harness.server.gates.logout = hold();
@@ -336,7 +343,7 @@ describe('removing a refused session', () => {
 
       harness.server.gates.logout.release();
       expect(await answer).toEqual({ status: 'invalid' });
-      expect(harness.stored()).toBeNull();
+      expect(harness.stored()?.access_token).toBe(replacement);
       expect(harness.server.logouts().map((request) => request.token)).toEqual([harness.token]);
     });
   });
@@ -362,6 +369,15 @@ describe('signing out', () => {
     expect(harness.server.logouts()).toEqual([{ method: 'POST', path: '/auth/v1/logout', scope: 'local', token: harness.token }]);
   });
 
+  test('a successful local logout makes the server reject the revoked refresh token', async () => {
+    const harness = await start();
+    const session = JSON.parse(harness.data.get(storageKey) as string) as { refresh_token: string };
+    expect(await harness.gateway.signOut()).toEqual({ ok: true, value: undefined });
+    const refresh = await harness.client.auth.refreshSession({ refresh_token: session.refresh_token });
+    expect(refresh.error).not.toBeNull();
+    expect(harness.server.logouts()).toEqual([{ method: 'POST', path: '/auth/v1/logout', scope: 'local', token: harness.token }]);
+  });
+
   test('an unreachable server still removes the session and announces it', async () => {
     const harness = await start();
     harness.server.answerLogout(() => {
@@ -372,23 +388,24 @@ describe('signing out', () => {
     expect(harness.events).toContainEqual({ type: 'signed_out' });
   });
 
-  test('an expired access token with no connectivity leaves the session stored and announces nothing', async () => {
+  test('an expired access token with no connectivity is removed locally even though revocation fails', async () => {
     const harness = await start();
     expect(await signOutOffline(harness)).toEqual({ ok: false, failure: 'network' });
-    expect(harness.stored()?.access_token).toBe(harness.token);
-    expect(harness.events).not.toContainEqual({ type: 'signed_out' });
+    expect(harness.stored()).toBeNull();
+    expect(harness.events).toContainEqual({ type: 'signed_out' });
+    expect(harness.server.logouts()).toHaveLength(0);
   });
 
-  test('a retry within the SDK refresh cooldown fails again and one after it succeeds', async () => {
+  test('a follow-up local sign-out is idempotent after offline removal and does not claim server revocation', async () => {
     const harness = await start();
     expect((await signOutOffline(harness)).ok).toBe(false);
+    expect(harness.stored()).toBeNull();
+    expect(harness.server.logouts()).toHaveLength(0);
     harness.server.setOffline(false);
-    expect((await harness.gateway.signOut()).ok).toBe(false);
-    expect(harness.stored()?.access_token).toBe(harness.token);
-    await jest.advanceTimersByTimeAsync(60_000);
     expect(await harness.gateway.signOut()).toEqual({ ok: true, value: undefined });
     expect(harness.stored()).toBeNull();
     expect(harness.events).toContainEqual({ type: 'signed_out' });
+    expect(harness.server.logouts()).toHaveLength(0);
   });
 
   test('a refresh token the server refuses removes the session', async () => {
@@ -434,7 +451,7 @@ describe('the access state follows the stored session when signing out', () => {
     jest.useRealTimers();
   });
 
-  test('a sign-out that could not remove the session keeps the account signed in and a restart restores it', async () => {
+  test('an offline local sign-out removes the session and the restart opens as a guest', async () => {
     const first = await start();
     await openApp(first);
     expect(phase()).toBe('client');
@@ -448,17 +465,17 @@ describe('the access state follows the stored session when signing out', () => {
       await pending;
     });
     expect(outcome?.ok).toBe(false);
-    expect(first.stored()?.access_token).toBe(first.token);
-    expect(phase()).toBe('client');
-    expect(latest.userId).toBe('user-a');
+    expect(first.stored()).toBeNull();
+    expect(phase()).toBe('guest');
+    expect(latest.userId).toBeNull();
 
     first.server.setOffline(false);
     const restarted = createHarness({ data: first.data, server: first.server });
     cleanups.push(restarted.unsubscribe);
-    expect(await restarted.gateway.restoreSession()).toEqual({ userId: 'user-a' });
+    expect(await restarted.gateway.restoreSession()).toBeNull();
   });
 
-  test('the same sign-out, retried once connectivity is back, ends in the guest state with nothing stored', async () => {
+  test('a retry after offline local sign-out is idempotent and leaves the app in the guest state', async () => {
     const harness = await start();
     await openApp(harness);
     harness.expireStored();
@@ -468,16 +485,17 @@ describe('the access state follows the stored session when signing out', () => {
       await jest.advanceTimersByTimeAsync(60_000);
       await pending;
     });
-    expect(phase()).toBe('client');
+    expect(phase()).toBe('guest');
+    expect(harness.stored()).toBeNull();
 
     harness.server.setOffline(false);
     await act(async () => {
-      await jest.advanceTimersByTimeAsync(60_000);
       expect(await latest.signOut()).toEqual({ ok: true, value: undefined });
     });
     await flush();
     expect(phase()).toBe('guest');
     expect(harness.stored()).toBeNull();
+    expect(harness.server.logouts()).toHaveLength(0);
     const restarted = createHarness({ data: harness.data, server: harness.server });
     cleanups.push(restarted.unsubscribe);
     expect(await restarted.gateway.restoreSession()).toBeNull();

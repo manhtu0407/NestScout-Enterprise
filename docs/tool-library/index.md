@@ -3,7 +3,10 @@
 Implementation reference under [AGENTS.md](../../AGENTS.md). Capability does not
 grant execution authority. Start with the native tool that already solves the task,
 inspect its installed-version help, and verify output, exit status and side effects.
-The `apps/mobile` Expo foundation is the only application; no Kael runtime, native build target or deployment service is supplied.
+The Expo mobile application includes Customer/Worker flows and a Supabase Edge
+Function Kael runtime. EAS has a TestFlight profile, but no native build or upload is
+verified. The hosted Supabase backend is active; ordinary tests use an isolated local
+stack.
 
 ## Find and select
 
@@ -32,7 +35,7 @@ index and working snapshots, docs paths, script references and schema. Unknown f
 | Local database, history, drift, pgTAP, generated types | [Supabase](supabase.md) | PostgreSQL clients only for explicit local diagnostics |
 | Secrets, workflows, Markdown, YAML, regression, evaluation | [Existing checks](checks.md) | OSV handles known dependency vulnerabilities, not secret discovery |
 | JSON, vulnerability, shell or Dockerfile analysis | [Optional tools](optional.md) | Compare overlap before downloading another scanner |
-| App tests, devices, profiling, load, large build systems | [Activation / references](activation.md) | NOT APPLICABLE until actual consumers and authorization exist |
+| App tests, devices, profiling, load, large build systems | [Activation / references](activation.md) | Use the mobile guide for existing unit/integration checks; native device and store-build verification remain separate |
 
 ## Readiness and evidence
 
@@ -142,9 +145,10 @@ Prepared workflow YAML, static actionlint and local Linux execution never imply
 `HOSTED_CI_PASS`. Job names/triggers/permissions and Supabase cleanup stay intact.
 
 GPU/rootless/remote builders and signing prerequisites remain in the existing
-[Docker](docker.md) guide; application/device/Kael paths remain
-[WAITING FOR STACK](activation.md). No platform portal, build system or custom
-replacement scanner is installed to fill an unobserved capability.
+[Docker](docker.md) guide. The application and Kael runtime are present; native
+device and TestFlight build verification remain [separate activation paths](activation.md).
+No platform portal, build system or custom replacement scanner is installed to fill
+an unobserved capability.
 
 1. Verify root, worktree, branch, HEAD, status and origin URLs; establish acceptance.
 2. Select an entry with `tools:list`; inspect version and native help. Inspect actual
