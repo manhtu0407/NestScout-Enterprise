@@ -1,6 +1,6 @@
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ComponentRef } from 'react';
 import { Animated, Dimensions, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { composerImageLimit, useComposerMedia, type ComposerImage } from './composer-media';
@@ -38,6 +38,17 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
   const retainedError = useRetained(errorText);
   const canSend = !locked && (value.trim().length > 0 || media.images.length > 0);
   const [inputHeight, setInputHeight] = useState<number>(metrics.inputMinHeight);
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'web' || !value) return;
+    const node: unknown = inputRef.current;
+    if (typeof HTMLTextAreaElement === 'undefined' || !(node instanceof HTMLTextAreaElement)) return;
+    const shown = node.style.height;
+    node.style.height = '0px';
+    const content = node.scrollHeight;
+    node.style.height = shown;
+    setInputHeight(Math.min(metrics.inputMaxHeight, Math.max(metrics.inputMinHeight, content)));
+  }, [value]);
   const submit = () => { if (canSend) onSubmit(media.images); };
   const { reduceMotion } = useGlassAccessibility();
   const micFeedback = usePressFeedback(reduceMotion);
@@ -74,6 +85,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
     {menuAnchor && <ComposerMenu anchor={menuAnchor} items={menuItems} onClose={() => setMenuAnchor(null)}/>}
     <View style={styles.inputSlot}>
       <TextInput
+        ref={inputRef}
         accessibilityLabel="Nhắn Kael"
         style={[styles.input, Platform.OS === 'web' && webScrollbarStyle, Platform.OS === 'web' && { height: value ? inputHeight : metrics.inputMinHeight }]}
         value={value}
@@ -128,7 +140,7 @@ const styles = StyleSheet.create({
   errorSlot: { position: 'absolute', left: metrics.errorInsetLeft, right: 0, bottom: metrics.errorBottom, marginBottom: metrics.errorGap },
   error: { color: colors.noticeText, fontSize: metrics.errorSize, lineHeight: metrics.errorLineHeight, textAlign: 'right' },
   media: { height: metrics.mediaSize, width: metrics.mediaSize, borderRadius: metrics.mediaRadius, alignItems: 'center', justifyContent: 'center' },
-  input: { flex: 1, minWidth: 0, minHeight: metrics.inputMinHeight, maxHeight: metrics.inputMaxHeight, fontSize: metrics.inputFontSize, lineHeight: metrics.inputLineHeight, paddingHorizontal: metrics.inputPaddingHorizontal, paddingVertical: metrics.inputPaddingVertical, color: colors.inputText, textAlignVertical: 'top', outlineWidth: 0, outlineColor: 'transparent' },
+  input: { alignSelf: 'stretch', minWidth: 0, minHeight: metrics.inputMinHeight, maxHeight: metrics.inputMaxHeight, fontSize: metrics.inputFontSize, lineHeight: metrics.inputLineHeight, paddingHorizontal: metrics.inputPaddingHorizontal, paddingVertical: metrics.inputPaddingVertical, color: colors.inputText, textAlignVertical: 'top', outlineWidth: 0, outlineColor: 'transparent' },
   inputSlot: { flex: 1, minWidth: 0, justifyContent: 'center' },
   voiceLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, flexDirection: 'row' },
   sendSlot: { height: metrics.sendSlotSize, width: metrics.sendSlotSize, alignItems: 'center', justifyContent: 'center' },
