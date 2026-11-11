@@ -77,6 +77,34 @@ recovery also need their own approved objectives and restore evidence.
 
 For a credential incident, follow [SECURITY](../SECURITY.md): revoke/rotate first.
 
+## Kael durable runtime rollback and recovery
+
+The durable service ([design](../services/kael-core/README.md#durable-runtime)) is
+reached only while the Edge secret `KAEL_DURABLE_URL` is set. To roll back, remove
+that secret from the Supabase Edge Function secrets and redeploy nothing else. The
+gateway stops proxying at the next invocation and new turns run on the legacy
+runtime. Runs already admitted by the durable service finish if the service is still
+up; otherwise the database sweep marks them interrupted once their lease has been
+expired for 30 minutes. Applied migrations stay in place: the lease columns are
+unused by legacy runs. Re-enable by setting the secret again.
+
+To recover a stopped instance, start any instance with the same
+`KAEL_DURABLE_DATA_DIR` volume and a database that is reachable. Its reconciler
+takes over runs whose lease expired within seconds, and a client that retries its
+`request_id` reattaches. If the volume is lost, the affected runs are closed as
+`interrupted`, conversations and approvals are untouched, and the user sends the
+message again. Never run two instances against the same volume with the same
+`KAEL_DURABLE_HOLDER`. Instances that share a database must share the volume: an
+instance with a different volume that claims an expired run finds no journal and
+closes the run as `interrupted`, and it marks another volume's purge-pending runs as
+purged without deleting their files. An instance that does not own a run's lease
+streams a reconnecting client from the shared event file, read-only; the owner is
+never interrupted. See the service README.
+
+Hosted deployment of the service, its persistent volume and the secret are owner
+actions. No hosted rollback or recovery drill has been run; the evidence is local
+(see the service README).
+
 ## Kael hosted release contract
 
 One hosted backend, Supabase project `axpdymbusiwxfzurfclg`, serves Hosted

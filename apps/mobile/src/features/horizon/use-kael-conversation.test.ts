@@ -597,7 +597,7 @@ describe('first turn interrupted before run_started', () => {
     });
     const loader = jest.fn<Promise<KaelConversationSnapshot>, [string, KaelMode, AbortSignal]>().mockImplementation(async () => snapshot);
     const streamer = (userId: string, request: KaelTurnRequest, onEvent: (event: KaelEvent) => void, signal: AbortSignal) =>
-      streamKaelTurn(userId, request, onEvent, signal, fetcher);
+      streamKaelTurn(userId, request, onEvent, signal, fetcher, []);
     const { result } = await renderHook(() => useKaelConversation('customer-a', 'client', streamer, loader));
     await act(async () => { await Promise.resolve(); });
 
