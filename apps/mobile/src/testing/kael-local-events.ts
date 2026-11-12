@@ -188,14 +188,14 @@ export const localGatewayEvents = {
     },
     {
       "type": "message_delta",
-      "text": "Đã gửi yêu cầu dịch vụ (mã 4aba0630). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.",
+      "text": "Đã gửi yêu cầu dịch vụ (mã 4aba0630). Chưa có thợ hay lịch hẹn nào được xác nhận. Khi có báo giá, bạn xem và chấp nhận trong mục Báo giá; Kael chỉ tìm thợ sau khi bạn chấp nhận.",
       "v": 1,
       "run_id": "bfbc6043-c5d7-49b4-a854-9fba2532d1a6",
       "seq": 5
     },
     {
       "type": "run_completed",
-      "text": "Đã gửi yêu cầu dịch vụ (mã 4aba0630). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.",
+      "text": "Đã gửi yêu cầu dịch vụ (mã 4aba0630). Chưa có thợ hay lịch hẹn nào được xác nhận. Khi có báo giá, bạn xem và chấp nhận trong mục Báo giá; Kael chỉ tìm thợ sau khi bạn chấp nhận.",
       "v": 1,
       "run_id": "bfbc6043-c5d7-49b4-a854-9fba2532d1a6",
       "seq": 6
@@ -324,14 +324,14 @@ export const localGatewayEvents = {
     },
     {
       "type": "message_delta",
-      "text": "Đã gửi yêu cầu dịch vụ (mã 0c8281d2). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.",
+      "text": "Đã gửi yêu cầu dịch vụ (mã 0c8281d2). Chưa có thợ hay lịch hẹn nào được xác nhận. Khi có báo giá, bạn xem và chấp nhận trong mục Báo giá; Kael chỉ tìm thợ sau khi bạn chấp nhận.",
       "v": 1,
       "run_id": "4dde5dac-a8f8-4443-9382-6fdbd3387be3",
       "seq": 5
     },
     {
       "type": "run_completed",
-      "text": "Đã gửi yêu cầu dịch vụ (mã 0c8281d2). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.",
+      "text": "Đã gửi yêu cầu dịch vụ (mã 0c8281d2). Chưa có thợ hay lịch hẹn nào được xác nhận. Khi có báo giá, bạn xem và chấp nhận trong mục Báo giá; Kael chỉ tìm thợ sau khi bạn chấp nhận.",
       "v": 1,
       "run_id": "4dde5dac-a8f8-4443-9382-6fdbd3387be3",
       "seq": 6

@@ -1,4 +1,4 @@
-import type { IconName } from '@/features/shared';
+import type { DispatchServiceId, IconName } from '@/features/shared';
 
 export type IntakeFieldKind = 'text' | 'multiline' | 'choice' | 'count';
 
@@ -145,6 +145,20 @@ export const serviceCategories: readonly ServiceCategory[] = [
     kaelOpening: 'Kael ơi, mình cần hỗ trợ một việc tại nhà nhưng chưa biết chọn dịch vụ nào. Bạn giúp mình nhé.',
   },
 ];
+
+const dispatchServiceByCategory: Record<ServiceCategoryId, DispatchServiceId> = {
+  electric: 'electric',
+  plumbing: 'water',
+  aircon: 'aircon',
+  'house-cleaning': 'other',
+  'sofa-cleaning': 'sofa',
+  'minor-repair': 'other',
+  other: 'other',
+};
+
+export function dispatchServiceFor(id: ServiceCategoryId): DispatchServiceId {
+  return dispatchServiceByCategory[id];
+}
 
 export function serviceCategoryFor(id: string | undefined): ServiceCategory | undefined {
   return serviceCategories.find(category => category.id === id);

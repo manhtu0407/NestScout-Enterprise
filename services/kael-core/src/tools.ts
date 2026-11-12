@@ -62,6 +62,7 @@ export const toolRegistry: readonly ToolContract[] = [
       description: { type: 'string', minLength: 1, maxLength: 4000 },
       location: { type: 'string', maxLength: 200 },
       preferred_time: { type: 'string', maxLength: 120 },
+      service_id: { type: 'string', enum: ['electric', 'water', 'aircon', 'paint', 'sofa', 'other', ''], description: 'Service category of the work: electric, water, aircon, paint, sofa or other. Empty string only when the category is genuinely unknown.' },
       missing: { type: 'array', maxItems: 3, items: { type: 'string', enum: ['description', 'location', 'preferred_time'] } },
     }),
     sideEffect: 'prepare', executionClass: 'internal_prepare', resource: 'kael_task', requires: 'customer', modes: ['client'], label: 'Đang chuẩn bị bản nháp yêu cầu',

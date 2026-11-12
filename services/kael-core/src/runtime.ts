@@ -299,7 +299,7 @@ function effectCopy(tool: string, args: Record<string, unknown>): EffectCopy {
     label: 'Đang gửi yêu cầu dịch vụ', kind: 'service_request',
     refused: 'Hệ thống chưa nhận yêu cầu này. Bản nháp vẫn được giữ; chưa có yêu cầu nào được gửi.',
     uncertain: 'Chưa xác định được yêu cầu đã được ghi nhận hay chưa, nên Kael chưa báo là đã gửi. Bạn có thể bấm "Kiểm tra lại": Kael dùng lại đúng lần gửi bạn đã xác nhận với cùng mã gửi. Nếu yêu cầu đã được ghi nhận, Kael chỉ báo lại kết quả; nếu chưa, lần gửi đó được hoàn tất. Không có yêu cầu thứ hai và không cần xác nhận lại.',
-    done: resourceId => `Đã gửi yêu cầu dịch vụ (mã ${resourceId.slice(0, 8)}). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.`,
+    done: resourceId => `Đã gửi yêu cầu dịch vụ (mã ${resourceId.slice(0, 8)}). Chưa có thợ hay lịch hẹn nào được xác nhận. Khi có báo giá, bạn xem và chấp nhận trong mục Báo giá; Kael chỉ tìm thợ sau khi bạn chấp nhận.`,
   };
 }
 

@@ -124,9 +124,9 @@ test('worker notifications point at the tab where the news can be acted on', () 
   const items = toWorkerNotificationItems([
     { ...base, id: 'a', kind: 'job_offered' }, { ...base, id: 'b', kind: 'work_approved' }, { ...base, id: 'c', kind: 'revision_requested' },
     { ...base, id: 'd', kind: 'work_disputed' }, { ...base, id: 'e', kind: 'scope_approved' }, { ...base, id: 'f', kind: 'scope_rejected' },
-    { ...base, id: 'g', kind: 'resume_agreed' }, { ...base, id: 'h', kind: 'review_received' },
+    { ...base, id: 'g', kind: 'resume_agreed' }, { ...base, id: 'h', kind: 'review_received' }, { ...base, id: 'i', kind: 'job_auto_accepted' },
   ], now);
-  expect(items.map(item => item.target)).toEqual(['worker-offers', 'worker-history', 'worker-review', 'worker-review', 'worker-active', 'worker-active', 'worker-active', 'worker-reviews']);
+  expect(items.map(item => item.target)).toEqual(['worker-offers', 'worker-history', 'worker-review', 'worker-review', 'worker-active', 'worker-active', 'worker-active', 'worker-reviews', 'worker-assigned']);
   expect(items.every(item => item.requestId === undefined && item.unread)).toBe(true);
 });
 

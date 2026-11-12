@@ -169,7 +169,7 @@ export const horizonColors = {
   },
   kaelAttention: {
     ink: '#11161C', inkMuted: '#5B6672', accent: '#145C57', onAccent: '#FFFFFF', border: 'rgba(60,60,67,0.12)',
-    waitDot: '#9AA3AF', warnDot: '#B26B00', okDot: '#176B43',
+    waitDot: '#0E9E8E', warnDot: '#B26B00', okDot: '#176B43',
     waitSurface: '#F0F2F5', warnSurface: '#FFF5E2', okSurface: '#E8F5EC',
     warnBorder: '#B26B0040', okBorder: '#176B4340',
   },
@@ -246,6 +246,15 @@ export const horizonColors = {
   },
   composerMenu: {
     scrim: 'rgba(0,0,0,0.06)', fill: '#DEDEE1', icon: '#11161C', labelSurface: '#FFFFFF', labelBorder: 'rgba(60,60,67,0.12)', detail: '#8A8A90',
+  },
+  autonomyPicker: {
+    scrim: 'rgba(0,0,0,0.06)', menuSurface: '#FFFFFF', menuBorder: 'rgba(60,60,67,0.12)', menuShadow: '0 10px 30px rgba(11,15,20,0.16)',
+    rowActive: 'rgba(118,118,128,0.12)', iconSurface: '#EEEFF1', icon: '#1C2127', title: '#0B0F14', detail: '#6B7078',
+    check: '#0E9E8E', triggerText: '#4A525C', accentText: '#0A7F72', askSurface: 'rgba(118,118,128,0.14)', autoSurface: 'rgba(14,158,142,0.14)', failure: '#B3261E',
+  },
+  chatHistory: {
+    scrim: 'rgba(0,0,0,0.06)', menuSurface: '#FFFFFF', menuBorder: 'rgba(60,60,67,0.12)', menuShadow: '0 10px 30px rgba(11,15,20,0.16)',
+    rowActive: 'rgba(118,118,128,0.12)', iconSurface: '#EEEFF1', icon: '#1C2127', header: '#6B7078', text: '#0B0F14', time: '#8A8A90',
   },
   conversationMenu: {
     scrim: 'rgba(0,0,0,0.12)', pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', title: '#6B7683', danger: '#D4322C',

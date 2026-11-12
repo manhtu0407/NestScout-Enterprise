@@ -35,7 +35,7 @@ function draftFlow(location = 'Quận 3, TP.HCM') {
     { tools: [call('task_create', { title: 'Sửa máy lạnh rò nước', kind: 'service_request', status: 'running', note: '' })] },
     request => {
       const taskId = lastToolResults(request)[0].task.id;
-      return { tools: [call('service_request_draft', { task_id: taskId, description: 'Máy lạnh phòng ngủ rò nước từ dàn lạnh', location, preferred_time: 'Sáng thứ Bảy', missing: location ? [] : ['location'] })] };
+      return { tools: [call('service_request_draft', { task_id: taskId, description: 'Máy lạnh phòng ngủ rò nước từ dàn lạnh', location, preferred_time: 'Sáng thứ Bảy', service_id: 'aircon', missing: location ? [] : ['location'] })] };
     },
   ];
 }
@@ -162,6 +162,25 @@ test('guessed, foreign or stale task references are refused instead of acted on'
   assert.equal(owner.db.tasks.get(task.id).status, 'waiting_for_input');
 });
 
+test('a model status change cannot orphan a pending approval', async () => {
+  const h = scripted(effects, [
+    ...draftFlow(),
+    request => ({ tools: [call('service_request_submit', { task_id: lastToolResults(request)[0].task.id })] }),
+    request => ({ tools: [call('task_update', { task_id: tasksOf(h.db)[0].id, status: 'waiting_for_input', note: 'Chờ khách xác nhận' })] }),
+    request => {
+      assert.equal(lastToolResults(request)[0].error, 'not_model_settable');
+      return { text: ['Bản nháp đã sẵn sàng. Bạn trượt thẻ xác nhận để gửi nhé.'] };
+    },
+  ]);
+  const result = await h.message(users.customer, 'Gửi yêu cầu sửa máy lạnh ở Quận 3 sáng thứ Bảy giúp mình');
+  assert.equal(terminal(result).type, 'run_completed');
+  assert.equal(tasksOf(h.db)[0].status, 'waiting_for_approval');
+  const approval = result.events.find(event => event.type === 'approval_required').approval;
+  const approved = await h.decide(users.customer, conversationOf(result), approval);
+  assert.equal(terminal(approved).type, 'run_completed');
+  assert.equal(effectsCount(h.db), 1);
+});
+
 test('a consequential submission waits for an exact, single-use human approval', async () => {
   const h = scripted(effects, [
     ...draftFlow(),
@@ -187,7 +206,7 @@ test('a consequential submission waits for an exact, single-use human approval',
 
   const approved = await h.decide(users.customer, conversation, approval);
   assert.equal(terminal(approved).type, 'run_completed');
-  assert.match(terminal(approved).text, /chưa có thợ, báo giá hay lịch hẹn nào được xác nhận/);
+  assert.match(terminal(approved).text, /Chưa có thợ hay lịch hẹn nào được xác nhận/);
   assert.equal(effectsCount(h.db), 1);
   const [task] = tasksOf(h.db);
   assert.equal(task.status, 'completed');

@@ -1,5 +1,6 @@
 import { workflowErrorFrom } from './workflow-error';
 import { authenticatedRequest } from '@/lib/authenticated-rest';
+import type { DispatchServiceId } from './dispatch-service-id';
 
 export type ServiceRequest = { id: string; description: string; location: string; created_at: string; preferred_visit_at?: string | null };
 export type ServiceQuote = {
@@ -28,11 +29,11 @@ export async function readRequests(userId: string, signal: AbortSignal): Promise
   return result as ServiceRequest[];
 }
 
-export async function submitRequest(userId: string, key: string, description: string, signal: AbortSignal, location = ''): Promise<string> {
+export async function submitRequest(userId: string, key: string, description: string, signal: AbortSignal, location = '', serviceId?: DispatchServiceId): Promise<string> {
   const response = await authenticatedRequest(userId, 'rpc/submit_service_request', {
     method: 'POST',
     signal,
-    body: JSON.stringify({ p_submission_key: key, p_description: description, p_location: location }),
+    body: JSON.stringify(serviceId === undefined ? { p_submission_key: key, p_description: description, p_location: location } : { p_submission_key: key, p_description: description, p_location: location, p_service_id: serviceId }),
   });
   if (!response.ok) throw await workflowErrorFrom(response);
   const result: unknown = await response.json();

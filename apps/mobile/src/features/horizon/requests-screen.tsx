@@ -159,6 +159,11 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onS
             <Text style={styles.actionLabel}>Xem báo giá</Text>
           </PressScale>
         ) : null}
+        {request.pendingSubmission && onDecideSubmission && !expanded ? (
+          <PressScale accessibilityRole="button" accessibilityLabel={`Xem kết quả và nghiệm thu ${request.title}`} onPress={onToggle} style={styles.action} wrapperStyle={styles.actionWrap}>
+            <Text style={styles.actionLabel}>Xem kết quả và nghiệm thu</Text>
+          </PressScale>
+        ) : null}
         {onAskKael ? <PressScale accessibilityRole="button" accessibilityLabel={`Hỏi Kael về ${request.title}`} onPress={() => onAskKael(request)} style={[styles.action, styles.actionSecondary]} wrapperStyle={styles.actionWrap}>
           <Text style={[styles.actionLabel, styles.actionSecondaryLabel]}>Hỏi Kael</Text>
         </PressScale> : null}

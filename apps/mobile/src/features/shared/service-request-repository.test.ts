@@ -49,6 +49,14 @@ test('a submission carries the location when one is given', async () => {
   }));
 });
 
+test('a submission carries the dispatch service when one is given', async () => {
+  jest.mocked(global.fetch).mockResolvedValue({ ok: true, json: async () => 'request-id' } as Response);
+  await submitRequest('customer-a', 'operation-key', 'Repair', new AbortController().signal, '12 Nguyễn Huệ', 'water');
+  expect(global.fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+    body: JSON.stringify({ p_submission_key: 'operation-key', p_description: 'Repair', p_location: '12 Nguyễn Huệ', p_service_id: 'water' }),
+  }));
+});
+
 test('a request without a location string is rejected', async () => {
   jest.mocked(global.fetch).mockResolvedValue({ ok: true, json: async () => [{ id: 'r1', description: 'x', created_at: '2026-11-02' }] } as Response);
   await expect(readRequests('customer-a', new AbortController().signal)).rejects.toThrow('Invalid request response');

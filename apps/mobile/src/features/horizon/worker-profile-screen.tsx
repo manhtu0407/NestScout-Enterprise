@@ -14,10 +14,11 @@ import { SlidingChips } from './sliding-chips';
 import { ScreenHeader, SupportCard, SupportRow, SupportSection } from './support-shell';
 import { ActionButton, actionRowStyles } from './worker-action-button';
 import {
-  radiusOptionsKm, toWorkerProfileFields, validateWorkerProfileFields, workerProfileTabs, workerServiceOptions,
+  otherServiceId, radiusOptionsKm, toWorkerProfileFields, validateWorkerProfileFields, workerProfileTabs, workerServiceOptions,
   type ReadinessStep, type WorkerProfileCommand, type WorkerProfileFields, type WorkerProfilePerform, type WorkerProfileTab, type WorkerProfileView,
 } from './worker-profile';
 import { WorkerDocumentsSection } from './worker-documents-section';
+import { WorkerOtherServiceCheck } from './worker-other-service-check';
 import { WorkerReadinessCard } from './worker-readiness-card';
 import { workflowMessage } from './workflow-messages';
 
@@ -266,6 +267,7 @@ function coverageKey(radiusKm: number, serviceIds: readonly string[]): string {
 
 function AreasTab({ profile, busy, error, run, onCreate }: AreasTabProps) {
   const [pending, setPending] = useState<{ coverage: Coverage; base: string } | null>(null);
+  const [askingOther, setAskingOther] = useState(false);
 
   if (profile === null) return <EmptyProfile onCreate={onCreate} body="Tạo hồ sơ trước để chọn khu vực và dịch vụ nhận việc." />;
 
@@ -276,7 +278,18 @@ function AreasTab({ profile, busy, error, run, onCreate }: AreasTabProps) {
     setPending({ coverage: next, base });
     if (!(await run({ type: 'coverage', radiusKm: next.radiusKm, serviceIds: next.serviceIds }))) setPending(null);
   };
-  const toggle = (id: string, on: boolean) => apply({ radiusKm: shown.radiusKm, serviceIds: on ? [...shown.serviceIds, id] : shown.serviceIds.filter(item => item !== id) });
+  const toggle = (id: string, on: boolean) => {
+    if (on && id === otherServiceId) {
+      setAskingOther(true);
+      return;
+    }
+    setAskingOther(false);
+    return apply({ radiusKm: shown.radiusKm, serviceIds: on ? [...shown.serviceIds, id] : shown.serviceIds.filter(item => item !== id) });
+  };
+  const confirmOther = async () => {
+    setAskingOther(false);
+    await apply({ radiusKm: shown.radiusKm, serviceIds: [...shown.serviceIds, otherServiceId] });
+  };
 
   return (
     <>
@@ -299,6 +312,7 @@ function AreasTab({ profile, busy, error, run, onCreate }: AreasTabProps) {
             />
           ))}
         </SupportCard>
+        {askingOther ? <WorkerOtherServiceCheck busy={busy} onConfirm={() => void confirmOther()} onCancel={() => setAskingOther(false)} /> : null}
         <Problem message={error} />
         <Text style={[styles.footnote, styles.footnoteLeft]}>Lựa chọn được lưu vào hồ sơ. Việc mới chỉ gửi tới bạn khi hệ thống ghép việc hoạt động; hiện chưa có ghép việc tự động.</Text>
       </SupportSection>

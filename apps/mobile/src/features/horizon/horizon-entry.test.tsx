@@ -161,7 +161,7 @@ test('a verified submission shows the receipt banner, which can be dismissed, an
   await say('Nhờ Kael tạo yêu cầu sửa vòi nước');
   await act(async () => { fireEvent(screen.getByLabelText('Xác nhận Gửi yêu cầu dịch vụ'), 'accessibilityAction', { nativeEvent: { actionName: 'activate' } }); });
   expect(await screen.findByText('Đã gửi yêu cầu')).toBeTruthy();
-  expect(screen.getByText(/chưa có thợ, báo giá hay lịch hẹn nào được xác nhận/)).toBeTruthy();
+  expect(screen.getByText(/Chưa có thợ hay lịch hẹn nào được xác nhận/)).toBeTruthy();
   expect(screen.queryByLabelText(/^Chờ bạn xác nhận\./)).toBeNull();
   await act(async () => { fireEvent.press(screen.getByLabelText('Đóng')); });
   await waitFor(() => expect(screen.queryByText('Đã gửi yêu cầu')).toBeNull());

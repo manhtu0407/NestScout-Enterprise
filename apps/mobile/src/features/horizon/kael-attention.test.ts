@@ -44,7 +44,7 @@ test('a task still waiting for approval without a live approval is reported with
 test('a receipt appears only for verified evidence, says it is not a booking, and stays dismissed', () => {
   const attention = deriveKaelAttention(input({ receipt: 'call-1' }));
   expect(attention).toMatchObject({ kind: 'receipt', tone: 'ok', title: 'Đã gửi yêu cầu', actionLabel: 'Đóng', receiptId: 'call-1' });
-  expect(attention?.body).toContain('chưa có thợ, báo giá hay lịch hẹn nào được xác nhận');
+  expect(attention?.body).toContain('Chưa có thợ hay lịch hẹn nào được xác nhận');
   expect(deriveKaelAttention(input({ receipt: 'call-1', dismissedReceipt: 'call-1' }))).toBeNull();
   expect(deriveKaelAttention(input({ receipt: 'call-2', dismissedReceipt: 'call-1' }))).toMatchObject({ kind: 'receipt', receiptId: 'call-2' });
 });

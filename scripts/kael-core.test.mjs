@@ -679,7 +679,7 @@ test('tool arguments are validated strictly against the registry contract', () =
   assert.ok(!validateArguments(create, { title: ' ', kind: 'general', status: 'running', note: '' }), 'blank titles');
   assert.ok(!validateArguments(findTool('task_update'), { task_id: '1; drop table', status: 'paused', note: '' }), 'non-uuid ids');
   assert.ok(!validateArguments(findTool('customer_requests'), { limit: 1000 }), 'unbounded reads');
-  assert.ok(!validateArguments(findTool('service_request_draft'), { task_id: users.customer.id, description: 'x', location: '', preferred_time: '', missing: ['location', 'location'] }), 'duplicate items');
+  assert.ok(!validateArguments(findTool('service_request_draft'), { task_id: users.customer.id, description: 'x', location: '', preferred_time: '', service_id: '', missing: ['location', 'location'] }), 'duplicate items');
   assert.ok(!validateArguments(create, null));
 });
 
@@ -729,6 +729,8 @@ test('the TypeScript task state machine matches the authoritative SQL transition
   const task = { id: 'x', title: 't', kind: 'service_request', status: 'running', version: 1, summary: '', conversation_id: 'c', updated_at: '', artifact: { effect_required: true } };
   assert.deepEqual(checkModelTransition(task, 'completed'), { ok: false, reason: 'effect_not_observed' });
   assert.deepEqual(checkModelTransition({ ...task, status: 'waiting_for_approval' }, 'running'), { ok: false, reason: 'not_model_settable' });
+  assert.deepEqual(checkModelTransition({ ...task, status: 'waiting_for_approval' }, 'waiting_for_input'), { ok: false, reason: 'not_model_settable' });
+  assert.deepEqual(checkModelTransition({ ...task, status: 'waiting_for_approval' }, 'paused'), { ok: true });
   assert.deepEqual(checkModelTransition(task, 'waiting_for_approval'), { ok: false, reason: 'not_model_settable' });
   assert.deepEqual(checkModelTransition({ ...task, status: 'cancelled' }, 'running'), { ok: false, reason: 'invalid_transition' });
   assert.deepEqual(checkModelTransition({ ...task, artifact: { effect_required: true, effect_result: { status: 'succeeded', resource_kind: 'service_request', resource_id: 'r' } } }, 'completed'), { ok: true });
@@ -874,7 +876,7 @@ test('the mobile parser rejects malformed or out-of-contract events', () => {
 const validInputs = {
   task_create: { title: 'Viết thư', kind: 'writing', status: 'running', note: '' },
   task_update: { task_id: users.customer.id, status: 'paused', note: '' },
-  service_request_draft: { task_id: users.customer.id, description: 'Máy lạnh rò nước', location: '', preferred_time: '', missing: ['location'] },
+  service_request_draft: { task_id: users.customer.id, description: 'Máy lạnh rò nước', location: '', preferred_time: '', service_id: 'aircon', missing: ['location'] },
   service_request_submit: { task_id: users.customer.id },
   ask_user_choice: { question: 'Thợ nên đến khi nào?', options: ['Sáng mai', 'Chiều mai'], allow_date: true },
   service_quote_decision: { task_id: users.customer.id, quote_id: users.other.id, quote_version: 2, decision: 'accepted' },
@@ -1293,4 +1295,47 @@ test('a failed or missing probe claim never reaches a provider and normal chat i
   const reply = await app.send(users.customer, { request_id: '22222222-2222-4222-8222-222222222222', conversation_id: null, mode: 'client', action: { type: 'message', text: 'Xin chào' } });
   assert.equal(reply.status, 200, 'chat does not depend on the probe window');
   assert.equal(provider.requests.length, 1);
+});
+
+test('Ask and Auto change how Kael paces the process but never who confirms the price', async () => {
+  const cfg = config({ enabledEffects: new Set(consequentialEffects) });
+  const customer = { userId: users.customer.id, capabilities: new Set(['customer']), mode: 'client' };
+  const promptFor = actor => buildSystemPrompt(actor, cfg, [], [], crypto.randomUUID(), '2026-11-12', undefined, 'Cần thợ điện');
+  assert.match(promptFor(customer), /chose Ask mode/, 'an unset mode is Ask');
+  assert.match(promptFor({ ...customer, autonomy: 'ask' }), /one small step at a time/);
+  const auto = promptFor({ ...customer, autonomy: 'auto' });
+  assert.match(auto, /chose Auto mode/);
+  assert.match(auto, /Auto never accepts a price for the user/);
+  assert.doesNotMatch(auto, /chose Ask mode/);
+  const worker = { userId: users.worker.id, capabilities: new Set(['worker']), mode: 'worker' };
+  assert.match(promptFor({ ...worker, autonomy: 'auto' }), /accepts offers that match the worker profile/);
+  assert.match(promptFor(worker), /offers wait for the worker/);
+  const quoteArgs = { task_id: users.customer.id, quote_id: users.customer.id, quote_version: 1, decision: 'accepted' };
+  const actors = [customer, { ...customer, autonomy: 'auto' }];
+  for (const actor of actors) {
+    const decision = evaluateCall({ id: 'c', name: 'service_quote_decision', input: quoteArgs }, selectTools(actor, cfg), actor, cfg, 0);
+    assert.equal(decision.kind, 'approval', `price acceptance needs the app confirmation in ${actor.autonomy ?? 'default'} mode`);
+  }
+  const draft = findTool('service_request_draft');
+  const base = { task_id: users.customer.id, description: 'x', location: '', preferred_time: '', missing: [] };
+  assert.ok(validateArguments(draft, { ...base, service_id: 'electric' }));
+  assert.ok(validateArguments(draft, { ...base, service_id: '' }));
+  assert.ok(!validateArguments(draft, { ...base, service_id: 'plumber' }), 'unknown categories');
+  assert.ok(!validateArguments(draft, base), 'the category is always stated');
+});
+
+test('the stored mode is read through the user-scoped store and defaults to Ask', async () => {
+  const paths = [];
+  let rows = [{ mode: 'auto' }];
+  const store = createSupabaseStore(async path => {
+    paths.push(path);
+    return path.startsWith('kael_autonomy') ? Response.json(rows) : assert.fail(path);
+  }, async () => assert.fail('The mode must use the user-scoped store'), users.customer.id);
+  assert.equal(await store.autonomy('client', new AbortController().signal), 'auto');
+  assert.equal(await store.autonomy('worker', new AbortController().signal), 'auto');
+  rows = [];
+  assert.equal(await store.autonomy('client', new AbortController().signal), 'ask');
+  rows = [{ mode: 'unknown' }];
+  assert.equal(await store.autonomy('client', new AbortController().signal), 'ask');
+  assert.deepEqual(paths.slice(0, 2), ['kael_autonomy?select=mode&role=eq.customer', 'kael_autonomy?select=mode&role=eq.worker']);
 });

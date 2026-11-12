@@ -58,7 +58,7 @@ test('manual intake: fill, review, confirm submits once through the existing sub
   expect(deps.submit).not.toHaveBeenCalled();
   await act(async () => { await result.current.submit(); });
   expect(deps.submit).toHaveBeenCalledTimes(1);
-  expect(deps.submit).toHaveBeenCalledWith('user-a', keyOne, 'Sửa nước — Vòi bồn rửa bị rò\nKhu vực: Bếp', expect.any(AbortSignal), '12 Nguyễn Huệ, Quận 1');
+  expect(deps.submit).toHaveBeenCalledWith('user-a', keyOne, 'Sửa nước — Vòi bồn rửa bị rò\nKhu vực: Bếp', expect.any(AbortSignal), '12 Nguyễn Huệ, Quận 1', 'water');
   expect(result.current.phase).toBe('submitted');
   expect(result.current.requestId).toBe(requestId);
   expect(deps.clear).toHaveBeenCalledWith('user-a');
@@ -135,7 +135,7 @@ test('after a restart the unconfirmed request is reconciled with its stored key 
   expect(result.current.phase).toBe('uncertain');
   expect(result.current.message).toBe(intakeMessages.pending);
   await act(async () => { await result.current.submit(); });
-  expect(deps.submit).toHaveBeenCalledWith('user-a', keyTwo, 'Sửa nước — Cũ', expect.any(AbortSignal), 'Quận 5');
+  expect(deps.submit).toHaveBeenCalledWith('user-a', keyTwo, 'Sửa nước — Cũ', expect.any(AbortSignal), 'Quận 5', undefined);
   expect(deps.newKey).not.toHaveBeenCalled();
   expect(result.current.phase).toBe('submitted');
 });

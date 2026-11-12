@@ -23,6 +23,7 @@ const jobStatus: Record<string, { status: string; nextAction: string }> = {
 const iconKeywords: readonly { pattern: RegExp; icon: IconName }[] = [
   { pattern: /điện|bóng đèn|ổ cắm|công tắc/i, icon: 'bolt' },
   { pattern: /nước|vòi|ống|bồn|toilet|bồn cầu/i, icon: 'drop' },
+  { pattern: /sơn|chống thấm/i, icon: 'paint' },
   { pattern: /sofa|ghế|nệm/i, icon: 'sofa' },
   { pattern: /vệ sinh|dọn|lau/i, icon: 'home' },
   { pattern: /lắp|sửa|thay|khoá|khóa/i, icon: 'wrench' },
@@ -194,6 +195,7 @@ const notificationIcons: Record<NotificationKind, IconName> = {
   job_completed: 'check',
   scope_proposed: 'receipt',
   job_offered: 'bolt',
+  job_auto_accepted: 'bolt',
   work_approved: 'check',
   revision_requested: 'clock',
   work_disputed: 'help',

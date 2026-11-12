@@ -26,7 +26,7 @@ export function deriveKaelAttention({ approvals, tasks, running, notice, receipt
     return { kind: 'verify', tone: 'warn', title: 'Cần kiểm tra lại', body: 'Chưa rõ hệ thống đã nhận yêu cầu bạn xác nhận nên Kael chưa báo đã gửi. Kiểm tra dùng lại đúng lần gửi đó, không tạo yêu cầu mới.', actionLabel: null, receiptId: null };
   }
   if (receipt !== null && receipt !== dismissedReceipt) {
-    return { kind: 'receipt', tone: 'ok', title: 'Đã gửi yêu cầu', body: 'Đây mới là bước gửi: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận. Theo dõi trong mục Yêu cầu.', actionLabel: 'Đóng', receiptId: receipt };
+    return { kind: 'receipt', tone: 'ok', title: 'Đã gửi yêu cầu', body: 'Chưa có thợ hay lịch hẹn nào được xác nhận. Khi có báo giá, hãy chấp nhận trong mục Báo giá; theo dõi trong mục Yêu cầu.', actionLabel: 'Đóng', receiptId: receipt };
   }
   const confirm = approvals.find(approval => approval.kind === 'confirm');
   if (confirm) {

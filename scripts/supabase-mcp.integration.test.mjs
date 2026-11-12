@@ -1094,7 +1094,7 @@ function draftSteps({ missing = false, submit = true } = {}) {
     { tools: [call('task_create', { title: 'Synthetic local service request', kind: 'service_request', status: 'running', note: '' })] },
     request => ({ tools: [call('service_request_draft', {
       task_id: lastToolResults(request)[0].task.id, description: 'Synthetic local repair',
-      location: missing ? '' : 'Synthetic local location', preferred_time: 'Synthetic local time', missing: missing ? ['location'] : [],
+      location: missing ? '' : 'Synthetic local location', preferred_time: 'Synthetic local time', service_id: '', missing: missing ? ['location'] : [],
     })] }),
     ...(submit ? [request => ({ tools: [call('service_request_submit', { task_id: lastToolResults(request)[0].task.id })] })] : []),
     { text: [missing ? 'Please provide a location.' : 'Prepared, not submitted.'] },
@@ -1855,7 +1855,7 @@ test('Kael coordinates the authorized Customer–Worker lifecycle through confir
         { tools: [call('task_create', { title: 'Sửa máy lạnh phòng ngủ', kind: 'service_request', status: 'running', note: '' })] },
         request => {
           intakeTask = lastToolResults(request)[0].task.id;
-          return { tools: [call('service_request_draft', { task_id: intakeTask, description: 'Máy lạnh phòng ngủ không mát', location: '12 Lê Lợi, Quận 1', preferred_time: 'Chiều mai', missing: [] })] };
+          return { tools: [call('service_request_draft', { task_id: intakeTask, description: 'Máy lạnh phòng ngủ không mát', location: '12 Lê Lợi, Quận 1', preferred_time: 'Chiều mai', service_id: 'aircon', missing: [] })] };
         },
         () => ({ tools: [call('service_request_submit', { task_id: intakeTask })] }),
         { text: ['Bạn kiểm tra rồi xác nhận gửi nhé.'] },
@@ -1871,7 +1871,7 @@ test('Kael coordinates the authorized Customer–Worker lifecycle through confir
       assert.equal(forged.end.code, 'approval_invalid');
       const submitted = await approve(customer, 'client', submitApproval, intake.conversation);
       assert.equal(submitted.end.type, 'run_completed');
-      assert.match(text(submitted), /chưa có thợ, báo giá hay lịch hẹn nào được xác nhận/);
+      assert.match(text(submitted), /Chưa có thợ hay lịch hẹn nào được xác nhận/);
       requestId = one(`select id from public.service_requests where owner_id='${customer.id}' and submission_key='${submitApproval.id}';`);
       assert.match(requestId, uuid);
       const replayed = await approve(customer, 'client', submitApproval, intake.conversation);

@@ -84,14 +84,15 @@ async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolEx
   const quotes = await getJson(ctx, `service_quotes?select=id,request_id,version,scope,amount_minor,currency,expires_at,basis,accepted_at,rejected_at&request_id=in.(${ids})&order=version.desc`) as Record<string, unknown>[];
   const jobs = await getJson(ctx, `service_jobs?select=id,request_id,stage,version&request_id=in.(${ids})`) as Record<string, unknown>[];
   const jobIds = jobs.map(row => String(row.id)).join(',');
-  const submissions = jobIds ? await getJson(ctx, `service_submissions?select=id,job_id,evidence,decision&job_id=in.(${jobIds})&decision=eq.pending`) as Record<string, unknown>[] : [];
+  const submissions = jobIds ? await getJson(ctx, `service_submissions?select=id,job_id,evidence,decision&job_id=in.(${jobIds})`) as Record<string, unknown>[] : [];
   const now = Date.now();
   return ok({
     notice: `${dataNotice} ${fixtureNotice} A preferred visit time is the customer's wish, not a confirmed appointment.`,
     requests: requests.map(request => {
       const quote = quotes.find(row => row.request_id === request.id);
       const job = jobs.find(row => row.request_id === request.id);
-      const submission = job ? submissions.find(row => row.job_id === job.id) : undefined;
+      const jobSubmissions = job ? submissions.filter(row => row.job_id === job.id) : [];
+      const submission = jobSubmissions.find(row => row.decision === 'pending');
       const quoteStatus = !quote ? 'no_quote'
         : quote.accepted_at ? 'quote_accepted'
         : quote.rejected_at ? 'quote_rejected'
@@ -107,7 +108,7 @@ async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolEx
           quote_id: quote.id, version: quote.version, scope: clip(quote.scope, 300), amount_minor: quote.amount_minor, currency: quote.currency,
           expires_at: quote.expires_at, basis: quote.basis,
         } : null,
-        job: job ? { job_id: job.id, stage: job.stage, version: job.version } : null,
+        job: job ? { job_id: job.id, stage: job.stage, version: job.version, work_accepted: jobSubmissions.some(row => row.decision === 'accepted') } : null,
         pending_submission: submission ? { submission_id: submission.id, evidence: clip(submission.evidence, 300) } : null,
       };
     }),
@@ -282,7 +283,7 @@ async function draftServiceRequest(ctx: ToolContext, args: Record<string, unknow
   if (!task) return failed('unknown_task');
   if (task.kind !== 'service_request' || isTerminal(task.status)) return failed('task_not_open_service_request', task.id);
   const missing = (args.missing as string[]).filter(item => item !== 'description' || String(args.description).trim() === '');
-  const draft = { description: String(args.description).trim(), location: String(args.location).trim(), preferred_time: String(args.preferred_time).trim(), missing };
+  const draft = { description: String(args.description).trim(), location: String(args.location).trim(), preferred_time: String(args.preferred_time).trim(), service_id: String(args.service_id ?? '').trim(), missing };
   const status: KaelTaskStatus = missing.length > 0 ? 'waiting_for_input' : 'running';
   const summary = missing.length > 0 ? `Bản nháp còn thiếu: ${missing.join(', ')}` : 'Bản nháp đã đủ thông tin, chưa gửi';
   return await saveTask(ctx, task, { title: task.title, kind: task.kind, status, summary, artifact: { ...task.artifact, draft }, event: 'draft_prepared' });
@@ -293,7 +294,7 @@ async function requestSubmitApproval(ctx: ToolContext, args: Record<string, unkn
   if (!task) return failed('unknown_task');
   const draft = task.artifact.draft;
   if (task.kind !== 'service_request' || !draft || draft.missing.length > 0 || draft.description === '') return failed('draft_incomplete', task.id);
-  const approvalArgs = { task_id: task.id, description: draft.description, location: draft.location, preferred_time: draft.preferred_time };
+  const approvalArgs = { task_id: task.id, description: draft.description, location: draft.location, preferred_time: draft.preferred_time, service_id: draft.service_id ?? '' };
   const bound = await fingerprint({ tool, actor: ctx.actor.userId, task_id: task.id, base_version: task.version, args: approvalArgs });
   const details = { 'Mô tả': draft.description, 'Địa điểm': draft.location || 'Chưa cung cấp', 'Thời gian mong muốn': draft.preferred_time || 'Chưa cung cấp' };
   const result = await ctx.store.requestApproval({
@@ -428,7 +429,7 @@ function effectCall(approvalId: string, tool: string, args: Record<string, unkno
     const preferred = String(args.preferred_time ?? '');
     return {
       path: 'rpc/submit_service_request', refusals: [400, 422], sqlstateRefuses: false, resource: textId, evidence: null,
-      body: { p_submission_key: approvalId, p_description: preferred ? `${description}\nThời gian mong muốn: ${preferred}` : description, p_location: String(args.location ?? '') },
+      body: { p_submission_key: approvalId, p_description: preferred ? `${description}\nThời gian mong muốn: ${preferred}` : description, p_location: String(args.location ?? ''), p_service_id: String(args.service_id ?? '') || null },
     };
   }
   const refusals = [400, 403, 409, 422];

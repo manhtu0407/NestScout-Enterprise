@@ -3,7 +3,9 @@ import type { ToolCall } from './model.ts';
 import { findTool, toolRegistry, validateArguments } from './tools.ts';
 import type { Capability, KaelMode, ToolContract } from './tools.ts';
 
-export type Actor = { userId: string; capabilities: ReadonlySet<Capability>; mode: KaelMode };
+export type Autonomy = 'ask' | 'auto';
+
+export type Actor = { userId: string; capabilities: ReadonlySet<Capability>; mode: KaelMode; autonomy?: Autonomy };
 
 export type DenialReason = 'unknown_tool' | 'not_offered' | 'invalid_arguments' | 'forbidden' | 'effect_disabled' | 'tool_budget';
 

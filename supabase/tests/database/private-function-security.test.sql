@@ -26,7 +26,7 @@ select is_empty($$
       'register_push_token','unregister_push_token','job_change_participant','request_job_change','decide_job_change',
       'add_worker_document','remove_worker_document','my_worker_payout_account','set_worker_payout_account','remove_worker_payout_account',
       'toggle_review_reaction','review_reactions',
-      'issue_fixture_quote','invite_fixture_worker','fixture_dispatch_queue','fixture_dispatch_candidates',
+      'issue_fixture_quote','invite_fixture_worker','fixture_dispatch_queue','fixture_dispatch_candidates','set_kael_autonomy',
       'set_request_preferred_visit','set_kael_feedback')
 $$, 'Only reviewed private operations are callable by authenticated users');
 

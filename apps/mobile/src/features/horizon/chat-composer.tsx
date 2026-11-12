@@ -6,11 +6,17 @@ import { Animated, Dimensions, Keyboard, Platform, Pressable, StyleSheet, Text, 
 import { composerImageLimit, useComposerMedia, type ComposerImage } from './composer-media';
 import { Icon, PressScale, useGlassAccessibility, usePressFeedback } from '@/features/shared';
 import { AttachmentStrip } from './attachment-strip';
+import { AutonomyPicker } from './autonomy-picker';
+import { ChatHistory } from './chat-history';
+import type { ChatHistoryEntry } from './chat-history';
 import { ComposerMenu } from './composer-menu';
+import type { KaelAutonomy, KaelAutonomyMode } from './kael-autonomy';
 import { Presence, useRetained } from './motion-presence';
 import { LiquidVoiceCapsule, useLiquidVoice } from './liquid-voice';
 import { appendTranscript } from './voice-input';
 import type { ComposerMenuAnchor, ComposerMenuItem } from './composer-menu';
+
+export type ComposerAutonomy = { mode: KaelAutonomyMode; value: KaelAutonomy; onChange: (value: KaelAutonomy) => void; failed?: boolean };
 
 type Props = {
   value: string;
@@ -24,6 +30,8 @@ type Props = {
   locked?: boolean;
   onFocus?: () => void;
   onBlur?: () => void;
+  autonomy?: ComposerAutonomy;
+  history?: readonly ChatHistoryEntry[];
 };
 
 const metrics = horizonLayout.chatComposer;
@@ -31,7 +39,7 @@ const menu = horizonLayout.composerMenu;
 const colors = horizonColors.chatComposer;
 const webScrollbarStyle = { outlineStyle: 'solid', outlineWidth: 0, scrollbarWidth: 'none' } as const;
 
-export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, initialImages, onImagesChange, mediaExternallyManaged, locked = false, onFocus, onBlur }: Props) {
+export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, initialImages, onImagesChange, mediaExternallyManaged, locked = false, onFocus, onBlur, autonomy, history }: Props) {
   const media = useComposerMedia(initialImages, onImagesChange, mediaExternallyManaged);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const errorText = error || media.error || voiceNotice;
@@ -80,12 +88,6 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
     <View style={styles.frame}>
     <AttachmentStrip files={media.images.map((item, index) => ({ id: String(index), name: `Ảnh ${index + 1}`, kind: 'image', progress: undefined, uri: item.uri, removeLabel: `Xóa ảnh ${index + 1}` }))} onRemove={id => { media.remove(Number(id)); onMediaChange?.(); }}/>
     <View style={styles.controls}>
-    <View ref={trigger} collapsable={false}>
-      <PressScale accessibilityRole="button" accessibilityLabel="Đính kèm" accessibilityState={{ expanded: menuAnchor !== null }} onPress={openMenu} style={styles.media}>
-        <Icon name="plus" size={metrics.mediaIconSize} strokeWidth={metrics.mediaIconStroke} color={colors.mediaIcon} />
-      </PressScale>
-    </View>
-    {menuAnchor && <ComposerMenu anchor={menuAnchor} items={menuItems} onClose={() => setMenuAnchor(null)}/>}
     <View style={styles.inputSlot}>
       <TextInput
         ref={inputRef}
@@ -112,6 +114,16 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
         spellCheck={false}
       />
     </View>
+    <View style={styles.actions}>
+    <View ref={trigger} collapsable={false}>
+      <PressScale accessibilityRole="button" accessibilityLabel="Đính kèm" accessibilityState={{ expanded: menuAnchor !== null }} onPress={openMenu} style={styles.media}>
+        <Icon name="plus" size={metrics.mediaIconSize} strokeWidth={metrics.mediaIconStroke} color={colors.mediaIcon} />
+      </PressScale>
+    </View>
+    {menuAnchor && <ComposerMenu anchor={menuAnchor} items={menuItems} onClose={() => setMenuAnchor(null)}/>}
+    {autonomy && <AutonomyPicker mode={autonomy.mode} value={autonomy.value} onChange={autonomy.onChange} failed={autonomy.failed} disabled={locked}/>}
+    <View style={styles.actionSpacer}/>
+    {history && <ChatHistory entries={history} onPick={onChange} disabled={locked}/>}
     <Animated.View style={{ transform: [{ scale: micFeedback.scale }] }}>
       <Pressable
         accessibilityRole="button"
@@ -131,6 +143,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
         <Icon name="arrowUp" color={canSend ? colors.activeSendIcon : colors.idleSendIcon} size={metrics.sendIconSize} strokeWidth={metrics.sendIconStroke} />
       </PressScale>
     </View>
+    </View>
     {voice.recording && <View style={styles.voiceLayer}><LiquidVoiceCapsule onCancel={voice.cancel} onSend={voice.finish}/></View>}
     </View>
     </View>
@@ -139,12 +152,14 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
 
 const styles = StyleSheet.create({
   frame: { minHeight: metrics.frameMinHeight, padding: metrics.framePadding, borderRadius: metrics.frameRadius, borderWidth: metrics.frameBorderWidth, borderColor: colors.surfaceBorder, backgroundColor: colors.surface, boxShadow: colors.surfaceShadow },
-  controls: { flexDirection: 'row', alignItems: 'flex-end', gap: metrics.controlGap },
+  controls: { gap: metrics.controlGap },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: metrics.controlGap },
+  actionSpacer: { flex: 1 },
   errorSlot: { position: 'absolute', left: metrics.errorInsetLeft, right: 0, bottom: metrics.errorBottom, marginBottom: metrics.errorGap },
   error: { color: colors.noticeText, fontSize: metrics.errorSize, lineHeight: metrics.errorLineHeight, textAlign: 'right' },
   media: { height: metrics.mediaSize, width: metrics.mediaSize, borderRadius: metrics.mediaRadius, alignItems: 'center', justifyContent: 'center' },
   input: { alignSelf: 'stretch', minWidth: 0, minHeight: metrics.inputMinHeight, maxHeight: metrics.inputMaxHeight, fontSize: metrics.inputFontSize, lineHeight: metrics.inputLineHeight, paddingHorizontal: metrics.inputPaddingHorizontal, paddingVertical: metrics.inputPaddingVertical, color: colors.inputText, textAlignVertical: 'top', outlineWidth: 0, outlineColor: 'transparent' },
-  inputSlot: { flex: 1, minWidth: 0, justifyContent: 'center' },
+  inputSlot: { alignSelf: 'stretch', minWidth: 0, justifyContent: 'center' },
   voiceLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, flexDirection: 'row' },
   sendSlot: { height: metrics.sendSlotSize, width: metrics.sendSlotSize, alignItems: 'center', justifyContent: 'center' },
   send: { height: metrics.sendSize, width: metrics.sendSize, borderRadius: metrics.sendRadius, borderWidth: metrics.sendBorderWidth, borderColor: colors.idleSendBorder, backgroundColor: colors.idleSendSurface, alignItems: 'center', justifyContent: 'center' },

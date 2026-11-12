@@ -82,7 +82,7 @@ test('a saved profile from the server fills the areas tab and saves through the 
   };
   jest.mocked(useWorkerData).mockReturnValue(controller({ data: { ...empty, profile: record }, performProfile }));
   await render(<WorkerSection id="worker-areas" onBack={() => undefined} />);
-  expect(screen.getByText('Dịch vụ nhận · 1/5')).toBeTruthy();
+  expect(screen.getByText('Dịch vụ nhận · 1/6')).toBeTruthy();
   await fireEvent.press(screen.getByLabelText('Bán kính 3 km'));
   expect(performProfile).toHaveBeenCalledWith({ type: 'coverage', radiusKm: 3, serviceIds: ['water'] });
 });

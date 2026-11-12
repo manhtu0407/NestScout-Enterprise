@@ -7,6 +7,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { EntryRedirect, useAccess } from '@/features/access';
 import { Sidebar } from './sidebar';
 import { Icon, loadPendingRequest } from '@/features/shared';
+import { useKaelAutonomy } from './kael-autonomy';
 import { KaelHomeScreen } from './kael-home-screen';
 import { KaelMemorySettings } from './kael-memory-settings';
 import { kaelIntroSession } from './kael-intro-session';
@@ -63,6 +64,7 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
   const kaelUserId = (access.phase === 'client' || access.phase === 'worker') && access.identity === 'verified' ? access.userId : null;
   const kaelMode = access.phase === 'worker' ? 'worker' : 'client';
   const kael = useKaelConversation(kaelUserId, kaelMode);
+  const autonomy = useKaelAutonomy(kaelUserId, kaelMode);
   const sessions = useKaelSessions(kaelUserId, kaelMode, drawerOpen && access.phase === 'client');
   const aiConsent = useAiConsent(kaelUserId);
   const consentStrings = settingsStrings(usePreferences().language);
@@ -364,7 +366,7 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
           </View>
         </Presence>
         <KaelAttentionCard attention={attention} onAction={onAttentionAction} onHeight={setAttentionHeight}/>
-        <KaelHomeScreen requestProgress={requestProgress} input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} question={onPreviewMenu ? null : kael.question} onAnswer={sendText} onRate={onPreviewMenu ? undefined : kael.rate} onRegenerate={regenerate} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} consent={consentCard} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? (kaelOpening !== null && !kaelOpening.failed ? 'Đang mở cuộc trò chuyện…' : kael.notice)} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
+        <KaelHomeScreen autonomy={kaelUserId === null ? undefined : { mode: kaelMode, value: autonomy.value, onChange: autonomy.choose, failed: autonomy.failed }} requestProgress={requestProgress} input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} question={onPreviewMenu ? null : kael.question} onAnswer={sendText} onRate={onPreviewMenu ? undefined : kael.rate} onRegenerate={regenerate} onNew={newConversation} onMenu={onPreviewMenu ?? openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} consent={consentCard} onDecide={onPreviewMenu ? undefined : kael.decide} composerError={composerError ?? (kaelOpening !== null && !kaelOpening.failed ? 'Đang mở cuộc trò chuyện…' : kael.notice)} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
     {kaelUserId !== null && scope === memoryScope && <KaelMemorySettings key={scope} userId={kaelUserId} mode={kaelMode} onClose={() => setMemoryScope(null)}/>}

@@ -3,7 +3,7 @@ import { authenticatedRequest } from '@/lib/authenticated-rest';
 import { workflowErrorFrom } from './workflow-error';
 
 export type CustomerNotificationKind = 'quote_received' | 'job_assigned' | 'job_progress' | 'work_submitted' | 'job_completed' | 'scope_proposed';
-export type WorkerNotificationKind = 'job_offered' | 'work_approved' | 'revision_requested' | 'work_disputed' | 'scope_approved' | 'scope_rejected' | 'resume_agreed' | 'review_received';
+export type WorkerNotificationKind = 'job_offered' | 'work_approved' | 'revision_requested' | 'work_disputed' | 'scope_approved' | 'scope_rejected' | 'resume_agreed' | 'review_received' | 'job_auto_accepted';
 export type JobChangeNotificationKind = 'change_requested' | 'change_decided';
 export type NotificationKind = CustomerNotificationKind | WorkerNotificationKind | JobChangeNotificationKind;
 export type NotificationAudience = 'customer' | 'worker';
@@ -35,7 +35,7 @@ export type SavedWorkerRecord = {
 
 const notificationKindsByAudience: Readonly<Record<NotificationAudience, readonly NotificationKind[]>> = {
   customer: ['quote_received', 'job_assigned', 'job_progress', 'work_submitted', 'job_completed', 'scope_proposed', 'change_requested', 'change_decided'],
-  worker: ['job_offered', 'work_approved', 'revision_requested', 'work_disputed', 'scope_approved', 'scope_rejected', 'resume_agreed', 'review_received', 'change_requested', 'change_decided'],
+  worker: ['job_offered', 'job_auto_accepted', 'work_approved', 'revision_requested', 'work_disputed', 'scope_approved', 'scope_rejected', 'resume_agreed', 'review_received', 'change_requested', 'change_decided'],
 };
 const notificationLimit = 100;
 

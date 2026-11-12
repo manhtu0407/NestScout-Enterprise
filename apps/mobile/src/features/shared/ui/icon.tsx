@@ -1,8 +1,8 @@
 import type { LucideIcon } from 'lucide-react-native';
-import { Archive, ArrowRight, ArrowUp, Bell, Briefcase, Calendar, Camera, Check, ChevronLeft, ChevronRight, CircleQuestionMark, Clock, ClipboardList, Droplet, Ellipsis, Eye, Globe, History, Heart, House, Image, LayoutGrid, LogIn, Mic, MessageSquare, Paperclip, Phone, Pin, Plus, Receipt, Search, Send, Settings, Share, Sofa, SquarePen, Star, TextAlignStart, Trash, User, Wallet, Wrench, X, Zap } from 'lucide-react-native';
+import { Archive, ArrowRight, ArrowUp, Bell, Briefcase, Calendar, Camera, Check, ChevronLeft, ChevronRight, CircleQuestionMark, Clock, ClipboardList, Droplet, Ellipsis, Eye, Globe, History, Heart, House, Image, LayoutGrid, LogIn, Mic, MessageSquare, Paperclip, PaintRoller, Phone, Pin, Plus, Receipt, Search, Send, Settings, Share, Sofa, SquarePen, Star, TextAlignStart, Trash, User, Wallet, Wrench, X, Zap } from 'lucide-react-native';
 import { horizonColors } from '@/theme/palette';
 
-export type IconName = 'login' | 'eye' | 'attach' | 'image' | 'globe' | 'camera' | 'menu' | 'plus' | 'arrowUp' | 'arrowRight' | 'chevron' | 'close' | 'mic' | 'search' | 'chat' | 'home' | 'briefcase' | 'clock' | 'heart' | 'wrench' | 'drop' | 'sofa' | 'grid' | 'gear' | 'bolt' | 'user' | 'help' | 'bell' | 'requests' | 'receipt' | 'compose' | 'history' | 'back' | 'check' | 'send' | 'more' | 'share' | 'pin' | 'archive' | 'trash' | 'wallet' | 'star' | 'calendar' | 'phone';
+export type IconName = 'login' | 'eye' | 'attach' | 'image' | 'globe' | 'camera' | 'menu' | 'plus' | 'arrowUp' | 'arrowRight' | 'chevron' | 'close' | 'mic' | 'search' | 'chat' | 'home' | 'briefcase' | 'clock' | 'heart' | 'wrench' | 'drop' | 'sofa' | 'paint' | 'grid' | 'gear' | 'bolt' | 'user' | 'help' | 'bell' | 'requests' | 'receipt' | 'compose' | 'history' | 'back' | 'check' | 'send' | 'more' | 'share' | 'pin' | 'archive' | 'trash' | 'wallet' | 'star' | 'calendar' | 'phone';
 
 type Props = {
   name: IconName;
@@ -35,6 +35,7 @@ const glyphs: Record<IconName, LucideIcon> = {
   wrench: Wrench,
   drop: Droplet,
   sofa: Sofa,
+  paint: PaintRoller,
   grid: LayoutGrid,
   gear: Settings,
   bolt: Zap,

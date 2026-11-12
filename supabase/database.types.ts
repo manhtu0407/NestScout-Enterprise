@@ -101,6 +101,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"kael_autonomy": {
+                  Row: {
+                    "mode": string,"role": string,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "mode": string,"role": string,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "mode"?: string,"role"?: string,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
                 },"kael_conversations": {
                   Row: {
                     "archived_at": string | null,"created_at": string,"deleted_at": string | null,"id": string,"mode": string,"owner_id": string,"pinned_at": string | null,"title": string | null,"updated_at": string
@@ -535,14 +549,14 @@ isOneToOne: false
                   ]
                 },"service_requests": {
                   Row: {
-                    "created_at": string,"description": string,"id": string,"location": string,"owner_id": string,"preferred_visit_at": string | null,"submission_key": string
+                    "created_at": string,"description": string,"id": string,"location": string,"owner_id": string,"preferred_visit_at": string | null,"service_id": string | null,"submission_key": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"description": string,"id"?: string,"location"?: string,"owner_id"?: string,"preferred_visit_at"?: string | null,"submission_key": string
+                    "created_at"?: string,"description": string,"id"?: string,"location"?: string,"owner_id"?: string,"preferred_visit_at"?: string | null,"service_id"?: string | null,"submission_key": string
                   }
                   Update: {
-                    "created_at"?: string,"description"?: string,"id"?: string,"location"?: string,"owner_id"?: string,"preferred_visit_at"?: string | null,"submission_key"?: string
+                    "created_at"?: string,"description"?: string,"id"?: string,"location"?: string,"owner_id"?: string,"preferred_visit_at"?: string | null,"service_id"?: string | null,"submission_key"?: string
                   }
                   Relationships: [
 
@@ -991,6 +1005,9 @@ isOneToOne: false
 "set_customer_avatar":
 { Args: { "p_has_avatar": boolean }; Returns: string
                            },
+"set_kael_autonomy":
+{ Args: { "p_mode": string,"p_role": string }; Returns: string
+                           },
 "set_kael_feedback":
 { Args: { "p_message_id": string,"p_rating": string,"p_reason": string,"p_run_id": string }; Returns: string
                            },
@@ -1007,7 +1024,7 @@ isOneToOne: false
 { Args: { "p_account_holder": string,"p_account_number": string,"p_bank_code": string,"p_bank_name": string,"p_qr_path": string }; Returns: string
                            },
 "submit_service_request":
-{ Args: { "p_description": string,"p_location"?: string,"p_submission_key": string }; Returns: string
+{ Args: { "p_description": string,"p_location"?: string,"p_service_id"?: string,"p_submission_key": string }; Returns: string
                            },
 "submit_service_work":
 { Args: { "p_evidence": string,"p_job_id": string,"p_key": string,"p_version": number }; Returns: string

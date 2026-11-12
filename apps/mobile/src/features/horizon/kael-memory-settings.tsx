@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { AccessibilityRole } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { PressScale } from '@/features/shared';
 import { authenticatedRequest } from '@/lib/authenticated-rest';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors as colors } from '@/theme/palette';
@@ -16,6 +18,32 @@ type Props = { userId: string; mode: 'client' | 'worker'; onClose: () => void };
 type Memory = { preference: string; value: string };
 type State = { enabled: boolean; items: Memory[] };
 type Action = 'enable' | 'disable' | 'save' | 'remove';
+type Tone = 'primary' | 'secondary' | 'selected';
+
+type ButtonProps = {
+  label: string;
+  onPress: () => void;
+  role?: AccessibilityRole;
+  tone?: Tone;
+  checked?: boolean;
+  disabled?: boolean;
+  accessibilityLabel?: string;
+  stretch?: boolean;
+};
+
+function MemoryButton({ label, onPress, role = 'button', tone = 'secondary', checked, disabled = false, accessibilityLabel, stretch = false }: ButtonProps) {
+  return <PressScale
+    accessibilityRole={role}
+    accessibilityLabel={accessibilityLabel}
+    accessibilityState={{ disabled, ...(checked === undefined ? {} : { checked }) }}
+    disabled={disabled}
+    onPress={onPress}
+    wrapperStyle={stretch ? styles.stretch : undefined}
+    style={[styles.button, tone === 'secondary' && styles.buttonSecondary, tone === 'primary' && styles.buttonPrimary, tone === 'selected' && styles.buttonSelected, disabled && styles.buttonDisabled]}
+  >
+    <Text style={[styles.buttonLabel, tone !== 'secondary' && styles.buttonLabelOnFill]}>{label}</Text>
+  </PressScale>;
+}
 
 async function readMemory(userId: string, mode: Props['mode'], signal: AbortSignal): Promise<State> {
   const [settings, memories] = await Promise.all([
@@ -74,25 +102,21 @@ export function KaelMemorySettings({ userId, mode, onClose }: Props) {
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.text}>Kael chỉ lưu các tùy chọn trả lời bạn chọn, riêng cho chế độ hiện tại. Tắt bộ nhớ sẽ xóa các tùy chọn đã lưu. Lịch sử trò chuyện được giữ riêng.</Text>
           {error && <><Text accessibilityLiveRegion="polite" style={styles.text}>Không thể tải hoặc cập nhật bộ nhớ.</Text>
-            <Pressable accessibilityRole="button" disabled={busy} onPress={() => void request()}><Text style={styles.action}>Tải lại</Text></Pressable></>}
+            <MemoryButton label="Tải lại" disabled={busy} onPress={() => void request()}/></>}
           {busy || (state === null && !error) ? <ActivityIndicator accessibilityLabel="Đang tải bộ nhớ"/> : null}
-          {state && <Pressable accessibilityRole="switch" accessibilityState={{ checked: state.enabled, disabled: busy || error }} disabled={busy || error} onPress={() => void request(state.enabled ? 'disable' : 'enable')}>
-            <Text style={styles.action}>{state.enabled ? 'Tắt và xóa tùy chọn đã lưu' : 'Bật bộ nhớ'}</Text>
-          </Pressable>}
+          {state && <MemoryButton role="switch" checked={state.enabled} tone={state.enabled ? 'secondary' : 'primary'} stretch disabled={busy || error} onPress={() => void request(state.enabled ? 'disable' : 'enable')} label={state.enabled ? 'Tắt và xóa tùy chọn đã lưu' : 'Bật bộ nhớ'}/>}
           {state?.enabled && preferences.map(({ id, label, values }) => {
             const saved = state.items.find(item => item.preference === id)?.value;
             return <View key={id} style={styles.group}>
               <Text accessibilityRole="header" style={styles.text}>{label}</Text>
               <View style={styles.options}>
-                {values.map(option => <Pressable key={option.id} accessibilityRole="radio" accessibilityState={{ checked: saved === option.id, disabled: busy || error }} disabled={busy || error} onPress={() => void request('save', id, option.id)}>
-                  <Text style={styles.action}>{saved === option.id ? '✓ ' : ''}{option.label}</Text>
-                </Pressable>)}
-                {saved && <Pressable accessibilityRole="button" accessibilityLabel={`Xóa tùy chọn ${label}`} disabled={busy || error} onPress={() => void request('remove', id)}><Text style={styles.action}>Xóa</Text></Pressable>}
+                {values.map(option => <MemoryButton key={option.id} role="radio" checked={saved === option.id} tone={saved === option.id ? 'selected' : 'secondary'} disabled={busy || error} onPress={() => void request('save', id, option.id)} label={`${saved === option.id ? '✓ ' : ''}${option.label}`} accessibilityLabel={option.label}/>)}
+                {saved && <MemoryButton accessibilityLabel={`Xóa tùy chọn ${label}`} disabled={busy || error} onPress={() => void request('remove', id)} label="Xóa"/>}
               </View>
             </View>;
           })}
         </ScrollView>
-        <Pressable accessibilityRole="button" onPress={onClose}><Text style={styles.action}>Đóng</Text></Pressable>
+        <MemoryButton stretch tone="primary" onPress={onClose} label="Đóng"/>
       </View>
     </View>
   </Modal>;
@@ -106,5 +130,12 @@ const styles = StyleSheet.create({
   content: { gap: metrics.contentGap },
   group: { gap: metrics.groupGap },
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: metrics.optionGap },
-  action: { color: colors.text, fontWeight: metrics.emphasisWeight, minHeight: metrics.touchHeight, paddingVertical: metrics.actionPadding },
+  stretch: { alignSelf: 'stretch' },
+  button: { minHeight: metrics.touchHeight, borderRadius: metrics.buttonRadius, paddingHorizontal: metrics.buttonPaddingHorizontal, alignItems: 'center', justifyContent: 'center', borderWidth: metrics.buttonBorderWidth, borderColor: 'transparent' },
+  buttonSecondary: { backgroundColor: colors.bgCard, borderColor: colors.borderBright },
+  buttonPrimary: { backgroundColor: colors.label },
+  buttonSelected: { backgroundColor: colors.mint },
+  buttonDisabled: { opacity: horizonLayout.supportScreens.saveDisabledOpacity },
+  buttonLabel: { color: colors.text, fontSize: metrics.bodySize, fontWeight: metrics.emphasisWeight },
+  buttonLabelOnFill: { color: colors.onFill },
 });

@@ -151,7 +151,8 @@ export const horizonLayout = {
     kaelMemorySettings: {
       inset: 20, maxHeight: '85%', radius: 20, panelGap: 12, titleSize: 22,
       emphasisWeight: '700', bodySize: 15, bodyLineHeight: 22, contentGap: 10,
-      groupGap: 4, optionGap: 14, touchHeight: 44, actionPadding: 12,
+      groupGap: 4, optionGap: 10, touchHeight: 44, actionPadding: 12,
+      buttonRadius: 22, buttonPaddingHorizontal: 18, buttonBorderWidth: 1,
     },
     kaelCompanion: {
       navHeight: 62,
@@ -491,6 +492,18 @@ export const horizonLayout = {
       bubbleSize: 44, bubbleRadius: 22, bubbleGap: 12, slotOffset: 1, neckWidth: 26, neckLeft: 9, neckBottom: 22, neckRadius: 13, bubbleInset: 2, fadeInput: [0, 0.3, 1], fadeOutput: [0, 1, 1], neckThin: [1, 0.55, 0], neckThinInput: [0, 0.6, 1], iconSize: 22, iconStroke: 2.2, closeRotation: '45deg',
       labelMinHeight: 32, labelMinWidth: 132, labelRadius: 16, labelPaddingHorizontal: 12, labelGap: 10, labelFontSize: 14, labelFontWeight: '500', detailFontSize: 11,
       spring: { damping: 13, stiffness: 190, mass: 0.9 }, stagger: 45, exitDuration: 140, pickerLaunchDelay: 350, disabledOpacity: 0.5, anchorGap: 10, fallbackX: 16, fallbackBottom: 96,
+    },
+    autonomyPicker: {
+      triggerHeight: 32, triggerPaddingHorizontal: 14, triggerRadius: 16, triggerFontSize: 14, triggerFontWeight: '600', triggerTracking: 0.1, triggerHitSlop: 6,
+      menuWidth: 296, menuPadding: 6, menuGap: 2, menuRadius: 22, edgeGap: 16, fallbackBottom: 72, anchorGap: 8,
+      rowGap: 12, rowPadding: 10, rowRadius: 16, iconSlot: 36, iconSlotRadius: 18, iconSize: 18, iconStroke: 2,
+      copyGap: 2, titleFontSize: 15, titleFontWeight: '600', detailFontSize: 12, detailLineHeight: 16, checkSlot: 24, checkSize: 18, checkStroke: 2.4,
+    },
+    chatHistory: {
+      menuWidth: 296, menuMaxHeight: 320, menuPadding: 6, menuGap: 2, menuRadius: 22, edgeGap: 16, fallbackBottom: 72, anchorGap: 8, triggerHitSlop: 6,
+      headerPaddingHorizontal: 10, headerPaddingTop: 6, headerPaddingBottom: 4, headerFontSize: 12, headerFontWeight: '600', headerTracking: 0.4,
+      rowGap: 12, rowPadding: 10, rowRadius: 16, iconSlot: 32, iconSlotRadius: 16, iconSize: 16, iconStroke: 2,
+      copyGap: 2, textFontSize: 14, textLineHeight: 19, textLines: 2, timeFontSize: 12, maxItems: 8,
     },
     conversationMenu: {
       top: 62, width: 304, padding: 8,
