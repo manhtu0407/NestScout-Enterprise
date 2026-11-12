@@ -21,7 +21,7 @@ export function progressForPhase(phase: KaelPhase | null): KaelProgress | null {
 }
 
 export function pickProgressRequest(requests: readonly ServiceRequest[]): ServiceRequest | null {
-  return requests.find(request => request.stage !== 'done') ?? requests[0] ?? null;
+  return requests.find(request => request.stage !== 'done') ?? requests.find(request => request.closed === undefined) ?? null;
 }
 
 export function progressForRequest(request: Pick<ServiceRequest, 'title' | 'status' | 'step'>): KaelProgress {

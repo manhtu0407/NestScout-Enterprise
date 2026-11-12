@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
-  WorkflowError, acceptQuote, clearKaelHistory, markNotificationsRead, readAccountPhone, readCustomerActivity, readCustomerProfile, readCustomerSettings, readJobWorkerCards,
-  readAvatarSource, readNotifications, readPinnedRequestIds, readQuotes, readRequestPhotos, readRequests, readSavedWorkers, rejectQuote, removeAvatar,
+  WorkflowError, acceptQuote, cancelRequest, clearKaelHistory, markNotificationsRead, readAccountPhone, readCustomerActivity, readCustomerProfile, readCustomerSettings, readDispatchSummaries, readJobWorkerCards,
+  readAvatarSource, readNotifications, readPinnedRequestIds, readQuotes, readRequestPhotos, readRequests, readSavedWorkers, redispatchRequest, rejectQuote, removeAvatar,
   reviewJobWorker, saveCustomerProfile, uploadAvatar,
   saveCustomerSettings, saveWorker, setRequestPinned, unsaveWorker,
-  type CustomerActivity, type CustomerNotification, type CustomerProfile, type CustomerSettings, type JobReview, type JobWorkerCard, type MediaFile,
+  type CustomerActivity, type CustomerNotification, type CustomerProfile, type CustomerSettings, type DispatchSummary, type JobReview, type JobWorkerCard, type MediaFile,
   type SavedWorkerRecord, type ServiceQuote, type ServiceRequest, type StorageSource, type StoredCustomerProfile,
 } from '@/features/shared';
 
@@ -24,11 +24,12 @@ export type CustomerData = {
   settings: CustomerSettings | null;
   phone: string;
   jobWorkers: readonly JobWorkerCard[];
+  dispatch: ReadonlyMap<string, DispatchSummary>;
 };
 
 const emptyActivity: CustomerActivity = { jobs: [], submissions: [], cases: [], changes: [], reports: [], pauses: [] };
 
-const emptyData: CustomerData = { requests: [], quotes: [], activity: emptyActivity, pinnedIds: new Set(), notifications: [], profile: null, avatar: null, photos: new Map(), savedWorkers: [], settings: null, phone: '', jobWorkers: [] };
+const emptyData: CustomerData = { requests: [], quotes: [], activity: emptyActivity, pinnedIds: new Set(), notifications: [], profile: null, avatar: null, photos: new Map(), savedWorkers: [], settings: null, phone: '', jobWorkers: [], dispatch: new Map() };
 
 export type CustomerDataController = {
   data: CustomerData;
@@ -46,11 +47,13 @@ export type CustomerDataController = {
   clearAvatar: () => Promise<void>;
   setWorkerSaved: (profileId: string, saved: boolean) => Promise<void>;
   reviewJob: (jobId: string, review: JobReview) => Promise<void>;
+  retryDispatch: (requestId: string) => Promise<void>;
+  cancelServiceRequest: (requestId: string) => Promise<void>;
 };
 
 async function loadAll(userId: string, signal: AbortSignal): Promise<CustomerData> {
   const requests = await readRequests(userId, signal);
-  const [quotes, activity, pinned, notifications, profile, savedWorkers, settings, phone, jobWorkers, photos] = await Promise.all([
+  const [quotes, activity, pinned, notifications, profile, savedWorkers, settings, phone, jobWorkers, photos, summaries] = await Promise.all([
     readQuotes(userId, signal),
     readCustomerActivity(userId, requests.map(request => request.id), signal),
     readPinnedRequestIds(userId, signal),
@@ -61,9 +64,11 @@ async function loadAll(userId: string, signal: AbortSignal): Promise<CustomerDat
     readAccountPhone(userId, signal),
     readJobWorkerCards(userId, signal),
     readRequestPhotos(userId, signal),
+    readDispatchSummaries(userId, requests.map(request => request.id), signal),
   ]);
   const avatar = profile && profile.avatar_path ? await readAvatarSource(userId, profile.avatar_path, profile.updated_at, signal) : null;
-  return { requests, quotes, activity, pinnedIds: new Set(pinned), notifications, profile, avatar, photos, savedWorkers, settings, phone, jobWorkers };
+  const dispatch = new Map(summaries.map(summary => [summary.requestId, summary]));
+  return { requests, quotes, activity, pinnedIds: new Set(pinned), notifications, profile, avatar, photos, savedWorkers, settings, phone, jobWorkers, dispatch };
 }
 
 type Snapshot = { owner: string | null; data: CustomerData; loaded: boolean };
@@ -228,7 +233,25 @@ export function useCustomerData(userId: string | null): CustomerDataController {
     }
   }, [refresh, requireOwner]);
 
+  const retryDispatch = useCallback(async (requestId: string) => {
+    const id = requireOwner();
+    try {
+      await redispatchRequest(id, requestId, new AbortController().signal);
+    } finally {
+      refresh();
+    }
+  }, [refresh, requireOwner]);
+
+  const cancelServiceRequest = useCallback(async (requestId: string) => {
+    const id = requireOwner();
+    try {
+      await cancelRequest(id, requestId, new AbortController().signal);
+    } finally {
+      refresh();
+    }
+  }, [refresh, requireOwner]);
+
   return {
-    data, status, loaded: current.loaded, refresh, togglePin, decideQuote, markRead, saveProfile, removeSavedWorker, saveSettings, clearChatHistory, changeAvatar, clearAvatar, setWorkerSaved, reviewJob,
+    data, status, loaded: current.loaded, refresh, togglePin, decideQuote, markRead, saveProfile, removeSavedWorker, saveSettings, clearChatHistory, changeAvatar, clearAvatar, setWorkerSaved, reviewJob, retryDispatch, cancelServiceRequest,
   };
 }

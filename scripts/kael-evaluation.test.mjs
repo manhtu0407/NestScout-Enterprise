@@ -321,6 +321,48 @@ test('instructions injected through stored data cannot trigger an effect', async
   assert.equal(effectsCount(h.db), 0);
 });
 
+test('the request read reports the dispatch outcome of the caller own requests and nothing Kael could act on', async () => {
+  const mine = randomUUID();
+  const theirs = randomUUID();
+  const fixtures = {
+    requests: [
+      { id: mine, owner_id: users.customer.id, description: 'Máy lạnh không mát', location: '', created_at: '2026-11-01T00:00:00Z' },
+      { id: theirs, owner_id: users.other.id, description: 'Việc của người khác', location: '', created_at: '2026-11-01T00:00:00Z' },
+    ],
+    dispatch: [
+      { request_id: mine, state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true, can_cancel: true },
+      { request_id: theirs, state: 'searching', open_invites: 3, earliest_expiry: '2026-11-01T01:00:00Z', rounds: 1, can_retry: false, can_cancel: true },
+    ],
+  };
+  let seen;
+  const h = scripted(effects, [
+    { tools: [call('customer_requests', { limit: 5 })] },
+    request => {
+      seen = lastToolResults(request)[0];
+      return { text: ['Chưa có thợ nhận việc cho yêu cầu máy lạnh.'] };
+    },
+  ], fixtures);
+  const result = await h.message(users.customer, 'Yêu cầu máy lạnh của tôi đến đâu rồi?');
+  assert.equal(terminal(result).type, 'run_completed');
+  assert.deepEqual(seen.requests.map(row => row.dispatch), [{ state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true }]);
+  assert.match(seen.notice, /Kael cannot invite again or cancel/);
+  assert.equal(JSON.stringify(seen).includes('can_cancel'), false);
+  assert.equal(effectsCount(h.db), 0);
+});
+
+test('a dispatch summary that cannot be read fails the request read instead of reporting a guess', async () => {
+  const fixtures = {
+    requests: [{ id: randomUUID(), owner_id: users.customer.id, description: 'Máy lạnh không mát', location: '', created_at: '2026-11-01T00:00:00Z' }],
+    dispatchUnavailable: true,
+  };
+  const h = scripted(effects, [
+    { tools: [call('customer_requests', { limit: 5 })] },
+    { text: ['Mình chưa đọc được trạng thái yêu cầu.'] },
+  ], fixtures);
+  const result = await h.message(users.customer, 'Yêu cầu của tôi đến đâu rồi?');
+  assert.deepEqual(toolOutcomes(result), ['customer_requests:failed']);
+});
+
 test('provider failures fall back only before output and interrupted output is never reported as complete', async () => {
   const fallback = scripted({}, [{ error: 'overloaded' }], {}, [{ text: ['Trả lời từ nhà cung cấp dự phòng.'] }]);
   const recovered = await fallback.message(users.customer, 'Xin chào');

@@ -76,6 +76,7 @@ function knownTask(ctx: ToolContext, id: unknown): TaskRecord | null {
 }
 
 const fixtureNotice = 'A quote or offer whose basis is local_fixture is controlled test data, never a real commercial price or dispatch.';
+const dispatchNotice = 'dispatch.state is the backend view of the worker search for an accepted quote. When it is no_match or exhausted nobody has accepted the job; tell the user they can invite workers again (when can_retry is true) or cancel the request from Yêu cầu của tôi. Kael cannot invite again or cancel.';
 
 async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolExecution> {
   const requests = await getJson(ctx, `service_requests?select=id,description,location,created_at,preferred_visit_at&order=created_at.desc&limit=${limit}`) as Record<string, unknown>[];
@@ -85,12 +86,14 @@ async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolEx
   const jobs = await getJson(ctx, `service_jobs?select=id,request_id,stage,version&request_id=in.(${ids})`) as Record<string, unknown>[];
   const jobIds = jobs.map(row => String(row.id)).join(',');
   const submissions = jobIds ? await getJson(ctx, `service_submissions?select=id,job_id,evidence,decision&job_id=in.(${jobIds})`) as Record<string, unknown>[] : [];
+  const dispatch = await getJson(ctx, 'rpc/get_dispatch_summary', { method: 'POST', body: { p_request_ids: requests.map(row => String(row.id)) } }) as Record<string, unknown>[];
   const now = Date.now();
   return ok({
-    notice: `${dataNotice} ${fixtureNotice} A preferred visit time is the customer's wish, not a confirmed appointment.`,
+    notice: `${dataNotice} ${fixtureNotice} ${dispatchNotice} A preferred visit time is the customer's wish, not a confirmed appointment.`,
     requests: requests.map(request => {
       const quote = quotes.find(row => row.request_id === request.id);
       const job = jobs.find(row => row.request_id === request.id);
+      const summary = dispatch.find(row => row.request_id === request.id);
       const jobSubmissions = job ? submissions.filter(row => row.job_id === job.id) : [];
       const submission = jobSubmissions.find(row => row.decision === 'pending');
       const quoteStatus = !quote ? 'no_quote'
@@ -108,6 +111,7 @@ async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolEx
           quote_id: quote.id, version: quote.version, scope: clip(quote.scope, 300), amount_minor: quote.amount_minor, currency: quote.currency,
           expires_at: quote.expires_at, basis: quote.basis,
         } : null,
+        dispatch: summary ? { state: summary.state, open_invites: summary.open_invites, earliest_expiry: summary.earliest_expiry ?? null, rounds: summary.rounds, can_retry: summary.can_retry } : null,
         job: job ? { job_id: job.id, stage: job.stage, version: job.version, work_accepted: jobSubmissions.some(row => row.decision === 'accepted') } : null,
         pending_submission: submission ? { submission_id: submission.id, evidence: clip(submission.evidence, 300) } : null,
       };

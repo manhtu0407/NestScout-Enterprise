@@ -27,7 +27,8 @@ select is_empty($$
       'add_worker_document','remove_worker_document','my_worker_payout_account','set_worker_payout_account','remove_worker_payout_account',
       'toggle_review_reaction','review_reactions',
       'issue_fixture_quote','invite_fixture_worker','fixture_dispatch_queue','fixture_dispatch_candidates','set_kael_autonomy',
-      'set_request_preferred_visit','set_kael_feedback')
+      'set_request_preferred_visit','set_kael_feedback',
+      'dispatch_summary','cancel_service_request','redispatch_service_request')
 $$, 'Only reviewed private operations are callable by authenticated users');
 
 select is_empty($$

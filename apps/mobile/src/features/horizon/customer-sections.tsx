@@ -112,7 +112,7 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
 
   if (id === 'requests') {
     return <RequestsScreen
-      requests={toRequestViews({ requests: data.requests, quotes: data.quotes, activity: data.activity, workers: data.jobWorkers, photos: data.photos }, now)}
+      requests={toRequestViews({ requests: data.requests, quotes: data.quotes, activity: data.activity, workers: data.jobWorkers, photos: data.photos, dispatch: data.dispatch }, now)}
       focusId={focusId}
       jobChanges={jobChanges}
       onBack={onBack}
@@ -138,6 +138,20 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
       }}
       onToggleSaveWorker={worker => customer.setWorkerSaved(worker.profileId, !worker.saved)}
       onReviewWorker={(worker, review) => customer.reviewJob(worker.jobId, review)}
+      onRetryDispatch={async request => {
+        try {
+          await customer.retryDispatch(request.id);
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+      }}
+      onCancelRequest={async request => {
+        try {
+          await customer.cancelServiceRequest(request.id);
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+      }}
     />;
   }
 

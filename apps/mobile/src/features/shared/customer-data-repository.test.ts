@@ -72,6 +72,15 @@ test('each audience asks only for its own notification kinds', async () => {
   expect(jest.mocked(authenticatedRequest).mock.calls[1]?.[1]).not.toContain('job_offered');
 });
 
+test('the customer reads and asks for the exhausted dispatch notification', async () => {
+  respond([{ ...notification, kind: 'dispatch_exhausted' }]);
+  await expect(readNotifications('u1', signal)).resolves.toHaveLength(1);
+  expect(jest.mocked(authenticatedRequest).mock.calls[0]?.[1]).toContain('dispatch_exhausted');
+  respond([{ ...notification, kind: 'dispatch_exhausted' }]);
+  await expect(readNotifications('u1', signal, 'worker')).rejects.toThrow('Invalid notification response');
+  expect(jest.mocked(authenticatedRequest).mock.calls[1]?.[1]).not.toContain('dispatch_exhausted');
+});
+
 test('marking nothing read makes no request', async () => {
   await markNotificationsRead('u1', [], signal);
   expect(authenticatedRequest).not.toHaveBeenCalled();

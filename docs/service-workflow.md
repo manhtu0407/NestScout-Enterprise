@@ -417,6 +417,20 @@ owner and one enforcement point that covers both paths.
 The Worker job list is not paginated. Beyond 1000 jobs the Worker screen reports
 that activity cannot be verified instead of showing a truncated list.
 
+Dispatch outcome and recovery are local fixture behavior. Every dispatch round
+for an accepted quote is recorded in `service_dispatch_rounds` without naming a
+worker, so a round that found nobody is visible. A decline starts the next round
+automatically until `max_rounds` is reached; `get_dispatch_summary` derives the
+state (`searching`, `no_match`, `exhausted`, `assigned`, `cancelled`) at read
+time from invitations, rounds and jobs, so no sweeper exists and an expired
+offer is recognised only when it is read. The customer can invite workers again
+with `redispatch_service_request` once `retry_cooldown_minutes` have passed since
+the last round, and can cancel with `cancel_service_request` until a worker
+accepts. A cancelled request withdraws its open invitations and refuses a later
+quote acceptance. Kael reads the summary but cannot retry or cancel. The
+migration must be applied before the mobile client or the `kael` function that
+reads it is deployed.
+
 No endpoint confirms payment. A quote, work submission, acceptance, support case
 or status explanation cannot establish settlement. No model provider,
 notification delivery, automatic dispute resolution, real dispatch or Worker
@@ -467,7 +481,7 @@ negative tests, not by this table.
 | `work_submission_decision` | explicit_confirmation | service_submission | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `decide_service_submission` with the exact job version, after reads of `service_submissions` and `service_jobs` | D acceptance: acceptWork, requestCorrection | Only a pending submission of the account's own submitted job; a correction needs the user's reason; acceptance is reported without implying payment |
 | `worker_offer_decision` | explicit_confirmation | worker_offer | Worker capability (grant and eligibility); worker mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `accept_service_invitation` or `decline_service_invitation` with the exact quote version, after a read of `worker_offers` | C assignment: acceptInvitation, declineInvitation | An expired, changed or already assigned offer is refused; success is recorded only when this Worker's job or declined invitation is observed |
 | `worker_job_advance` | explicit_confirmation | worker_job | Worker capability (grant and eligibility); worker mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `advance_service_job` with the exact job version, after a read of `worker_jobs` | D execution: markEnRoute, confirmArrival, startWork | Only the next legal stage of the Worker's own job; pauses, scope and submission stay in the Jobs screen; success is recorded only when the versioned job event is observed |
-| `customer_requests` | authorized_read | service_request | Customer capability; client mode; row-level security | Reads of `service_requests`, `service_quotes`, `service_jobs` and `service_submissions` | B–E: own request, quote, job stage and pending submission | Backend error is reported; other accounts' rows are never returned |
+| `customer_requests` | authorized_read | service_request | Customer capability; client mode; row-level security | Reads of `service_requests`, `service_quotes`, `service_jobs` and `service_submissions`, and `get_dispatch_summary` | B–E: own request, quote, dispatch outcome, job stage and pending submission | Backend error is reported; other accounts' rows are never returned |
 | `worker_jobs` | authorized_read | worker_job | Worker capability (grant and eligibility); worker mode | `worker_job_cards`, `worker_offers` and `worker_jobs` | C–D: Worker offers and assigned jobs with versions | Empty for an account without Worker access |
 | `worker_earnings` | authorized_read | worker_earnings | Worker capability; worker mode | `worker_earnings` | F: recorded earnings, not settlement | Empty for an account without Worker access |
 | `worker_job_status` | authorized_read | worker_job | Worker capability; worker mode; assigned job | `kael_read_context` | D: kaelReadContext | Unavailable or rate limited; no other Worker's job |

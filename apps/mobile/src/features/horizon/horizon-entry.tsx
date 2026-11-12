@@ -96,7 +96,7 @@ export function HorizonEntry({ onPreviewMenu }: { onPreviewMenu?: () => void } =
       const job = pickProgressJob(toWorkerJobs(worker.data.snapshot, worker.data.cards, now));
       return job === null ? null : progressForWorkerJob(job);
     }
-    const request = pickProgressRequest(toRequestViews({ requests: data.requests, quotes: data.quotes, activity: data.activity, workers: data.jobWorkers, photos: data.photos }, now));
+    const request = pickProgressRequest(toRequestViews({ requests: data.requests, quotes: data.quotes, activity: data.activity, workers: data.jobWorkers, photos: data.photos, dispatch: data.dispatch }, now));
     return request === null ? null : progressForRequest(request);
   }, [access.phase, data, now, worker.data.cards, worker.data.snapshot]);
   const bannerSource = access.phase === 'worker' ? worker.data.notifications : data.notifications;

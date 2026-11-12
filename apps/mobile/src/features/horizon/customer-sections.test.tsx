@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import { recordConsent, setPreferredVisit, submitSupportRequest } from '@/features/shared';
+import { WorkflowError, recordConsent, setPreferredVisit, submitSupportRequest, type DispatchSummary } from '@/features/shared';
 
 import type { CustomerData, CustomerDataController } from './use-customer-data';
 import { CustomerSection } from './customer-sections';
@@ -18,14 +18,14 @@ jest.mock('@/features/shared', () => ({ ...jest.requireActual('@/features/shared
 const mockSetAiConsent = jest.fn();
 
 const empty: CustomerData = {
-  requests: [], quotes: [], pinnedIds: new Set(), notifications: [], profile: null, avatar: null, photos: new Map(), savedWorkers: [], settings: null, phone: '', jobWorkers: [],
+  requests: [], quotes: [], pinnedIds: new Set(), notifications: [], profile: null, avatar: null, photos: new Map(), savedWorkers: [], settings: null, phone: '', jobWorkers: [], dispatch: new Map(),
   activity: { jobs: [], submissions: [], cases: [], changes: [], reports: [], pauses: [] },
 };
 
 function controller(overrides: Partial<CustomerDataController> = {}): CustomerDataController {
   return {
     data: empty, status: 'ready', loaded: true, refresh: jest.fn(), togglePin: jest.fn(), decideQuote: jest.fn(),
-    markRead: jest.fn(), saveProfile: jest.fn(), removeSavedWorker: jest.fn(), saveSettings: jest.fn(), clearChatHistory: jest.fn(), changeAvatar: jest.fn(), clearAvatar: jest.fn(), setWorkerSaved: jest.fn(), reviewJob: jest.fn(), ...overrides,
+    markRead: jest.fn(), saveProfile: jest.fn(), removeSavedWorker: jest.fn(), saveSettings: jest.fn(), clearChatHistory: jest.fn(), changeAvatar: jest.fn(), clearAvatar: jest.fn(), setWorkerSaved: jest.fn(), reviewJob: jest.fn(), retryDispatch: jest.fn(), cancelServiceRequest: jest.fn(), ...overrides,
   };
 }
 
@@ -273,4 +273,52 @@ test('AI data sharing is a separate explicit privacy choice', async () => {
   expect(screen.getByText(/Perplexity/)).toBeTruthy();
   await fireEvent.press(screen.getByLabelText('Chia sẻ dữ liệu với AI'));
   expect(mockSetAiConsent).toHaveBeenCalledWith(true);
+});
+
+const acceptedQuote = { id: 'q1', request_id: 'r1', version: 1, scope: 'Thay vòi', amount_minor: 250000, currency: 'VND' as const, expires_at: '2099-01-01T00:00:00.000Z', basis: 'local_fixture', accepted_at: '2026-11-12T08:00:00.000Z', rejected_at: null };
+const exhausted: DispatchSummary = { requestId: 'r1', state: 'exhausted', openInvites: 0, earliestExpiry: null, rounds: 3, canRetry: true, canCancel: true };
+const activate = { nativeEvent: { actionName: 'activate' } };
+
+function dispatchController(overrides: Partial<CustomerDataController> = {}) {
+  return controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], dispatch: new Map([['r1', exhausted]]) }, ...overrides });
+}
+
+test('a request nobody accepted shows its outcome and retries through the owner command', async () => {
+  const retryDispatch = jest.fn().mockResolvedValue(undefined);
+  jest.mocked(useCustomerData).mockReturnValue(dispatchController({ retryDispatch }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  expect(screen.getByText('Chưa có thợ nhận việc')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('Mời thợ lại cho Sửa vòi nước'));
+  await waitFor(() => expect(retryDispatch).toHaveBeenCalledWith('r1'));
+});
+
+test('a refused retry shows the classified message instead of pretending to succeed', async () => {
+  const retryDispatch = jest.fn().mockRejectedValue(new WorkflowError('rejected'));
+  jest.mocked(useCustomerData).mockReturnValue(dispatchController({ retryDispatch }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByLabelText('Mời thợ lại cho Sửa vòi nước'));
+  expect(await screen.findByText('Bước này không còn khả dụng. Đã tải lại trạng thái mới nhất.')).toBeTruthy();
+});
+
+test('cancelling needs a deliberate slide and then goes through the owner command', async () => {
+  const cancelServiceRequest = jest.fn().mockResolvedValue(undefined);
+  jest.mocked(useCustomerData).mockReturnValue(dispatchController({ cancelServiceRequest }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByLabelText('Hủy yêu cầu Sửa vòi nước'));
+  expect(cancelServiceRequest).not.toHaveBeenCalled();
+  const slider = screen.getByLabelText('Xác nhận hủy yêu cầu Sửa vòi nước');
+  await fireEvent(slider, 'accessibilityAction', activate);
+  await fireEvent(slider, 'accessibilityAction', activate);
+  await waitFor(() => expect(cancelServiceRequest).toHaveBeenCalledWith('r1'));
+});
+
+test('a cancelled request moves to the finished tab with a cancelled status', async () => {
+  const cancelled: DispatchSummary = { ...exhausted, state: 'cancelled', canRetry: false, canCancel: false };
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], dispatch: new Map([['r1', cancelled]]) } }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  expect(screen.queryByText('Sửa vòi nước')).toBeNull();
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đã xong/ }));
+  expect(screen.getByText('Đã hủy yêu cầu')).toBeTruthy();
+  expect(screen.getByText('Đã hủy')).toBeTruthy();
+  expect(screen.queryByLabelText('Mời thợ lại cho Sửa vòi nước')).toBeNull();
 });

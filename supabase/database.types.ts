@@ -409,6 +409,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"service_dispatch_rounds": {
+                  Row: {
+                    "created_at": string,"id": string,"invited_count": number,"quote_id": string,"reason": string,"request_id": string,"round": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"invited_count": number,"quote_id": string,"reason": string,"request_id": string,"round": number
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"invited_count"?: number,"quote_id"?: string,"reason"?: string,"request_id"?: string,"round"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_dispatch_rounds_quote_id_request_id_fkey"
+      columns: ["quote_id","request_id"]
+isOneToOne: false
+      referencedRelation: "service_quotes"
+      referencedColumns: ["id","request_id"]
+    },{
+      foreignKeyName: "service_dispatch_rounds_request_id_fkey"
+      columns: ["request_id"]
+isOneToOne: false
+      referencedRelation: "service_requests"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"service_invitations": {
                   Row: {
                     "basis": string,"created_at": string,"expires_at": string,"id": string,"invited_by": string | null,"quote_id": string,"request_id": string,"state": string,"worker_id": string
@@ -549,14 +575,14 @@ isOneToOne: false
                   ]
                 },"service_requests": {
                   Row: {
-                    "created_at": string,"description": string,"id": string,"location": string,"owner_id": string,"preferred_visit_at": string | null,"service_id": string | null,"submission_key": string
+                    "cancelled_at": string | null,"cancelled_by": string | null,"created_at": string,"description": string,"id": string,"location": string,"owner_id": string,"preferred_visit_at": string | null,"service_id": string | null,"submission_key": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"description": string,"id"?: string,"location"?: string,"owner_id"?: string,"preferred_visit_at"?: string | null,"service_id"?: string | null,"submission_key": string
+                    "cancelled_at"?: string | null,"cancelled_by"?: string | null,"created_at"?: string,"description": string,"id"?: string,"location"?: string,"owner_id"?: string,"preferred_visit_at"?: string | null,"service_id"?: string | null,"submission_key": string
                   }
                   Update: {
-                    "created_at"?: string,"description"?: string,"id"?: string,"location"?: string,"owner_id"?: string,"preferred_visit_at"?: string | null,"service_id"?: string | null,"submission_key"?: string
+                    "cancelled_at"?: string | null,"cancelled_by"?: string | null,"created_at"?: string,"description"?: string,"id"?: string,"location"?: string,"owner_id"?: string,"preferred_visit_at"?: string | null,"service_id"?: string | null,"submission_key"?: string
                   }
                   Relationships: [
 
@@ -758,6 +784,9 @@ isOneToOne: false
 "cancel_account_deletion":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
+"cancel_service_request":
+{ Args: { "p_request_id": string }; Returns: string
+                           },
 "claim_push_deliveries":
 { Args: { "p_limit": number }; Returns: Json
                            },
@@ -798,6 +827,11 @@ isOneToOne: false
 "fixture_dispatch_queue":
 { Args: Record<PropertyKey, never>; Returns: {
               "accepted_quote_id": string,"created_at": string,"description": string,"job_id": string,"latest_quote_id": string,"latest_quote_version": number,"location": string,"open_invitations": number,"quote_state": string,"request_id": string
+            }[]
+                           },
+"get_dispatch_summary":
+{ Args: { "p_request_ids": (string)[] }; Returns: {
+              "can_cancel": boolean,"can_retry": boolean,"earliest_expiry": string,"open_invites": number,"request_id": string,"rounds": number,"state": string
             }[]
                            },
 "invite_fixture_worker":
@@ -943,6 +977,9 @@ isOneToOne: false
                            },
 "purge_expired_data":
 { Args: { "p_kael_messages_older_than": string,"p_read_notifications_older_than": string }; Returns: Json
+                           },
+"redispatch_service_request":
+{ Args: { "p_request_id": string }; Returns: number
                            },
 "register_push_token":
 { Args: { "p_platform": string,"p_token": string }; Returns: string

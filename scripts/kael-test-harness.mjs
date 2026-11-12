@@ -248,6 +248,11 @@ export function backend(db, options = {}) {
     if (!user) return json(401, {});
     if (url.pathname === '/rest/v1/service_requests') return json(200, fixtures.requests.filter(row => row.owner_id === user.id).map(({ owner_id: _owner, ...row }) => row));
     if (url.pathname === '/rest/v1/service_quotes') return json(200, fixtures.quotes.filter(row => fixtures.requests.some(r => r.id === row.request_id && r.owner_id === user.id)));
+    if (url.pathname === '/rest/v1/rpc/get_dispatch_summary') {
+      if (fixtures.dispatchUnavailable) return json(404, {});
+      const ids = JSON.parse(init.body).p_request_ids;
+      return json(200, (fixtures.dispatch ?? []).filter(row => ids.includes(row.request_id) && fixtures.requests.some(r => r.id === row.request_id && r.owner_id === user.id)));
+    }
     if (url.pathname === '/rest/v1/service_jobs') return json(200, fixtures.jobs.filter(row => fixtures.requests.some(r => r.id === row.request_id && r.owner_id === user.id)));
     if (url.pathname === '/rest/v1/service_submissions') return json(200, (fixtures.submissions ?? []).filter(row => fixtures.jobs.some(j => j.id === row.job_id && fixtures.requests.some(r => r.id === j.request_id && r.owner_id === user.id))));
     const worker = (db.capabilities.get(user.id) ?? []).includes('worker');

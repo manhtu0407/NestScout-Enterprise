@@ -23,6 +23,13 @@ test('the newest request that is not done is the one that is tracked', () => {
   expect(pickProgressRequest([])).toBeNull();
 });
 
+test('a cancelled request is never the one that is tracked', () => {
+  const cancelled: ServiceRequest = { ...request('cancelled', 0, 'done', 'Đã hủy yêu cầu'), closed: 'cancelled' };
+  expect(pickProgressRequest([cancelled, request('finished', 6, 'done', 'Đã hoàn tất')])?.id).toBe('finished');
+  expect(pickProgressRequest([cancelled, request('open', 1, 'waiting')])?.id).toBe('open');
+  expect(pickProgressRequest([cancelled])).toBeNull();
+});
+
 test('a request becomes a progress with its real status and step', () => {
   const progress = progressForRequest(request('a', 1, 'waiting', 'Có báo giá mới'));
   expect(progress).toMatchObject({ hint: 'Yêu cầu a · Có báo giá mới', current: 1, finished: false });
