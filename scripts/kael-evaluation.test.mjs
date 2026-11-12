@@ -330,8 +330,8 @@ test('the request read reports the dispatch outcome of the caller own requests a
       { id: theirs, owner_id: users.other.id, description: 'Việc của người khác', location: '', created_at: '2026-11-01T00:00:00Z' },
     ],
     dispatch: [
-      { request_id: mine, state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true, can_cancel: true },
-      { request_id: theirs, state: 'searching', open_invites: 3, earliest_expiry: '2026-11-01T01:00:00Z', rounds: 1, can_retry: false, can_cancel: true },
+      { request_id: mine, state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true, can_cancel: true, can_reclassify: false, next_retry_at: null, retries_left: 2, last_outcome: 'no_eligible_worker' },
+      { request_id: theirs, state: 'searching', open_invites: 3, earliest_expiry: '2026-11-01T01:00:00Z', rounds: 1, can_retry: false, can_cancel: true, can_reclassify: false, next_retry_at: null, retries_left: 2, last_outcome: 'invited' },
     ],
   };
   let seen;
@@ -344,9 +344,12 @@ test('the request read reports the dispatch outcome of the caller own requests a
   ], fixtures);
   const result = await h.message(users.customer, 'Yêu cầu máy lạnh của tôi đến đâu rồi?');
   assert.equal(terminal(result).type, 'run_completed');
-  assert.deepEqual(seen.requests.map(row => row.dispatch), [{ state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true }]);
-  assert.match(seen.notice, /Kael cannot invite again or cancel/);
-  assert.equal(JSON.stringify(seen).includes('can_cancel'), false);
+  assert.deepEqual(seen.requests.map(row => row.dispatch), [{
+    state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true, can_cancel: true, can_reclassify: false,
+    next_retry_at: null, retries_left: 2, last_outcome: 'no_eligible_worker',
+  }]);
+  assert.match(seen.notice, /Invited workers are not an assignment/);
+  assert.equal(JSON.stringify(seen).includes(theirs), false);
   assert.equal(effectsCount(h.db), 0);
 });
 

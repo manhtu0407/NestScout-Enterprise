@@ -24,14 +24,15 @@ export function pickProgressRequest(requests: readonly ServiceRequest[]): Servic
   return requests.find(request => request.stage !== 'done') ?? requests.find(request => request.closed === undefined) ?? null;
 }
 
-export function progressForRequest(request: Pick<ServiceRequest, 'title' | 'status' | 'step'>): KaelProgress {
+export function progressForRequest(request: Pick<ServiceRequest, 'title' | 'status' | 'step' | 'dispatch'>): KaelProgress {
   const finished = request.step >= workflowSteps.length;
+  const stalled = request.dispatch?.canRetry === true || request.dispatch?.canReclassify === true;
   return {
     hint: `${request.title} · ${request.status}`,
     steps: workflowSteps,
     current: Math.min(request.step, workflowSteps.length),
     finished,
-    spinnerLabel: finished ? 'Yêu cầu đã hoàn tất' : 'Đang tiến hành',
+    spinnerLabel: finished ? 'Yêu cầu đã hoàn tất' : stalled ? 'Đang chờ bạn xử lý' : 'Đang tiến hành',
   };
 }
 

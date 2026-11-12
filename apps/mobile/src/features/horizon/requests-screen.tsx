@@ -3,7 +3,7 @@ import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View 
 import type { LayoutChangeEvent } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { Chip, Icon, type IconName, type JobReview, PressScale, StatusDot, useGlassAccessibility, type StatusDotColor } from '@/features/shared';
+import { Chip, type DispatchServiceId, Icon, type IconName, type JobReview, PressScale, StatusDot, useGlassAccessibility, type StatusDotColor } from '@/features/shared';
 import { ScreenHeader } from './support-shell';
 import { JobChangePanel, type JobChangesApi } from './job-change-panel';
 import { formatVisit, PreferredVisitPicker } from './preferred-visit-picker';
@@ -40,7 +40,7 @@ export type ServiceRequest = {
   preferredVisitAt?: string | null;
   pendingSubmission?: { id: string; evidence: string; jobVersion: number };
   closed?: 'cancelled';
-  dispatch?: { canRetry: boolean; canCancel: boolean };
+  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; nextRetryAt?: string | null; retriesLeft?: number };
 };
 
 export const workflowSteps: readonly string[] = ['Đã gửi', 'Có báo giá', 'Chấp nhận', 'Ghép thợ', 'Thực hiện', 'Nghiệm thu'];
@@ -60,13 +60,14 @@ type Props = {
   onDecideSubmission?: (request: ServiceRequest, decision: SubmissionDecision, reason: string | null) => Promise<void>;
   onToggleSaveWorker?: (worker: RequestWorker) => Promise<void>;
   onReviewWorker?: (worker: RequestWorker, review: JobReview) => Promise<void>;
-  onRetryDispatch?: (request: ServiceRequest) => Promise<void>;
+  onRetryDispatch?: (request: ServiceRequest) => Promise<void | string>;
+  onSetRequestService?: (request: ServiceRequest, serviceId: DispatchServiceId) => Promise<void>;
   onCancelRequest?: (request: ServiceRequest) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
   focusId?: string;
 };
 
-function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onCancelRequest, jobChanges }: CardProps) {
+function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, jobChanges }: CardProps) {
   const finished = request.step >= workflowSteps.length;
   const caption = request.closed === 'cancelled' ? 'Đã hủy' : finished ? `Đủ ${workflowSteps.length}/${workflowSteps.length} bước` : `Bước ${request.step + 1}/${workflowSteps.length} · ${workflowSteps[request.step]}`;
   const needsYou = Boolean(request.quoteCount);
@@ -119,7 +120,11 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onS
           title={request.title}
           canRetry={request.dispatch.canRetry}
           canCancel={request.dispatch.canCancel}
+          canReclassify={request.dispatch.canReclassify === true && onSetRequestService !== undefined}
+          nextRetryAt={request.dispatch.nextRetryAt ?? null}
+          retriesLeft={request.dispatch.retriesLeft ?? null}
           onRetry={() => onRetryDispatch(request)}
+          onSetService={serviceId => onSetRequestService ? onSetRequestService(request, serviceId) : Promise.resolve()}
           onCancel={() => onCancelRequest(request)}
         />
       ) : null}
@@ -205,12 +210,13 @@ type CardProps = {
   onDecideSubmission?: (request: ServiceRequest, decision: SubmissionDecision, reason: string | null) => Promise<void>;
   onToggleSaveWorker?: (worker: RequestWorker) => Promise<void>;
   onReviewWorker?: (worker: RequestWorker, review: JobReview) => Promise<void>;
-  onRetryDispatch?: (request: ServiceRequest) => Promise<void>;
+  onRetryDispatch?: (request: ServiceRequest) => Promise<void | string>;
+  onSetRequestService?: (request: ServiceRequest, serviceId: DispatchServiceId) => Promise<void>;
   onCancelRequest?: (request: ServiceRequest) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
 };
 
-export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onCancelRequest, jobChanges, focusId }: Props) {
+export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, jobChanges, focusId }: Props) {
   const focused = requests.find(request => request.id === focusId);
   const [expandedIds, setExpandedIds] = useState<readonly string[]>(focused ? [focused.id] : []);
   const { reduceMotion } = useGlassAccessibility();
@@ -294,6 +300,7 @@ export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael,
               onToggleSaveWorker={onToggleSaveWorker}
               onReviewWorker={onReviewWorker}
               onRetryDispatch={onRetryDispatch}
+              onSetRequestService={onSetRequestService}
               onCancelRequest={onCancelRequest}
               jobChanges={jobChanges}
             />

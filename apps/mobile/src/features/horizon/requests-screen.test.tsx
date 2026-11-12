@@ -35,6 +35,29 @@ test('a stuck request offers to invite workers again and to cancel', async () =>
   expect(screen.getByLabelText('Hủy yêu cầu Thay ổ cắm')).toBeTruthy();
 });
 
+test('a retry result is shown to the customer and a cooldown names the time', async () => {
+  const onRetryDispatch = jest.fn().mockResolvedValue('Hiện chưa có thợ phù hợp để mời.');
+  await render(<RequestsScreen onBack={jest.fn()} requests={[stuck]} onRetryDispatch={onRetryDispatch} onCancelRequest={jest.fn()} />);
+  await fireEvent.press(screen.getByLabelText('Mời thợ lại cho Thay ổ cắm'));
+  expect(await screen.findByText('Hiện chưa có thợ phù hợp để mời.')).toBeTruthy();
+});
+
+test('the remaining retry budget and the next allowed time are visible', async () => {
+  await render(<RequestsScreen onBack={jest.fn()} requests={[{ ...stuck, dispatch: { canRetry: true, canCancel: true, retriesLeft: 2 } }]} onRetryDispatch={jest.fn()} onCancelRequest={jest.fn()} />);
+  expect(screen.getByText('Còn 2 lượt mời lại.')).toBeTruthy();
+  await screen.unmount();
+  await render(<RequestsScreen onBack={jest.fn()} requests={[{ ...stuck, dispatch: { canRetry: false, canCancel: true, nextRetryAt: '2026-11-12T10:30:00.000Z' } }]} onRetryDispatch={jest.fn()} onCancelRequest={jest.fn()} />);
+  expect(screen.getByText(/Bạn có thể mời thợ lại sau \d{2}:\d{2}\./)).toBeTruthy();
+});
+
+test('a request that needs a service category offers the categories and not a retry', async () => {
+  const onSetRequestService = jest.fn().mockResolvedValue(undefined);
+  await render(<RequestsScreen onBack={jest.fn()} requests={[{ ...stuck, dispatch: { canRetry: false, canCancel: true, canReclassify: true } }]} onRetryDispatch={jest.fn()} onSetRequestService={onSetRequestService} onCancelRequest={jest.fn()} />);
+  expect(screen.queryByLabelText('Mời thợ lại cho Thay ổ cắm')).toBeNull();
+  await fireEvent.press(screen.getByLabelText('Chọn loại dịch vụ Điện cho Thay ổ cắm'));
+  expect(onSetRequestService).toHaveBeenCalledWith(expect.objectContaining({ id: 'request-2' }), 'electric');
+});
+
 test('a request in its cooldown offers only to cancel', async () => {
   await render(<RequestsScreen onBack={jest.fn()} requests={[{ ...stuck, dispatch: { canRetry: false, canCancel: true } }]} onRetryDispatch={jest.fn()} onCancelRequest={jest.fn()} />);
   expect(screen.queryByLabelText('Mời thợ lại cho Thay ổ cắm')).toBeNull();

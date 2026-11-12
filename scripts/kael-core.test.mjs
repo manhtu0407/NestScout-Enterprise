@@ -694,7 +694,7 @@ test('capability selection depends on mode, verified capability and owner-enable
   assert.deepEqual(names({ ...customer, mode: 'worker' }), ['task_create', 'task_update', 'ask_user_choice', 'knowledge_search', 'price_estimate_preview'], 'worker mode without worker capability exposes no worker data');
   assert.deepEqual(names({ ...customer, mode: 'worker', capabilities: new Set(['customer', 'worker']) }), ['task_create', 'task_update', 'ask_user_choice', 'worker_jobs', 'worker_earnings', 'worker_job_status', 'knowledge_search', 'price_estimate_preview']);
   const every = config({ enabledEffects: new Set(consequentialEffects) });
-  assert.deepEqual(names(customer, every).filter(name => findTool(name).effect !== null), ['service_request_submit', 'service_quote_decision', 'work_submission_decision'], 'a customer is offered only customer effects');
+  assert.deepEqual(names(customer, every).filter(name => findTool(name).effect !== null), ['service_request_submit', 'service_quote_decision', 'service_request_redispatch', 'service_request_cancel', 'work_submission_decision'], 'a customer is offered only customer effects');
   assert.deepEqual(names({ ...customer, mode: 'worker' }, every).filter(name => findTool(name).effect !== null), [], 'worker mode without worker capability is offered no effect');
   assert.deepEqual(names({ ...customer, mode: 'worker', capabilities: new Set(['customer', 'worker']) }, every).filter(name => findTool(name).effect !== null), ['worker_offer_decision', 'worker_job_advance'], 'a verified worker is offered only worker effects');
   assert.deepEqual(names(customer, config({ enabledEffects: new Set(['service_request_submit']) })).filter(name => findTool(name).effect !== null), ['service_request_submit'], 'each workflow effect needs its own owner gate');
@@ -880,6 +880,8 @@ const validInputs = {
   service_request_submit: { task_id: users.customer.id },
   ask_user_choice: { question: 'Thợ nên đến khi nào?', options: ['Sáng mai', 'Chiều mai'], allow_date: true },
   service_quote_decision: { task_id: users.customer.id, quote_id: users.other.id, quote_version: 2, decision: 'accepted' },
+  service_request_redispatch: { task_id: users.customer.id, request_id: users.other.id, rounds: 1 },
+  service_request_cancel: { task_id: users.customer.id, request_id: users.other.id },
   work_submission_decision: { task_id: users.customer.id, submission_id: users.other.id, job_version: 4, decision: 'revision_requested', reason: 'Máy vẫn chảy nước' },
   worker_offer_decision: { task_id: users.customer.id, invitation_id: users.other.id, quote_id: users.other.id, quote_version: 1, decision: 'accept' },
   worker_job_advance: { task_id: users.customer.id, job_id: users.other.id, version: 1, next: 'en_route' },
@@ -1104,6 +1106,8 @@ test('each workflow effect is recognised from the row it leaves behind', async (
     [{ tool: 'work_submission_decision', args: { submission_id: id, job_version: 3, decision: 'revision_requested', reason: 'x' } }, [{ id, decision: 'revision_requested' }], [{ id, decision: 'pending' }], /^service_submissions[?]/],
     [{ tool: 'worker_offer_decision', args: { decision: 'accept', invitation_id: id, quote_id: quoteId, quote_version: 1 } }, [{ id }], [], /^service_jobs[?]select=id&invitation_id=eq[.]/],
     [{ tool: 'worker_offer_decision', args: { decision: 'decline', invitation_id: id, quote_id: quoteId, quote_version: 1 } }, [{ id, state: 'declined' }], [{ id, state: 'open' }], /^service_invitations[?]/],
+    [{ tool: 'service_request_redispatch', args: { request_id: id, rounds: 1 } }, [{ request_id: id, round: 2, outcome: 'invited' }], [], /^service_dispatch_rounds[?]select=request_id,round,outcome&request_id=eq[.][^&]+&round=eq[.]2&outcome=eq[.]invited$/],
+    [{ tool: 'service_request_cancel', args: { request_id: id } }, [{ id, cancelled_at: '2026-11-12T01:00:00Z' }], [{ id, cancelled_at: null }], /^service_requests[?]select=id,cancelled_at&id=eq[.]/],
     [{ tool: 'worker_job_advance', args: { job_id: id, version: 4, next: 'arrived' } }, [{ id, stage: 'arrived', version: 5 }], [{ id, stage: 'en_route', version: 4 }], /^service_jobs[?]select=id,stage,version/],
   ];
   for (const [effect, applied, pending, path] of cases) {

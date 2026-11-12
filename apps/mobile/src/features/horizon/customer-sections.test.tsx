@@ -25,7 +25,7 @@ const empty: CustomerData = {
 function controller(overrides: Partial<CustomerDataController> = {}): CustomerDataController {
   return {
     data: empty, status: 'ready', loaded: true, refresh: jest.fn(), togglePin: jest.fn(), decideQuote: jest.fn(),
-    markRead: jest.fn(), saveProfile: jest.fn(), removeSavedWorker: jest.fn(), saveSettings: jest.fn(), clearChatHistory: jest.fn(), changeAvatar: jest.fn(), clearAvatar: jest.fn(), setWorkerSaved: jest.fn(), reviewJob: jest.fn(), retryDispatch: jest.fn(), cancelServiceRequest: jest.fn(), ...overrides,
+    markRead: jest.fn(), saveProfile: jest.fn(), removeSavedWorker: jest.fn(), saveSettings: jest.fn(), clearChatHistory: jest.fn(), changeAvatar: jest.fn(), clearAvatar: jest.fn(), setWorkerSaved: jest.fn(), reviewJob: jest.fn(), retryDispatch: jest.fn(), classifyRequest: jest.fn(), cancelServiceRequest: jest.fn(), ...overrides,
   };
 }
 
@@ -276,15 +276,43 @@ test('AI data sharing is a separate explicit privacy choice', async () => {
 });
 
 const acceptedQuote = { id: 'q1', request_id: 'r1', version: 1, scope: 'Thay vòi', amount_minor: 250000, currency: 'VND' as const, expires_at: '2099-01-01T00:00:00.000Z', basis: 'local_fixture', accepted_at: '2026-11-12T08:00:00.000Z', rejected_at: null };
-const exhausted: DispatchSummary = { requestId: 'r1', state: 'exhausted', openInvites: 0, earliestExpiry: null, rounds: 3, canRetry: true, canCancel: true };
+const exhausted: DispatchSummary = { requestId: 'r1', state: 'exhausted', openInvites: 0, earliestExpiry: null, rounds: 3, canRetry: true, canCancel: true, canReclassify: false, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'invited' };
 const activate = { nativeEvent: { actionName: 'activate' } };
 
 function dispatchController(overrides: Partial<CustomerDataController> = {}) {
   return controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], dispatch: new Map([['r1', exhausted]]) }, ...overrides });
 }
 
+const invitedResult = { outcome: 'invited' as const, state: 'searching' as const, canRetry: false, retriesLeft: 1, openInvites: 1, nextRetryAt: null };
+
+test('a retry that found nobody tells the customer instead of pretending workers were invited', async () => {
+  const retryDispatch = jest.fn().mockResolvedValue({ ...invitedResult, outcome: 'no_eligible_worker', state: 'no_match', canRetry: true, openInvites: 0 });
+  jest.mocked(useCustomerData).mockReturnValue(dispatchController({ retryDispatch }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByLabelText('Mời thợ lại cho Sửa vòi nước'));
+  expect(await screen.findByText('Hiện chưa có thợ phù hợp để mời. Bạn có thể thử lại sau ít phút hoặc hủy yêu cầu.')).toBeTruthy();
+});
+
+test('a retry that invited workers says they are invited and not assigned', async () => {
+  const retryDispatch = jest.fn().mockResolvedValue(invitedResult);
+  jest.mocked(useCustomerData).mockReturnValue(dispatchController({ retryDispatch }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByLabelText('Mời thợ lại cho Sửa vòi nước'));
+  expect(await screen.findByText('Đã mời thêm thợ. Chưa có thợ nhận việc; yêu cầu chỉ được giao khi một thợ xác nhận.')).toBeTruthy();
+});
+
+test('a request without a service category asks for one and sends the owner command', async () => {
+  const classifyRequest = jest.fn().mockResolvedValue(undefined);
+  const needsService: DispatchSummary = { ...exhausted, state: 'needs_service', canRetry: false, canReclassify: true };
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], dispatch: new Map([['r1', needsService]]) }, classifyRequest }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  expect(screen.getByText('Cần chọn loại dịch vụ')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('Chọn loại dịch vụ Máy lạnh cho Sửa vòi nước'));
+  await waitFor(() => expect(classifyRequest).toHaveBeenCalledWith('r1', 'aircon'));
+});
+
 test('a request nobody accepted shows its outcome and retries through the owner command', async () => {
-  const retryDispatch = jest.fn().mockResolvedValue(undefined);
+  const retryDispatch = jest.fn().mockResolvedValue(invitedResult);
   jest.mocked(useCustomerData).mockReturnValue(dispatchController({ retryDispatch }));
   await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
   expect(screen.getByText('Chưa có thợ nhận việc')).toBeTruthy();

@@ -200,6 +200,29 @@ fn tool_offers_follow_mode_capability_and_enabled_effects() {
     assert!(select_tools(&catalog, &actor("client", &["customer"]), &enabled).iter().any(|tool| tool.id == "service_request_submit"));
 }
 
+#[test]
+fn dispatch_recovery_effects_are_customer_only_gated_and_argument_bound() {
+    let catalog = registry();
+    let offered = |actor: &Actor, settings: &Config| select_tools(&catalog, actor, settings).iter().map(|tool| tool.id.to_owned()).collect::<Vec<_>>();
+    let customer = actor("client", &["customer"]);
+    let worker = actor("worker", &["customer", "worker"]);
+    let off = offered(&customer, &config(&[]));
+    assert!(!off.contains(&"service_request_redispatch".to_owned()) && !off.contains(&"service_request_cancel".to_owned()));
+    let enabled = config(&[("KAEL_ENABLED_EFFECTS", "service_request_redispatch,service_request_cancel")]);
+    let on = offered(&customer, &enabled);
+    assert!(on.contains(&"service_request_redispatch".to_owned()) && on.contains(&"service_request_cancel".to_owned()));
+    let for_worker = offered(&worker, &enabled);
+    assert!(!for_worker.contains(&"service_request_redispatch".to_owned()) && !for_worker.contains(&"service_request_cancel".to_owned()));
+    let redispatch = catalog.iter().find(|tool| tool.id == "service_request_redispatch").expect("redispatch tool");
+    let cancel = catalog.iter().find(|tool| tool.id == "service_request_cancel").expect("cancel tool");
+    let valid = json!({"task_id": OWNER, "request_id": REQUEST, "rounds": 1});
+    assert!(validate_arguments(redispatch, &valid));
+    assert!(!validate_arguments(redispatch, &json!({"task_id": OWNER, "request_id": REQUEST})));
+    assert!(!validate_arguments(redispatch, &json!({"task_id": OWNER, "request_id": REQUEST, "rounds": 1, "force": true})));
+    assert!(validate_arguments(cancel, &json!({"task_id": OWNER, "request_id": REQUEST})));
+    assert!(!validate_arguments(cancel, &json!({"task_id": OWNER, "request_id": "short"})));
+}
+
 fn knowledge_item(kind: &str) -> Value {
     let hash = "a".repeat(64);
     let source_id = if kind == "product_fact" { "product.payment-policy" } else { "case.leaking-tap" };

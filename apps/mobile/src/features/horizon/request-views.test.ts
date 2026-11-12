@@ -163,7 +163,7 @@ test('a worker saved a moment ago reads as just saved', () => {
 });
 
 function summary(overrides: Partial<DispatchSummary> = {}): DispatchSummary {
-  return { requestId: 'r1', state: 'no_match', openInvites: 0, earliestExpiry: null, rounds: 1, canRetry: true, canCancel: true, ...overrides };
+  return { requestId: 'r1', state: 'no_match', openInvites: 0, earliestExpiry: null, rounds: 1, canRetry: true, canCancel: true, canReclassify: false, nextRetryAt: null, retriesLeft: 2, lastOutcome: null, ...overrides };
 }
 
 const acceptedQuote = quote({ accepted_at: hoursAgo(1) });
@@ -189,6 +189,23 @@ test('no matching worker is reported as such with the actions that are open', ()
 
 test('every offer ending without a worker is reported as exhausted', () => {
   expect(deriveRequestProgress([acceptedQuote], undefined, now, summary({ state: 'exhausted', rounds: 3 }))).toMatchObject({ status: 'Chưa có thợ nhận việc', dispatch: { canRetry: true, canCancel: true } });
+});
+
+test('lapsed offers awaiting the sweep read as an update in progress', () => {
+  const progress = deriveRequestProgress([acceptedQuote], undefined, now, summary({ state: 'recovering', openInvites: 1, canRetry: false }));
+  expect(progress).toMatchObject({ status: 'Đang cập nhật lời mời', dispatch: { canRetry: false, canCancel: true } });
+});
+
+test('a request without a service category asks for one and offers reclassification', () => {
+  const progress = deriveRequestProgress([acceptedQuote], undefined, now, summary({ state: 'needs_service', canRetry: false, canReclassify: true }));
+  expect(progress).toMatchObject({ status: 'Cần chọn loại dịch vụ', dispatch: { canReclassify: true } });
+});
+
+test('an exhausted retry budget and a cooldown are explained instead of hidden', () => {
+  const spent = deriveRequestProgress([acceptedQuote], undefined, now, summary({ canRetry: false, retriesLeft: 0 }));
+  expect(spent.nextAction).toContain('Đã hết lượt mời lại.');
+  const waiting = deriveRequestProgress([acceptedQuote], undefined, now, summary({ canRetry: false, nextRetryAt: hoursAhead(1) }));
+  expect(waiting.nextAction).toMatch(/Bạn có thể mời thợ lại sau \d{2}:\d{2} hoặc hủy yêu cầu\./);
 });
 
 test('an accepted request that was never dispatched can only be cancelled', () => {

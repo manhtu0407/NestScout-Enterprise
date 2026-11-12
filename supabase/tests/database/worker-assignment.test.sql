@@ -46,7 +46,7 @@ select throws_ok($$select public.accept_service_invitation('40000000-0000-4000-8
 select throws_ok($$select public.accept_service_invitation('40000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000001', 1)$$,
   '42501', 'invitation unavailable', 'A worker cannot accept another invitation');
 select throws_ok($$select public.accept_service_invitation('40000000-0000-4000-8000-000000000003', '30000000-0000-4000-8000-000000000001', 1)$$,
-  '22023', 'invitation unavailable', 'An expired invitation is rejected');
+  '22023', 'invitation expired', 'An expired invitation is rejected');
 select lives_ok($$select public.accept_service_invitation('40000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 1)$$, 'Eligible invited worker accepts');
 select set_config('test.assigned_job', (select id::text from public.service_jobs), true);
 select lives_ok($$select public.accept_service_invitation('40000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 1)$$, 'Acceptance replay is safe');

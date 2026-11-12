@@ -19,6 +19,7 @@ import { SettingsScreen, defaultSettings } from './settings-screen';
 import { SupportEmpty, SupportShell, supportStyles } from './support-shell';
 import { useCustomerData } from './use-customer-data';
 import { quotePrompt, requestPrompt, savedWorkerPrompt } from './kael-handoff';
+import { retryMessage } from './dispatch-copy';
 import { workflowMessage } from './workflow-messages';
 
 export const customerSectionIds = ['requests', 'quotes', 'saved', 'notifications', 'help', 'settings'] as const;
@@ -140,7 +141,14 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
       onReviewWorker={(worker, review) => customer.reviewJob(worker.jobId, review)}
       onRetryDispatch={async request => {
         try {
-          await customer.retryDispatch(request.id);
+          return retryMessage(await customer.retryDispatch(request.id));
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+      }}
+      onSetRequestService={async (request, serviceId) => {
+        try {
+          await customer.classifyRequest(request.id, serviceId);
         } catch (error) {
           throw new Error(workflowMessage(error));
         }

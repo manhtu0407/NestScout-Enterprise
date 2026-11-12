@@ -1,9 +1,15 @@
 import { authenticatedRequest } from '@/lib/authenticated-rest';
 
+import { dispatchServiceIds, type DispatchServiceId } from './dispatch-service-id';
 import { workflowErrorFrom } from './workflow-error';
 
-export const dispatchStates = ['awaiting_acceptance', 'not_dispatched', 'searching', 'no_match', 'exhausted', 'assigned', 'cancelled'] as const;
+export const dispatchStates = ['awaiting_acceptance', 'not_dispatched', 'recovering', 'needs_service', 'searching', 'no_match', 'exhausted', 'assigned', 'cancelled'] as const;
 export type DispatchState = (typeof dispatchStates)[number];
+
+export const retryOutcomes = [
+  'invited', 'no_eligible_worker', 'limit_reached', 'cooldown', 'already_searching', 'already_assigned', 'cancelled', 'needs_service', 'dispatch_disabled', 'invalid_request',
+] as const;
+export type RetryOutcome = (typeof retryOutcomes)[number];
 
 export type DispatchSummary = {
   requestId: string;
@@ -13,6 +19,19 @@ export type DispatchSummary = {
   rounds: number;
   canRetry: boolean;
   canCancel: boolean;
+  canReclassify: boolean;
+  nextRetryAt: string | null;
+  retriesLeft: number;
+  lastOutcome: string | null;
+};
+
+export type RetryResult = {
+  outcome: RetryOutcome;
+  state: DispatchState;
+  canRetry: boolean;
+  retriesLeft: number;
+  openInvites: number;
+  nextRetryAt: string | null;
 };
 
 const summaryBatchSize = 100;
@@ -22,19 +41,40 @@ function isDispatchState(value: unknown): value is DispatchState {
   return typeof value === 'string' && (dispatchStates as readonly string[]).includes(value);
 }
 
+function isRetryOutcome(value: unknown): value is RetryOutcome {
+  return typeof value === 'string' && (retryOutcomes as readonly string[]).includes(value);
+}
+
 function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isInstant(value: unknown): value is string {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+}
+
+function optionalInstant(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (!isInstant(value)) throw new Error('Invalid dispatch response');
+  return value;
 }
 
 function toSummary(row: unknown, requested: ReadonlySet<string>): DispatchSummary {
   if (typeof row !== 'object' || row === null) throw new Error('Invalid dispatch response');
   const item = row as Record<string, unknown>;
   const expiry = item.earliest_expiry;
+  const reclassify = item.can_reclassify ?? false;
+  const retriesLeft = item.retries_left ?? 0;
+  const lastOutcome = item.last_outcome ?? null;
   if (typeof item.request_id !== 'string' || !requested.has(item.request_id) || !isDispatchState(item.state) || !isCount(item.open_invites) || !isCount(item.rounds)
-    || (expiry !== null && (typeof expiry !== 'string' || Number.isNaN(Date.parse(expiry)))) || typeof item.can_retry !== 'boolean' || typeof item.can_cancel !== 'boolean') {
+    || (expiry !== null && (typeof expiry !== 'string' || Number.isNaN(Date.parse(expiry)))) || typeof item.can_retry !== 'boolean' || typeof item.can_cancel !== 'boolean'
+    || typeof reclassify !== 'boolean' || !isCount(retriesLeft) || (lastOutcome !== null && typeof lastOutcome !== 'string')) {
     throw new Error('Invalid dispatch response');
   }
-  return { requestId: item.request_id, state: item.state, openInvites: item.open_invites, earliestExpiry: expiry, rounds: item.rounds, canRetry: item.can_retry, canCancel: item.can_cancel };
+  return {
+    requestId: item.request_id, state: item.state, openInvites: item.open_invites, earliestExpiry: expiry, rounds: item.rounds, canRetry: item.can_retry,
+    canCancel: item.can_cancel, canReclassify: reclassify, nextRetryAt: optionalInstant(item.next_retry_at), retriesLeft, lastOutcome,
+  };
 }
 
 async function readBatch(userId: string, requestIds: readonly string[], signal: AbortSignal): Promise<DispatchSummary[]> {
@@ -54,12 +94,29 @@ export async function readDispatchSummaries(userId: string, requestIds: readonly
   return (await Promise.all(batches.map(batch => readBatch(userId, batch, signal)))).flat();
 }
 
-export async function redispatchRequest(userId: string, requestId: string, signal: AbortSignal): Promise<number> {
-  const response = await authenticatedRequest(userId, 'rpc/redispatch_service_request', { method: 'POST', signal, body: JSON.stringify({ p_request_id: requestId }) });
+export async function retryDispatchRequest(userId: string, requestId: string, signal: AbortSignal): Promise<RetryResult> {
+  const response = await authenticatedRequest(userId, 'rpc/retry_service_dispatch', { method: 'POST', signal, body: JSON.stringify({ p_request_id: requestId }) });
   if (!response.ok) throw await workflowErrorFrom(response);
   const result: unknown = await response.json();
-  if (!isCount(result)) throw new Error('Invalid retry response');
-  return result;
+  if (typeof result !== 'object' || result === null) throw new Error('Invalid retry response');
+  const item = result as Record<string, unknown>;
+  const retriesLeft = item.retries_left === null ? 0 : item.retries_left;
+  if (!isRetryOutcome(item.outcome) || !isDispatchState(item.state) || typeof item.can_retry !== 'boolean' || !isCount(retriesLeft) || !isCount(item.open_invites)) {
+    throw new Error('Invalid retry response');
+  }
+  return {
+    outcome: item.outcome, state: item.state, canRetry: item.can_retry, retriesLeft, openInvites: item.open_invites,
+    nextRetryAt: optionalInstant(item.next_retry_at),
+  };
+}
+
+export async function setRequestService(userId: string, requestId: string, serviceId: DispatchServiceId, signal: AbortSignal): Promise<DispatchServiceId> {
+  if (!dispatchServiceIds.includes(serviceId)) throw new Error('Invalid service');
+  const response = await authenticatedRequest(userId, 'rpc/set_request_service', { method: 'POST', signal, body: JSON.stringify({ p_request_id: requestId, p_service_id: serviceId }) });
+  if (!response.ok) throw await workflowErrorFrom(response);
+  const result: unknown = await response.json();
+  if (result !== serviceId) throw new Error('Invalid service response');
+  return serviceId;
 }
 
 export async function cancelRequest(userId: string, requestId: string, signal: AbortSignal): Promise<string> {

@@ -1,6 +1,7 @@
 import type { CustomerActivity, CustomerJob, CustomerNotification, DispatchSummary, IconName, JobWorkerCard, NotificationKind, SavedWorkerRecord, ServiceQuote, ServiceRequest as RequestRecord } from '@/features/shared';
 
 import type { NotificationItem, QuoteItem, QuoteStatus, SavedWorker } from './content';
+import { clockLabel } from './dispatch-copy';
 import { workflowSteps, type PhotoSource, type RequestStage, type ServiceRequest } from './requests-screen';
 
 const minuteMs = 60_000;
@@ -15,7 +16,7 @@ export type RequestProgress = {
   nextAction: string;
   quoteCount: number;
   closed?: 'cancelled';
-  dispatch?: { canRetry: boolean; canCancel: boolean };
+  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; nextRetryAt?: string | null; retriesLeft?: number };
 };
 
 const jobStatus: Record<string, { status: string; nextAction: string }> = {
@@ -75,13 +76,11 @@ function stageFor(step: number): RequestStage {
   return step >= 4 ? 'active' : 'waiting';
 }
 
-function clockLabel(iso: string): string {
-  const at = new Date(iso);
-  return `${pad(at.getHours())}:${pad(at.getMinutes())}`;
-}
-
 function dispatchProgress(summary: DispatchSummary | undefined): Pick<RequestProgress, 'status' | 'nextAction'> {
-  const retryHint = summary?.canRetry ? 'Bạn có thể mời thợ lại hoặc hủy yêu cầu.' : 'Bạn có thể mời thợ lại sau ít phút hoặc hủy yêu cầu.';
+  const retryHint = summary?.canRetry ? 'Bạn có thể mời thợ lại hoặc hủy yêu cầu.'
+    : summary && summary.retriesLeft === 0 ? 'Đã hết lượt mời lại. Bạn có thể hủy yêu cầu.'
+    : summary?.nextRetryAt ? `Bạn có thể mời thợ lại sau ${clockLabel(summary.nextRetryAt)} hoặc hủy yêu cầu.`
+    : 'Bạn có thể mời thợ lại sau ít phút hoặc hủy yêu cầu.';
   switch (summary?.state) {
     case 'searching':
       return {
@@ -92,6 +91,10 @@ function dispatchProgress(summary: DispatchSummary | undefined): Pick<RequestPro
       return { status: 'Chưa có thợ phù hợp', nextAction: `Chưa có thợ phù hợp với yêu cầu này. ${retryHint}` };
     case 'exhausted':
       return { status: 'Chưa có thợ nhận việc', nextAction: `Các thợ được mời chưa nhận việc. ${retryHint}` };
+    case 'recovering':
+      return { status: 'Đang cập nhật lời mời', nextAction: 'Lời mời trước đã hết hạn và hệ thống đang cập nhật. Bạn có thể hủy yêu cầu.' };
+    case 'needs_service':
+      return { status: 'Cần chọn loại dịch vụ', nextAction: 'Chọn loại dịch vụ để hệ thống mời thợ phù hợp. Bạn cũng có thể hủy yêu cầu.' };
     case 'not_dispatched':
       return { status: 'Chưa chuyển cho thợ', nextAction: 'Yêu cầu chưa được gửi tới thợ nào. Bạn có thể hủy yêu cầu.' };
     default:
@@ -108,7 +111,7 @@ export function deriveRequestProgress(quotes: readonly ServiceQuote[], job: Cust
   if (summary?.state === 'cancelled') {
     return { step: 0, stage: 'done', quoteCount: 0, closed: 'cancelled', status: 'Đã hủy yêu cầu', nextAction: 'Bạn đã hủy yêu cầu này. Hỏi Kael để tạo yêu cầu mới.' };
   }
-  const dispatch = summary ? { canRetry: summary.canRetry, canCancel: summary.canCancel } : undefined;
+  const dispatch = summary ? { canRetry: summary.canRetry, canCancel: summary.canCancel, canReclassify: summary.canReclassify, nextRetryAt: summary.nextRetryAt, retriesLeft: summary.retriesLeft } : undefined;
   if (quotes.some(quote => quote.accepted_at !== null)) {
     return { step: 3, stage: 'waiting', quoteCount: 0, dispatch, ...dispatchProgress(summary) };
   }

@@ -158,6 +158,23 @@ pub fn registry() -> Vec<Tool> {
             effect: Some("service_quote_decision"), needs_web: false, label: "Đang chuẩn bị bước xác nhận báo giá",
         }),
         tool(Spec {
+            id: "service_request_redispatch",
+            description: "Ask the customer to confirm inviting more workers for one request returned by customer_requests whose dispatch shows can_retry true, inside an open workflow_action task. Pass the dispatch rounds value returned. Nothing changes until the user confirms in the app. Inviting is not an assignment: no worker is promised.",
+            schema: schema(vec![
+                ("task_id", uuid()), ("request_id", uuid()),
+                ("rounds", json!({"type": "integer", "minimum": 0, "maximum": 1000})),
+            ]),
+            side_effect: "consequential", class: Class::Confirm, requires: Some("customer"), modes: CLIENT,
+            effect: Some("service_request_redispatch"), needs_web: false, label: "Đang chuẩn bị bước mời thêm thợ",
+        }),
+        tool(Spec {
+            id: "service_request_cancel",
+            description: "Ask the customer to confirm cancelling one request returned by customer_requests whose dispatch shows can_cancel true, inside an open workflow_action task. Nothing changes until the user confirms in the app. A request that already has an assigned worker cannot be cancelled this way.",
+            schema: schema(vec![("task_id", uuid()), ("request_id", uuid())]),
+            side_effect: "consequential", class: Class::Confirm, requires: Some("customer"), modes: CLIENT,
+            effect: Some("service_request_cancel"), needs_web: false, label: "Đang chuẩn bị bước hủy yêu cầu",
+        }),
+        tool(Spec {
             id: "work_submission_decision",
             description: "Ask the customer to confirm accepting submitted work or requesting a correction for a pending submission returned by customer_requests, inside an open workflow_action task. A correction needs a short reason in the user's own words; acceptance needs an empty reason. Accepting work is not a payment.",
             schema: schema(vec![

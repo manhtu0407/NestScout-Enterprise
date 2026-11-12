@@ -34,6 +34,8 @@ test('a request becomes a progress with its real status and step', () => {
   const progress = progressForRequest(request('a', 1, 'waiting', 'Có báo giá mới'));
   expect(progress).toMatchObject({ hint: 'Yêu cầu a · Có báo giá mới', current: 1, finished: false });
   expect(progress.steps).toEqual(['Đã gửi', 'Có báo giá', 'Chấp nhận', 'Ghép thợ', 'Thực hiện', 'Nghiệm thu']);
+  expect(progressForRequest({ ...request('c', 3, 'waiting', 'Chưa có thợ phù hợp'), dispatch: { canRetry: true, canCancel: true } })).toMatchObject({ finished: false, spinnerLabel: 'Đang chờ bạn xử lý' });
+  expect(progressForRequest({ ...request('d', 3, 'waiting', 'Đã mời 2 thợ'), dispatch: { canRetry: false, canCancel: true } })).toMatchObject({ spinnerLabel: 'Đang tiến hành' });
   expect(progressForRequest(request('b', 6, 'done', 'Đã hoàn tất'))).toMatchObject({ current: 6, finished: true, spinnerLabel: 'Yêu cầu đã hoàn tất' });
 });
 

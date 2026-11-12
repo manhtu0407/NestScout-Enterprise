@@ -4,12 +4,14 @@ use std::time::Duration;
 
 use crate::knowledge::refuse_unsupported_preview;
 
-pub const CONSEQUENTIAL_EFFECTS: [&str; 5] = [
+pub const CONSEQUENTIAL_EFFECTS: [&str; 7] = [
     "service_request_submit",
     "service_quote_decision",
     "work_submission_decision",
     "worker_offer_decision",
     "worker_job_advance",
+    "service_request_redispatch",
+    "service_request_cancel",
 ];
 
 #[derive(Clone, Debug)]

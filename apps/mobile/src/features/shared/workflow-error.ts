@@ -12,6 +12,10 @@ export class WorkflowError extends Error {
 const byDomainMessage: Record<string, WorkflowFailure> = {
   'quote expired': 'expired',
   'invitation unavailable': 'unavailable',
+  'invitation expired': 'expired',
+  'request cancelled': 'unavailable',
+  'service already set': 'unavailable',
+  'invalid service': 'invalid',
   'agreement unavailable': 'unavailable',
   'already assigned': 'unavailable',
   'run active': 'unavailable',

@@ -92,6 +92,20 @@ export const toolRegistry: readonly ToolContract[] = [
     retry: 'same_submission_key', label: 'Đang chuẩn bị bước xác nhận báo giá',
   }),
   contract({
+    id: 'service_request_redispatch',
+    description: 'Ask the customer to confirm inviting more workers for one request returned by customer_requests whose dispatch shows can_retry true, inside an open workflow_action task. Pass the dispatch rounds value returned. Nothing changes until the user confirms in the app. Inviting is not an assignment: no worker is promised.',
+    inputSchema: schema({ task_id: uuid, request_id: uuid, rounds: { type: 'integer', minimum: 0, maximum: 1000 } }),
+    sideEffect: 'consequential', executionClass: 'explicit_confirmation', resource: 'service_request', requires: 'customer', modes: ['client'], effect: 'service_request_redispatch',
+    retry: 'same_submission_key', label: 'Đang chuẩn bị bước mời thêm thợ',
+  }),
+  contract({
+    id: 'service_request_cancel',
+    description: 'Ask the customer to confirm cancelling one request returned by customer_requests whose dispatch shows can_cancel true, inside an open workflow_action task. Nothing changes until the user confirms in the app. A request that already has an assigned worker cannot be cancelled this way.',
+    inputSchema: schema({ task_id: uuid, request_id: uuid }),
+    sideEffect: 'consequential', executionClass: 'explicit_confirmation', resource: 'service_request', requires: 'customer', modes: ['client'], effect: 'service_request_cancel',
+    retry: 'same_submission_key', label: 'Đang chuẩn bị bước hủy yêu cầu',
+  }),
+  contract({
     id: 'work_submission_decision',
     description: "Ask the customer to confirm accepting submitted work or requesting a correction for a pending submission returned by customer_requests, inside an open workflow_action task. A correction needs a short reason in the user's own words; acceptance needs an empty reason. Accepting work is not a payment.",
     inputSchema: schema({

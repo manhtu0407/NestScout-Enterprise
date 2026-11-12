@@ -28,7 +28,7 @@ select is_empty($$
       'toggle_review_reaction','review_reactions',
       'issue_fixture_quote','invite_fixture_worker','fixture_dispatch_queue','fixture_dispatch_candidates','set_kael_autonomy',
       'set_request_preferred_visit','set_kael_feedback',
-      'dispatch_summary','cancel_service_request','redispatch_service_request')
+      'dispatch_summary','cancel_service_request','redispatch_service_request','retry_service_dispatch','set_request_service')
 $$, 'Only reviewed private operations are callable by authenticated users');
 
 select is_empty($$

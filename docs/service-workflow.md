@@ -417,19 +417,51 @@ owner and one enforcement point that covers both paths.
 The Worker job list is not paginated. Beyond 1000 jobs the Worker screen reports
 that activity cannot be verified instead of showing a truncated list.
 
-Dispatch outcome and recovery are local fixture behavior. Every dispatch round
-for an accepted quote is recorded in `service_dispatch_rounds` without naming a
-worker, so a round that found nobody is visible. A decline starts the next round
-automatically until `max_rounds` is reached; `get_dispatch_summary` derives the
-state (`searching`, `no_match`, `exhausted`, `assigned`, `cancelled`) at read
-time from invitations, rounds and jobs, so no sweeper exists and an expired
-offer is recognised only when it is read. The customer can invite workers again
-with `redispatch_service_request` once `retry_cooldown_minutes` have passed since
-the last round, and can cancel with `cancel_service_request` until a worker
-accepts. A cancelled request withdraws its open invitations and refuses a later
-quote acceptance. Kael reads the summary but cannot retry or cancel. The
-migration must be applied before the mobile client or the `kael` function that
-reads it is deployed.
+Dispatch outcome and recovery are local fixture behavior, and PostgreSQL is the
+only authority for them. `nestscout_private.dispatch_request` is the single entry
+for every round and returns a structured outcome (`invited`, `no_eligible_worker`,
+`limit_reached`, `cooldown`, `already_searching`, `already_assigned`, `cancelled`,
+`needs_service`, `dispatch_disabled`, `invalid_request`), so an empty round is
+never reported as success. Every round is recorded in `service_dispatch_rounds`
+with its outcome and without naming a worker. Automatic rounds (`quote_accepted`,
+`declined`, `expired`) are bounded by `max_rounds`. Customer-started rounds
+(`manual_retry`, `recovery`) have their own budget, `max_manual_retries`, a
+`retry_cooldown_minutes` cooldown after a round that invited workers, and a
+shorter `empty_retry_cooldown_seconds` rate limit after an empty one. A worker is
+not invited again while an offer is open, after accepting or after a cancelled
+offer; a declined or expired offer is excluded for
+`reinvite_declined_after_minutes` and `reinvite_expired_after_minutes`, and
+`max_invites_per_worker` caps the total.
+
+An offer that lapses is closed by `nestscout_private.sweep_expired_invitations`,
+which `schedule_dispatch_sweeper` runs every minute through pg_cron when that
+extension is installed (the migration reports `pg_cron not installed` otherwise,
+and the same function can be called by an operator). The sweep takes the request
+row lock with `skip locked`, so overlapping ticks and concurrent customer or
+worker actions are serialized and each lapsed offer is expired once. Until a
+sweep runs, the summary reports `recovering` rather than `searching`, and an
+accept or decline of a lapsed offer is refused with `invitation expired`.
+
+`get_dispatch_summary` derives `searching`, `awaiting_acceptance`, `recovering`,
+`no_match`, `exhausted`, `needs_service`, `not_dispatched`, `assigned` and
+`cancelled` at read time, with `can_retry`, `can_cancel`, `can_reclassify`,
+`next_retry_at`, `retries_left` and `last_outcome`. A request submitted before
+automatic dispatch existed, or without a service category, is recoverable by its
+owner: `retry_service_dispatch` starts the first round for an accepted quote that
+never dispatched, and `set_request_service` fills a missing service once. Nothing
+is invented for old requests. `redispatch_service_request` remains the strict
+form and raises on any outcome other than `invited`. The customer can cancel with
+`cancel_service_request` until a worker accepts; a cancelled request withdraws
+its open invitations and refuses a later quote acceptance, offer acceptance or
+decline. A worker who is already assigned and later drops out does not reopen the
+request: the job stays assigned and no automatic reassignment exists, which is a
+documented non-closure until the owner approves a reassignment policy.
+
+Kael reads the same summary and can retry or cancel, but only through
+`service_request_redispatch` and `service_request_cancel`: each is a confirmed
+effect bound to the request and, for a retry, the round count read, validated again
+by the database at request and at consumption. The migration must be applied
+before the mobile client or the `kael` function that reads it is deployed.
 
 No endpoint confirms payment. A quote, work submission, acceptance, support case
 or status explanation cannot establish settlement. No model provider,
@@ -478,6 +510,8 @@ negative tests, not by this table.
 | `service_request_submit` | explicit_confirmation | service_request | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `submit_service_request` with the approval id as submission key | B intake: submitRequest | Rejected keeps the draft; approving or rejecting from another conversation, with another fingerprint, after expiry or a second time changes nothing; an unverified, contradictory or concurrently changed result is reported as uncertain, pauses or keeps the task and is offered as a "Kiểm tra lại" check that reconciles the original approval with the same key, from any conversation of the account, also after a restart or after the Kael task was closed; no confirmation can be opened or used for the account meanwhile; disabled gate is unavailable |
 | `ask_user_choice` | internal_prepare | kael_task | Signed-in non-anonymous account | None; emits one question with tappable answers | Any phase: collect a missing detail | The answer arrives as the user's next message; no business record changes and the question is never a confirmation |
 | `service_quote_decision` | explicit_confirmation | service_quote | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `accept_service_quote` or `reject_service_quote` with the exact quote version, after a read of `service_quotes` | B agreement: acceptQuote, rejectQuote | A newer, expired, accepted or rejected quote is refused before and after confirmation; success is recorded only when the quote row shows this account's decision; an accepted quote is never reported as a booking |
+| `service_request_redispatch` | explicit_confirmation | service_request | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `redispatch_service_request` with the dispatch rounds returned by `get_dispatch_summary`, after reads of `service_requests` and `get_dispatch_summary`, with `service_dispatch_rounds` as the evidence | B dispatch: retryDispatch | Only the account's own uncancelled request that the dispatch summary reports as retryable; a changed round count, an active search, the cooldown, the retry budget or a missing eligible worker refuses the step before and after confirmation; success is recorded only when the next `invited` dispatch round is observed, and an invitation is never reported as an assignment |
+| `service_request_cancel` | explicit_confirmation | service_request | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `cancel_service_request`, after a read of `service_requests` and `get_dispatch_summary` | B intake: cancelRequest | Only the account's own request with no assigned job; open invitations are closed in the same transaction; success is recorded only when the request row shows its cancellation |
 | `work_submission_decision` | explicit_confirmation | service_submission | Customer capability; client mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `decide_service_submission` with the exact job version, after reads of `service_submissions` and `service_jobs` | D acceptance: acceptWork, requestCorrection | Only a pending submission of the account's own submitted job; a correction needs the user's reason; acceptance is reported without implying payment |
 | `worker_offer_decision` | explicit_confirmation | worker_offer | Worker capability (grant and eligibility); worker mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `accept_service_invitation` or `decline_service_invitation` with the exact quote version, after a read of `worker_offers` | C assignment: acceptInvitation, declineInvitation | An expired, changed or already assigned offer is refused; success is recorded only when this Worker's job or declined invitation is observed |
 | `worker_job_advance` | explicit_confirmation | worker_job | Worker capability (grant and eligibility); worker mode; `KAEL_ENABLED_EFFECTS` lists it at request and at execution | `advance_service_job` with the exact job version, after a read of `worker_jobs` | D execution: markEnRoute, confirmArrival, startWork | Only the next legal stage of the Worker's own job; pauses, scope and submission stay in the Jobs screen; success is recorded only when the versioned job event is observed |

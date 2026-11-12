@@ -76,7 +76,7 @@ function knownTask(ctx: ToolContext, id: unknown): TaskRecord | null {
 }
 
 const fixtureNotice = 'A quote or offer whose basis is local_fixture is controlled test data, never a real commercial price or dispatch.';
-const dispatchNotice = 'dispatch.state is the backend view of the worker search for an accepted quote. When it is no_match or exhausted nobody has accepted the job; tell the user they can invite workers again (when can_retry is true) or cancel the request from Yêu cầu của tôi. Kael cannot invite again or cancel.';
+const dispatchNotice = "dispatch.state is the backend view of the worker search for an accepted quote. Invited workers are not an assignment. When can_retry is true you may offer service_request_redispatch with the returned rounds; when can_cancel is true you may offer service_request_cancel; needs_service means the request has no service category yet and the app must set it first. Both actions need the customer's confirmation.";
 
 async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolExecution> {
   const requests = await getJson(ctx, `service_requests?select=id,description,location,created_at,preferred_visit_at&order=created_at.desc&limit=${limit}`) as Record<string, unknown>[];
@@ -111,7 +111,11 @@ async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolEx
           quote_id: quote.id, version: quote.version, scope: clip(quote.scope, 300), amount_minor: quote.amount_minor, currency: quote.currency,
           expires_at: quote.expires_at, basis: quote.basis,
         } : null,
-        dispatch: summary ? { state: summary.state, open_invites: summary.open_invites, earliest_expiry: summary.earliest_expiry ?? null, rounds: summary.rounds, can_retry: summary.can_retry } : null,
+        dispatch: summary ? {
+          state: summary.state, open_invites: summary.open_invites, earliest_expiry: summary.earliest_expiry ?? null, rounds: summary.rounds,
+          can_retry: summary.can_retry, can_cancel: summary.can_cancel, can_reclassify: summary.can_reclassify,
+          next_retry_at: summary.next_retry_at ?? null, retries_left: summary.retries_left, last_outcome: summary.last_outcome ?? null,
+        } : null,
         job: job ? { job_id: job.id, stage: job.stage, version: job.version, work_accepted: jobSubmissions.some(row => row.decision === 'accepted') } : null,
         pending_submission: submission ? { submission_id: submission.id, evidence: clip(submission.evidence, 300) } : null,
       };
@@ -165,6 +169,35 @@ const advanceSummaries: Record<string, string> = { en_route: 'Báo đang đi t�
 type WorkflowPlan = { summary: string; details: Record<string, string>; approvalArgs: Record<string, unknown> } | { error: string };
 
 async function planWorkflowApproval(ctx: ToolContext, tool: string, task: TaskRecord, args: Record<string, unknown>): Promise<WorkflowPlan> {
+  if (tool === 'service_request_redispatch' || tool === 'service_request_cancel') {
+    const requestId = String(args.request_id);
+    const found = await getJson(ctx, `service_requests?select=id,description,location,cancelled_at&id=eq.${encodeURIComponent(requestId)}`) as Record<string, unknown>[];
+    const request = found[0];
+    if (!request || request.cancelled_at) return { error: 'request_not_current' };
+    const summaries = await getJson(ctx, 'rpc/get_dispatch_summary', { method: 'POST', body: { p_request_ids: [request.id] } }) as Record<string, unknown>[];
+    const summary = summaries[0];
+    if (!summary) return { error: 'request_not_current' };
+    if (tool === 'service_request_cancel') {
+      if (summary.can_cancel !== true) return { error: 'request_not_current' };
+      return {
+        summary: 'Hủy yêu cầu dịch vụ',
+        details: {
+          'Yêu cầu': clip(request.description, 300), 'Địa điểm': clip(request.location, 200),
+          'Sau khi xác nhận': 'Các lời mời đang mở cho thợ được đóng và yêu cầu không còn được tìm thợ.',
+        },
+        approvalArgs: { task_id: task.id, request_id: request.id },
+      };
+    }
+    if (summary.can_retry !== true || summary.rounds !== args.rounds) return { error: 'request_not_current' };
+    return {
+      summary: 'Mời thêm thợ cho yêu cầu',
+      details: {
+        'Yêu cầu': clip(request.description, 300), 'Địa điểm': clip(request.location, 200), 'Lượt mời còn lại': String(summary.retries_left),
+        'Sau khi xác nhận': 'Hệ thống mời thợ phù hợp chưa được mời. Mời chưa phải là có thợ nhận việc.',
+      },
+      approvalArgs: { task_id: task.id, request_id: request.id, rounds: summary.rounds },
+    };
+  }
   if (tool === 'service_quote_decision') {
     const rows = await getJson(ctx, `service_quotes?select=id,request_id,version,scope,amount_minor,expires_at,basis,accepted_at,rejected_at&id=eq.${String(args.quote_id)}`) as Record<string, unknown>[];
     const quote = rows[0];
@@ -357,6 +390,8 @@ export async function executeDecision(decision: Extract<Decision, { kind: 'execu
       case 'work_submission_decision':
       case 'worker_offer_decision':
       case 'worker_job_advance':
+      case 'service_request_redispatch':
+      case 'service_request_cancel':
         return await requestWorkflowApproval(ctx, args, tool.id);
       case 'ask_user_choice':
         return askUserChoice(ctx, args);
@@ -461,6 +496,17 @@ function effectCall(approvalId: string, tool: string, args: Record<string, unkno
     return { path: 'rpc/advance_service_job', refusals, sqlstateRefuses, resource: value => Number.isSafeInteger(value) ? String(args.job_id) : null,
       evidence: { path: rowRead('service_jobs', 'id,stage,version', 'id', args.job_id), observed: row => row.stage === args.next && typeof row.version === 'number' && row.version > Number(args.version) ? textId(row.id) : null },
       body: { p_job_id: args.job_id, p_version: args.version, p_next: args.next } };
+  }
+  if (tool === 'service_request_redispatch') {
+    const nextRound = Number(args.rounds) + 1;
+    return { path: 'rpc/redispatch_service_request', refusals, sqlstateRefuses, resource: value => Number.isSafeInteger(value) ? String(args.request_id) : null,
+      evidence: { path: `service_dispatch_rounds?select=request_id,round,outcome&request_id=eq.${encodeURIComponent(String(args.request_id))}&round=eq.${nextRound}&outcome=eq.invited`, observed: row => textId(row.request_id) },
+      body: { p_request_id: args.request_id } };
+  }
+  if (tool === 'service_request_cancel') {
+    return { path: 'rpc/cancel_service_request', refusals, sqlstateRefuses, resource: textId,
+      evidence: { path: rowRead('service_requests', 'id,cancelled_at', 'id', args.request_id), observed: row => typeof row.cancelled_at === 'string' ? textId(row.id) : null },
+      body: { p_request_id: args.request_id } };
   }
   return null;
 }

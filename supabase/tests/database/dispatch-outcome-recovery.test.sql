@@ -36,12 +36,19 @@ select lives_ok($$select public.accept_service_quote(current_setting('test.qa'):
 select is((select state from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), 'no_match', 'A request with no matching worker reports no match');
 select is((select rounds from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), 1, 'The empty round is recorded');
 select is((select open_invites from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), 0, 'No offer is open');
-select is((select can_retry from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), false, 'A retry is blocked during the cooldown');
+select is((select can_retry from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), true, 'A retry is available straight after an empty search');
+select is((select last_outcome from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), 'no_eligible_worker', 'The summary names the empty search');
 select is((select can_cancel from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), true, 'The customer can cancel before a worker is assigned');
 select is((select invited_count from public.service_dispatch_rounds where request_id = current_setting('test.a')::uuid and round = 1), 0, 'The round records no invitations');
 select is((select reason from public.service_dispatch_rounds where request_id = current_setting('test.a')::uuid and round = 1), 'quote_accepted', 'The first round is attributed to the accepted quote');
 select is((select count(*) from public.notifications where kind = 'dispatch_exhausted')::integer, 1, 'The customer is told that nobody was found');
-select throws_ok($$select public.redispatch_service_request(current_setting('test.a')::uuid)$$, '22023', 'dispatch unavailable', 'A retry inside the cooldown is rejected');
+select throws_ok($$select public.redispatch_service_request(current_setting('test.a')::uuid)$$, '22023', 'no_eligible_worker', 'The legacy retry entry point refuses to report success when nobody was invited');
+select is(public.retry_service_dispatch(current_setting('test.a')::uuid) ->> 'outcome', 'no_eligible_worker', 'A retry with no eligible worker reports no_eligible_worker');
+select is((select count(*) from public.service_dispatch_rounds where request_id = current_setting('test.a')::uuid)::integer, 2, 'The empty retry is recorded once');
+select is((select can_retry from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), false, 'An empty retry only starts the short rate limit');
+select ok((select next_retry_at from public.get_dispatch_summary(array[current_setting('test.a')::uuid])) > clock_timestamp(), 'The summary says when a retry is possible again');
+select is(public.retry_service_dispatch(current_setting('test.a')::uuid) ->> 'outcome', 'cooldown', 'A second empty retry inside the rate limit is refused');
+select is((select count(*) from public.service_dispatch_rounds where request_id = current_setting('test.a')::uuid)::integer, 2, 'The refused retry adds no round');
 
 reset role;
 update public.service_dispatch_rounds set created_at = created_at - interval '10 minutes' where request_id = current_setting('test.a')::uuid;
@@ -49,17 +56,18 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a2c1","role":"authenticated"}', true);
 
 select is((select can_retry from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), true, 'A retry is allowed once the cooldown has passed');
-select is(public.redispatch_service_request(current_setting('test.a')::uuid), 0, 'A manual retry with no matching worker invites nobody');
-select is((select rounds from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), 2, 'The manual retry is recorded as a round');
-select is((select reason from public.service_dispatch_rounds where request_id = current_setting('test.a')::uuid and round = 2), 'manual_retry', 'The second round is attributed to the manual retry');
+select is(public.retry_service_dispatch(current_setting('test.a')::uuid) ->> 'outcome', 'no_eligible_worker', 'A later retry still reports that nobody was invited');
+select is((select rounds from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), 3, 'The manual retry is recorded as a round');
+select is((select reason from public.service_dispatch_rounds where request_id = current_setting('test.a')::uuid and round = 3), 'manual_retry', 'The third round is attributed to the manual retry');
 select is((select count(*) from public.notifications where kind = 'dispatch_exhausted')::integer, 1, 'A manual retry does not repeat the notification');
-select is((select can_retry from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), false, 'A manual retry restarts the cooldown');
+select is((select can_retry from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), false, 'An empty manual retry restarts the short rate limit');
 
 select is(public.cancel_service_request(current_setting('test.a')::uuid), current_setting('test.a')::uuid, 'The customer cancels the unassigned request');
 select is((select state from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), 'cancelled', 'A cancelled request reports cancelled');
 select is((select can_cancel from public.get_dispatch_summary(array[current_setting('test.a')::uuid])), false, 'A cancelled request cannot be cancelled again');
 select is(public.cancel_service_request(current_setting('test.a')::uuid), current_setting('test.a')::uuid, 'Cancelling twice is idempotent');
-select throws_ok($$select public.redispatch_service_request(current_setting('test.a')::uuid)$$, '22023', 'dispatch unavailable', 'A cancelled request cannot be retried');
+select throws_ok($$select public.redispatch_service_request(current_setting('test.a')::uuid)$$, '22023', 'cancelled', 'A cancelled request cannot be retried');
+select is(public.retry_service_dispatch(current_setting('test.a')::uuid) ->> 'outcome', 'cancelled', 'The structured retry reports cancelled');
 
 select set_config('test.b', public.submit_service_request('32000000-0000-4000-8000-000000000002', 'Máy lạnh chảy nước', 'Quận 7', 'aircon')::text, true);
 select set_config('test.qb', (select id::text from public.service_quotes where request_id = current_setting('test.b')::uuid), true);
@@ -98,7 +106,7 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 select is((select state from public.get_dispatch_summary(array[current_setting('test.c')::uuid])), 'exhausted', 'All offers declined reports exhausted');
 select is((select count(*) from public.notifications where kind = 'dispatch_exhausted')::integer, 2, 'The customer is told that every worker declined');
 select is((select can_retry from public.get_dispatch_summary(array[current_setting('test.c')::uuid])), false, 'The cooldown applies after automatic rounds');
-select throws_ok($$select public.redispatch_service_request(current_setting('test.c')::uuid)$$, '22023', 'dispatch unavailable', 'A manual retry inside the cooldown is rejected');
+select throws_ok($$select public.redispatch_service_request(current_setting('test.c')::uuid)$$, '22023', 'cooldown', 'A manual retry inside the cooldown is rejected');
 
 reset role;
 update public.service_dispatch_rounds set created_at = created_at - interval '10 minutes' where request_id = current_setting('test.c')::uuid;
@@ -137,7 +145,7 @@ select is((select state from public.service_invitations where request_id = curre
 select set_config('test.inv4', (select id::text from public.service_invitations where request_id = current_setting('test.d')::uuid), true);
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a2d1","role":"authenticated"}', true);
-select throws_ok($$select public.accept_service_invitation(current_setting('test.inv4')::uuid, current_setting('test.qd')::uuid, 1)$$, '22023', 'invitation unavailable', 'A worker cannot accept a withdrawn offer');
+select throws_ok($$select public.accept_service_invitation(current_setting('test.inv4')::uuid, current_setting('test.qd')::uuid, 1)$$, '22023', 'request cancelled', 'A worker cannot accept a withdrawn offer');
 select is((select count(*) from public.get_dispatch_summary(array[current_setting('test.d')::uuid]))::integer, 0, 'A worker cannot read a customer dispatch summary');
 
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a2c1","role":"authenticated","is_anonymous":true}', true);

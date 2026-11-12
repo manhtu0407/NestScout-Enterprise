@@ -74,6 +74,18 @@ fn effect_copy(tool: &str, args: &Value) -> Copy {
             }
         }
         "worker_job_advance" => flow("Đang cập nhật tiến độ", "service_job"),
+        "service_request_redispatch" => Copy {
+            label: "Đang mời thêm thợ",
+            kind: "dispatch_round",
+            refused: "Hệ thống chưa mời thêm thợ: yêu cầu đã thay đổi, chưa đến lúc thử lại hoặc chưa có thợ phù hợp. Chưa có gì thay đổi; hãy xem lại trạng thái mới nhất.",
+            uncertain: WORKFLOW_UNCERTAIN,
+        },
+        "service_request_cancel" => Copy {
+            label: "Đang hủy yêu cầu",
+            kind: "service_request",
+            refused: "Hệ thống chưa hủy yêu cầu này vì đã có thợ nhận việc hoặc yêu cầu đã thay đổi. Chưa có gì thay đổi; hãy xem lại trạng thái mới nhất.",
+            uncertain: WORKFLOW_UNCERTAIN,
+        },
         _ => Copy {
             label: "Đang gửi yêu cầu dịch vụ",
             kind: "service_request",
@@ -113,6 +125,8 @@ fn effect_done(tool: &str, args: &Value, resource_id: &str) -> String {
             _ => "Đã cập nhật tiến độ.",
         }
         .to_owned(),
+        "service_request_redispatch" => "Đã mời thêm thợ cho yêu cầu này. Chưa có thợ nhận việc: yêu cầu chỉ được giao khi một thợ xác nhận.".to_owned(),
+        "service_request_cancel" => "Đã hủy yêu cầu. Các lời mời đang mở cho thợ đã được đóng.".to_owned(),
         _ => format!(
             "Đã gửi yêu cầu dịch vụ (mã {}). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.",
             resource_id.chars().take(8).collect::<String>()
@@ -242,6 +256,30 @@ fn effect_call(approval_id: &str, tool: &str, args: &Value) -> Option<EffectCall
                 Some(text_of(&args["job_id"])),
             ))
         }
+        "service_request_redispatch" => {
+            let target = text_of(&args["request_id"]);
+            let next_round = args["rounds"].as_i64().unwrap_or(0) + 1;
+            Some(build(
+                "rpc/redispatch_service_request",
+                json!({"p_request_id": args["request_id"]}),
+                Some(Evidence {
+                    path: format!(
+                        "service_dispatch_rounds?select=request_id,round,outcome&request_id=eq.{target}&round=eq.{next_round}&outcome=eq.invited"
+                    ),
+                    observed: Box::new(|row| text_id(&row["request_id"])),
+                }),
+                Some(target),
+            ))
+        }
+        "service_request_cancel" => Some(build(
+            "rpc/cancel_service_request",
+            json!({"p_request_id": args["request_id"]}),
+            Some(Evidence {
+                path: row_read("service_requests", "id,cancelled_at", "id", &args["request_id"]),
+                observed: Box::new(|row| row["cancelled_at"].is_string().then(|| text_id(&row["id"])).flatten()),
+            }),
+            None,
+        )),
         _ => None,
     }
 }

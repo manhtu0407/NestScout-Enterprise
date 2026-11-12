@@ -54,6 +54,9 @@ fn capability_notes(actor: &Actor, offered: &[Tool]) -> Vec<String> {
         if has("service_quote_decision") || has("work_submission_decision") {
             notes.push("To act on a quote or on submitted work, read customer_requests, create a workflow_action task, then call service_quote_decision or work_submission_decision with the exact ids and versions returned; the app shows a confirmation control. Never decide for the user.".to_owned());
         }
+        if has("service_request_redispatch") || has("service_request_cancel") {
+            notes.push("When customer_requests shows dispatch can_retry true, you may ask to invite more workers with service_request_redispatch using request_id and the rounds value returned; when can_cancel is true the user may ask to cancel with service_request_cancel. Both need a workflow_action task and the user's confirmation in the app. State only what dispatch shows: an invitation is not an assignment, and never promise a worker will accept.".to_owned());
+        }
     } else {
         notes.push("Help workers draft quotes or messages as text only; nothing is sent on their behalf.".to_owned());
         if has("worker_offer_decision") || has("worker_job_advance") {

@@ -411,14 +411,14 @@ isOneToOne: false
                   ]
                 },"service_dispatch_rounds": {
                   Row: {
-                    "created_at": string,"id": string,"invited_count": number,"quote_id": string,"reason": string,"request_id": string,"round": number
+                    "created_at": string,"id": string,"invited_count": number,"outcome": string,"quote_id": string,"reason": string,"request_id": string,"round": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"id"?: string,"invited_count": number,"quote_id": string,"reason": string,"request_id": string,"round": number
+                    "created_at"?: string,"id"?: string,"invited_count": number,"outcome"?: string,"quote_id": string,"reason": string,"request_id": string,"round": number
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"invited_count"?: number,"quote_id"?: string,"reason"?: string,"request_id"?: string,"round"?: number
+                    "created_at"?: string,"id"?: string,"invited_count"?: number,"outcome"?: string,"quote_id"?: string,"reason"?: string,"request_id"?: string,"round"?: number
                   }
                   Relationships: [
                     {
@@ -437,14 +437,14 @@ isOneToOne: false
                   ]
                 },"service_invitations": {
                   Row: {
-                    "basis": string,"created_at": string,"expires_at": string,"id": string,"invited_by": string | null,"quote_id": string,"request_id": string,"state": string,"worker_id": string
+                    "basis": string,"created_at": string,"expires_at": string,"id": string,"invited_by": string | null,"quote_id": string,"request_id": string,"resolved_at": string | null,"state": string,"worker_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "basis"?: string,"created_at"?: string,"expires_at": string,"id"?: string,"invited_by"?: string | null,"quote_id": string,"request_id": string,"state"?: string,"worker_id": string
+                    "basis"?: string,"created_at"?: string,"expires_at": string,"id"?: string,"invited_by"?: string | null,"quote_id": string,"request_id": string,"resolved_at"?: string | null,"state"?: string,"worker_id": string
                   }
                   Update: {
-                    "basis"?: string,"created_at"?: string,"expires_at"?: string,"id"?: string,"invited_by"?: string | null,"quote_id"?: string,"request_id"?: string,"state"?: string,"worker_id"?: string
+                    "basis"?: string,"created_at"?: string,"expires_at"?: string,"id"?: string,"invited_by"?: string | null,"quote_id"?: string,"request_id"?: string,"resolved_at"?: string | null,"state"?: string,"worker_id"?: string
                   }
                   Relationships: [
                     {
@@ -831,7 +831,7 @@ isOneToOne: false
                            },
 "get_dispatch_summary":
 { Args: { "p_request_ids": (string)[] }; Returns: {
-              "can_cancel": boolean,"can_retry": boolean,"earliest_expiry": string,"open_invites": number,"request_id": string,"rounds": number,"state": string
+              "can_cancel": boolean,"can_reclassify": boolean,"can_retry": boolean,"earliest_expiry": string,"last_outcome": string,"next_retry_at": string,"open_invites": number,"request_id": string,"retries_left": number,"rounds": number,"state": string
             }[]
                            },
 "invite_fixture_worker":
@@ -1008,6 +1008,9 @@ isOneToOne: false
 "request_service_resume":
 { Args: { "p_job_id": string,"p_version": number }; Returns: number
                            },
+"retry_service_dispatch":
+{ Args: { "p_request_id": string }; Returns: Json
+                           },
 "review_job_worker":
 { Args: { "p_body": string,"p_job_id": string,"p_rating": number,"p_tags": (string)[] }; Returns: string
                            },
@@ -1053,6 +1056,9 @@ isOneToOne: false
                            },
 "set_request_preferred_visit":
 { Args: { "p_at": string,"p_request_id": string }; Returns: string
+                           },
+"set_request_service":
+{ Args: { "p_request_id": string,"p_service_id": string }; Returns: string
                            },
 "set_worker_accepting":
 { Args: { "p_accepting": boolean }; Returns: boolean

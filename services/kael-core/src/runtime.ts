@@ -295,6 +295,16 @@ function effectCopy(tool: string, args: Record<string, unknown>): EffectCopy {
     const done: Record<string, string> = { en_route: 'Đã cập nhật: bạn đang trên đường tới nhà khách.', arrived: 'Đã cập nhật: bạn đã đến nơi.', working: 'Đã cập nhật: bạn đã bắt đầu làm việc.' };
     return { label: 'Đang cập nhật tiến độ', kind: 'service_job', refused: workflowRefused, uncertain: workflowUncertain, done: () => done[String(args.next)] ?? 'Đã cập nhật tiến độ.' };
   }
+  if (tool === 'service_request_redispatch') {
+    return { label: 'Đang mời thêm thợ', kind: 'dispatch_round', uncertain: workflowUncertain,
+      refused: 'Hệ thống chưa mời thêm thợ: yêu cầu đã thay đổi, chưa đến lúc thử lại hoặc chưa có thợ phù hợp. Chưa có gì thay đổi; hãy xem lại trạng thái mới nhất.',
+      done: () => 'Đã mời thêm thợ cho yêu cầu này. Chưa có thợ nhận việc: yêu cầu chỉ được giao khi một thợ xác nhận.' };
+  }
+  if (tool === 'service_request_cancel') {
+    return { label: 'Đang hủy yêu cầu', kind: 'service_request', uncertain: workflowUncertain,
+      refused: 'Hệ thống chưa hủy yêu cầu này vì đã có thợ nhận việc hoặc yêu cầu đã thay đổi. Chưa có gì thay đổi; hãy xem lại trạng thái mới nhất.',
+      done: () => 'Đã hủy yêu cầu. Các lời mời đang mở cho thợ đã được đóng.' };
+  }
   return {
     label: 'Đang gửi yêu cầu dịch vụ', kind: 'service_request',
     refused: 'Hệ thống chưa nhận yêu cầu này. Bản nháp vẫn được giữ; chưa có yêu cầu nào được gửi.',
