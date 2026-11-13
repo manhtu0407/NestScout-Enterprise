@@ -571,8 +571,8 @@ automatic dispatch; a commercial pricing or dispatch policy is still an owner
 decision. The database raises SQLSTATE `40001` for a stale version or an
 already-assigned request, and in-database callers rely on it. PostgREST would turn
 that code into HTTP 500, which the hosted API gateway does not answer promptly, so
-each public RPC that can reach it translates the error through
-`nestscout_private.raise_conflict` into HTTP 409 with the body
+each public RPC that can reach it catches the error and re-raises it as a
+PostgREST error that carries HTTP 409 with the body
 `{"code":"40001","message":"<reason>","details":null,"hint":null}`. Kael and the
 mobile client treat the response as a definitive refusal, because the transaction
 rolled back, while a 5xx response without a recognised code stays an uncertain

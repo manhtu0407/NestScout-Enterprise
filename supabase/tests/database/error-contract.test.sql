@@ -61,7 +61,7 @@ do $$
 declare v_detail text;
 begin
   begin
-    perform nestscout_private.raise_conflict('stale quote');
+    perform public.accept_service_quote('30000000-0000-4000-8000-000000000001', 9);
   exception when others then
     get stacked diagnostics v_detail = pg_exception_detail;
   end;
