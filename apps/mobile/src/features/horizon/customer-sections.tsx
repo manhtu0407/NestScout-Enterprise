@@ -153,6 +153,13 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
           throw new Error(workflowMessage(error));
         }
       }}
+      onReassign={async request => {
+        try {
+          await customer.reassignRequest(request.id);
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+      }}
       onCancelRequest={async request => {
         try {
           await customer.cancelServiceRequest(request.id);

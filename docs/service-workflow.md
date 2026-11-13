@@ -453,9 +453,36 @@ is invented for old requests. `redispatch_service_request` remains the strict
 form and raises on any outcome other than `invited`. The customer can cancel with
 `cancel_service_request` until a worker accepts; a cancelled request withdraws
 its open invitations and refuses a later quote acceptance, offer acceptance or
-decline. A worker who is already assigned and later drops out does not reopen the
-request: the job stays assigned and no automatic reassignment exists, which is a
-documented non-closure until the owner approves a reassignment policy.
+decline.
+
+An assigned worker can leave, and the customer can replace one who never
+arrives. Both paths run `nestscout_private.release_job` under the request-row
+lock and archive instead of editing: the job row moves to `service_job_releases`
+with its events and reports as jsonb, then the job is deleted, so every reader of
+`service_jobs` keeps working unchanged. `release_service_job` (worker) is allowed
+only while the job is `assigned` or `en_route`; after arrival the worker has no
+exit and the case belongs to support or a dispute. `request_service_reassignment`
+(customer) is allowed only while the job is still `assigned`, after
+`reassign_idle_minutes` (default 120) from the later of the job's creation and
+the preferred visit time, and refuses with `worker still has time` before then.
+Both are idempotent on a key and refuse a stale job version. A release keeps the
+releasing worker's invitation as accepted, so that worker is not invited again,
+opens a `worker_released` dispatch round that ignores the automatic round cap and
+the manual retry budget (a handover is not a customer retry), and notifies the
+other side (`job_released` to the customer, `job_withdrawn` to the worker).
+`get_dispatch_summary` reports `can_reassign` and `reassign_at` for an assigned
+request. Kael does not read them and has no reassignment effect: handing a
+request to another worker is a customer decision in the Requests screen, behind
+a slide to confirm.
+
+Worker capacity is enforced where a job is created. A worker's active jobs are
+those whose stage is not `submitted` or `completed`; `max_active_jobs_per_worker`
+(default 3) caps them, and `visit_conflict_minutes` (default 120) refuses a
+second job whose preferred visit falls within that distance of an active one.
+Dispatch skips such workers when it picks candidates, `assign_invitation` takes a
+per-worker advisory lock before it counts so two simultaneous acceptances cannot
+both pass, and `auto_accept_invitation` applies the same check. A refusal reads
+`worker at capacity` or `schedule conflict` (SQLSTATE `40001`).
 
 Kael reads the same summary and can retry or cancel, but only through
 `service_request_redispatch` and `service_request_cancel`: each is a confirmed

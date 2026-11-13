@@ -1,4 +1,5 @@
 import { authenticatedRequest } from '@/lib/authenticated-rest';
+import { randomUUID } from 'expo-crypto';
 
 import { dispatchServiceIds, type DispatchServiceId } from './dispatch-service-id';
 import { workflowErrorFrom } from './workflow-error';
@@ -23,6 +24,8 @@ export type DispatchSummary = {
   nextRetryAt: string | null;
   retriesLeft: number;
   lastOutcome: string | null;
+  canReassign: boolean;
+  reassignAt: string | null;
 };
 
 export type RetryResult = {
@@ -66,14 +69,16 @@ function toSummary(row: unknown, requested: ReadonlySet<string>): DispatchSummar
   const reclassify = item.can_reclassify ?? false;
   const retriesLeft = item.retries_left ?? 0;
   const lastOutcome = item.last_outcome ?? null;
+  const reassign = item.can_reassign ?? false;
   if (typeof item.request_id !== 'string' || !requested.has(item.request_id) || !isDispatchState(item.state) || !isCount(item.open_invites) || !isCount(item.rounds)
     || (expiry !== null && (typeof expiry !== 'string' || Number.isNaN(Date.parse(expiry)))) || typeof item.can_retry !== 'boolean' || typeof item.can_cancel !== 'boolean'
-    || typeof reclassify !== 'boolean' || !isCount(retriesLeft) || (lastOutcome !== null && typeof lastOutcome !== 'string')) {
+    || typeof reclassify !== 'boolean' || typeof reassign !== 'boolean' || !isCount(retriesLeft) || (lastOutcome !== null && typeof lastOutcome !== 'string')) {
     throw new Error('Invalid dispatch response');
   }
   return {
     requestId: item.request_id, state: item.state, openInvites: item.open_invites, earliestExpiry: expiry, rounds: item.rounds, canRetry: item.can_retry,
     canCancel: item.can_cancel, canReclassify: reclassify, nextRetryAt: optionalInstant(item.next_retry_at), retriesLeft, lastOutcome,
+    canReassign: reassign, reassignAt: optionalInstant(item.reassign_at),
   };
 }
 
@@ -117,6 +122,14 @@ export async function setRequestService(userId: string, requestId: string, servi
   const result: unknown = await response.json();
   if (result !== serviceId) throw new Error('Invalid service response');
   return serviceId;
+}
+
+export async function requestReassignment(userId: string, requestId: string, signal: AbortSignal): Promise<void> {
+  const response = await authenticatedRequest(userId, 'rpc/request_service_reassignment', { method: 'POST', signal, body: JSON.stringify({ p_request_id: requestId, p_key: randomUUID() }) });
+  if (!response.ok) throw await workflowErrorFrom(response);
+  const result: unknown = await response.json();
+  const outcome = typeof result === 'object' && result !== null ? (result as Record<string, unknown>).outcome : undefined;
+  if (outcome !== 'released' && outcome !== 'already_released') throw new Error('Invalid reassignment response');
 }
 
 export async function cancelRequest(userId: string, requestId: string, signal: AbortSignal): Promise<string> {

@@ -501,6 +501,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"service_job_releases": {
+                  Row: {
+                    "events": NonNullable<Json>,"id": string,"invitation_id": string,"job_id": string,"job_version": number,"note": string | null,"operation_key": string,"quote_id": string,"reason": string,"released_at": string,"released_by": string,"released_by_role": string,"reports": NonNullable<Json>,"request_id": string,"stage": string,"worker_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "events"?: NonNullable<Json>,"id"?: string,"invitation_id": string,"job_id": string,"job_version": number,"note"?: string | null,"operation_key": string,"quote_id": string,"reason": string,"released_at"?: string,"released_by": string,"released_by_role": string,"reports"?: NonNullable<Json>,"request_id": string,"stage": string,"worker_id": string
+                  }
+                  Update: {
+                    "events"?: NonNullable<Json>,"id"?: string,"invitation_id"?: string,"job_id"?: string,"job_version"?: number,"note"?: string | null,"operation_key"?: string,"quote_id"?: string,"reason"?: string,"released_at"?: string,"released_by"?: string,"released_by_role"?: string,"reports"?: NonNullable<Json>,"request_id"?: string,"stage"?: string,"worker_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_job_releases_invitation_id_fkey"
+      columns: ["invitation_id"]
+isOneToOne: false
+      referencedRelation: "service_invitations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "service_job_releases_request_id_fkey"
+      columns: ["request_id"]
+isOneToOne: false
+      referencedRelation: "service_requests"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"service_job_reports": {
                   Row: {
                     "actor_id": string,"created_at": string,"details": string,"id": string,"job_id": string,"kind": string,"report_key": string,"reported_from_version": number
@@ -831,7 +857,7 @@ isOneToOne: false
                            },
 "get_dispatch_summary":
 { Args: { "p_request_ids": (string)[] }; Returns: {
-              "can_cancel": boolean,"can_reclassify": boolean,"can_retry": boolean,"earliest_expiry": string,"last_outcome": string,"next_retry_at": string,"open_invites": number,"request_id": string,"retries_left": number,"rounds": number,"state": string
+              "can_cancel": boolean,"can_reassign": boolean,"can_reclassify": boolean,"can_retry": boolean,"earliest_expiry": string,"last_outcome": string,"next_retry_at": string,"open_invites": number,"reassign_at": string,"request_id": string,"retries_left": number,"rounds": number,"state": string
             }[]
                            },
 "invite_fixture_worker":
@@ -987,6 +1013,9 @@ isOneToOne: false
 "reject_service_quote":
 { Args: { "p_quote_id": string,"p_version": number }; Returns: string
                            },
+"release_service_job":
+{ Args: { "p_job_id": string,"p_key": string,"p_note"?: string,"p_reason": string,"p_version": number }; Returns: Json
+                           },
 "remove_worker_certificate":
 { Args: { "p_id": string }; Returns: string
                            },
@@ -1004,6 +1033,9 @@ isOneToOne: false
                            },
 "request_job_change":
 { Args: { "p_job_id": string,"p_kind": string,"p_proposed_for": string,"p_reason": string }; Returns: string
+                           },
+"request_service_reassignment":
+{ Args: { "p_key": string,"p_note"?: string,"p_request_id": string }; Returns: Json
                            },
 "request_service_resume":
 { Args: { "p_job_id": string,"p_version": number }; Returns: number

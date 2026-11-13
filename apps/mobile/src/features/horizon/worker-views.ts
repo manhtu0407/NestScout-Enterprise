@@ -147,6 +147,7 @@ export function nextJobLabel(jobs: readonly WorkerJob[]): string {
 const notificationTargets: Readonly<Partial<Record<NotificationKind, string>>> = {
   job_offered: 'worker-offers',
   job_auto_accepted: 'worker-assigned',
+  job_withdrawn: 'worker-offers',
   work_approved: 'worker-history',
   revision_requested: 'worker-review',
   work_disputed: 'worker-review',

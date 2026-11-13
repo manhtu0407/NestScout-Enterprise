@@ -75,7 +75,8 @@ export type WorkerCommand =
   | { type: 'resume' }
   | { type: 'submit'; evidence: string; key: string }
   | { type: 'propose'; scope: string; amount: number; rationale: string; key: string }
-  | { type: 'report'; kind: 'delay' | 'customer_absent'; details: string; key: string };
+  | { type: 'report'; kind: 'delay' | 'customer_absent'; details: string; key: string }
+  | { type: 'release'; reason: 'unavailable' | 'schedule_conflict' | 'cannot_reach' | 'other'; key: string };
 
 export type WorkerPerform = (jobId: string, command: WorkerCommand) => Promise<string>;
 

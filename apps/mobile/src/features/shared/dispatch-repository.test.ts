@@ -1,8 +1,9 @@
-import { cancelRequest, readDispatchSummaries, retryDispatchRequest, setRequestService } from './dispatch-repository';
+import { cancelRequest, readDispatchSummaries, requestReassignment, retryDispatchRequest, setRequestService } from './dispatch-repository';
 import { WorkflowError } from './workflow-error';
 
 const mockGetSession = jest.fn();
 jest.mock('@/lib/supabase-client', () => ({ getSupabaseClient: () => ({ auth: { getSession: mockGetSession } }) }));
+jest.mock('expo-crypto', () => ({ randomUUID: () => '33333333-3333-4333-8333-333333333333' }));
 jest.mock('@/lib/config', () => ({
   loadConfig: () => ({ supabaseUrl: 'http://127.0.0.1:54321', supabasePublishableKey: 'public-key' }),
 }));
@@ -12,7 +13,7 @@ const second = '22222222-2222-4222-8222-222222222222';
 const signal = new AbortController().signal;
 
 function row(overrides: Record<string, unknown> = {}) {
-  return { request_id: first, state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true, can_cancel: true, can_reclassify: false, next_retry_at: null, retries_left: 2, last_outcome: 'no_eligible_worker', ...overrides };
+  return { request_id: first, state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true, can_cancel: true, can_reclassify: false, next_retry_at: null, retries_left: 2, last_outcome: 'no_eligible_worker', can_reassign: false, reassign_at: null, ...overrides };
 }
 
 function respond(body: unknown, ok = true, status = 200) {
@@ -33,7 +34,7 @@ test('no identifiers means no request', async () => {
 test('summaries are read through the owner scoped function and mapped', async () => {
   respond([row({ state: 'searching', open_invites: 2, earliest_expiry: '2026-11-12T10:30:00.000Z', can_retry: false })]);
   await expect(readDispatchSummaries('customer-a', [first], signal)).resolves.toEqual([
-    { requestId: first, state: 'searching', openInvites: 2, earliestExpiry: '2026-11-12T10:30:00.000Z', rounds: 1, canRetry: false, canCancel: true, canReclassify: false, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'no_eligible_worker' },
+    { requestId: first, state: 'searching', openInvites: 2, earliestExpiry: '2026-11-12T10:30:00.000Z', rounds: 1, canRetry: false, canCancel: true, canReclassify: false, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'no_eligible_worker', canReassign: false, reassignAt: null },
   ]);
   expect(global.fetch).toHaveBeenCalledWith(
     'http://127.0.0.1:54321/rest/v1/rpc/get_dispatch_summary',
@@ -70,6 +71,8 @@ test.each([
   ['a non boolean flag', row({ can_retry: 'yes' })],
   ['a non boolean reclassify flag', row({ can_reclassify: 'yes' })],
   ['a negative retry budget', row({ retries_left: -1 })],
+  ['a non boolean reassign flag', row({ can_reassign: 'yes' })],
+  ['a reassign time that is not a date', row({ reassign_at: 'soon' })],
   ['a retry time that is not a date', row({ next_retry_at: 'soon' })],
   ['a row that is not an object', null],
 ])('%s is rejected', async (_name, bad) => {
@@ -84,7 +87,7 @@ test('a response that is not a list is rejected', async () => {
 
 test('summaries from a server without the recovery fields read with safe defaults', async () => {
   respond([{ request_id: first, state: 'recovering', open_invites: 1, earliest_expiry: '2026-11-12T10:30:00.000Z', rounds: 2, can_retry: false, can_cancel: true }]);
-  await expect(readDispatchSummaries('customer-a', [first], signal)).resolves.toMatchObject([{ state: 'recovering', canReclassify: false, nextRetryAt: null, retriesLeft: 0, lastOutcome: null }]);
+  await expect(readDispatchSummaries('customer-a', [first], signal)).resolves.toMatchObject([{ state: 'recovering', canReclassify: false, canReassign: false, reassignAt: null, nextRetryAt: null, retriesLeft: 0, lastOutcome: null }]);
 });
 
 test('a retry returns the structured outcome the database decided', async () => {
@@ -155,4 +158,29 @@ test('cancelling an assigned request reports that it is no longer available', as
   const failure: unknown = await cancelRequest('customer-a', first, signal).catch((error: unknown) => error);
   expect(failure).toBeInstanceOf(WorkflowError);
   expect(failure).toMatchObject({ failure: 'unavailable' });
+});
+
+test('an assigned request that can hand over reads its reassign window', async () => {
+  respond([row({ state: 'assigned', can_retry: false, can_cancel: false, can_reassign: true, reassign_at: '2026-11-12T10:30:00.000Z' })]);
+  await expect(readDispatchSummaries('customer-a', [first], signal)).resolves.toMatchObject([{ state: 'assigned', canReassign: true, reassignAt: '2026-11-12T10:30:00.000Z' }]);
+});
+
+test('a reassignment sends one idempotency key and accepts only a release outcome', async () => {
+  respond({ outcome: 'released', dispatch: { outcome: 'invited' } });
+  await expect(requestReassignment('customer-a', first, signal)).resolves.toBeUndefined();
+  expect(global.fetch).toHaveBeenCalledWith(
+    'http://127.0.0.1:54321/rest/v1/rpc/request_service_reassignment',
+    expect.objectContaining({ method: 'POST', body: JSON.stringify({ p_request_id: first, p_key: '33333333-3333-4333-8333-333333333333' }) }),
+  );
+  respond({ outcome: 'already_released' });
+  await expect(requestReassignment('customer-a', first, signal)).resolves.toBeUndefined();
+  respond({ outcome: 'done' });
+  await expect(requestReassignment('customer-a', first, signal)).rejects.toThrow('Invalid reassignment response');
+  respond(7);
+  await expect(requestReassignment('customer-a', first, signal)).rejects.toThrow('Invalid reassignment response');
+});
+
+test('a reassignment asked before the worker had time is a definitive early refusal', async () => {
+  respond({ code: '22023', message: 'worker still has time' }, false, 400);
+  await expect(requestReassignment('customer-a', first, signal)).rejects.toMatchObject({ failure: 'early' });
 });

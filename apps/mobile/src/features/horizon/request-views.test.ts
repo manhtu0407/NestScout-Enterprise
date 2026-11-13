@@ -163,7 +163,7 @@ test('a worker saved a moment ago reads as just saved', () => {
 });
 
 function summary(overrides: Partial<DispatchSummary> = {}): DispatchSummary {
-  return { requestId: 'r1', state: 'no_match', openInvites: 0, earliestExpiry: null, rounds: 1, canRetry: true, canCancel: true, canReclassify: false, nextRetryAt: null, retriesLeft: 2, lastOutcome: null, ...overrides };
+  return { requestId: 'r1', state: 'no_match', openInvites: 0, earliestExpiry: null, rounds: 1, canRetry: true, canCancel: true, canReclassify: false, canReassign: false, reassignAt: null, nextRetryAt: null, retriesLeft: 2, lastOutcome: null, ...overrides };
 }
 
 const acceptedQuote = quote({ accepted_at: hoursAgo(1) });
@@ -223,6 +223,15 @@ test('an assigned job wins over any dispatch summary', () => {
   const progress = deriveRequestProgress([acceptedQuote], job('assigned'), now, summary({ state: 'assigned', canCancel: false, canRetry: false }));
   expect(progress).toMatchObject({ step: 4, stage: 'active', status: 'Đã có thợ nhận việc' });
   expect(progress.dispatch).toBeUndefined();
+});
+
+test('an assigned job offers a handover only once the dispatch summary allows it', () => {
+  const ready = deriveRequestProgress([acceptedQuote], job('assigned'), now, summary({ state: 'assigned', canCancel: false, canRetry: false, canReassign: true, reassignAt: '2026-11-12T10:00:00.000Z' }));
+  expect(ready.dispatch).toEqual({ canRetry: false, canCancel: false, canReassign: true, reassignAt: '2026-11-12T10:00:00.000Z' });
+  const waiting = deriveRequestProgress([acceptedQuote], job('assigned'), now, summary({ state: 'assigned', canCancel: false, canRetry: false, reassignAt: '2026-11-12T10:00:00.000Z' }));
+  expect(waiting.dispatch).toMatchObject({ canReassign: false, reassignAt: '2026-11-12T10:00:00.000Z' });
+  const working = deriveRequestProgress([acceptedQuote], job('working'), now, summary({ state: 'assigned', canCancel: false, canRetry: false }));
+  expect(working.dispatch).toBeUndefined();
 });
 
 test('a request that is still awaiting its quote keeps its quote copy and can be cancelled', () => {

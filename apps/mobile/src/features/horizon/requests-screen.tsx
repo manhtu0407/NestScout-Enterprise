@@ -40,7 +40,7 @@ export type ServiceRequest = {
   preferredVisitAt?: string | null;
   pendingSubmission?: { id: string; evidence: string; jobVersion: number };
   closed?: 'cancelled';
-  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; nextRetryAt?: string | null; retriesLeft?: number };
+  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; nextRetryAt?: string | null; retriesLeft?: number };
 };
 
 export const workflowSteps: readonly string[] = ['Đã gửi', 'Có báo giá', 'Chấp nhận', 'Ghép thợ', 'Thực hiện', 'Nghiệm thu'];
@@ -63,11 +63,12 @@ type Props = {
   onRetryDispatch?: (request: ServiceRequest) => Promise<void | string>;
   onSetRequestService?: (request: ServiceRequest, serviceId: DispatchServiceId) => Promise<void>;
   onCancelRequest?: (request: ServiceRequest) => Promise<void>;
+  onReassign?: (request: ServiceRequest) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
   focusId?: string;
 };
 
-function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, jobChanges }: CardProps) {
+function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, onReassign, jobChanges }: CardProps) {
   const finished = request.step >= workflowSteps.length;
   const caption = request.closed === 'cancelled' ? 'Đã hủy' : finished ? `Đủ ${workflowSteps.length}/${workflowSteps.length} bước` : `Bước ${request.step + 1}/${workflowSteps.length} · ${workflowSteps[request.step]}`;
   const needsYou = Boolean(request.quoteCount);
@@ -121,11 +122,14 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onS
           canRetry={request.dispatch.canRetry}
           canCancel={request.dispatch.canCancel}
           canReclassify={request.dispatch.canReclassify === true && onSetRequestService !== undefined}
+          canReassign={request.dispatch.canReassign === true && onReassign !== undefined}
+          reassignAt={request.dispatch.reassignAt ?? null}
           nextRetryAt={request.dispatch.nextRetryAt ?? null}
           retriesLeft={request.dispatch.retriesLeft ?? null}
           onRetry={() => onRetryDispatch(request)}
           onSetService={serviceId => onSetRequestService ? onSetRequestService(request, serviceId) : Promise.resolve()}
           onCancel={() => onCancelRequest(request)}
+          onReassign={() => onReassign ? onReassign(request) : Promise.resolve()}
         />
       ) : null}
       {expanded ? (
@@ -213,10 +217,11 @@ type CardProps = {
   onRetryDispatch?: (request: ServiceRequest) => Promise<void | string>;
   onSetRequestService?: (request: ServiceRequest, serviceId: DispatchServiceId) => Promise<void>;
   onCancelRequest?: (request: ServiceRequest) => Promise<void>;
+  onReassign?: (request: ServiceRequest) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
 };
 
-export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, jobChanges, focusId }: Props) {
+export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, onReassign, jobChanges, focusId }: Props) {
   const focused = requests.find(request => request.id === focusId);
   const [expandedIds, setExpandedIds] = useState<readonly string[]>(focused ? [focused.id] : []);
   const { reduceMotion } = useGlassAccessibility();
@@ -302,6 +307,7 @@ export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael,
               onRetryDispatch={onRetryDispatch}
               onSetRequestService={onSetRequestService}
               onCancelRequest={onCancelRequest}
+              onReassign={onReassign}
               jobChanges={jobChanges}
             />
           ))

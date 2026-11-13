@@ -5,6 +5,8 @@ const definitive: Record<Exclude<WorkflowFailure, 'unknown'>, string> = {
   stale: 'Mục này đã thay đổi sau khi tải. Đã tải lại, hãy xem lại rồi thử lại.',
   expired: 'Báo giá này đã hết hạn. Hãy chờ báo giá mới.',
   unavailable: 'Mục này không còn khả dụng. Đã tải lại trạng thái mới nhất.',
+  capacity: 'Bạn đang nhận đủ số việc tối đa hoặc lịch hẹn này trùng với việc khác. Hãy hoàn tất hoặc rút khỏi một việc trước.',
+  early: 'Chưa đến lúc mời thợ khác. Hãy chờ thêm để thợ có thời gian đến.',
   invalid: 'Một số thông tin chưa được chấp nhận. Hãy kiểm tra và thử lại.',
   rejected: 'Bước này không còn khả dụng. Đã tải lại trạng thái mới nhất.',
 };

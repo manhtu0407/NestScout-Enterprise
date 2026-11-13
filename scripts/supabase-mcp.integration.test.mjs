@@ -2343,6 +2343,7 @@ function world(db, options) {
         if (requests.length > 0) {
           db.query(`delete from public.service_job_events where job_id in (select id from public.service_jobs where request_id in (${ids}));
             delete from public.service_jobs where request_id in (${ids});
+            delete from public.service_job_releases where request_id in (${ids});
             delete from public.service_invitations where request_id in (${ids});
             delete from public.service_dispatch_rounds where request_id in (${ids});
             delete from public.notifications where request_id in (${ids});
@@ -2553,6 +2554,75 @@ test('overlapping sweeper ticks never double invite or double notify', { timeout
       raceOutcomes.push(`overlapping_sweepers ticks=${ticks.map(tick => result(tick.output)).join('+')}`);
     } finally {
       env.dispose();
+    }
+  });
+});
+
+test('a worker releasing and the customer reassigning at once end in exactly one handover', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const releaseFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const workerA = env.worker();
+        const workerB = env.worker();
+        const request = env.request(customer);
+        env.accept(customer, request);
+        const holder = env.invitation(request, workerA) ? workerA : workerB;
+        const invitation = env.invitation(request, holder);
+        db.query(asUser(holder, `select public.accept_service_invitation('${invitation}', '${request.quote}', 1);`));
+        db.query(`update public.service_jobs set created_at = clock_timestamp() - interval '3 hours' where request_id='${request.id}';`);
+        const job = JSON.parse(db.query(`select row_to_json(j) from (select id, version from public.service_jobs where request_id='${request.id}') j;`).trim());
+        const releaseSql = asUser(holder, `select 'RESULT:' || (public.release_service_job('${job.id}', ${job.version}, '${randomUUID()}', 'unavailable') ->> 'outcome');`);
+        const reassignSql = asUser(customer, `select 'RESULT:' || (public.request_service_reassignment('${request.id}', '${randomUUID()}') ->> 'outcome');`);
+        const outcomes = await holdingRequestLock(db, request.id, 4, releaseFirst ? [releaseSql, reassignSql] : [reassignSql, releaseSql]);
+        const succeeded = outcomes.filter(outcome => outcome.code === 0);
+        assert.equal(succeeded.length, 1, 'Exactly one of release and reassignment may win');
+        assert.equal(result(succeeded[0].output), 'released');
+        assert.equal(env.count(`select 1 from public.service_job_releases where request_id='${request.id}'`), 1, 'One archived handover');
+        assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}'`), 0, 'No job survives the handover');
+        assert.equal(env.count(`select 1 from public.service_dispatch_rounds where request_id='${request.id}' and reason='worker_released'`), 1, 'One replacement search');
+        assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind in ('job_released','job_withdrawn')`), 1, 'One notice to the other side');
+        assert.equal(env.count(`select 1 from public.service_invitations where request_id='${request.id}' and worker_id='${holder}' and state='open'`), 0, 'The former worker is never re-invited');
+        raceOutcomes.push(`release_vs_reassign first=${releaseFirst ? 'release' : 'reassign'} winner=${succeeded.length === 1 && outcomes[0].code === 0 ? 'first' : 'second'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+test('one worker with a single free slot can win only one of two simultaneous acceptances', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (let round = 0; round < 3; round += 1) {
+      const env = world(db, { max_invites: 1, max_active_jobs_per_worker: 1 });
+      try {
+        const customer = env.customer();
+        const worker = env.worker();
+        const first = env.request(customer);
+        env.accept(customer, first);
+        const second = env.request(customer);
+        env.accept(customer, second);
+        const invitationA = env.invitation(first, worker);
+        const invitationB = env.invitation(second, worker);
+        assert.ok(invitationA && invitationB, 'The worker holds one open offer per request before either is accepted');
+        const key = barrierKey();
+        const holder = db.run(`begin; select id from public.service_requests where id in ('${first.id}', '${second.id}') order by id for update; select pg_advisory_xact_lock(${barrierNamespace}, ${key}); select pg_sleep(4); commit;`);
+        await waitForRaceBarrier(db.query, key);
+        const acceptA = db.run(asUser(worker, `select 'RESULT:' || public.accept_service_invitation('${invitationA}', '${first.quote}', 1);`));
+        const acceptB = db.run(asUser(worker, `select 'RESULT:' || public.accept_service_invitation('${invitationB}', '${second.quote}', 1);`));
+        const [held, a, b] = await Promise.all([holder, acceptA, acceptB]);
+        assert.equal(held.code, 0);
+        assert.notEqual(a.code === 0, b.code === 0, 'Exactly one acceptance may win the single slot');
+        const loser = a.code === 0 ? b : a;
+        assert.match(loser.errors, /worker at capacity/);
+        assert.equal(env.count(`select 1 from public.service_jobs where worker_id='${worker}'`), 1, 'Only one active job exists for the worker');
+        raceOutcomes.push(`capacity_double_accept winner=${a.code === 0 ? 'first' : 'second'}`);
+      } finally {
+        env.dispose();
+      }
     }
   });
 });

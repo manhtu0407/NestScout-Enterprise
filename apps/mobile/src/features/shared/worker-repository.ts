@@ -220,6 +220,16 @@ export async function proposeScope(userId: string, jobId: string, version: numbe
   if (typeof result !== 'string') throw new Error('Invalid proposal result');
 }
 
+export const releaseReasons = ['unavailable', 'schedule_conflict', 'cannot_reach', 'other'] as const;
+export type ReleaseReason = (typeof releaseReasons)[number];
+
+export async function releaseJob(userId: string, job: Job, reason: ReleaseReason, key: string, signal: AbortSignal): Promise<void> {
+  if (!releaseReasons.includes(reason)) throw new Error('Invalid release reason');
+  const result = await rpc(userId, 'release_service_job', { p_job_id: job.job_id, p_version: job.version, p_key: key, p_reason: reason }, signal);
+  const outcome = typeof result === 'object' && result !== null ? (result as Record<string, unknown>).outcome : undefined;
+  if (outcome !== 'released' && outcome !== 'already_released') throw new Error('Invalid release result');
+}
+
 export async function reportJob(userId: string, jobId: string, version: number, key: string, kind: JobReport['kind'], details: string, signal: AbortSignal): Promise<void> {
   const result = await rpc(userId, 'report_service_job', {
     p_job_id: jobId, p_version: version, p_key: key, p_kind: kind, p_details: details,

@@ -211,3 +211,33 @@ test('back and ask-Kael actions are forwarded to the host screen', async () => {
   await fireEvent.press(screen.getByLabelText(`Hỏi Kael về ${correctionJob}`));
   expect(onAskKael).toHaveBeenCalledTimes(1);
 });
+
+test('a worker who has not arrived can step back from a job and give a reason', async () => {
+  await render(<SampleWorkerJobsScreen initialStage="assigned" onBack={jest.fn()} />);
+  await fireEvent.press(screen.getByLabelText(`Rút khỏi việc ${assignedJob}`));
+  expect(screen.getByText('Vì sao bạn rút khỏi việc?')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText(`Rút khỏi việc vì trùng lịch ${assignedJob}`));
+  await waitFor(() => expect(screen.getByText('Đã rút khỏi việc này. Việc được mời cho thợ khác.')).toBeTruthy());
+  expect(screen.queryByLabelText(`Rút khỏi việc ${assignedJob}`)).toBeNull();
+});
+
+test('a job that has reached the customer cannot be released', async () => {
+  await render(<SampleWorkerJobsScreen initialStage="active" onBack={jest.fn()} />);
+  expect(screen.queryByLabelText(`Rút khỏi việc ${activeJob}`)).toBeNull();
+});
+
+test('a refused acceptance resets the slider so the worker can try again', async () => {
+  const perform = jest.fn<ReturnType<WorkerPerform>, Parameters<WorkerPerform>>()
+    .mockRejectedValueOnce(new WorkflowError('capacity'))
+    .mockResolvedValueOnce('Đã nhận việc.');
+  const offers = sampleWorkerJobs.filter(job => job.id === 'job-o1');
+  await render(<WorkerJobsScreen initialStage="offer" jobs={offers} perform={perform} onBack={jest.fn()} />);
+  const activate = { nativeEvent: { actionName: 'activate' } };
+  await fireEvent(screen.getByLabelText(`Nhận việc ${offerJob}`), 'accessibilityAction', activate);
+  await fireEvent(screen.getByLabelText(`Nhận việc ${offerJob}`), 'accessibilityAction', activate);
+  await waitFor(() => expect(screen.getByText(/nhận đủ số việc tối đa/)).toBeTruthy());
+  await waitFor(() => expect(screen.getByLabelText(`Nhận việc ${offerJob}`).props.accessibilityState).toMatchObject({ busy: false }));
+  await fireEvent(screen.getByLabelText(`Nhận việc ${offerJob}`), 'accessibilityAction', activate);
+  await fireEvent(screen.getByLabelText(`Nhận việc ${offerJob}`), 'accessibilityAction', activate);
+  await waitFor(() => expect(perform).toHaveBeenCalledTimes(2));
+});

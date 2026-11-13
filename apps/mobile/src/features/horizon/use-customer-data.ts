@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   WorkflowError, acceptQuote, cancelRequest, clearKaelHistory, markNotificationsRead, readAccountPhone, readCustomerActivity, readCustomerProfile, readCustomerSettings, readDispatchSummaries, readJobWorkerCards,
-  readAvatarSource, readNotifications, readPinnedRequestIds, readQuotes, readRequestPhotos, readRequests, readSavedWorkers, rejectQuote, removeAvatar, retryDispatchRequest, setRequestService,
+  readAvatarSource, readNotifications, readPinnedRequestIds, readQuotes, readRequestPhotos, readRequests, readSavedWorkers, rejectQuote, removeAvatar, requestReassignment, retryDispatchRequest, setRequestService,
   reviewJobWorker, saveCustomerProfile, uploadAvatar,
   saveCustomerSettings, saveWorker, setRequestPinned, unsaveWorker,
   type CustomerActivity, type CustomerNotification, type CustomerProfile, type CustomerSettings, type DispatchServiceId, type DispatchSummary, type JobReview, type JobWorkerCard, type MediaFile, type RetryResult,
@@ -48,6 +48,7 @@ export type CustomerDataController = {
   setWorkerSaved: (profileId: string, saved: boolean) => Promise<void>;
   reviewJob: (jobId: string, review: JobReview) => Promise<void>;
   retryDispatch: (requestId: string) => Promise<RetryResult>;
+  reassignRequest: (requestId: string) => Promise<void>;
   classifyRequest: (requestId: string, serviceId: DispatchServiceId) => Promise<void>;
   cancelServiceRequest: (requestId: string) => Promise<void>;
 };
@@ -243,6 +244,15 @@ export function useCustomerData(userId: string | null): CustomerDataController {
     }
   }, [refresh, requireOwner]);
 
+  const reassignRequest = useCallback(async (requestId: string) => {
+    const id = requireOwner();
+    try {
+      await requestReassignment(id, requestId, new AbortController().signal);
+    } finally {
+      refresh();
+    }
+  }, [refresh, requireOwner]);
+
   const classifyRequest = useCallback(async (requestId: string, serviceId: DispatchServiceId) => {
     const id = requireOwner();
     try {
@@ -262,6 +272,6 @@ export function useCustomerData(userId: string | null): CustomerDataController {
   }, [refresh, requireOwner]);
 
   return {
-    data, status, loaded: current.loaded, refresh, togglePin, decideQuote, markRead, saveProfile, removeSavedWorker, saveSettings, clearChatHistory, changeAvatar, clearAvatar, setWorkerSaved, reviewJob, retryDispatch, classifyRequest, cancelServiceRequest,
+    data, status, loaded: current.loaded, refresh, togglePin, decideQuote, markRead, saveProfile, removeSavedWorker, saveSettings, clearChatHistory, changeAvatar, clearAvatar, setWorkerSaved, reviewJob, retryDispatch, reassignRequest, classifyRequest, cancelServiceRequest,
   };
 }

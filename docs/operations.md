@@ -157,6 +157,52 @@ migrations are additive, so the older function keeps working. Revert the
 client by shipping the previous build. Availability is a target, not a
 guarantee: both providers can be unavailable at once.
 
+## Dispatch recovery and worker handover rollout
+
+This section is a prepared plan. Nothing in it has been applied to the hosted
+project, and each step needs the owner's authorization.
+
+A read-only observation on 2026-11-13 found the hosted history ending at
+`add_dispatch_outcome_and_recovery` (hosted version `20261112122848`), so two
+repository migrations are pending, in this order: `add_dispatch_recovery_and_budgets`
+(`20261112080000`) and `add_job_release_and_worker_capacity` (`20261113090000`).
+`pg_cron` is available in the project but not installed.
+
+1. Merge to `main` after hosted CI passes.
+2. Before applying, confirm the history by name with `list_migrations` and that no
+   request is mid-flight that the owner cares about; both migrations run in one
+   transaction each and take short table locks.
+3. Apply `add_dispatch_recovery_and_budgets`, then
+   `add_job_release_and_worker_capacity`. The second drops and recreates
+   `get_dispatch_summary`, `dispatch_summary` and `dispatch_state` with two more
+   columns (`can_reassign`, `reassign_at`); an older client ignores columns it does
+   not read, and the older `kael` function keeps its explicit column list.
+4. Install `pg_cron` from the dashboard (an owner action that changes the project's
+   extensions), then run `select nestscout_private.schedule_dispatch_sweeper();`
+   as the database owner. It returns `scheduled` and registers one job named
+   `nestscout-dispatch-sweeper` that runs every minute. Without `pg_cron` the
+   migration reports `pg_cron not installed`, lapsed offers are still shown as
+   `recovering` and refused, and nothing closes them until the sweeper runs. Check
+   with `select jobname, schedule, active from cron.job` and
+   `select status, start_time from cron.job_run_details order by start_time desc limit 5`.
+5. Redeploy the `kael` function from the merged commit, since the Phase 2 and 3
+   sources changed the dispatch read and the approval-gated retry and cancel. If the
+   owner runs the Rust durable service, deploy it from the same commit.
+6. Leave `auto_dispatch_settings.enabled` false. Automatic quotes and invitations
+   remain off until the owner decides on a commercial pricing and dispatch policy;
+   the defaults for the new limits are `max_active_jobs_per_worker` 3,
+   `visit_conflict_minutes` 120 and `reassign_idle_minutes` 120.
+7. Verify with real accounts: a customer sees `recovering` for a lapsed offer within
+   a minute of the sweeper running, a worker in `assigned` can release and the
+   customer is notified, a customer can reassign only after the idle window, and a
+   worker at the cap is refused. `get_advisors` must show no new security finding.
+
+Rollback: unschedule the sweeper with `select cron.unschedule('nestscout-dispatch-sweeper')`.
+The migrations are additive apart from the recreated summary functions. A release moves
+its job rows to `service_job_releases`, which a code rollback does not undo, so those
+handovers stay archived and the customer's request keeps its new search. Revert the
+client by shipping the previous build.
+
 ## Git and metadata backup
 
 Run from a clean checkout after `git fetch origin --prune`. Use an absolute, new

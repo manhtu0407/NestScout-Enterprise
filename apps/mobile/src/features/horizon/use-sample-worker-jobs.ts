@@ -32,6 +32,9 @@ export function useSampleWorkerJobs(initial: readonly WorkerJob[] = sampleWorker
       case 'resume': return move({ pause: 'resume' }, 'Đã gửi yêu cầu làm tiếp. Chờ khách đồng ý.');
       case 'submit': return move({ stage: 'review', pause: undefined, correctionNote: undefined, stageLabel: 'Vừa nộp' }, 'Đã nộp kết quả. Chờ khách duyệt.');
       case 'propose': return 'Đã gửi đề xuất đổi phạm vi. Chờ khách quyết định.';
+      case 'release':
+        setDismissed(existing => [...existing, id]);
+        return 'Đã rút khỏi việc này. Việc được mời cho thợ khác.';
       default: return move({ delayReported: true }, 'Đã ghi nhận báo chậm. Không có khoản phí hay thay đổi lịch tự động.');
     }
   }, [jobs]);

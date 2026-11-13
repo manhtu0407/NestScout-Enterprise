@@ -16,7 +16,7 @@ export type RequestProgress = {
   nextAction: string;
   quoteCount: number;
   closed?: 'cancelled';
-  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; nextRetryAt?: string | null; retriesLeft?: number };
+  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; nextRetryAt?: string | null; retriesLeft?: number };
 };
 
 const jobStatus: Record<string, { status: string; nextAction: string }> = {
@@ -106,12 +106,14 @@ export function deriveRequestProgress(quotes: readonly ServiceQuote[], job: Cust
   if (job) {
     const copy = jobStatus[job.stage] ?? { status: 'Đang xử lý', nextAction: 'Hệ thống đang cập nhật tiến trình.' };
     const step = job.stage === 'completed' ? workflowSteps.length : job.stage === 'submitted' ? 5 : 4;
-    return { step, stage: stageFor(step), quoteCount: 0, ...copy };
+    const reassignable = summary !== undefined && summary.state === 'assigned' && (summary.canReassign || summary.reassignAt !== null);
+    const dispatch = reassignable ? { canRetry: false, canCancel: false, canReassign: summary.canReassign, reassignAt: summary.reassignAt } : undefined;
+    return { step, stage: stageFor(step), quoteCount: 0, ...(dispatch ? { dispatch } : {}), ...copy };
   }
   if (summary?.state === 'cancelled') {
     return { step: 0, stage: 'done', quoteCount: 0, closed: 'cancelled', status: 'Đã hủy yêu cầu', nextAction: 'Bạn đã hủy yêu cầu này. Hỏi Kael để tạo yêu cầu mới.' };
   }
-  const dispatch = summary ? { canRetry: summary.canRetry, canCancel: summary.canCancel, canReclassify: summary.canReclassify, nextRetryAt: summary.nextRetryAt, retriesLeft: summary.retriesLeft } : undefined;
+  const dispatch = summary ? { canRetry: summary.canRetry, canCancel: summary.canCancel, canReclassify: summary.canReclassify, canReassign: summary.canReassign, reassignAt: summary.reassignAt, nextRetryAt: summary.nextRetryAt, retriesLeft: summary.retriesLeft } : undefined;
   if (quotes.some(quote => quote.accepted_at !== null)) {
     return { step: 3, stage: 'waiting', quoteCount: 0, dispatch, ...dispatchProgress(summary) };
   }
@@ -243,6 +245,8 @@ const notificationIcons: Record<NotificationKind, IconName> = {
   job_completed: 'check',
   scope_proposed: 'receipt',
   dispatch_exhausted: 'clock',
+  job_released: 'clock',
+  job_withdrawn: 'briefcase',
   job_offered: 'bolt',
   job_auto_accepted: 'bolt',
   work_approved: 'check',

@@ -5,19 +5,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
-use support::{Gateway, MockModel, Service, Stack, Step, assert_contiguous, scratch, types};
-
-fn turn_body(request_id: &str, text: &str) -> Value {
-    json!({"request_id": request_id, "conversation_id": null, "mode": "client", "action": {"type": "message", "text": text}})
-}
-
-fn task_id_from(request: &Value) -> String {
-    let messages = request["messages"].as_array().expect("messages");
-    let tool = messages.iter().rev().find(|message| message["role"] == "tool").expect("tool result");
-    let content = tool["content"].as_str().expect("tool content");
-    let at = content.find("\"id\":\"").expect("task id in tool result") + 6;
-    content[at..at + 36].to_owned()
-}
+use support::{DISPATCH_EFFECTS, Gateway, MockModel, Service, Stack, Step, assert_contiguous, cancel_step, dispatch_script, redispatch_step, scratch, task_id_from, turn_body, types};
 
 fn draft_step(request: &Value) -> Step {
     Step::Tool {
@@ -546,4 +534,158 @@ fn deleting_a_session_waits_for_the_run_then_purges_its_files_and_refuses_new_tu
     let resumed = service.turn(&user, &json!({"request_id": kael_durable::util::random_uuid(), "conversation_id": conversation_id, "mode": "client", "action": {"type": "message", "text": "Tiếp tục"}}));
     assert_ne!(resumed.status, 200, "a deleted conversation accepts no new turn");
     assert_eq!(model.call_count(), 1);
+}
+
+#[test]
+#[ignore = "needs the live Supabase fixture stack (KAEL_TEST_GATEWAY, KAEL_TEST_ANON, KAEL_TEST_SERVICE)"]
+fn a_confirmed_cancel_closes_the_request_once_and_foreign_accounts_cannot_use_the_approval() {
+    let stack = Stack::from_env();
+    let model = MockModel::start(dispatch_script(cancel_step));
+    let data = scratch("dispatch-cancel");
+    let service = Service::spawn_with(&stack, &data, "holder-dispatch-cancel", model.port, 120, &DISPATCH_EFFECTS);
+    let user = stack.signup();
+    let stranger = stack.signup();
+    let request_id = stack.submitted_request(&user, "Mất điện ở bếp");
+    let before = stack.dispatch(&user, &request_id);
+    assert_eq!(before["can_cancel"], json!(true), "dispatch summary: {before}");
+
+    let mut reply = service.turn(&user, &turn_body(&kael_durable::util::random_uuid(), "Hủy yêu cầu sửa điện của mình"));
+    assert_eq!(reply.status, 200);
+    let events = reply.drain(Duration::from_secs(90));
+    let approval = events.iter().find(|event| event["type"] == "approval_required").unwrap_or_else(|| panic!("no approval requested: {events:?}"))["approval"].clone();
+    assert_eq!(approval["tool"], json!("service_request_cancel"));
+    let conversation_id = events[0]["conversation_id"].as_str().expect("conversation").to_owned();
+    let cancelled = |account: &support::User| stack.rows(account, &format!("service_requests?select=cancelled_at&id=eq.{request_id}"));
+    assert_eq!(cancelled(&user)[0]["cancelled_at"], Value::Null, "proposing a cancel changes nothing");
+
+    let decision = |request: &str| {
+        json!({
+            "request_id": request, "conversation_id": conversation_id, "mode": "client",
+            "action": {"type": "approve", "approval_id": approval["id"], "fingerprint": approval["fingerprint"]},
+        })
+    };
+    let mut foreign = service.turn(&stranger, &decision(&kael_durable::util::random_uuid()));
+    let refusal = foreign.drain(Duration::from_secs(60));
+    assert_eq!(cancelled(&user)[0]["cancelled_at"], Value::Null, "another account cannot apply the approval: {refusal:?}");
+
+    let mut approved = service.turn(&user, &decision(&kael_durable::util::random_uuid()));
+    assert_eq!(approved.status, 200);
+    let applied = approved.drain(Duration::from_secs(90));
+    assert_eq!(applied.last().expect("terminal")["type"], json!("run_completed"), "events: {applied:?}");
+    assert!(cancelled(&user)[0]["cancelled_at"].is_string(), "the approved cancel closed the request");
+
+    let mut repeated = service.turn(&user, &decision(&kael_durable::util::random_uuid()));
+    let again = repeated.drain(Duration::from_secs(90));
+    assert!(again.iter().all(|event| event["type"] != "tool_completed" || event["outcome"] != json!("succeeded")), "a consumed approval cannot apply twice: {again:?}");
+}
+
+#[test]
+#[ignore = "needs the live Supabase fixture stack (KAEL_TEST_GATEWAY, KAEL_TEST_ANON, KAEL_TEST_SERVICE)"]
+fn a_redispatch_proposal_is_refused_while_the_dispatch_cannot_be_retried() {
+    let stack = Stack::from_env();
+    let model = MockModel::start(dispatch_script(redispatch_step));
+    let data = scratch("dispatch-refused");
+    let service = Service::spawn_with(&stack, &data, "holder-dispatch-refused", model.port, 120, &DISPATCH_EFFECTS);
+    let user = stack.signup();
+    let request_id = stack.submitted_request(&user, "Ổ cắm bị chập");
+    let before = stack.dispatch(&user, &request_id);
+    assert_eq!(before["can_retry"], json!(false), "without automatic dispatch a request waiting for acceptance cannot be retried: {before}");
+
+    let mut reply = service.turn(&user, &turn_body(&kael_durable::util::random_uuid(), "Mời thêm thợ cho yêu cầu của mình"));
+    assert_eq!(reply.status, 200);
+    let events = reply.drain(Duration::from_secs(90));
+    assert!(events.iter().all(|event| event["type"] != "approval_required"), "a request that cannot be retried gets no approval: {events:?}");
+    let after = stack.dispatch(&user, &request_id);
+    assert_eq!(after["rounds"], before["rounds"], "no dispatch round was recorded");
+    assert_eq!(after["state"], before["state"]);
+    assert_eq!(stack.rows(&user, &format!("service_requests?select=cancelled_at&id=eq.{request_id}"))[0]["cancelled_at"], Value::Null);
+}
+
+#[cfg(feature = "dispatch-fixture")]
+fn fixture_worker() -> support::User {
+    let read = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} must be set to run the dispatch fixture tests"));
+    support::User { id: read("KAEL_TEST_DISPATCH_WORKER_ID"), token: read("KAEL_TEST_DISPATCH_WORKER_TOKEN") }
+}
+
+#[cfg(feature = "dispatch-fixture")]
+fn reply_text(events: &[Value]) -> String {
+    events.iter().filter(|event| event["type"] == "message_delta").filter_map(|event| event["text"].as_str()).collect()
+}
+
+#[cfg(feature = "dispatch-fixture")]
+#[test]
+#[ignore = "needs the live stack, enabled automatic dispatch and one dispatch-eligible worker (KAEL_TEST_DISPATCH_WORKER_ID, KAEL_TEST_DISPATCH_WORKER_TOKEN)"]
+fn a_confirmed_redispatch_invites_the_worker_once_and_never_reports_an_assignment() {
+    let stack = Stack::from_env();
+    let worker = fixture_worker();
+    let availability = |accepting: bool| {
+        let reply = stack.rpc(&worker, "set_worker_accepting", &json!({"p_accepting": accepting}));
+        assert!(reply.ok(), "set_worker_accepting failed with HTTP {}: {}", reply.status, reply.body);
+    };
+    availability(false);
+    let customer = stack.signup();
+    let request_id = stack.submitted_request(&customer, "Mất điện ở bếp");
+    stack.accept_quote(&customer, &request_id);
+    let first = stack.dispatch(&customer, &request_id);
+    assert_eq!(first["state"], json!("no_match"), "nobody is accepting jobs: {first}");
+    assert_eq!(first["can_retry"], json!(true));
+    assert_eq!(first["can_cancel"], json!(true));
+
+    let proposal_model = MockModel::start(dispatch_script(redispatch_step));
+    let proposal_data = scratch("dispatch-invite-empty");
+    let proposal_service = Service::spawn_with(&stack, &proposal_data, "holder-dispatch-empty", proposal_model.port, 120, &DISPATCH_EFFECTS);
+    let mut proposed = proposal_service.turn(&customer, &turn_body(&kael_durable::util::random_uuid(), "Mời thêm thợ cho yêu cầu của mình"));
+    assert_eq!(proposed.status, 200);
+    let proposal = proposed.drain(Duration::from_secs(90));
+    let approval = proposal.iter().find(|event| event["type"] == "approval_required").unwrap_or_else(|| panic!("no approval requested: {proposal:?}"))["approval"].clone();
+    assert_eq!(approval["tool"], json!("service_request_redispatch"));
+    let conversation_id = proposal[0]["conversation_id"].as_str().expect("conversation").to_owned();
+    assert_eq!(stack.dispatch(&customer, &request_id)["rounds"], first["rounds"], "a proposed retry records no round");
+    let decision = |request: &str| {
+        json!({
+            "request_id": request, "conversation_id": conversation_id, "mode": "client",
+            "action": {"type": "approve", "approval_id": approval["id"], "fingerprint": approval["fingerprint"]},
+        })
+    };
+
+    let mut declined = proposal_service.turn(&customer, &decision(&kael_durable::util::random_uuid()));
+    let empty = declined.drain(Duration::from_secs(90));
+    assert_eq!(empty.last().expect("terminal")["type"], json!("run_failed"), "a retry with nobody eligible is a refusal, not a success: {empty:?}");
+    assert_eq!(stack.dispatch(&customer, &request_id)["open_invites"], json!(0));
+    assert_eq!(stack.rows(&worker, &format!("service_invitations?select=id&request_id=eq.{request_id}")).len(), 0, "the worker was not invited");
+
+    availability(true);
+    thread::sleep(Duration::from_secs(11));
+    let invite_model = MockModel::start(dispatch_script(redispatch_step));
+    let invite_data = scratch("dispatch-invite-worker");
+    let invite_service = Service::spawn_with(&stack, &invite_data, "holder-dispatch-invite", invite_model.port, 120, &DISPATCH_EFFECTS);
+    let mut again = invite_service.turn(&customer, &turn_body(&kael_durable::util::random_uuid(), "Mời thêm thợ cho yêu cầu của mình"));
+    let second = again.drain(Duration::from_secs(90));
+    let renewed = second.iter().find(|event| event["type"] == "approval_required").unwrap_or_else(|| panic!("no approval requested after the worker appeared: {second:?}"))["approval"].clone();
+    let second_conversation = second[0]["conversation_id"].as_str().expect("conversation").to_owned();
+    let invite = |request: &str| {
+        json!({
+            "request_id": request, "conversation_id": second_conversation, "mode": "client",
+            "action": {"type": "approve", "approval_id": renewed["id"], "fingerprint": renewed["fingerprint"]},
+        })
+    };
+    let mut approved = invite_service.turn(&customer, &invite(&kael_durable::util::random_uuid()));
+    let applied = approved.drain(Duration::from_secs(90));
+    assert_eq!(applied.last().expect("terminal")["type"], json!("run_completed"), "events: {applied:?}");
+    let text = reply_text(&applied);
+    assert!(text.contains("Đã mời thêm thợ"), "reply: {text}");
+    assert!(text.contains("Chưa có thợ nhận việc"), "an invitation is never reported as an assignment: {text}");
+    let searching = stack.dispatch(&customer, &request_id);
+    assert_eq!(searching["state"], json!("searching"), "dispatch: {searching}");
+    assert_eq!(searching["open_invites"], json!(1));
+    assert_eq!(stack.rows(&worker, &format!("service_invitations?select=state&request_id=eq.{request_id}")).len(), 1, "the worker sees the invitation");
+    assert!(stack.rows(&customer, &format!("service_jobs?select=id&request_id=eq.{request_id}")).is_empty(), "an invitation creates no job");
+
+    let mut replay = invite_service.turn(&customer, &invite(&kael_durable::util::random_uuid()));
+    let repeated = replay.drain(Duration::from_secs(90));
+    assert!(repeated.iter().all(|event| event["type"] != "tool_completed" || event["outcome"] != json!("succeeded")), "a consumed approval cannot apply twice: {repeated:?}");
+    let after = stack.dispatch(&customer, &request_id);
+    assert_eq!(after["open_invites"], json!(1), "replaying the approval invites nobody again");
+    assert_eq!(after["rounds"], searching["rounds"], "replaying the approval records no round");
+    availability(false);
 }
