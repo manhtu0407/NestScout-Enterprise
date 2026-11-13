@@ -1,5 +1,5 @@
 import type { NotificationItem } from './content';
-import { BannerLive, projectRest, pullProgress, releaseOutcome, rubberBand, surfaceNotice } from './notification-banner-model';
+import { BannerLive, noticeFromItem, projectRest, pullProgress, releaseOutcome, rubberBand, surfaceNotice } from './notification-banner-model';
 
 const item = (id: string, unread = true): NotificationItem => ({ id, icon: 'bell', title: `Tiêu đề ${id}`, body: `Nội dung ${id}`, time: '1 phút trước', unread, today: true });
 
@@ -14,6 +14,11 @@ test('a new unread notification surfaces as the newest banner once', () => {
   const next = surfaceNotice(seeded.seen, [item('c'), item('b'), item('a')]);
   expect(next.notice).toMatchObject({ id: 'c', title: 'Tiêu đề c', body: 'Nội dung c', time: 'Bây giờ' });
   expect(surfaceNotice(next.seen, [item('c'), item('b'), item('a')]).notice).toBeNull();
+});
+
+test('a banner keeps the notification kind so it can pick its glyph', () => {
+  expect(noticeFromItem({ ...item('k'), kind: 'work_approved' })).toMatchObject({ id: 'k', kind: 'work_approved' });
+  expect(noticeFromItem(item('k'))).not.toHaveProperty('kind');
 });
 
 test('already read notifications never raise a banner', () => {

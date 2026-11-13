@@ -163,8 +163,8 @@ const notificationTargets: Readonly<Partial<Record<NotificationKind, string>>> =
 };
 
 export function toWorkerNotificationItems(notifications: readonly CustomerNotification[], now: Date): NotificationItem[] {
-  return toNotificationItems(notifications, now).map(({ id, icon, title, body, time, unread, today }, index) => {
+  return toNotificationItems(notifications, now).map(({ id, icon, title, body, time, unread, today, kind }, index) => {
     const target = notificationTargets[notifications[index]?.kind ?? 'job_offered'];
-    return target === undefined ? { id, icon, title, body, time, unread, today } : { id, icon, title, body, time, unread, today, target };
+    return target === undefined ? { id, icon, title, body, time, unread, today, kind } : { id, icon, title, body, time, unread, today, kind, target };
   });
 }

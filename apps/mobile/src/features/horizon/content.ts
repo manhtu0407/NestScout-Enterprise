@@ -1,4 +1,4 @@
-import { type IconName } from '@/features/shared';
+import { type IconName, type NotificationKind } from '@/features/shared';
 
 import { serviceCategories, type ServiceCategoryId } from './service-catalog';
 
@@ -62,7 +62,7 @@ export const workerSidebarGroups: readonly { title: string; items: readonly Side
   },
 ];
 
-export type NotificationItem = { id: string; icon: IconName; title: string; body: string; time: string; unread: boolean; today: boolean; requestId?: string; target?: string };
+export type NotificationItem = { id: string; icon: IconName; title: string; body: string; time: string; unread: boolean; today: boolean; kind?: NotificationKind; requestId?: string; target?: string };
 
 export const sampleNotifications: readonly NotificationItem[] = [
   { id: 'n-1', icon: 'receipt', title: 'Báo giá mới', body: 'Yêu cầu “Sửa vòi nước bồn rửa” có báo giá mới đang chờ bạn quyết định.', time: '10 phút trước', unread: true, today: true },

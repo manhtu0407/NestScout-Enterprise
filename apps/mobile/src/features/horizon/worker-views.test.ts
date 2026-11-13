@@ -135,6 +135,7 @@ test('worker notifications point at the tab where the news can be acted on', () 
   ], now);
   expect(items.map(item => item.target)).toEqual(['worker-offers', 'worker-history', 'worker-review', 'worker-review', 'worker-active', 'worker-active', 'worker-active', 'worker-reviews', 'worker-assigned']);
   expect(items.every(item => item.requestId === undefined && item.unread)).toBe(true);
+  expect(items.map(item => item.kind)).toEqual(['job_offered', 'work_approved', 'revision_requested', 'work_disputed', 'scope_approved', 'scope_rejected', 'resume_agreed', 'review_received', 'job_auto_accepted']);
 });
 
 test('an offer shows the customer preferred visit time without presenting it as an appointment', () => {

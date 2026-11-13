@@ -279,6 +279,7 @@ export function toNotificationItems(notifications: readonly CustomerNotification
     time: relativeTimeLabel(item.created_at, now),
     unread: item.read_at === null,
     today: new Date(item.created_at).toDateString() === now.toDateString(),
+    kind: item.kind,
     requestId: item.request_id,
     ...(item.kind === 'escalation_received' ? { target: operatorEscalationsTarget } : {}),
   }));
