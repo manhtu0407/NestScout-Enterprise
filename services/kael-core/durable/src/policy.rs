@@ -123,6 +123,7 @@ pub fn registry() -> Vec<Tool> {
                 ("description", json!({"type": "string", "minLength": 1, "maxLength": 4000})),
                 ("location", json!({"type": "string", "maxLength": 200})),
                 ("preferred_time", json!({"type": "string", "maxLength": 120})),
+                ("service_id", json!({"type": "string", "enum": ["electric", "water", "aircon", "paint", "sofa", "other", ""], "description": "Service category of the work: electric, water, aircon, paint, sofa or other. Empty string only when the category is genuinely unknown."})),
                 ("missing", json!({"type": "array", "maxItems": 3, "items": {"type": "string", "enum": ["description", "location", "preferred_time"]}})),
             ]),
             side_effect: "prepare", class: Class::Prepare, requires: Some("customer"), modes: CLIENT, effect: None, needs_web: false,

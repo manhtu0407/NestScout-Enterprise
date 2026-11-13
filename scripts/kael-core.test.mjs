@@ -1343,3 +1343,50 @@ test('the stored mode is read through the user-scoped store and defaults to Ask'
   assert.equal(await store.autonomy('client', new AbortController().signal), 'ask');
   assert.deepEqual(paths.slice(0, 2), ['kael_autonomy?select=mode&role=eq.customer', 'kael_autonomy?select=mode&role=eq.worker']);
 });
+
+const rustSource = relative => readFileSync(new URL(`../services/kael-core/durable/${relative}`, import.meta.url), 'utf8');
+const approvalRequest = { tool: 'service_request_redispatch', args: { request_id: users.other.id, rounds: 1 } };
+const jsonResponse = value => () => new Response(JSON.stringify(value), { status: 200, headers: { 'content-type': 'application/json' } });
+
+test('a redispatch that invited nobody is reported as an unsuccessful outcome, never as a success', async () => {
+  const empty = effectRest(jsonResponse(0), rows([]));
+  assert.deepEqual(await executeApprovedEffect('approval-1', { status: 'ok', ...approvalRequest }, empty.rest, new AbortController().signal), { status: 'failed', reason: 'no_eligible_worker' });
+  const replayed = effectRest(jsonResponse(0), rows([]));
+  assert.deepEqual(await executeApprovedEffect('approval-1', { status: 'reconcile', ...approvalRequest }, replayed.rest, new AbortController().signal), { status: 'failed', reason: 'no_eligible_worker' }, 'a replay of the unsuccessful round stays unsuccessful');
+  const invited = effectRest(jsonResponse(2), rows([]));
+  assert.deepEqual(await executeApprovedEffect('approval-1', { status: 'ok', ...approvalRequest }, invited.rest, new AbortController().signal), { status: 'succeeded', resourceId: users.other.id });
+});
+
+test('a redispatch approval is bound to the round it was approved for', async () => {
+  const bodies = [];
+  const rest = async (path, init = {}) => {
+    if (init.method === 'POST') bodies.push({ path, body: init.body });
+    return new Response('2', { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  await executeApprovedEffect('approval-1', { status: 'ok', ...approvalRequest }, rest, new AbortController().signal);
+  assert.deepEqual(bodies, [{ path: 'rpc/redispatch_service_request', body: { p_request_id: users.other.id, p_expected_round: 2 } }]);
+});
+
+test('the Rust runtime offers the same service categories as the TypeScript runtime and rejects any other', () => {
+  const draft = findTool('service_request_draft');
+  const categories = draft.inputSchema.properties.service_id.enum;
+  assert.deepEqual(categories, ['electric', 'water', 'aircon', 'paint', 'sofa', 'other', '']);
+  const policy = rustSource('src/policy.rs');
+  const listed = /\("service_id", json!\(\{"type": "string", "enum": \[([^\]]*)\]/u.exec(policy);
+  assert.ok(listed, 'the Rust draft schema declares service_id');
+  assert.deepEqual([...listed[1].matchAll(/"([^"]*)"/gu)].map(match => match[1]), categories);
+  const base = { task_id: users.customer.id, description: 'x', location: '', preferred_time: '', missing: [] };
+  for (const category of categories) assert.ok(validateArguments(draft, { ...base, service_id: category }), category || 'unknown category');
+  assert.ok(!validateArguments(draft, { ...base, service_id: 'plumber' }), 'an unknown category');
+});
+
+test('the approval fingerprint of a draft with a service category is identical in both runtimes', async () => {
+  const args = { task_id: '11111111-1111-4111-8111-111111111111', description: 'Sửa vòi nước', location: 'Quận 1', preferred_time: 'Sáng mai', service_id: 'water' };
+  const bound = { tool: 'service_request_submit', actor: '00000000-0000-4000-8000-0000000000a1', task_id: args.task_id, base_version: 3, args };
+  const golden = await fingerprint(bound);
+  const unclassified = await fingerprint({ ...bound, args: { ...args, service_id: '' } });
+  assert.notEqual(golden, unclassified, 'the category is part of what the user approves');
+  const contracts = rustSource('tests/contracts.rs');
+  assert.ok(contracts.includes(golden), 'the Rust contract test pins the same fingerprint');
+  assert.ok(contracts.includes(unclassified), 'the Rust contract test pins the unclassified fingerprint');
+});

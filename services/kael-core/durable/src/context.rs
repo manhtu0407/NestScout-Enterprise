@@ -51,6 +51,7 @@ fn capability_notes(actor: &Actor, offered: &[Tool]) -> Vec<String> {
         } else {
             "Submitting requests through Kael is not enabled. Prepare the draft and tell the user they can submit it from the Requests screen.".to_owned()
         });
+        notes.push("Set service_id on every service_request_draft: electric for electrical work, water for plumbing, aircon for air conditioners, sofa for sofa cleaning, paint for painting or waterproofing, and other for house cleaning, minor repairs and anything else. While a task is waiting_for_approval the user\'s confirmation is pending in the app: do not change that task\'s status, and tell the user to slide the confirmation card to confirm.".to_owned());
         if has("service_quote_decision") || has("work_submission_decision") {
             notes.push("To act on a quote or on submitted work, read customer_requests, create a workflow_action task, then call service_quote_decision or work_submission_decision with the exact ids and versions returned; the app shows a confirmation control. Never decide for the user.".to_owned());
         }

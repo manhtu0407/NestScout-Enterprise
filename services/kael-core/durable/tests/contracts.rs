@@ -56,6 +56,34 @@ fn the_approval_fingerprint_matches_the_legacy_runtime() {
 }
 
 #[test]
+fn the_draft_schema_accepts_every_service_category_and_rejects_any_other() {
+    let tools = registry();
+    let draft = tools.iter().find(|tool| tool.id == "service_request_draft").expect("draft tool");
+    let base = json!({"task_id": "11111111-1111-4111-8111-111111111111", "description": "x", "location": "", "preferred_time": "", "missing": []});
+    for category in ["electric", "water", "aircon", "paint", "sofa", "other", ""] {
+        let mut input = base.clone();
+        input["service_id"] = json!(category);
+        assert!(validate_arguments(draft, &input), "category {category:?} is accepted");
+    }
+    let mut unknown = base.clone();
+    unknown["service_id"] = json!("plumber");
+    assert!(!validate_arguments(draft, &unknown), "an unknown category is rejected");
+}
+
+#[test]
+fn the_service_category_is_part_of_what_the_user_approves() {
+    let args = json!({
+        "task_id": "11111111-1111-4111-8111-111111111111", "description": "Sửa vòi nước", "location": "Quận 1",
+        "preferred_time": "Sáng mai", "service_id": "water",
+    });
+    let bound = json!({"tool": "service_request_submit", "actor": OWNER, "task_id": "11111111-1111-4111-8111-111111111111", "base_version": 3, "args": args});
+    assert_eq!(fingerprint(&bound), "90eb418ef8c13072b0502daf4fee85bd6f9131537c5a8c57004ff82f4ba72343");
+    let mut unclassified = bound.clone();
+    unclassified["args"]["service_id"] = json!("");
+    assert_eq!(fingerprint(&unclassified), "2ca53c97e1af3287cf15f5a8baede97c76c83bd68bf08401c29488713df12c53");
+}
+
+#[test]
 fn identifiers_must_be_canonical_uuids() {
     assert!(valid_uuid(OWNER));
     assert!(!valid_uuid("not-a-uuid"));

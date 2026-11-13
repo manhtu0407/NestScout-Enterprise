@@ -12,7 +12,17 @@ fn draft_step(request: &Value) -> Step {
         name: "service_request_draft",
         arguments: json!({
             "task_id": task_id_from(request), "description": "Sửa vòi nước bị rỉ trong bếp", "location": "Quận 1, TP.HCM",
-            "preferred_time": "Sáng mai", "missing": [],
+            "preferred_time": "Sáng mai", "service_id": "water", "missing": [],
+        }),
+    }
+}
+
+fn unclassified_draft_step(request: &Value) -> Step {
+    Step::Tool {
+        name: "service_request_draft",
+        arguments: json!({
+            "task_id": task_id_from(request), "description": "Sửa vòi nước bị rỉ trong bếp", "location": "Quận 1, TP.HCM",
+            "preferred_time": "Sáng mai", "service_id": "", "missing": [],
         }),
     }
 }
@@ -274,6 +284,38 @@ fn a_provider_failure_ends_the_run_with_a_typed_error() {
 
 #[test]
 #[ignore = "needs the live Supabase fixture stack (KAEL_TEST_GATEWAY, KAEL_TEST_ANON, KAEL_TEST_SERVICE)"]
+fn a_request_without_a_category_is_stored_unclassified_and_not_quoted() {
+    let stack = Stack::from_env();
+    let model = MockModel::start(vec![
+        Step::Tool { name: "task_create", arguments: json!({"title": "Sửa vòi nước", "kind": "service_request", "status": "running", "note": ""}) },
+        Step::Compute(unclassified_draft_step),
+        Step::Compute(submit_step),
+        Step::Text("Mình đã chuẩn bị yêu cầu, bạn hãy xác nhận trong ứng dụng."),
+        Step::Text("Yêu cầu đã được gửi."),
+    ]);
+    let data = scratch("approval-unclassified");
+    let service = Service::spawn(&stack, &data, "holder-unclassified", model.port, 120);
+    let user = stack.signup();
+    let mut reply = service.turn(&user, &turn_body(&kael_durable::util::random_uuid(), "Gửi yêu cầu sửa vòi nước nhà mình"));
+    let events = reply.drain(Duration::from_secs(90));
+    let approval = events.iter().find(|event| event["type"] == "approval_required").unwrap_or_else(|| panic!("no approval requested: {events:?}"))["approval"].clone();
+    let conversation_id = events[0]["conversation_id"].as_str().expect("conversation").to_owned();
+    let decision = json!({
+        "request_id": kael_durable::util::random_uuid(), "conversation_id": conversation_id, "mode": "client",
+        "action": {"type": "approve", "approval_id": approval["id"], "fingerprint": approval["fingerprint"]},
+    });
+    let mut approved = service.turn(&user, &decision);
+    let applied = approved.drain(Duration::from_secs(90));
+    assert_eq!(applied.last().expect("terminal")["type"], json!("run_completed"), "events: {applied:?}");
+    let stored = stack.rows(&user, "service_requests?select=id,service_id");
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0]["service_id"], Value::Null, "an unknown category is stored as unclassified, never guessed: {stored:?}");
+    let quoted = stack.rows(&user, &format!("service_quotes?select=id&request_id=eq.{}", stored[0]["id"].as_str().expect("request id")));
+    assert!(quoted.is_empty(), "an unclassified request is not quoted automatically");
+}
+
+#[test]
+#[ignore = "needs the live Supabase fixture stack (KAEL_TEST_GATEWAY, KAEL_TEST_ANON, KAEL_TEST_SERVICE)"]
 fn an_approval_survives_a_restart_and_applies_exactly_once() {
     let stack = Stack::from_env();
     let model = MockModel::start(vec![
@@ -307,6 +349,8 @@ fn an_approval_survives_a_restart_and_applies_exactly_once() {
     let applied = approved.drain(Duration::from_secs(90));
     assert_eq!(applied.last().expect("terminal")["type"], json!("run_completed"), "events: {applied:?}");
     assert_eq!(stack.rows(&user, "service_requests?select=id").len(), 1, "the approved effect ran once");
+    let stored = stack.rows(&user, "service_requests?select=id,service_id");
+    assert_eq!(stored[0]["service_id"], json!("water"), "the category chosen in the draft reaches the stored request: {stored:?}");
 
     let mut repeated = second.turn(&user, &decision(&kael_durable::util::random_uuid()));
     let again = repeated.drain(Duration::from_secs(90));
@@ -651,6 +695,14 @@ fn a_confirmed_redispatch_invites_the_worker_once_and_never_reports_an_assignmen
     let mut declined = proposal_service.turn(&customer, &decision(&kael_durable::util::random_uuid()));
     let empty = declined.drain(Duration::from_secs(90));
     assert_eq!(empty.last().expect("terminal")["type"], json!("run_failed"), "a retry with nobody eligible is a refusal, not a success: {empty:?}");
+    let recorded = stack.dispatch(&customer, &request_id);
+    assert_eq!(recorded["rounds"].as_i64(), first["rounds"].as_i64().map(|rounds| rounds + 1), "the empty search stays on record: {recorded}");
+    assert_eq!(recorded["last_outcome"], json!("no_eligible_worker"));
+    assert_eq!(recorded["can_retry"], json!(false), "the empty search keeps its cooldown: {recorded}");
+    let mut empty_replay = proposal_service.turn(&customer, &decision(&kael_durable::util::random_uuid()));
+    let replayed_empty = empty_replay.drain(Duration::from_secs(90));
+    assert!(replayed_empty.iter().all(|event| event["type"] != "tool_completed" || event["outcome"] != json!("succeeded")), "a replay never reports an empty search as a success: {replayed_empty:?}");
+    assert_eq!(stack.dispatch(&customer, &request_id)["rounds"], recorded["rounds"], "replaying the approval records no further round");
     assert_eq!(stack.dispatch(&customer, &request_id)["open_invites"], json!(0));
     assert_eq!(stack.rows(&worker, &format!("service_invitations?select=id&request_id=eq.{request_id}")).len(), 0, "the worker was not invited");
 

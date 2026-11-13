@@ -373,6 +373,8 @@ as $$
 declare
   v_owner uuid := auth.uid();
   v_replayed integer;
+  v_recorded text;
+  v_next integer;
   v_result jsonb;
 begin
   if p_expected_round is not null then
@@ -386,15 +388,24 @@ begin
     if not found then
       raise exception using errcode = '42501', message = 'request unavailable';
     end if;
-    select d.invited_count into v_replayed from public.service_dispatch_rounds d
-      where d.request_id = p_request_id and d.round = p_expected_round and d.outcome = 'invited';
-    if v_replayed is not null then
+    select d.outcome, d.invited_count into v_recorded, v_replayed from public.service_dispatch_rounds d
+      where d.request_id = p_request_id and d.round = p_expected_round;
+    if v_recorded = 'invited' then
       return v_replayed;
+    elsif v_recorded = 'no_eligible_worker' then
+      return 0;
+    end if;
+    select coalesce(max(d.round), 0) + 1 into v_next from public.service_dispatch_rounds d where d.request_id = p_request_id;
+    if p_expected_round <> v_next then
+      raise exception using errcode = '40001', message = 'stale round';
     end if;
   end if;
   v_result := nestscout_private.retry_service_dispatch(p_request_id);
   if v_result ->> 'outcome' = 'invited' then
     return (v_result ->> 'invited')::integer;
+  end if;
+  if v_result ->> 'outcome' = 'no_eligible_worker' and p_expected_round is not null then
+    return 0;
   end if;
   if v_result ->> 'outcome' = 'already_assigned' then
     raise exception using errcode = '40001', message = 'already assigned';

@@ -2145,6 +2145,20 @@ test('Kael retries and cancels an unmatched dispatch only through confirmed effe
       assert.match(text(noWorker), /chưa mời thêm thợ/);
       assert.equal(one(`select outcome from nestscout_private.kael_approvals where id='${retryApproval.id}';`), 'failed');
       assert.equal(one(`select count(*) from public.service_invitations where request_id='${first}';`), '0');
+      assert.equal(one(`select count(*) from public.service_dispatch_rounds where request_id='${first}';`), '2', 'the empty search stays on record');
+      assert.equal(one(`select outcome || ':' || reason from public.service_dispatch_rounds where request_id='${first}' and round=2;`), 'no_eligible_worker:manual_retry');
+      assert.equal(one(`select (next_retry_at > clock_timestamp())::text from nestscout_private.dispatch_state('${customer.id}', array['${first}']::uuid[]);`), 'true', 'the empty search keeps its cooldown');
+      await approve(customer, retryApproval, proposed.conversation);
+      assert.equal(one(`select count(*) from public.service_dispatch_rounds where request_id='${first}';`), '2', 'replaying an unsuccessful approval records no further round');
+
+      const raced = await submit(customer, 'Hỏng ổ cắm');
+      const racing = () => rpc(customer, 'redispatch_service_request', { p_request_id: raced, p_expected_round: 2 });
+      const results = await Promise.all([racing(), racing(), racing()]);
+      assert.deepEqual(await Promise.all(results.map(async response => [response.status, await response.json()])), [[200, 0], [200, 0], [200, 0]], 'concurrent approvals of one round all see the same unsuccessful result');
+      assert.equal(one(`select count(*) from public.service_dispatch_rounds where request_id='${raced}';`), '2', 'concurrent approvals of one round record it once');
+      const stale = await rpc(customer, 'redispatch_service_request', { p_request_id: raced, p_expected_round: 7 });
+      assert.notEqual(stale.status, 200, 'an approval bound to a round that is not next is refused');
+      assert.equal(one(`select count(*) from public.service_dispatch_rounds where request_id='${raced}';`), '2', 'the refused approval records nothing');
 
       query(`update public.worker_public_profiles set accepting_jobs = true where worker_id='${worker.id}'; select pg_sleep(10.5);`);
       const secondTurn = await say(customer, proposal('Mời thêm thợ lần hai', 'service_request_redispatch', seen => ({ request_id: first, rounds: dispatchOf(seen, first).rounds })));

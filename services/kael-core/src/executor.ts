@@ -432,7 +432,7 @@ export type EffectOutcome = { status: 'succeeded'; resourceId: string } | { stat
 
 type Evidence = { path: string; observed: (row: Record<string, unknown>) => string | null };
 
-type EffectCall = { path: string; body: Record<string, unknown>; refusals: readonly number[]; sqlstateRefuses: boolean; resource: (value: unknown) => string | null; evidence: Evidence | null };
+type EffectCall = { path: string; body: Record<string, unknown>; refusals: readonly number[]; sqlstateRefuses: boolean; resource: (value: unknown) => string | null; evidence: Evidence | null; unsuccessful?: (value: unknown) => string | null };
 
 const rowRead = (table: string, columns: string, key: string, value: unknown): string => `${table}?select=${columns}&${key}=eq.${encodeURIComponent(String(value))}`;
 
@@ -500,6 +500,7 @@ function effectCall(approvalId: string, tool: string, args: Record<string, unkno
   if (tool === 'service_request_redispatch') {
     const nextRound = Number(args.rounds) + 1;
     return { path: 'rpc/redispatch_service_request', refusals, sqlstateRefuses, resource: value => Number.isSafeInteger(value) ? String(args.request_id) : null,
+      unsuccessful: value => value === 0 ? 'no_eligible_worker' : null,
       evidence: { path: `service_dispatch_rounds?select=request_id,round,outcome&request_id=eq.${encodeURIComponent(String(args.request_id))}&round=eq.${nextRound}&outcome=eq.invited`, observed: row => textId(row.request_id) },
       body: { p_request_id: args.request_id, p_expected_round: nextRound } };
   }
@@ -537,7 +538,10 @@ export async function executeApprovedEffect(approvalId: string, approval: Extrac
     return { status: await databaseRefused(response) ? 'failed' : 'uncertain', reason: `backend_http_${response.status}` };
   }
   try {
-    const resource = call.resource(await response.json());
+    const body: unknown = await response.json();
+    const unsuccessful = call.unsuccessful?.(body);
+    if (unsuccessful) return { status: 'failed', reason: unsuccessful };
+    const resource = call.resource(body);
     return resource ? { status: 'succeeded', resourceId: resource } : { status: 'uncertain', reason: 'invalid_backend_response' };
   } catch {
     return { status: 'uncertain', reason: 'invalid_backend_response' };

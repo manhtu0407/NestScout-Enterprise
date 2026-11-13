@@ -264,7 +264,7 @@ fn draft_service_request(ctx: &RunContext, args: &Value) -> Execution {
         .collect();
     let draft = json!({
         "description": description, "location": text_of(&args["location"]).trim(), "preferred_time": text_of(&args["preferred_time"]).trim(),
-        "missing": missing,
+        "service_id": text_of(&args["service_id"]).trim(), "missing": missing,
     });
     let status = if missing.is_empty() { "running" } else { "waiting_for_input" };
     let names: Vec<String> = missing.iter().map(text_of).collect();
@@ -306,6 +306,7 @@ fn request_submit_approval(ctx: &RunContext, args: &Value, tool: &str) -> Execut
     }
     let approval_args = json!({
         "task_id": task["id"], "description": draft["description"], "location": draft["location"], "preferred_time": draft["preferred_time"],
+        "service_id": draft["service_id"].as_str().unwrap_or(""),
     });
     let bound = fingerprint(&json!({"tool": tool, "actor": ctx.actor.user_id, "task_id": task["id"], "base_version": task["version"], "args": approval_args}));
     let none_given = |value: &Value| value.as_str().filter(|text| !text.is_empty()).unwrap_or("Chưa cung cấp").to_owned();
