@@ -1,4 +1,4 @@
-import type { CustomerActivity, CustomerJob, CustomerNotification, DispatchSummary, IconName, JobWorkerCard, NotificationKind, SavedWorkerRecord, ServiceQuote, ServiceRequest as RequestRecord } from '@/features/shared';
+import type { CustomerActivity, CustomerJob, CustomerNotification, DispatchSummary, EscalationResolution, EscalationStatus, IconName, JobWorkerCard, NotificationKind, SavedWorkerRecord, ServiceQuote, ServiceRequest as RequestRecord } from '@/features/shared';
 
 import type { NotificationItem, QuoteItem, QuoteStatus, SavedWorker } from './content';
 import { clockLabel } from './dispatch-copy';
@@ -16,7 +16,7 @@ export type RequestProgress = {
   nextAction: string;
   quoteCount: number;
   closed?: 'cancelled';
-  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; canEscalate?: boolean; escalateAt?: string | null; escalatedAt?: string | null; nextRetryAt?: string | null; retriesLeft?: number };
+  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; canEscalate?: boolean; escalateAt?: string | null; escalatedAt?: string | null; escalationStatus?: EscalationStatus | null; escalationResolution?: EscalationResolution | null; nextRetryAt?: string | null; retriesLeft?: number };
 };
 
 const jobStatus: Record<string, { status: string; nextAction: string }> = {
@@ -111,6 +111,7 @@ export function deriveRequestProgress(quotes: readonly ServiceQuote[], job: Cust
     const dispatch = recoverable ? {
       canRetry: false, canCancel: false, canReassign: summary.canReassign, reassignAt: summary.reassignAt,
       canEscalate: summary.canEscalate, escalateAt: summary.escalateAt, escalatedAt: summary.escalatedAt,
+      escalationStatus: summary.escalationStatus, escalationResolution: summary.escalationResolution,
     } : undefined;
     return { step, stage: stageFor(step), quoteCount: 0, ...(dispatch ? { dispatch } : {}), ...copy };
   }
@@ -251,6 +252,9 @@ const notificationIcons: Record<NotificationKind, IconName> = {
   dispatch_exhausted: 'clock',
   job_released: 'clock',
   job_withdrawn: 'briefcase',
+  job_escalated: 'help',
+  escalation_received: 'help',
+  escalation_resolved: 'check',
   job_offered: 'bolt',
   job_auto_accepted: 'bolt',
   work_approved: 'check',
@@ -264,6 +268,8 @@ const notificationIcons: Record<NotificationKind, IconName> = {
   change_decided: 'clock',
 };
 
+const operatorEscalationsTarget = 'operator-escalations';
+
 export function toNotificationItems(notifications: readonly CustomerNotification[], now: Date): NotificationItem[] {
   return notifications.map(item => ({
     id: item.id,
@@ -274,6 +280,7 @@ export function toNotificationItems(notifications: readonly CustomerNotification
     unread: item.read_at === null,
     today: new Date(item.created_at).toDateString() === now.toDateString(),
     requestId: item.request_id,
+    ...(item.kind === 'escalation_received' ? { target: operatorEscalationsTarget } : {}),
   }));
 }
 

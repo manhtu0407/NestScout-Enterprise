@@ -173,16 +173,22 @@ repository migrations are pending, in this order: `add_dispatch_recovery_and_bud
    request is mid-flight that the owner cares about; both migrations run in one
    transaction each and take short table locks.
 3. Apply `add_dispatch_recovery_and_budgets`, then
-   `add_job_release_and_worker_capacity`, then `add_stage_based_job_recovery`. The
+   `add_job_release_and_worker_capacity`, then `add_stage_based_job_recovery`, then
+   `add_escalation_handling`. The
    second drops and recreates `get_dispatch_summary`, `dispatch_summary` and
    `dispatch_state` with two more columns (`can_reassign`, `reassign_at`) and the
    third recreates them again with four more (`job_stage`, `can_escalate`,
-   `escalate_at`, `escalated_at`); an older client ignores columns it does not
+   `escalate_at`, `escalated_at`) and the fourth with two more
+   (`escalation_status`, `escalation_resolution`); an older client ignores columns it does not
    read, and the older `kael` function keeps its explicit column list. The third
    also drops `auto_dispatch_settings.reassign_idle_minutes` in favour of four
    stage timers, adds `service_job_escalations` and the `job_escalated`
-   notification kind, and widens `service_job_releases`. It is not applied to the
-   hosted project by any task in this repository; apply it only on the owner's
+   notification kind, and widens `service_job_releases`. The fourth adds the case
+   status columns, the operator queue, review and resolve functions, the
+   `operator` release role and the `escalation_received` and `escalation_resolved`
+   notification kinds, and narrows participants' column access on
+   `service_job_escalations`. None of them is applied to the
+   hosted project by any task in this repository; apply them only on the owner's
    instruction, after the mobile client that reads the new columns is built.
 4. Install `pg_cron` from the dashboard (an owner action that changes the project's
    extensions), then run `select nestscout_private.schedule_dispatch_sweeper();`
@@ -207,8 +213,10 @@ repository migrations are pending, in this order: `add_dispatch_recovery_and_bud
    after the stage window, a customer whose worker arrived but never started can
    report an incident after the arrival window and the worker is notified without
    losing the job, and a worker at the cap is refused. `get_advisors` must show no
-   new security finding. Escalations are only stored; until an operator console
-   reads `service_job_escalations`, review them with a read-only query.
+   new security finding. Escalations are handled by `local_fixture` operators in
+   `nestscout_private.fixture_operators`; no production operator basis exists. Before
+   any real launch the owner must decide who may hold that role and add the
+   authority basis, since the current check accepts only the local fixture.
 
 Rollback: unschedule the sweeper with `select cron.unschedule('nestscout-dispatch-sweeper')`.
 The migrations are additive apart from the recreated summary functions. A release moves

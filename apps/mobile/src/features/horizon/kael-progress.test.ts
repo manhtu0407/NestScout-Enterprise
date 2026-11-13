@@ -51,3 +51,16 @@ test('a worker job maps onto the five steps and a finished job completes all of 
   expect(progressForWorkerJob(job('s', 'assigned'))).toMatchObject({ hint: 'Việc s · Đã nhận', current: 1 });
   expect(progressForWorkerJob(job('d', 'done'))).toMatchObject({ current: 5, finished: true, spinnerLabel: 'Việc đã hoàn tất' });
 });
+
+test('a request waiting on the customer, recovering, escalated or reviewed reads as such', () => {
+  const assigned = (dispatch: NonNullable<ServiceRequest['dispatch']>, status: string) => progressForRequest({ ...request('e', 4, 'active', status), dispatch });
+  const base = { canRetry: false, canCancel: false };
+  expect(assigned({ ...base, canReassign: true }, 'Thợ đang trên đường tới')).toMatchObject({ hint: 'Yêu cầu e · Thợ đang trên đường tới', spinnerLabel: 'Đang chờ bạn xử lý' });
+  expect(assigned({ ...base, canEscalate: true }, 'Thợ đã đến nơi')).toMatchObject({ spinnerLabel: 'Đang chờ bạn xử lý' });
+  expect(assigned({ ...base, reassignAt: '2026-11-13T10:00:00.000Z' }, 'Thợ đã nhận việc')).toMatchObject({ spinnerLabel: 'Đang tiến hành' });
+  expect(assigned({ ...base, escalatedAt: '2026-11-13T10:00:00.000Z', escalationStatus: 'open' }, 'Thợ đã đến nơi')).toMatchObject({ spinnerLabel: 'Đã báo sự cố, đang chờ xử lý' });
+  expect(assigned({ ...base, escalatedAt: '2026-11-13T10:00:00.000Z', escalationStatus: null }, 'Thợ đã đến nơi')).toMatchObject({ spinnerLabel: 'Đã báo sự cố, đang chờ xử lý' });
+  expect(assigned({ ...base, escalatedAt: '2026-11-13T10:00:00.000Z', escalationStatus: 'reviewing' }, 'Thợ đã đến nơi')).toMatchObject({ spinnerLabel: 'Đội hỗ trợ đang xem xét sự cố' });
+  expect(assigned({ ...base, escalatedAt: '2026-11-13T10:00:00.000Z', escalationStatus: 'resolved', escalationResolution: 'proceed' }, 'Thợ đã đến nơi')).toMatchObject({ spinnerLabel: 'Đang tiến hành' });
+  expect(progressForRequest({ ...request('r', 3, 'waiting', 'Đang cập nhật lời mời'), dispatch: { ...base } })).toMatchObject({ hint: 'Yêu cầu r · Đang cập nhật lời mời', spinnerLabel: 'Đang tiến hành' });
+});

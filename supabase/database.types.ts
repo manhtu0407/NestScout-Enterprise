@@ -463,23 +463,17 @@ isOneToOne: false
                   ]
                 },"service_job_escalations": {
                   Row: {
-                    "created_at": string,"id": string,"job_id": string,"job_version": number,"kind": string,"note": string | null,"operation_key": string,"raised_by": string,"request_id": string,"worker_id": string
+                    "created_at": string,"id": string,"job_id": string,"job_version": number,"kind": string,"note": string | null,"operation_key": string,"raised_by": string,"request_id": string,"resolution": string | null,"resolution_note": string | null,"resolve_key": string | null,"resolved_at": string | null,"resolved_by": string | null,"review_key": string | null,"reviewed_at": string | null,"reviewed_by": string | null,"status": string,"worker_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"id"?: string,"job_id": string,"job_version": number,"kind": string,"note"?: string | null,"operation_key": string,"raised_by": string,"request_id": string,"worker_id": string
+                    "created_at"?: string,"id"?: string,"job_id": string,"job_version": number,"kind": string,"note"?: string | null,"operation_key": string,"raised_by": string,"request_id": string,"resolution"?: string | null,"resolution_note"?: string | null,"resolve_key"?: string | null,"resolved_at"?: string | null,"resolved_by"?: string | null,"review_key"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"status"?: string,"worker_id": string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"job_id"?: string,"job_version"?: number,"kind"?: string,"note"?: string | null,"operation_key"?: string,"raised_by"?: string,"request_id"?: string,"worker_id"?: string
+                    "created_at"?: string,"id"?: string,"job_id"?: string,"job_version"?: number,"kind"?: string,"note"?: string | null,"operation_key"?: string,"raised_by"?: string,"request_id"?: string,"resolution"?: string | null,"resolution_note"?: string | null,"resolve_key"?: string | null,"resolved_at"?: string | null,"resolved_by"?: string | null,"review_key"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"status"?: string,"worker_id"?: string
                   }
                   Relationships: [
                     {
-      foreignKeyName: "service_job_escalations_job_id_fkey"
-      columns: ["job_id"]
-isOneToOne: false
-      referencedRelation: "service_jobs"
-      referencedColumns: ["id"]
-    },{
       foreignKeyName: "service_job_escalations_request_id_fkey"
       columns: ["request_id"]
 isOneToOne: false
@@ -886,7 +880,7 @@ isOneToOne: false
                            },
 "get_dispatch_summary":
 { Args: { "p_request_ids": (string)[] }; Returns: {
-              "can_cancel": boolean,"can_escalate": boolean,"can_reassign": boolean,"can_reclassify": boolean,"can_retry": boolean,"earliest_expiry": string,"escalate_at": string,"escalated_at": string,"job_stage": string,"last_outcome": string,"next_retry_at": string,"open_invites": number,"reassign_at": string,"request_id": string,"retries_left": number,"rounds": number,"state": string
+              "can_cancel": boolean,"can_escalate": boolean,"can_reassign": boolean,"can_reclassify": boolean,"can_retry": boolean,"earliest_expiry": string,"escalate_at": string,"escalated_at": string,"escalation_resolution": string,"escalation_status": string,"job_stage": string,"last_outcome": string,"next_retry_at": string,"open_invites": number,"reassign_at": string,"request_id": string,"retries_left": number,"rounds": number,"state": string
             }[]
                            },
 "invite_fixture_worker":
@@ -1021,6 +1015,11 @@ isOneToOne: false
 "open_service_aftercare":
 { Args: { "p_job_id": string,"p_key": string,"p_reason": string }; Returns: string
                            },
+"operator_escalation_queue":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "created_at": string,"description": string,"escalation_id": string,"job_id": string,"job_stage": string,"kind": string,"location": string,"note": string,"request_id": string,"reviewed_at": string,"status": string,"worker_name": string
+            }[]
+                           },
 "pause_service_job":
 { Args: { "p_category": string,"p_job_id": string,"p_version": number }; Returns: number
                            },
@@ -1069,6 +1068,9 @@ isOneToOne: false
 "request_service_resume":
 { Args: { "p_job_id": string,"p_version": number }; Returns: number
                            },
+"resolve_service_escalation":
+{ Args: { "p_escalation_id": string,"p_key": string,"p_note": string,"p_resolution": string }; Returns: Json
+                           },
 "retry_service_dispatch":
 { Args: { "p_request_id": string }; Returns: Json
                            },
@@ -1079,6 +1081,9 @@ isOneToOne: false
 { Args: { "p_review_ids": (string)[] }; Returns: {
               "reacted": boolean,"reaction": string,"review_id": string,"total": number
             }[]
+                           },
+"review_service_escalation":
+{ Args: { "p_escalation_id": string,"p_key": string }; Returns: Json
                            },
 "save_customer_profile":
 { Args: { "p_address": string,"p_display_name": string,"p_email": string }; Returns: string

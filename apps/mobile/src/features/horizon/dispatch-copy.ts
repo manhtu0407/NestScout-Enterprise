@@ -1,4 +1,4 @@
-import type { DispatchServiceId, RetryResult } from '@/features/shared';
+import type { DispatchServiceId, EscalationResolution, EscalationStatus, RetryResult } from '@/features/shared';
 
 function twoDigits(value: number): string {
   return String(value).padStart(2, '0');
@@ -43,4 +43,14 @@ export function retryMessage(result: RetryResult): string {
     case 'invalid_request':
       return 'Yêu cầu này chưa sẵn sàng để mời thợ.';
   }
+}
+
+export function escalationCopy(status: EscalationStatus | null, resolution: EscalationResolution | null): string {
+  if (status === 'reviewing') return 'Bạn đã báo sự cố cho việc này. Đội hỗ trợ đang xem xét.';
+  if (status === 'resolved') {
+    if (resolution === 'proceed') return 'Sự cố đã được xem xét. Thợ sẽ tiếp tục công việc.';
+    if (resolution === 'replace_worker') return 'Sự cố đã được xem xét và việc được giao cho thợ khác.';
+    return 'Sự cố đã được xem xét và đóng, chưa cần xử lý thêm.';
+  }
+  return 'Bạn đã báo sự cố cho việc này. Thợ đã được báo và yêu cầu đang chờ xử lý.';
 }

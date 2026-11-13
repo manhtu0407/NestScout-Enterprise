@@ -149,6 +149,8 @@ const notificationTargets: Readonly<Partial<Record<NotificationKind, string>>> =
   job_offered: 'worker-offers',
   job_auto_accepted: 'worker-assigned',
   job_withdrawn: 'worker-offers',
+  job_escalated: 'worker-assigned',
+  escalation_resolved: 'worker-assigned',
   work_approved: 'worker-history',
   revision_requested: 'worker-review',
   work_disputed: 'worker-review',

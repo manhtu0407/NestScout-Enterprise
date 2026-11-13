@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { dispatchServiceIds, PressScale, type DispatchServiceId } from '@/features/shared';
+import { dispatchServiceIds, PressScale, type DispatchServiceId, type EscalationResolution, type EscalationStatus } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { clockLabel, serviceLabels } from './dispatch-copy';
+import { clockLabel, escalationCopy, serviceLabels } from './dispatch-copy';
 import { SlideToConfirm } from './slide-to-confirm';
 import { supportStyles } from './support-shell';
 
@@ -21,6 +21,8 @@ type Props = {
   canEscalate?: boolean;
   escalateAt?: string | null;
   escalatedAt?: string | null;
+  escalationStatus?: EscalationStatus | null;
+  escalationResolution?: EscalationResolution | null;
   nextRetryAt?: string | null;
   retriesLeft?: number | null;
   onRetry: () => Promise<void | string>;
@@ -30,7 +32,7 @@ type Props = {
   onEscalate?: () => Promise<void>;
 };
 
-export function RequestDispatchPanel({ title, canRetry, canCancel, canReclassify = false, canReassign = false, reassignAt = null, canEscalate = false, escalateAt = null, escalatedAt = null, nextRetryAt = null, retriesLeft = null, onRetry, onSetService, onCancel, onReassign, onEscalate }: Props) {
+export function RequestDispatchPanel({ title, canRetry, canCancel, canReclassify = false, canReassign = false, reassignAt = null, canEscalate = false, escalateAt = null, escalatedAt = null, escalationStatus = null, escalationResolution = null, nextRetryAt = null, retriesLeft = null, onRetry, onSetService, onCancel, onReassign, onEscalate }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [reassigning, setReassigning] = useState(false);
   const [escalating, setEscalating] = useState(false);
@@ -60,7 +62,7 @@ export function RequestDispatchPanel({ title, canRetry, canCancel, canReclassify
 
   const reassignHint = reassignWaiting ? `Nếu thợ chưa đến, bạn có thể mời thợ khác sau ${clockLabel(reassignAt)}.` : null;
   const escalateHint = escalateWaiting ? `Nếu thợ đã đến mà chưa bắt đầu, bạn có thể báo sự cố sau ${clockLabel(escalateAt)}.` : null;
-  const escalatedHint = escalatedAt !== null ? 'Bạn đã báo sự cố cho việc này. Thợ đã được báo và yêu cầu đang chờ xử lý.' : null;
+  const escalatedHint = escalatedAt === null ? null : escalationCopy(escalationStatus, escalationResolution);
   const waitHint = !canRetry && !canReclassify && nextRetryAt !== null ? `Bạn có thể mời thợ lại sau ${clockLabel(nextRetryAt)}.` : null;
   const budgetHint = canRetry && retriesLeft !== null ? `Còn ${retriesLeft} lượt mời lại.` : null;
 

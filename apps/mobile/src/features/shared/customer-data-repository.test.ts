@@ -208,3 +208,21 @@ test('reviewing a job that is not finished surfaces a workflow error', async () 
   respond({ code: '22023', message: 'job not completed' }, false, 400);
   await expect(reviewJobWorker('u1', 'j1', { rating: 5, body: '', tags: [] }, signal)).rejects.toBeInstanceOf(WorkflowError);
 });
+
+test('the worker asks for the escalation, withdrawal and resolution notices and the customer for the resolution and operator notices', async () => {
+  respond([{ ...notification, kind: 'job_escalated' }, { ...notification, id: 'n2', kind: 'job_withdrawn' }, { ...notification, id: 'n3', kind: 'escalation_resolved' }]);
+  await expect(readNotifications('u1', signal, 'worker')).resolves.toHaveLength(3);
+  const worker = String(jest.mocked(authenticatedRequest).mock.calls[0]?.[1]);
+  expect(worker).toContain('job_escalated');
+  expect(worker).toContain('job_withdrawn');
+  expect(worker).toContain('escalation_resolved');
+  expect(worker).not.toContain('escalation_received');
+  respond([{ ...notification, kind: 'escalation_resolved' }, { ...notification, id: 'n2', kind: 'escalation_received' }]);
+  await expect(readNotifications('u1', signal)).resolves.toHaveLength(2);
+  const customer = String(jest.mocked(authenticatedRequest).mock.calls[1]?.[1]);
+  expect(customer).toContain('escalation_resolved');
+  expect(customer).toContain('escalation_received');
+  expect(customer).not.toContain('job_escalated');
+  respond([{ ...notification, kind: 'job_escalated' }]);
+  await expect(readNotifications('u1', signal)).rejects.toThrow('Invalid notification response');
+});

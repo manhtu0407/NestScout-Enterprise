@@ -3,7 +3,7 @@ import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View 
 import type { LayoutChangeEvent } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { Chip, type DispatchServiceId, Icon, type IconName, type JobReview, PressScale, StatusDot, useGlassAccessibility, type StatusDotColor } from '@/features/shared';
+import { Chip, type DispatchServiceId, type EscalationResolution, type EscalationStatus, Icon, type IconName, type JobReview, PressScale, StatusDot, useGlassAccessibility, type StatusDotColor } from '@/features/shared';
 import { ScreenHeader } from './support-shell';
 import { JobChangePanel, type JobChangesApi } from './job-change-panel';
 import { formatVisit, PreferredVisitPicker } from './preferred-visit-picker';
@@ -40,7 +40,7 @@ export type ServiceRequest = {
   preferredVisitAt?: string | null;
   pendingSubmission?: { id: string; evidence: string; jobVersion: number };
   closed?: 'cancelled';
-  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; canEscalate?: boolean; escalateAt?: string | null; escalatedAt?: string | null; nextRetryAt?: string | null; retriesLeft?: number };
+  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; canEscalate?: boolean; escalateAt?: string | null; escalatedAt?: string | null; escalationStatus?: EscalationStatus | null; escalationResolution?: EscalationResolution | null; nextRetryAt?: string | null; retriesLeft?: number };
 };
 
 export const workflowSteps: readonly string[] = ['Đã gửi', 'Có báo giá', 'Chấp nhận', 'Ghép thợ', 'Thực hiện', 'Nghiệm thu'];
@@ -128,6 +128,8 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onS
           canEscalate={request.dispatch.canEscalate === true && onEscalate !== undefined}
           escalateAt={request.dispatch.escalateAt ?? null}
           escalatedAt={request.dispatch.escalatedAt ?? null}
+          escalationStatus={request.dispatch.escalationStatus ?? null}
+          escalationResolution={request.dispatch.escalationResolution ?? null}
           nextRetryAt={request.dispatch.nextRetryAt ?? null}
           retriesLeft={request.dispatch.retriesLeft ?? null}
           onRetry={() => onRetryDispatch(request)}

@@ -2297,6 +2297,20 @@ async function holdingRequestLock(db, request, seconds, contenders) {
   return Promise.all(running);
 }
 
+async function holdingEscalationLock(db, escalation, seconds, contenders) {
+  const key = barrierKey();
+  const holder = db.run(`begin; select id from public.service_job_escalations where id='${escalation}' for update; select pg_advisory_xact_lock(${barrierNamespace}, ${key}); select pg_sleep(${seconds}); commit;`);
+  await waitForRaceBarrier(db.query, key);
+  const running = [];
+  for (const contender of contenders) {
+    running.push(db.run(contender));
+    await pause(500);
+  }
+  const held = await holder;
+  assert.equal(held.code, 0);
+  return Promise.all(running);
+}
+
 async function holdingJobLock(db, job, seconds, contenders) {
   const key = barrierKey();
   const holder = db.run(`begin; select id from public.service_jobs where id='${job}' for update; select pg_advisory_xact_lock(${barrierNamespace}, ${key}); select pg_sleep(${seconds}); commit;`);
@@ -2335,6 +2349,13 @@ function world(db, options) {
           values ('${id}', 'Race worker', 'Thợ điện', 'Quận 7', 5, 'Race', array['Điện'], array['electric'], true);`);
       return id;
     },
+    operator() {
+      const id = randomUUID();
+      users.push(id);
+      db.query(`insert into auth.users (id, aud, role) values ('${id}', 'authenticated', 'authenticated');
+        insert into nestscout_private.fixture_operators (user_id, basis, active) values ('${id}', 'local_fixture', true);`);
+      return id;
+    },
     request(customer) {
       const output = db.query(asUser(customer, `select 'RESULT:' || public.submit_service_request('${randomUUID()}', 'Race request', 'Quận 7', 'electric');`));
       const id = result(output);
@@ -2366,7 +2387,8 @@ function world(db, options) {
             delete from public.service_requests where id in (${ids});`);
         }
         if (users.length > 0) {
-          db.query(`delete from public.kael_autonomy where user_id in (${list(users)});
+          db.query(`delete from nestscout_private.fixture_operators where user_id in (${list(users)});
+            delete from public.kael_autonomy where user_id in (${list(users)});
             delete from public.notifications where recipient_id in (${list(users)});
             delete from public.worker_public_profiles where worker_id in (${list(users)});
             delete from nestscout_private.worker_dispatch_eligibility where user_id in (${list(users)});
@@ -2735,6 +2757,157 @@ test('an escalation and the worker starting the job at once never lose the job o
           assert.equal(env.count(`select 1 from public.service_job_escalations where job_id='${job.id}'`), 0);
         }
         raceOutcomes.push(`escalate_vs_start first=${escalateFirst ? 'escalate' : 'start'} escalation=${escalate.code === 0 ? 'recorded' : 'refused'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+function stagedEscalation(db, env, customer) {
+  const staged = stagedJob(db, env, customer, ['en_route', 'arrived']);
+  db.query(asUser(customer, `select public.escalate_service_job('${staged.request.id}', '${randomUUID()}');`));
+  const escalation = db.query(`select id from public.service_job_escalations where request_id='${staged.request.id}';`).trim();
+  return { ...staged, escalation };
+}
+
+const reviewSql = (operator, escalation) => asUser(operator, `select 'RESULT:' || (public.review_service_escalation('${escalation}', '${randomUUID()}') ->> 'outcome');`);
+const resolveSql = (operator, escalation, resolution, key = randomUUID()) => asUser(operator, `select 'RESULT:' || (public.resolve_service_escalation('${escalation}', '${resolution}', null, '${key}') ->> 'outcome');`);
+
+test('two operators reviewing the same case at once record one reviewer', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    const env = world(db, { max_invites: 1 });
+    try {
+      const customer = env.customer();
+      const { escalation } = stagedEscalation(db, env, customer);
+      const first = env.operator();
+      const second = env.operator();
+      const outcomes = await holdingEscalationLock(db, escalation, 4, [reviewSql(first, escalation), reviewSql(second, escalation)]);
+      assert.ok(outcomes.every(outcome => outcome.code === 0));
+      const results = outcomes.map(outcome => result(outcome.output)).sort();
+      assert.deepEqual(results, ['already_reviewing', 'reviewing'], 'One operator takes the case and the other is told it is taken');
+      assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='reviewing' and reviewed_by in ('${first}', '${second}')`), 1);
+      raceOutcomes.push(`double_review results=${results.join('+')}`);
+    } finally {
+      env.dispose();
+    }
+  });
+});
+
+test('two operators resolving the same case at once decide it exactly once and tell both participants once', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    const env = world(db, { max_invites: 1 });
+    try {
+      const customer = env.customer();
+      const { request, job, escalation } = stagedEscalation(db, env, customer);
+      const first = env.operator();
+      const second = env.operator();
+      db.query(reviewSql(first, escalation));
+      const outcomes = await holdingEscalationLock(db, escalation, 4, [resolveSql(first, escalation, 'proceed'), resolveSql(second, escalation, 'dismiss')]);
+      assert.ok(outcomes.every(outcome => outcome.code === 0));
+      const results = outcomes.map(outcome => result(outcome.output)).sort();
+      assert.deepEqual(results, ['already_resolved', 'resolved'], 'One decision is recorded and the other operator is told');
+      const winner = outcomes[0] && result(outcomes[0].output) === 'resolved' ? 'proceed' : 'dismiss';
+      assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='resolved' and resolution='${winner}'`), 1, 'The recorded decision is the one that won');
+      assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='escalation_resolved'`), 2, 'The customer and the worker are each told once');
+      assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='arrived'`), 1, 'Neither decision touches the job');
+      raceOutcomes.push(`double_resolve winner=${winner}`);
+    } finally {
+      env.dispose();
+    }
+  });
+});
+
+test('resolving with a replacement and with a continue at once end in exactly one consistent outcome', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const replaceFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const { request, job, escalation } = stagedEscalation(db, env, customer);
+        const first = env.operator();
+        const second = env.operator();
+        db.query(reviewSql(first, escalation));
+        const replace = resolveSql(first, escalation, 'replace_worker');
+        const proceed = resolveSql(second, escalation, 'proceed');
+        const outcomes = await holdingEscalationLock(db, escalation, 4, replaceFirst ? [replace, proceed] : [proceed, replace]);
+        assert.ok(outcomes.every(outcome => outcome.code === 0));
+        const results = outcomes.map(outcome => result(outcome.output)).sort();
+        assert.deepEqual(results, ['already_resolved', 'resolved']);
+        const replaced = env.count(`select 1 from public.service_job_releases where request_id='${request.id}' and released_by_role='operator'`) === 1;
+        if (replaced) {
+          assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}'`), 0, 'A replaced job is detached');
+          assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and resolution='replace_worker'`), 1);
+          assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='job_withdrawn'`), 1, 'The replaced worker is told once');
+        } else {
+          assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='arrived'`), 1, 'A job that continues stays assigned');
+          assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and resolution='proceed'`), 1);
+          assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='job_withdrawn'`), 0);
+        }
+        assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='escalation_resolved' and recipient_id='${customer}'`), 1, 'The customer is told once');
+        raceOutcomes.push(`replace_vs_proceed first=${replaceFirst ? 'replace' : 'proceed'} outcome=${replaced ? 'replaced' : 'continued'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+test('the same replacement sent three times at once releases the worker once', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    const env = world(db, { max_invites: 1 });
+    try {
+      const customer = env.customer();
+      const { request, escalation } = stagedEscalation(db, env, customer);
+      const operator = env.operator();
+      db.query(reviewSql(operator, escalation));
+      const key = randomUUID();
+      const outcomes = await holdingEscalationLock(db, escalation, 4, [resolveSql(operator, escalation, 'replace_worker', key), resolveSql(operator, escalation, 'replace_worker', key), resolveSql(operator, escalation, 'replace_worker', key)]);
+      assert.ok(outcomes.every(outcome => outcome.code === 0));
+      const results = outcomes.map(outcome => result(outcome.output)).sort();
+      assert.deepEqual(results, ['already_resolved', 'already_resolved', 'resolved']);
+      assert.equal(env.count(`select 1 from public.service_job_releases where request_id='${request.id}'`), 1, 'One release is archived');
+      assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='job_withdrawn'`), 1, 'The worker is told once');
+      assert.equal(env.count(`select 1 from public.service_dispatch_rounds where request_id='${request.id}' and reason='worker_released'`), 1, 'One replacement search starts');
+      raceOutcomes.push(`triple_replace results=${results.join('+')}`);
+    } finally {
+      env.dispose();
+    }
+  });
+});
+
+test('an operator replacing the worker and the worker starting the job at once never lose the job or the case', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const replaceFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const { request, holder, job, escalation } = stagedEscalation(db, env, customer);
+        const operator = env.operator();
+        db.query(reviewSql(operator, escalation));
+        const replace = resolveSql(operator, escalation, 'replace_worker');
+        const start = asUser(holder, `select 'RESULT:' || public.advance_service_job('${job.id}', 3, 'working');`);
+        const outcomes = await holdingJobLock(db, job.id, 4, replaceFirst ? [replace, start] : [start, replace]);
+        const replaceOutcome = replaceFirst ? outcomes[0] : outcomes[1];
+        const startOutcome = replaceFirst ? outcomes[1] : outcomes[0];
+        assert.notEqual(replaceOutcome.code === 0, startOutcome.code === 0, 'Exactly one of the replacement and the start may win');
+        if (replaceOutcome.code === 0) {
+          assert.match(startOutcome.errors, /job unavailable/);
+          assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}'`), 0);
+          assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='resolved' and resolution='replace_worker'`), 1);
+        } else {
+          assert.match(replaceOutcome.errors, /release not allowed at this stage/);
+          assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='working'`), 1, 'A worker who started keeps the job');
+          assert.equal(env.count(`select 1 from public.service_job_releases where request_id='${request.id}'`), 0);
+          assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='reviewing'`), 1, 'The refused decision leaves the case in review');
+          assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind in ('job_withdrawn', 'escalation_resolved')`), 0, 'Nobody is told about a decision that did not happen');
+        }
+        raceOutcomes.push(`operator_replace_vs_start first=${replaceFirst ? 'replace' : 'start'} winner=${replaceOutcome.code === 0 ? 'replace' : 'start'}`);
       } finally {
         env.dispose();
       }

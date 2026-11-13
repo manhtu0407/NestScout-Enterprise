@@ -30,7 +30,14 @@ export type DispatchSummary = {
   canEscalate: boolean;
   escalateAt: string | null;
   escalatedAt: string | null;
+  escalationStatus: EscalationStatus | null;
+  escalationResolution: EscalationResolution | null;
 };
+
+export const escalationStatuses = ['open', 'reviewing', 'resolved'] as const;
+export type EscalationStatus = (typeof escalationStatuses)[number];
+export const escalationResolutions = ['proceed', 'replace_worker', 'dismiss'] as const;
+export type EscalationResolution = (typeof escalationResolutions)[number];
 
 export const jobStages = ['assigned', 'en_route', 'arrived', 'working', 'paused', 'submitted', 'completed'] as const;
 export type JobStage = (typeof jobStages)[number];
@@ -59,6 +66,14 @@ function isJobStage(value: unknown): value is JobStage {
   return typeof value === 'string' && (jobStages as readonly string[]).includes(value);
 }
 
+function isEscalationStatus(value: unknown): value is EscalationStatus {
+  return typeof value === 'string' && (escalationStatuses as readonly string[]).includes(value);
+}
+
+function isEscalationResolution(value: unknown): value is EscalationResolution {
+  return typeof value === 'string' && (escalationResolutions as readonly string[]).includes(value);
+}
+
 function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
@@ -83,9 +98,11 @@ function toSummary(row: unknown, requested: ReadonlySet<string>): DispatchSummar
   const reassign = item.can_reassign ?? false;
   const escalate = item.can_escalate ?? false;
   const jobStage = item.job_stage ?? null;
+  const escalationStatus = item.escalation_status ?? null;
+  const escalationResolution = item.escalation_resolution ?? null;
   if (typeof item.request_id !== 'string' || !requested.has(item.request_id) || !isDispatchState(item.state) || !isCount(item.open_invites) || !isCount(item.rounds)
     || (expiry !== null && (typeof expiry !== 'string' || Number.isNaN(Date.parse(expiry)))) || typeof item.can_retry !== 'boolean' || typeof item.can_cancel !== 'boolean'
-    || typeof reclassify !== 'boolean' || typeof reassign !== 'boolean' || typeof escalate !== 'boolean' || (jobStage !== null && !isJobStage(jobStage)) || !isCount(retriesLeft) || (lastOutcome !== null && typeof lastOutcome !== 'string')) {
+    || typeof reclassify !== 'boolean' || typeof reassign !== 'boolean' || typeof escalate !== 'boolean' || (jobStage !== null && !isJobStage(jobStage)) || (escalationStatus !== null && !isEscalationStatus(escalationStatus)) || (escalationResolution !== null && !isEscalationResolution(escalationResolution)) || !isCount(retriesLeft) || (lastOutcome !== null && typeof lastOutcome !== 'string')) {
     throw new Error('Invalid dispatch response');
   }
   return {
@@ -93,6 +110,7 @@ function toSummary(row: unknown, requested: ReadonlySet<string>): DispatchSummar
     canCancel: item.can_cancel, canReclassify: reclassify, nextRetryAt: optionalInstant(item.next_retry_at), retriesLeft, lastOutcome,
     canReassign: reassign, reassignAt: optionalInstant(item.reassign_at), jobStage, canEscalate: escalate,
     escalateAt: optionalInstant(item.escalate_at), escalatedAt: optionalInstant(item.escalated_at),
+    escalationStatus, escalationResolution,
   };
 }
 

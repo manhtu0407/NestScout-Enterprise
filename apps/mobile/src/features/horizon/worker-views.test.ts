@@ -143,3 +143,12 @@ test('an offer shows the customer preferred visit time without presenting it as 
   const [plain] = toWorkerJobs({ ...empty, offers: [offer] }, [card('offer', 'invite-1')], now);
   expect(plain?.preferredVisitLabel).toBeUndefined();
 });
+
+test('worker incident and withdrawal notices open the list where the worker can act', () => {
+  const base = { request_id: 'r1', title: 't', body: 'b', created_at: '2026-11-02T09:00:00Z', read_at: null };
+  const items = toWorkerNotificationItems([
+    { ...base, id: 'a', kind: 'job_escalated' }, { ...base, id: 'b', kind: 'escalation_resolved' }, { ...base, id: 'c', kind: 'job_withdrawn' },
+  ], now);
+  expect(items.map(item => item.target)).toEqual(['worker-assigned', 'worker-assigned', 'worker-offers']);
+  expect(items.map(item => item.icon)).toEqual(['help', 'check', 'briefcase']);
+});

@@ -163,7 +163,7 @@ test('a worker saved a moment ago reads as just saved', () => {
 });
 
 function summary(overrides: Partial<DispatchSummary> = {}): DispatchSummary {
-  return { requestId: 'r1', state: 'no_match', openInvites: 0, earliestExpiry: null, rounds: 1, canRetry: true, canCancel: true, canReclassify: false, canReassign: false, reassignAt: null, jobStage: null, canEscalate: false, escalateAt: null, escalatedAt: null, nextRetryAt: null, retriesLeft: 2, lastOutcome: null, ...overrides };
+  return { requestId: 'r1', state: 'no_match', openInvites: 0, earliestExpiry: null, rounds: 1, canRetry: true, canCancel: true, canReclassify: false, canReassign: false, reassignAt: null, jobStage: null, canEscalate: false, escalateAt: null, escalatedAt: null, escalationStatus: null, escalationResolution: null, nextRetryAt: null, retriesLeft: 2, lastOutcome: null, ...overrides };
 }
 
 const acceptedQuote = quote({ accepted_at: hoursAgo(1) });
@@ -227,7 +227,7 @@ test('an assigned job wins over any dispatch summary', () => {
 
 test('an assigned job offers a handover only once the dispatch summary allows it', () => {
   const ready = deriveRequestProgress([acceptedQuote], job('assigned'), now, summary({ state: 'assigned', canCancel: false, canRetry: false, canReassign: true, reassignAt: '2026-11-12T10:00:00.000Z' }));
-  expect(ready.dispatch).toEqual({ canRetry: false, canCancel: false, canReassign: true, reassignAt: '2026-11-12T10:00:00.000Z', canEscalate: false, escalateAt: null, escalatedAt: null });
+  expect(ready.dispatch).toEqual({ canRetry: false, canCancel: false, canReassign: true, reassignAt: '2026-11-12T10:00:00.000Z', canEscalate: false, escalateAt: null, escalatedAt: null, escalationStatus: null, escalationResolution: null });
   const waiting = deriveRequestProgress([acceptedQuote], job('assigned'), now, summary({ state: 'assigned', canCancel: false, canRetry: false, reassignAt: '2026-11-12T10:00:00.000Z' }));
   expect(waiting.dispatch).toMatchObject({ canReassign: false, reassignAt: '2026-11-12T10:00:00.000Z' });
   const working = deriveRequestProgress([acceptedQuote], job('working'), now, summary({ state: 'assigned', canCancel: false, canRetry: false }));
@@ -263,4 +263,12 @@ test('request views carry the closed state and the open actions from the summary
 test('the exhausted dispatch notification has its own icon', () => {
   const notification: CustomerNotification = { id: 'n1', kind: 'dispatch_exhausted', request_id: 'r1', title: 'Chưa có thợ nhận việc', body: 'Mời lại hoặc hủy', created_at: hoursAgo(1), read_at: null };
   expect(toNotificationItems([notification], now)[0]).toMatchObject({ icon: 'clock', title: 'Chưa có thợ nhận việc', unread: true });
+});
+
+test('the operator notice opens the incident queue and customer resolution notices open the request', () => {
+  const base = { request_id: 'r1', title: 't', body: 'b', created_at: '2026-11-02T09:00:00Z', read_at: null };
+  const items = toNotificationItems([{ ...base, id: 'a', kind: 'escalation_received' }, { ...base, id: 'b', kind: 'escalation_resolved' }], now);
+  expect(items[0]).toMatchObject({ target: 'operator-escalations', requestId: 'r1', icon: 'help' });
+  expect(items[1]).toMatchObject({ requestId: 'r1', icon: 'check' });
+  expect(items[1]?.target).toBeUndefined();
 });

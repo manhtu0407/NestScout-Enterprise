@@ -26,14 +26,21 @@ export function pickProgressRequest(requests: readonly ServiceRequest[]): Servic
 
 export function progressForRequest(request: Pick<ServiceRequest, 'title' | 'status' | 'step' | 'dispatch'>): KaelProgress {
   const finished = request.step >= workflowSteps.length;
-  const stalled = request.dispatch?.canRetry === true || request.dispatch?.canReclassify === true;
   return {
     hint: `${request.title} · ${request.status}`,
     steps: workflowSteps,
     current: Math.min(request.step, workflowSteps.length),
     finished,
-    spinnerLabel: finished ? 'Yêu cầu đã hoàn tất' : stalled ? 'Đang chờ bạn xử lý' : 'Đang tiến hành',
+    spinnerLabel: finished ? 'Yêu cầu đã hoàn tất' : requestSpinnerLabel(request.dispatch),
   };
+}
+
+function requestSpinnerLabel(dispatch: ServiceRequest['dispatch']): string {
+  if (dispatch?.escalatedAt != null && dispatch.escalationStatus !== 'resolved') {
+    return dispatch.escalationStatus === 'reviewing' ? 'Đội hỗ trợ đang xem xét sự cố' : 'Đã báo sự cố, đang chờ xử lý';
+  }
+  const waitingForCustomer = dispatch?.canRetry === true || dispatch?.canReclassify === true || dispatch?.canReassign === true || dispatch?.canEscalate === true;
+  return waitingForCustomer ? 'Đang chờ bạn xử lý' : 'Đang tiến hành';
 }
 
 const workerSteps: readonly string[] = ['Lời mời', 'Đã nhận', 'Đang làm', 'Chờ duyệt', 'Hoàn tất'];

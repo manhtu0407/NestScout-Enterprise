@@ -483,8 +483,8 @@ released job are archived with it. After arrival the customer never replaces the
 worker automatically. `escalate_service_job` records one report per job
 (`service_job_escalations`), notifies the worker with `job_escalated`, leaves the
 job and its stage untouched and is idempotent on a key; a second call reports
-`already_escalated`. The report is a signal for an operator: no operator console
-reads it yet. All four timers are global settings in
+`already_escalated`. An active `local_fixture` operator receives the report as an
+`escalation_received` notification and handles it (see the next section). All four timers are global settings in
 `nestscout_private.auto_dispatch_settings`. Both release paths are idempotent on
 a key and refuse a stale job version. A release keeps the
 releasing worker's invitation as accepted, so that worker is not invited again,
@@ -492,9 +492,34 @@ opens a `worker_released` dispatch round that ignores the automatic round cap an
 the manual retry budget (a handover is not a customer retry), and notifies the
 other side (`job_released` to the customer, `job_withdrawn` to the worker).
 `get_dispatch_summary` reports `job_stage`, `can_reassign`, `reassign_at`,
-`can_escalate`, `escalate_at` and `escalated_at` for an assigned request. Kael does not read them and has no reassignment effect: handing a
+`can_escalate`, `escalate_at`, `escalated_at`, `escalation_status` and
+`escalation_resolution` for an assigned request. Kael does not read them and has no reassignment effect: handing a
 request to another worker is a customer decision in the Requests screen, behind
 a slide to confirm.
+
+Escalation handling uses the existing fixture operator: the same
+`nestscout_private.fixture_operators` rows and `lock_fixture_operator` /
+`require_fixture_operator` checks that gate fixture quotes and invitations, so it
+is a local fixture capability and not a production staffing role. A report moves
+through `open`, `reviewing` and `resolved` on `service_job_escalations`:
+
+| Operation | Caller | Effect |
+| --- | --- | --- |
+| `operator_escalation_queue` | Active operator (read only) | Up to 100 unresolved reports, oldest first, with request text, location, worker name and job stage |
+| `review_service_escalation(id, key)` | Active operator | `open` becomes `reviewing` and records the reviewer; repeating it, or a second operator, gets `already_reviewing` (`already_resolved` once resolved) |
+| `resolve_service_escalation(id, resolution, note, key)` | Active operator; the case must be `reviewing` | `proceed` and `dismiss` only record the decision; `replace_worker` releases the job through `release_job` as role `operator` with reason `operator_decision`, archives its history in `service_job_releases` and opens a `worker_released` dispatch round |
+
+The case row is locked first, then the job and the request, so concurrent
+decisions are serialised: one is recorded and the others report
+`already_resolved`. A replacement is refused with `release not allowed at this
+stage` once the worker has started, and with `job has open changes` while a
+change request is pending; the case then stays in review. A decision notifies
+both participants once (`escalation_resolved`, with the operator note); a
+replacement tells the worker `job_withdrawn` instead. Participants read the
+case through RLS but not its reviewer, resolver or operation keys. The mobile
+app opens the queue from the operator's `escalation_received` notification
+(section `operator-escalations`); an account without an active operator row is
+refused and sees no cases.
 
 Worker capacity is enforced where a job is created. A worker's active jobs are
 those whose stage is not `submitted` or `completed`; `max_active_jobs_per_worker`

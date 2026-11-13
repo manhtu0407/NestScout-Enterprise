@@ -39,13 +39,13 @@ const titles: Record<CustomerSectionId, string> = {
   settings: 'Cài đặt',
 };
 
-type Props = { id: CustomerSectionId; focusId?: string; onBack: () => void; onNavigate: (id: CustomerSectionId, focusId?: string) => void; onAskKael?: (prompt: string) => void };
+type Props = { id: CustomerSectionId; focusId?: string; onBack: () => void; onNavigate: (id: CustomerSectionId, focusId?: string) => void; onOpenTarget?: (target: string) => void; onAskKael?: (prompt: string) => void };
 
 function StateShell({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
   return <SupportShell title={title} onBack={onBack}>{children}</SupportShell>;
 }
 
-export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: Props) {
+export function CustomerSection({ id, focusId, onBack, onNavigate, onOpenTarget, onAskKael }: Props) {
   const access = useAccess();
   const userId = access.identity === 'verified' ? access.userId : null;
   const customer = useCustomerData(userId);
@@ -208,6 +208,7 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
       onBack={onBack}
       onMarkRead={customer.markRead}
       onOpenRequest={requestId => onNavigate('requests', requestId)}
+      onOpenTarget={onOpenTarget}
     />;
   }
 

@@ -276,7 +276,7 @@ test('AI data sharing is a separate explicit privacy choice', async () => {
 });
 
 const acceptedQuote = { id: 'q1', request_id: 'r1', version: 1, scope: 'Thay vòi', amount_minor: 250000, currency: 'VND' as const, expires_at: '2099-01-01T00:00:00.000Z', basis: 'local_fixture', accepted_at: '2026-11-12T08:00:00.000Z', rejected_at: null };
-const exhausted: DispatchSummary = { requestId: 'r1', state: 'exhausted', openInvites: 0, earliestExpiry: null, rounds: 3, canRetry: true, canCancel: true, canReclassify: false, canReassign: false, reassignAt: null, jobStage: null, canEscalate: false, escalateAt: null, escalatedAt: null, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'invited' };
+const exhausted: DispatchSummary = { requestId: 'r1', state: 'exhausted', openInvites: 0, earliestExpiry: null, rounds: 3, canRetry: true, canCancel: true, canReclassify: false, canReassign: false, reassignAt: null, jobStage: null, canEscalate: false, escalateAt: null, escalatedAt: null, escalationStatus: null, escalationResolution: null, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'invited' };
 const activate = { nativeEvent: { actionName: 'activate' } };
 
 function dispatchController(overrides: Partial<CustomerDataController> = {}) {
@@ -406,5 +406,19 @@ test('an escalated job says it was reported and offers no second report', async 
   await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
   await fireEvent.press(screen.getByRole('tab', { name: /^Đang làm/ }));
   expect(screen.getByText(/Bạn đã báo sự cố cho việc này/)).toBeTruthy();
+  expect(screen.queryByLabelText('Báo sự cố cho Sửa vòi nước')).toBeNull();
+});
+
+test.each<[string, Partial<DispatchSummary>, RegExp]>([
+  ['waiting for the operator', { escalationStatus: 'open' }, /Thợ đã được báo và yêu cầu đang chờ xử lý/],
+  ['in review', { escalationStatus: 'reviewing' }, /Đội hỗ trợ đang xem xét/],
+  ['resolved to continue', { escalationStatus: 'resolved', escalationResolution: 'proceed' }, /Thợ sẽ tiếp tục công việc/],
+  ['resolved as closed', { escalationStatus: 'resolved', escalationResolution: 'dismiss' }, /đóng, chưa cần xử lý thêm/],
+])('a report %s tells the customer where it stands and offers no second report', async (_name, overrides, expected) => {
+  const escalated: DispatchSummary = { ...onSite, canEscalate: false, escalateAt: null, escalatedAt: '2026-11-12T09:00:00.000Z', ...overrides };
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], activity: { ...empty.activity, jobs: [{ id: 'j1', request_id: 'r1', stage: 'arrived', version: 3 }] }, dispatch: new Map([['r1', escalated]]) } }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đang làm/ }));
+  expect(screen.getByText(expected)).toBeTruthy();
   expect(screen.queryByLabelText('Báo sự cố cho Sửa vòi nước')).toBeNull();
 });

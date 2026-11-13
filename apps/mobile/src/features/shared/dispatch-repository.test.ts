@@ -34,7 +34,7 @@ test('no identifiers means no request', async () => {
 test('summaries are read through the owner scoped function and mapped', async () => {
   respond([row({ state: 'searching', open_invites: 2, earliest_expiry: '2026-11-12T10:30:00.000Z', can_retry: false })]);
   await expect(readDispatchSummaries('customer-a', [first], signal)).resolves.toEqual([
-    { requestId: first, state: 'searching', openInvites: 2, earliestExpiry: '2026-11-12T10:30:00.000Z', rounds: 1, canRetry: false, canCancel: true, canReclassify: false, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'no_eligible_worker', canReassign: false, reassignAt: null, jobStage: null, canEscalate: false, escalateAt: null, escalatedAt: null },
+    { requestId: first, state: 'searching', openInvites: 2, earliestExpiry: '2026-11-12T10:30:00.000Z', rounds: 1, canRetry: false, canCancel: true, canReclassify: false, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'no_eligible_worker', canReassign: false, reassignAt: null, jobStage: null, canEscalate: false, escalateAt: null, escalatedAt: null, escalationStatus: null, escalationResolution: null },
   ]);
   expect(global.fetch).toHaveBeenCalledWith(
     'http://127.0.0.1:54321/rest/v1/rpc/get_dispatch_summary',
@@ -77,6 +77,8 @@ test.each([
   ['an escalate time that is not a date', row({ escalate_at: 'soon' })],
   ['an escalated time that is not a date', row({ escalated_at: 'soon' })],
   ['an unknown job stage', row({ job_stage: 'teleporting' })],
+  ['an unknown case status', row({ escalation_status: 'closed' })],
+  ['an unknown case decision', row({ escalation_resolution: 'refund' })],
   ['a retry time that is not a date', row({ next_retry_at: 'soon' })],
   ['a row that is not an object', null],
 ])('%s is rejected', async (_name, bad) => {
@@ -219,4 +221,11 @@ test('an escalation asked before the arrival window ends is a definitive early r
 test('an escalation for a job that already moved on is a definitive rejection', async () => {
   respond({ code: '22023', message: 'escalation not allowed at this stage' }, false, 400);
   await expect(escalateJob('customer-a', first, signal)).rejects.toMatchObject({ failure: 'rejected' });
+});
+
+test('a reported job reads the case status and the decision', async () => {
+  respond([row({ state: 'assigned', can_retry: false, can_cancel: false, job_stage: 'arrived', escalated_at: '2026-11-12T11:00:00.000Z', escalation_status: 'reviewing' })]);
+  await expect(readDispatchSummaries('customer-a', [first], signal)).resolves.toMatchObject([{ escalationStatus: 'reviewing', escalationResolution: null }]);
+  respond([row({ state: 'assigned', can_retry: false, can_cancel: false, job_stage: 'arrived', escalated_at: '2026-11-12T11:00:00.000Z', escalation_status: 'resolved', escalation_resolution: 'proceed' })]);
+  await expect(readDispatchSummaries('customer-a', [first], signal)).resolves.toMatchObject([{ escalationStatus: 'resolved', escalationResolution: 'proceed' }]);
 });
