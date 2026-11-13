@@ -183,12 +183,13 @@ export function HorizonPreview() {
   };
   const banner = useNotificationBanner([], false, role);
   const [bannerTurn, setBannerTurn] = useState(0);
+  const bannerSamples = demoBannerNotices[role === 'worker' ? 'worker' : 'client'];
+  const bannerNext = bannerSamples[bannerTurn % bannerSamples.length];
   const sendBanner = () => {
-    const samples = demoBannerNotices[role === 'worker' ? 'worker' : 'client'];
-    const sample = samples[bannerTurn % samples.length];
+    const sample = bannerNext;
     if (sample === undefined) return;
     setBannerTurn(turn => turn + 1);
-    banner.show({ id: `${sample.id}-${bannerTurn}`, title: sample.title, body: sample.body, time: horizonLayout.notificationBanner.nowLabel });
+    banner.show({ id: `${sample.id}-${bannerTurn}`, title: sample.title, body: sample.body, time: horizonLayout.notificationBanner.nowLabel, kind: sample.kind });
   };
   const homeLoading = useSimulatedLoading(true);
   const recentLoading = useSimulatedLoading(drawer);
@@ -198,7 +199,7 @@ export function HorizonPreview() {
       <View style={screenOpen ? { display: 'none' } : { flex: 1 }}>
         <KaelHomeScreen requestProgress={previewProgress(role)} input={input} onInput={value => { setInput(value); setComposerError(null); }} onSubmit={start} onMenu={() => setDrawer(true)} onNew={reset} messages={messages} question={question} onAnswer={answer => { if (role === 'guest') setComposerError(guestSendNotice); else { setComposerError(null); sendDemo(answer); } }} composerError={composerError} onClearComposerError={() => setComposerError(null)} conversationKey={conversationKey} />
         <View pointerEvents="none" accessibilityRole="text" style={styles.demoBadge}><Text style={styles.demoBadgeText}>DEMO · không kết nối Kael thật</Text></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Gửi thử thông báo" onPress={sendBanner} style={styles.demoTrigger}><Text style={styles.demoBadgeText}>Gửi thử thông báo</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Gửi thử thông báo" onPress={sendBanner} style={styles.demoTrigger}><Text style={styles.demoBadgeText}>{`Gửi thử thông báo · ${bannerTurn % bannerSamples.length + 1}/${bannerSamples.length} · ${bannerNext?.phase ?? ''}`}</Text></Pressable>
       </View>
       {requestsOpen && <RequestsScreen requests={sampleRequests} onBack={goBack} onViewQuotes={() => { setRequestsOpen(false); setQuotesFromRequests(true); setSupportScreen('quotes'); }} onAskKael={() => setRequestsOpen(false)} />}
       {jobsStage !== null && <SampleWorkerJobsScreen key={jobsStage} initialStage={jobsStage} onBack={goBack} onAskKael={() => setJobsStage(null)} />}

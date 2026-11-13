@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useState } from 'react';
-import { AccessibilityInfo, Animated, Image, PanResponder, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,13 +8,21 @@ import { GlassSurface, PressScale, useGlassAccessibility } from '@/features/shar
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
-import { appIconImage } from './kael-assets';
 import { BannerLive, pullProgress, releaseOutcome, rubberBand } from './notification-banner-model';
 import type { BannerNotice } from './notification-banner-model';
+import { NotificationGlyph } from './notification-glyph';
+import { hapticForTone, lookFor } from './notification-look';
+import type { GlyphTone } from './notification-look';
 
 const metrics = horizonLayout.notificationBanner;
 const colors = horizonColors.notificationBanner;
 const offscreen = -1000;
+
+function feedback(tone: GlyphTone): Promise<void> {
+  const haptic = hapticForTone[tone];
+  if (haptic === 'light') return Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  return Haptics.notificationAsync(haptic === 'success' ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning);
+}
 
 type Props = {
   notice: BannerNotice | null;
@@ -90,7 +98,7 @@ export function NotificationBanner({ notice, onOpen, onDismiss, onHold }: Props)
     if (shown === null) return;
     grow.setValue(0);
     arrive();
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void feedback(lookFor(shown.kind, shown.body).tone);
     AccessibilityInfo.announceForAccessibility(`${shown.title}. ${shown.body}`);
   }, [shown, arrive, grow]);
 
@@ -152,7 +160,10 @@ export function NotificationBanner({ notice, onOpen, onDismiss, onHold }: Props)
 
   if (shown === null) return null;
 
-  const scale = reduceMotion ? 1 : press.interpolate({ inputRange: [0, 1], outputRange: [1, metrics.pressScale] });
+  const pressScale = press.interpolate({ inputRange: [0, 1], outputRange: [1, metrics.pressScale] });
+  const arrivalScale = y.interpolate({ inputRange: [hidden * metrics.arrivalReach, 0], outputRange: [metrics.arrivalScale, 1], extrapolate: 'clamp' });
+  const scale = reduceMotion ? 1 : Animated.multiply(pressScale, arrivalScale);
+  const look = lookFor(shown.kind, shown.body);
   const actionsHeight = Animated.multiply(grow, metrics.actionHeight + metrics.actionTop);
   return (
     <View pointerEvents="box-none" style={[styles.layer, { top }]}>
@@ -170,7 +181,7 @@ export function NotificationBanner({ notice, onOpen, onDismiss, onHold }: Props)
       >
         <GlassSurface variant="sheet" radius={metrics.radius} style={styles.surface}>
           <View onLayout={(event: LayoutChangeEvent) => setRowHeight(event.nativeEvent.layout.height)} style={styles.row}>
-            <Image source={appIconImage} accessibilityIgnoresInvertColors style={styles.icon} />
+            <NotificationGlyph key={shown.id} look={look} />
             <View style={styles.copy}>
               <View style={styles.titleRow}>
                 <Text numberOfLines={1} style={styles.title}>{shown.title}</Text>
@@ -203,7 +214,6 @@ const styles = StyleSheet.create({
   gesture: { userSelect: 'none' },
   surface: { paddingHorizontal: metrics.paddingHorizontal, paddingVertical: metrics.paddingVertical },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: metrics.gap },
-  icon: { width: metrics.iconSize, height: metrics.iconSize, borderRadius: metrics.iconRadius, borderCurve: 'continuous', backgroundColor: colors.iconBackdrop },
   copy: { flex: 1, minWidth: 0, gap: metrics.copyGap },
   titleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: metrics.gap },
   title: { flexShrink: 1, color: colors.title, fontSize: metrics.titleSize, lineHeight: metrics.titleLine, fontWeight: metrics.titleWeight },

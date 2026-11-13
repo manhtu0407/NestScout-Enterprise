@@ -1,4 +1,4 @@
-import type { KaelQuestion } from '@/features/shared';
+import type { KaelQuestion, NotificationKind } from '@/features/shared';
 
 import { preferredOptions, serviceCategories, serviceCategoryFor, type ServiceCategoryId } from './service-catalog';
 
@@ -227,15 +227,50 @@ export function demoKaelTurn(previous: DemoState, rawText: string): DemoTurn {
   return { ...turn, reply: body === '' ? demoReplyLabel : withLabel(body) };
 }
 
-export const demoBannerNotices: Readonly<Record<'client' | 'worker', readonly { id: string; title: string; body: string }[]>> = {
+export type DemoBannerNotice = { id: string; kind: NotificationKind; phase: string; title: string; body: string };
+
+const customerLabel = 'Yêu cầu “Sửa vòi nước bồn rửa”';
+const workerLabel = 'Việc “Sửa ống thoát nước”';
+
+export const demoBannerNotices: Readonly<Record<'client' | 'worker', readonly DemoBannerNotice[]>> = {
   client: [
-    { id: 'banner-quote', title: 'Báo giá mới', body: 'Yêu cầu “Sửa vòi nước bồn rửa” có báo giá mới đang chờ bạn quyết định.' },
-    { id: 'banner-assigned', title: 'Thợ đã nhận việc', body: 'Anh Hùng sẽ đến Quận 7 lúc 14:00 hôm nay để sửa vòi nước bồn rửa.' },
-    { id: 'banner-done', title: 'Việc đã hoàn tất', body: 'Yêu cầu “Thay ổ khoá cửa chính” đã hoàn tất. Hãy để lại đánh giá cho thợ.' },
+    { id: 'c-quote', kind: 'quote_received', phase: 'Báo giá', title: 'Báo giá mới', body: `${customerLabel} có báo giá mới đang chờ bạn quyết định.` },
+    { id: 'c-dispatch-none', kind: 'dispatch_exhausted', phase: 'Dispatch', title: 'Chưa có thợ nhận việc', body: `${customerLabel} chưa có thợ nhận. Bạn có thể mời lại hoặc hủy trong Yêu cầu của tôi.` },
+    { id: 'c-dispatch-limit', kind: 'dispatch_exhausted', phase: 'Dispatch', title: 'Đã hết lượt tìm thợ tự động', body: `${customerLabel} đã hết lượt tìm thợ tự động. Bạn có thể mời lại hoặc hủy trong Yêu cầu của tôi.` },
+    { id: 'c-assigned', kind: 'job_assigned', phase: 'Nhận việc', title: 'Đã có thợ nhận việc', body: `${customerLabel} đã có thợ nhận việc.` },
+    { id: 'c-en-route', kind: 'job_progress', phase: 'Thực hiện', title: 'Công việc có cập nhật', body: `${customerLabel} có thợ đang trên đường tới.` },
+    { id: 'c-arrived', kind: 'job_progress', phase: 'Thực hiện', title: 'Công việc có cập nhật', body: `${customerLabel} có thợ đã đến nơi.` },
+    { id: 'c-working', kind: 'job_progress', phase: 'Thực hiện', title: 'Công việc có cập nhật', body: `${customerLabel} đang được thực hiện.` },
+    { id: 'c-paused', kind: 'job_progress', phase: 'Thực hiện', title: 'Công việc có cập nhật', body: `${customerLabel} đang tạm dừng.` },
+    { id: 'c-scope', kind: 'scope_proposed', phase: 'Đổi phạm vi', title: 'Đề xuất đổi phạm vi', body: `${customerLabel} có đề xuất thay đổi phạm vi đang chờ bạn quyết định.` },
+    { id: 'c-change-asked', kind: 'change_requested', phase: 'Đổi lịch / huỷ', title: 'Có đề nghị đổi lịch', body: `${customerLabel} có đề nghị thay đổi đang chờ bạn phản hồi.` },
+    { id: 'c-change-agreed', kind: 'change_decided', phase: 'Đổi lịch / huỷ', title: 'Đề nghị thay đổi được đồng ý', body: `${customerLabel} đã được bên kia đồng ý đề nghị thay đổi.` },
+    { id: 'c-change-refused', kind: 'change_decided', phase: 'Đổi lịch / huỷ', title: 'Đề nghị thay đổi bị từ chối', body: `${customerLabel} đã bị bên kia từ chối đề nghị thay đổi.` },
+    { id: 'c-submitted', kind: 'work_submitted', phase: 'Nghiệm thu', title: 'Thợ đã gửi kết quả', body: `${customerLabel} đang chờ bạn nghiệm thu.` },
+    { id: 'c-completed', kind: 'job_completed', phase: 'Hoàn tất', title: 'Việc đã hoàn tất', body: `${customerLabel} đã hoàn tất.` },
+    { id: 'c-released-replaced', kind: 'job_released', phase: 'Recovery', title: 'Thợ đã rút khỏi việc', body: 'Thợ trước đã rút khỏi yêu cầu “Sửa vòi nước bồn rửa”. Một thợ khác đã nhận việc thay.' },
+    { id: 'c-released-invited', kind: 'job_released', phase: 'Recovery', title: 'Thợ đã rút khỏi việc', body: 'Thợ trước đã rút khỏi yêu cầu “Sửa vòi nước bồn rửa”. Hệ thống đã mời thợ khác; bạn sẽ được báo khi có thợ nhận.' },
+    { id: 'c-released-none', kind: 'job_released', phase: 'Recovery', title: 'Thợ đã rút khỏi việc', body: 'Thợ trước đã rút khỏi yêu cầu “Sửa vòi nước bồn rửa” và chưa có thợ khác phù hợp. Bạn có thể mời lại hoặc hủy trong Yêu cầu của tôi.' },
+    { id: 'c-resolved-proceed', kind: 'escalation_resolved', phase: 'Escalation', title: 'Sự cố đã được xử lý', body: 'Sự cố ở yêu cầu “Sửa vòi nước bồn rửa” đã được xem xét. Thợ sẽ tiếp tục công việc.' },
+    { id: 'c-resolved-closed', kind: 'escalation_resolved', phase: 'Escalation', title: 'Sự cố đã được xử lý', body: 'Sự cố ở yêu cầu “Sửa vòi nước bồn rửa” đã được xem xét và đóng, chưa cần xử lý thêm.' },
+    { id: 'c-resolved-replaced', kind: 'escalation_resolved', phase: 'Escalation', title: 'Sự cố đã được xử lý', body: 'Sự cố ở yêu cầu “Sửa vòi nước bồn rửa” đã được xem xét. Một thợ khác đã nhận việc thay.' },
+    { id: 'c-operator', kind: 'escalation_received', phase: 'Escalation (operator)', title: 'Có sự cố cần xem xét', body: 'Khách báo thợ đã đến nhưng chưa bắt đầu việc “Sửa vòi nước bồn rửa”. Mở Xử lý sự cố để xem xét.' },
   ],
   worker: [
-    { id: 'banner-offer', title: 'Có việc mới', body: 'Việc “Sửa ống thoát nước” ở Quận 3 đang chờ bạn phản hồi.' },
-    { id: 'banner-approved', title: 'Khách đã duyệt', body: 'Khách đã duyệt phần việc bạn nộp. Khoản thu sẽ được ghi vào thu nhập của bạn.' },
-    { id: 'banner-review', title: 'Đánh giá mới', body: 'Khách vừa đánh giá 5 sao cho việc “Lắp bóng đèn phòng khách”.' },
+    { id: 'w-offered', kind: 'job_offered', phase: 'Dispatch', title: 'Có việc mới', body: `${workerLabel} đang chờ bạn phản hồi.` },
+    { id: 'w-auto', kind: 'job_auto_accepted', phase: 'Nhận việc', title: 'Kael đã nhận việc giúp bạn', body: `${workerLabel} khớp hồ sơ của bạn nên Kael đã nhận. Bạn có thể xem trong Đã nhận việc.` },
+    { id: 'w-scope-ok', kind: 'scope_approved', phase: 'Đổi phạm vi', title: 'Khách đồng ý đổi phạm vi', body: `${workerLabel} có đề xuất phạm vi đã được khách đồng ý.` },
+    { id: 'w-scope-no', kind: 'scope_rejected', phase: 'Đổi phạm vi', title: 'Khách từ chối đổi phạm vi', body: `${workerLabel} có đề xuất phạm vi bị khách từ chối.` },
+    { id: 'w-resume', kind: 'resume_agreed', phase: 'Đổi phạm vi', title: 'Khách đồng ý làm tiếp', body: `${workerLabel} được khách đồng ý làm tiếp.` },
+    { id: 'w-change-asked', kind: 'change_requested', phase: 'Đổi lịch / huỷ', title: 'Có đề nghị huỷ việc', body: `${workerLabel} có đề nghị thay đổi đang chờ bạn phản hồi.` },
+    { id: 'w-change-agreed', kind: 'change_decided', phase: 'Đổi lịch / huỷ', title: 'Đề nghị thay đổi được đồng ý', body: `${workerLabel} đã được bên kia đồng ý đề nghị thay đổi.` },
+    { id: 'w-change-refused', kind: 'change_decided', phase: 'Đổi lịch / huỷ', title: 'Đề nghị thay đổi bị từ chối', body: `${workerLabel} đã bị bên kia từ chối đề nghị thay đổi.` },
+    { id: 'w-approved', kind: 'work_approved', phase: 'Nghiệm thu', title: 'Khách đã nghiệm thu', body: `${workerLabel} đã được khách nghiệm thu.` },
+    { id: 'w-revision', kind: 'revision_requested', phase: 'Nghiệm thu', title: 'Khách yêu cầu chỉnh sửa', body: `${workerLabel} cần chỉnh sửa theo ghi chú của khách.` },
+    { id: 'w-disputed', kind: 'work_disputed', phase: 'Nghiệm thu', title: 'Khách khiếu nại kết quả', body: `${workerLabel} đang có khiếu nại từ khách.` },
+    { id: 'w-review', kind: 'review_received', phase: 'Hoàn tất', title: 'Bạn có đánh giá mới', body: `${workerLabel} đã được khách đánh giá.` },
+    { id: 'w-withdrawn-customer', kind: 'job_withdrawn', phase: 'Recovery', title: 'Khách đã mời thợ khác', body: 'Khách đã mời thợ khác cho việc “Sửa ống thoát nước” vì chưa thấy bạn đến. Việc này không còn trong danh sách của bạn.' },
+    { id: 'w-escalated', kind: 'job_escalated', phase: 'Recovery', title: 'Khách báo chưa thấy bạn bắt đầu', body: 'Khách báo bạn đã đến nhưng chưa bắt đầu việc “Sửa ống thoát nước”. Hãy bắt đầu việc hoặc báo sự cố; yêu cầu đã được chuyển để xử lý.' },
+    { id: 'w-withdrawn-operator', kind: 'job_withdrawn', phase: 'Escalation', title: 'Việc đã được giao cho thợ khác', body: 'Sau khi xem xét báo cáo sự cố, việc “Sửa ống thoát nước” đã được giao cho thợ khác và không còn trong danh sách của bạn.' },
   ],
 };
