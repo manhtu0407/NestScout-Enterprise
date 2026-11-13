@@ -1,15 +1,17 @@
 import { horizonLayout } from '@/theme/layout';
 
+import type { NotificationKind } from '@/features/shared';
+
 import type { NotificationItem } from './content';
 
 const metrics = horizonLayout.notificationBanner;
 
-export type BannerNotice = { id: string; title: string; body: string; time: string };
+export type BannerNotice = { id: string; title: string; body: string; time: string; kind?: NotificationKind };
 export type ReleaseOutcome = 'open' | 'dismiss' | 'expand' | 'settle';
 export type Release = { offset: number; velocity: number; height: number; moved: boolean; expanded: boolean };
 
 export function noticeFromItem(item: NotificationItem): BannerNotice {
-  return { id: item.id, title: item.title, body: item.body, time: metrics.nowLabel };
+  return { id: item.id, title: item.title, body: item.body, time: metrics.nowLabel, ...(item.kind === undefined ? {} : { kind: item.kind }) };
 }
 
 export function surfaceNotice(seen: ReadonlySet<string> | null, items: readonly NotificationItem[]): { seen: ReadonlySet<string>; notice: BannerNotice | null } {

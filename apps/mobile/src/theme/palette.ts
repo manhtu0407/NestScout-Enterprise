@@ -93,7 +93,14 @@ export const horizonColors = {
     actionInk: '#0B0F14',
     primaryFill: '#0E9E8E',
     primaryInk: '#FFFFFF',
-    iconBackdrop: '#FFFFFF',
+  },
+  notificationGlyph: {
+    info: { ink: '#0A7F72', fill: '#BFEAE3' },
+    success: { ink: '#1E8449', fill: '#C4EBCF' },
+    attention: { ink: '#B25E00', fill: '#FFDDB0' },
+    critical: { ink: '#D1203F', fill: '#FFC9D2' },
+    delight: { ink: '#A86B00', fill: '#FFE59A' },
+    badgeSurface: '#FFFFFF',
   },
   kaelHomeScreen: {
     userBubbleBackgroundColor: '#D9F2EE',

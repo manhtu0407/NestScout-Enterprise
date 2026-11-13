@@ -78,9 +78,10 @@ export const horizonLayout = {
       fadeDistance: 0.6, pressScale: 1.04,
     },
     notificationBanner: {
-      inset: 8, minTop: 12, topGap: 6, radius: 26, paddingHorizontal: 14, paddingVertical: 12, gap: 12, fallbackHeight: 76, hiddenPadding: 24,
-      iconSize: 38, iconRadius: 9, titleSize: 15, titleLine: 20, titleWeight: '600', bodySize: 15, bodyLine: 20, timeSize: 13, timeLine: 20, copyGap: 1,
+      inset: 8, minTop: 12, topGap: 6, radius: 24, paddingHorizontal: 12, paddingVertical: 10, gap: 10, fallbackHeight: 62, hiddenPadding: 24,
+      titleSize: 15, titleLine: 18, titleWeight: '600', bodySize: 14, bodyLine: 18, timeSize: 12, timeLine: 18, copyGap: 2,
       collapsedLines: 2, expandedLines: 8, nowLabel: 'Bây giờ',
+      arrivalScale: 0.94, arrivalReach: 0.45,
       actionHeight: 44, actionGap: 8, actionTop: 12, actionRadius: 14, actionSize: 15, actionWeight: '600',
       autoDismiss: 5000,
       arrivalSpring: { damping: 33, stiffness: 439, mass: 1 },
@@ -89,6 +90,17 @@ export const horizonLayout = {
       pressSpring: { damping: 30, stiffness: 520, mass: 1 }, pressScale: 0.98, reducedDuration: 120,
       deceleration: 0.998, dismissVelocity: 300, dismissProjection: 0.5, expandVelocity: 250, expandPull: 56, tapSlop: 6,
       rubberDimension: 120, rubberConstant: 0.55, zIndex: 30,
+    },
+    notificationGlyph: {
+      size: 36, radius: 11, delay: 70, fade: 140, reducedDuration: 120,
+      face: { zoom: 1.4, anchorX: 0.5, anchorY: 0.45, centre: 0.5 },
+      badge: { size: 17, radius: 8.5, icon: 10, stroke: 2.6, offset: -4, border: 1.5, delay: 150, scaleFrom: 0.4 },
+      ring: { width: 1.5, scale: 1.45, duration: 560, peak: 0.5, peakAt: 0.2 },
+      springs: {
+        calm: { damping: 24, stiffness: 260, mass: 1 },
+        lively: { damping: 15, stiffness: 300, mass: 1 },
+        wobble: { damping: 9, stiffness: 700, mass: 1 },
+      },
     },
     horizonEntry: {
       placeholderPadding: 22,

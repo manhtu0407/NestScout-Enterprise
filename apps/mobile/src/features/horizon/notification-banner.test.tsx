@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import * as Haptics from 'expo-haptics';
 import { AccessibilityInfo } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -17,7 +18,17 @@ function banner(props: { notice: BannerNotice | null; onOpen?: (notice: BannerNo
   );
 }
 
-afterEach(() => jest.restoreAllMocks());
+jest.mock('expo-haptics', () => ({
+  impactAsync: jest.fn(() => Promise.resolve()),
+  notificationAsync: jest.fn(() => Promise.resolve()),
+  ImpactFeedbackStyle: { Light: 'light' },
+  NotificationFeedbackType: { Success: 'success', Warning: 'warning' },
+}));
+
+afterEach(() => {
+  jest.restoreAllMocks();
+  jest.clearAllMocks();
+});
 
 test('nothing renders without a notification', async () => {
   await render(banner({ notice: null }));
@@ -31,6 +42,21 @@ test('a notification shows its title, body and time and is announced to assistiv
   expect(screen.getByText('Yêu cầu “Sửa vòi nước” có báo giá mới.')).toBeTruthy();
   expect(screen.getByText('Bây giờ')).toBeTruthy();
   expect(announce).toHaveBeenCalledWith('Báo giá mới. Yêu cầu “Sửa vòi nước” có báo giá mới.');
+});
+
+test('good news arrives with a success haptic and plain news with a light tap', async () => {
+  await render(banner({ notice: { ...notice, kind: 'job_completed' } }));
+  await waitFor(() => expect(Haptics.notificationAsync).toHaveBeenCalledWith('success'));
+  expect(Haptics.impactAsync).not.toHaveBeenCalled();
+  jest.clearAllMocks();
+  await render(banner({ notice: { ...later, kind: 'quote_received' } }));
+  await waitFor(() => expect(Haptics.impactAsync).toHaveBeenCalledWith('light'));
+  expect(Haptics.notificationAsync).not.toHaveBeenCalled();
+});
+
+test('trouble arrives with a warning haptic', async () => {
+  await render(banner({ notice: { ...notice, kind: 'work_disputed' } }));
+  await waitFor(() => expect(Haptics.notificationAsync).toHaveBeenCalledWith('warning'));
 });
 
 test('the assistive activate action opens the notification', async () => {

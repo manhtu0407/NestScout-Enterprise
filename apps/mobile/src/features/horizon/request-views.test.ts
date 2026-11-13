@@ -135,8 +135,8 @@ function notification(overrides: Partial<CustomerNotification> = {}): CustomerNo
 
 test('notification items carry the request, unread state and icon', () => {
   const items = toNotificationItems([notification(), notification({ id: 'n2', kind: 'job_completed', read_at: hoursAgo(0), created_at: hoursAgo(40) })], now);
-  expect(items[0]).toMatchObject({ id: 'n1', icon: 'receipt', unread: true, requestId: 'r1', time: '1 giờ trước', today: true });
-  expect(items[1]).toMatchObject({ id: 'n2', icon: 'check', unread: false, today: false, time: 'Hôm qua' });
+  expect(items[0]).toMatchObject({ id: 'n1', icon: 'receipt', kind: 'quote_received', unread: true, requestId: 'r1', time: '1 giờ trước', today: true });
+  expect(items[1]).toMatchObject({ id: 'n2', icon: 'check', kind: 'job_completed', unread: false, today: false, time: 'Hôm qua' });
 });
 
 test('unread notifications are counted', () => {
