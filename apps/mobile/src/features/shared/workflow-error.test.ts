@@ -64,7 +64,7 @@ test.each([
   ['a state that moved on', '22023', 'invalid transition', 'rejected', /no longer available/],
   ['a worker at the active job limit', '40001', 'worker at capacity', 'capacity', /maximum number of active jobs/],
   ['a visit that overlaps another job', '40001', 'schedule conflict', 'capacity', /maximum number of active jobs/],
-  ['a reassignment asked too early', '22023', 'worker still has time', 'early', /too early to ask for another worker/],
+  ['a reassignment asked too early', '22023', 'worker still has time', 'early', /too early for this action/],
   ['a pending scope decision', '22023', 'scope decision pending', 'rejected', /no longer available/],
   ['a dispute hold', '22023', 'dispute hold', 'rejected', /no longer available/],
   ['a reused key', '22023', 'submission key conflict', 'rejected', /no longer available/],

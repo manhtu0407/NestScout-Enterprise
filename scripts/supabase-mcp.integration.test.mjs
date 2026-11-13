@@ -2297,6 +2297,20 @@ async function holdingRequestLock(db, request, seconds, contenders) {
   return Promise.all(running);
 }
 
+async function holdingJobLock(db, job, seconds, contenders) {
+  const key = barrierKey();
+  const holder = db.run(`begin; select id from public.service_jobs where id='${job}' for update; select pg_advisory_xact_lock(${barrierNamespace}, ${key}); select pg_sleep(${seconds}); commit;`);
+  await waitForRaceBarrier(db.query, key);
+  const running = [];
+  for (const contender of contenders) {
+    running.push(db.run(contender));
+    await pause(500);
+  }
+  const held = await holder;
+  assert.equal(held.code, 0);
+  return Promise.all(running);
+}
+
 function world(db, options) {
   const settings = JSON.parse(db.query('select row_to_json(s) from nestscout_private.auto_dispatch_settings s;').trim());
   const users = [];
@@ -2341,7 +2355,8 @@ function world(db, options) {
       try {
         const ids = list(requests);
         if (requests.length > 0) {
-          db.query(`delete from public.service_job_events where job_id in (select id from public.service_jobs where request_id in (${ids}));
+          db.query(`delete from public.service_job_escalations where request_id in (${ids});
+            delete from public.service_job_events where job_id in (select id from public.service_jobs where request_id in (${ids}));
             delete from public.service_jobs where request_id in (${ids});
             delete from public.service_job_releases where request_id in (${ids});
             delete from public.service_invitations where request_id in (${ids});
@@ -2620,6 +2635,106 @@ test('one worker with a single free slot can win only one of two simultaneous ac
         assert.match(loser.errors, /worker at capacity/);
         assert.equal(env.count(`select 1 from public.service_jobs where worker_id='${worker}'`), 1, 'Only one active job exists for the worker');
         raceOutcomes.push(`capacity_double_accept winner=${a.code === 0 ? 'first' : 'second'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+function stagedJob(db, env, customer, stages) {
+  const workerA = env.worker();
+  const workerB = env.worker();
+  const request = env.request(customer);
+  env.accept(customer, request);
+  const holder = env.invitation(request, workerA) ? workerA : workerB;
+  const invitation = env.invitation(request, holder);
+  db.query(asUser(holder, `select public.accept_service_invitation('${invitation}', '${request.quote}', 1);`));
+  const job = JSON.parse(db.query(`select row_to_json(j) from (select id from public.service_jobs where request_id='${request.id}') j;`).trim());
+  stages.forEach((stage, index) => {
+    db.query(asUser(holder, `select public.advance_service_job('${job.id}', ${index + 1}, '${stage}');`));
+    db.query(`update public.service_job_events set created_at = clock_timestamp() - interval '3 hours' where job_id='${job.id}' and event='${stage}';`);
+  });
+  return { request, holder, job };
+}
+
+test('replacing an en route worker and the worker arriving at once leave exactly one consistent outcome', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const reassignFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const { request, holder, job } = stagedJob(db, env, customer, ['en_route']);
+        const reassignSql = asUser(customer, `select 'RESULT:' || (public.request_service_reassignment('${request.id}', '${randomUUID()}') ->> 'outcome');`);
+        const arriveSql = asUser(holder, `select 'RESULT:' || public.advance_service_job('${job.id}', 2, 'arrived');`);
+        const outcomes = await holdingJobLock(db, job.id, 4, reassignFirst ? [reassignSql, arriveSql] : [arriveSql, reassignSql]);
+        const reassign = reassignFirst ? outcomes[0] : outcomes[1];
+        const arrive = reassignFirst ? outcomes[1] : outcomes[0];
+        assert.notEqual(reassign.code === 0, arrive.code === 0, 'Exactly one of the handover and the arrival may win');
+        if (reassign.code === 0) {
+          assert.match(arrive.errors, /job unavailable/);
+          assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}'`), 0);
+          assert.equal(env.count(`select 1 from public.service_job_releases where request_id='${request.id}' and stage='en_route'`), 1);
+          assert.equal(env.count(`select 1 from public.service_job_events where job_id='${job.id}'`), 0, 'No orphaned history remains');
+        } else {
+          assert.match(reassign.errors, /release not allowed at this stage/);
+          assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}' and stage='arrived'`), 1);
+          assert.equal(env.count(`select 1 from public.service_job_releases where request_id='${request.id}'`), 0, 'A worker who arrived is never released');
+        }
+        raceOutcomes.push(`reassign_vs_arrival first=${reassignFirst ? 'reassign' : 'arrive'} winner=${reassign.code === 0 ? 'reassign' : 'arrive'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+test('three simultaneous escalations of a worker on site record one report and tell the worker once', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    const env = world(db, { max_invites: 1 });
+    try {
+      const customer = env.customer();
+      const { request, job } = stagedJob(db, env, customer, ['en_route', 'arrived']);
+      const escalateSql = () => asUser(customer, `select 'RESULT:' || (public.escalate_service_job('${request.id}', '${randomUUID()}') ->> 'outcome');`);
+      const outcomes = await holdingRequestLock(db, request.id, 4, [escalateSql(), escalateSql(), escalateSql()]);
+      assert.ok(outcomes.every(outcome => outcome.code === 0));
+      const results = outcomes.map(outcome => result(outcome.output)).sort();
+      assert.deepEqual(results, ['already_escalated', 'already_escalated', 'escalated'], 'One escalation wins and the others report it');
+      assert.equal(env.count(`select 1 from public.service_job_escalations where job_id='${job.id}'`), 1);
+      assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='job_escalated'`), 1, 'The worker is told once');
+      assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='arrived'`), 1, 'The job is untouched');
+      raceOutcomes.push(`triple_escalation results=${results.join('+')}`);
+    } finally {
+      env.dispose();
+    }
+  });
+});
+
+test('an escalation and the worker starting the job at once never lose the job or duplicate the report', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const escalateFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const { request, holder, job } = stagedJob(db, env, customer, ['en_route', 'arrived']);
+        const escalateSql = asUser(customer, `select 'RESULT:' || (public.escalate_service_job('${request.id}', '${randomUUID()}') ->> 'outcome');`);
+        const startSql = asUser(holder, `select 'RESULT:' || public.advance_service_job('${job.id}', 3, 'working');`);
+        const outcomes = await holdingJobLock(db, job.id, 4, escalateFirst ? [escalateSql, startSql] : [startSql, escalateSql]);
+        const escalate = escalateFirst ? outcomes[0] : outcomes[1];
+        const start = escalateFirst ? outcomes[1] : outcomes[0];
+        assert.equal(start.code, 0, 'Starting the job always succeeds');
+        assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='working'`), 1, 'The job ends up working');
+        if (escalate.code === 0) {
+          assert.equal(result(escalate.output), 'escalated');
+          assert.equal(env.count(`select 1 from public.service_job_escalations where job_id='${job.id}'`), 1);
+        } else {
+          assert.match(escalate.errors, /escalation not allowed at this stage/);
+          assert.equal(env.count(`select 1 from public.service_job_escalations where job_id='${job.id}'`), 0);
+        }
+        raceOutcomes.push(`escalate_vs_start first=${escalateFirst ? 'escalate' : 'start'} escalation=${escalate.code === 0 ? 'recorded' : 'refused'}`);
       } finally {
         env.dispose();
       }

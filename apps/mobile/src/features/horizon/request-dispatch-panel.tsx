@@ -18,23 +18,29 @@ type Props = {
   canReclassify?: boolean;
   canReassign?: boolean;
   reassignAt?: string | null;
+  canEscalate?: boolean;
+  escalateAt?: string | null;
+  escalatedAt?: string | null;
   nextRetryAt?: string | null;
   retriesLeft?: number | null;
   onRetry: () => Promise<void | string>;
   onSetService?: (serviceId: DispatchServiceId) => Promise<void>;
   onCancel: () => Promise<void>;
   onReassign?: () => Promise<void>;
+  onEscalate?: () => Promise<void>;
 };
 
-export function RequestDispatchPanel({ title, canRetry, canCancel, canReclassify = false, canReassign = false, reassignAt = null, nextRetryAt = null, retriesLeft = null, onRetry, onSetService, onCancel, onReassign }: Props) {
+export function RequestDispatchPanel({ title, canRetry, canCancel, canReclassify = false, canReassign = false, reassignAt = null, canEscalate = false, escalateAt = null, escalatedAt = null, nextRetryAt = null, retriesLeft = null, onRetry, onSetService, onCancel, onReassign, onEscalate }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [reassigning, setReassigning] = useState(false);
+  const [escalating, setEscalating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const reassignWaiting = !canReassign && reassignAt !== null;
-  if (!canRetry && !canCancel && !canReclassify && !canReassign && !reassignWaiting && notice === null) return null;
+  const escalateWaiting = !canEscalate && escalatedAt === null && escalateAt !== null;
+  if (!canRetry && !canCancel && !canReclassify && !canReassign && !reassignWaiting && !canEscalate && !escalateWaiting && escalatedAt === null && notice === null) return null;
 
   const run = (action: () => Promise<void | string>) => {
     if (busy) return;
@@ -44,6 +50,7 @@ export function RequestDispatchPanel({ title, canRetry, canCancel, canReclassify
     action().then(result => {
       setConfirming(false);
       setReassigning(false);
+      setEscalating(false);
       if (typeof result === 'string') setNotice(result);
     }, (failure: unknown) => {
       setError(failure instanceof Error ? failure.message : 'Chưa gửi được thao tác.');
@@ -52,11 +59,19 @@ export function RequestDispatchPanel({ title, canRetry, canCancel, canReclassify
   };
 
   const reassignHint = reassignWaiting ? `Nếu thợ chưa đến, bạn có thể mời thợ khác sau ${clockLabel(reassignAt)}.` : null;
+  const escalateHint = escalateWaiting ? `Nếu thợ đã đến mà chưa bắt đầu, bạn có thể báo sự cố sau ${clockLabel(escalateAt)}.` : null;
+  const escalatedHint = escalatedAt !== null ? 'Bạn đã báo sự cố cho việc này. Thợ đã được báo và yêu cầu đang chờ xử lý.' : null;
   const waitHint = !canRetry && !canReclassify && nextRetryAt !== null ? `Bạn có thể mời thợ lại sau ${clockLabel(nextRetryAt)}.` : null;
   const budgetHint = canRetry && retriesLeft !== null ? `Còn ${retriesLeft} lượt mời lại.` : null;
 
   return <View style={styles.root}>
-    {reassigning && onReassign ? <>
+    {escalating && onEscalate ? <>
+      <Text style={styles.caption}>Báo sự cố? Thợ sẽ được báo rằng bạn chưa thấy việc bắt đầu và yêu cầu được chuyển để xử lý. Thợ vẫn giữ việc này, bạn không thể hoàn tác.</Text>
+      <SlideToConfirm key={attempt} label="Trượt để báo sự cố" accessibilityLabel={`Xác nhận báo sự cố cho yêu cầu ${title}`} disabled={busy} onConfirm={() => run(async () => { await onEscalate(); })} />
+      <PressScale accessibilityRole="button" accessibilityLabel="Chưa báo sự cố" accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => { setEscalating(false); setError(null); }} style={supportStyles.secondary}>
+        <Text style={supportStyles.secondaryLabel}>Chưa báo</Text>
+      </PressScale>
+    </> : reassigning && onReassign ? <>
       <Text style={styles.caption}>Mời thợ khác? Thợ hiện tại sẽ được báo là không còn việc này và hệ thống mời thợ mới. Bạn không thể hoàn tác.</Text>
       <SlideToConfirm key={attempt} label="Trượt để mời thợ khác" accessibilityLabel={`Xác nhận mời thợ khác cho yêu cầu ${title}`} disabled={busy} onConfirm={() => run(async () => { await onReassign(); })} />
       <PressScale accessibilityRole="button" accessibilityLabel="Giữ thợ hiện tại" accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => { setReassigning(false); setError(null); }} style={supportStyles.secondary}>
@@ -75,6 +90,12 @@ export function RequestDispatchPanel({ title, canRetry, canCancel, canReclassify
           <Text style={supportStyles.secondaryLabel}>Mời thợ khác</Text>
         </PressScale>
       </> : null}
+      {canEscalate && onEscalate ? <>
+        <Text style={styles.caption}>Thợ báo đã đến nhưng chưa bắt đầu việc?</Text>
+        <PressScale accessibilityRole="button" accessibilityLabel={`Báo sự cố cho ${title}`} accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => { setEscalating(true); setError(null); setNotice(null); }} style={supportStyles.secondary}>
+          <Text style={supportStyles.secondaryLabel}>Báo sự cố</Text>
+        </PressScale>
+      </> : null}
       {canReclassify && onSetService ? <>
         <Text style={styles.caption}>Chọn loại dịch vụ của yêu cầu này:</Text>
         {dispatchServiceIds.map(serviceId => (
@@ -90,6 +111,8 @@ export function RequestDispatchPanel({ title, canRetry, canCancel, canReclassify
       ) : null}
       {budgetHint !== null ? <Text style={styles.caption}>{budgetHint}</Text> : null}
       {reassignHint !== null ? <Text style={styles.caption}>{reassignHint}</Text> : null}
+      {escalateHint !== null ? <Text style={styles.caption}>{escalateHint}</Text> : null}
+      {escalatedHint !== null ? <Text accessibilityLiveRegion="polite" style={styles.caption}>{escalatedHint}</Text> : null}
       {waitHint !== null ? <Text style={styles.caption}>{waitHint}</Text> : null}
       {canCancel ? (
         <PressScale accessibilityRole="button" accessibilityLabel={`Hủy yêu cầu ${title}`} accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => { setConfirming(true); setError(null); setNotice(null); }} style={supportStyles.secondary}>

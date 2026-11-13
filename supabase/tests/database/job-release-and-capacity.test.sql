@@ -22,7 +22,7 @@ insert into public.worker_public_profiles (worker_id, display_name, trade, area,
 update nestscout_private.auto_dispatch_settings set enabled = true, max_invites = 1, max_rounds = 3, retry_cooldown_minutes = 5,
   max_manual_retries = 2, empty_retry_cooldown_seconds = 60, max_invites_per_worker = 2,
   reinvite_declined_after_minutes = 1440, reinvite_expired_after_minutes = 60, offer_minutes = 30,
-  max_active_jobs_per_worker = 2, visit_conflict_minutes = 120, reassign_idle_minutes = 120;
+  max_active_jobs_per_worker = 2, visit_conflict_minutes = 120;
 
 select ok(not has_function_privilege('authenticated', 'nestscout_private.release_job(uuid, uuid, text, text, text, uuid, integer)', 'execute'), 'Clients cannot call the release core');
 select ok(not has_function_privilege('authenticated', 'nestscout_private.worker_unavailable_reason(uuid, uuid)', 'execute'), 'Clients cannot probe worker capacity');

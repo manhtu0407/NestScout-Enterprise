@@ -51,6 +51,13 @@ test('a pending scope proposal blocks another proposal', () => {
   expect(view?.canPropose).toBe(false);
 });
 
+test('a worker paused before arriving can step back, but not after arriving or on a safety concern', () => {
+  const before = (jobId: string, category: Pause['category'], prior: Pause['prior_stage']): Pause => ({ ...pause(jobId, category), prior_stage: prior });
+  const pauses = [before('a', 'ordinary_interruption', 'assigned'), before('b', 'ordinary_interruption', 'en_route'), before('c', 'ordinary_interruption', 'arrived'), before('d', 'ordinary_interruption', 'working'), before('e', 'safety_concern', 'assigned')];
+  const views = toWorkerJobs({ ...empty, jobs: ['a', 'b', 'c', 'd', 'e'].map(id => job(id, 'paused')), pauses }, [], now);
+  expect(views.map(view => view.canRelease)).toEqual([true, true, false, false, false]);
+});
+
 test('paused jobs report whether the worker can ask to resume, is waiting or is blocked for safety', () => {
   const pauses = [pause('a', 'ordinary_interruption'), pause('b', 'ordinary_interruption', true), pause('c', 'safety_concern')];
   const views = toWorkerJobs({ ...empty, jobs: [job('a', 'paused'), job('b', 'paused'), job('c', 'paused')], pauses }, [], now);

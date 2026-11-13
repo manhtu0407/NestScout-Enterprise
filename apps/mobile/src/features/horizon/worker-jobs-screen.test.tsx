@@ -234,10 +234,25 @@ test('a refused acceptance resets the slider so the worker can try again', async
   await render(<WorkerJobsScreen initialStage="offer" jobs={offers} perform={perform} onBack={jest.fn()} />);
   const activate = { nativeEvent: { actionName: 'activate' } };
   await fireEvent(screen.getByLabelText(`Nhận việc ${offerJob}`), 'accessibilityAction', activate);
-  await fireEvent(screen.getByLabelText(`Nhận việc ${offerJob}`), 'accessibilityAction', activate);
   await waitFor(() => expect(screen.getByText(/nhận đủ số việc tối đa/)).toBeTruthy());
   await waitFor(() => expect(screen.getByLabelText(`Nhận việc ${offerJob}`).props.accessibilityState).toMatchObject({ busy: false }));
   await fireEvent(screen.getByLabelText(`Nhận việc ${offerJob}`), 'accessibilityAction', activate);
   await fireEvent(screen.getByLabelText(`Nhận việc ${offerJob}`), 'accessibilityAction', activate);
   await waitFor(() => expect(perform).toHaveBeenCalledTimes(2));
+});
+
+test('a worker paused before arriving can step back from the paused job', async () => {
+  const perform = jest.fn<ReturnType<WorkerPerform>, Parameters<WorkerPerform>>().mockResolvedValue('Đã rút khỏi việc này. Việc được mời cho thợ khác.');
+  const paused = sampleWorkerJobs.filter(job => job.id === 'job-a2').map(job => ({ ...job, canRelease: true }));
+  expect(paused).toHaveLength(1);
+  await render(<WorkerJobsScreen initialStage="active" jobs={paused} perform={perform} onBack={jest.fn()} />);
+  await fireEvent.press(screen.getByLabelText(`Rút khỏi việc ${pausedJob}`));
+  await fireEvent.press(screen.getByLabelText(`Rút khỏi việc vì lý do khác ${pausedJob}`));
+  await waitFor(() => expect(perform).toHaveBeenCalledWith('job-a2', expect.objectContaining({ type: 'release', reason: 'other' })));
+});
+
+test('a paused job that was already on site offers no way to step back', async () => {
+  const paused = sampleWorkerJobs.filter(job => job.id === 'job-a2');
+  await render(<WorkerJobsScreen initialStage="active" jobs={paused} perform={jest.fn()} onBack={jest.fn()} />);
+  expect(screen.queryByLabelText(`Rút khỏi việc ${pausedJob}`)).toBeNull();
 });

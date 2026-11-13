@@ -1,4 +1,4 @@
-import { cancelRequest, readDispatchSummaries, requestReassignment, retryDispatchRequest, setRequestService } from './dispatch-repository';
+import { cancelRequest, escalateJob, readDispatchSummaries, requestReassignment, retryDispatchRequest, setRequestService } from './dispatch-repository';
 import { WorkflowError } from './workflow-error';
 
 const mockGetSession = jest.fn();
@@ -13,7 +13,7 @@ const second = '22222222-2222-4222-8222-222222222222';
 const signal = new AbortController().signal;
 
 function row(overrides: Record<string, unknown> = {}) {
-  return { request_id: first, state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true, can_cancel: true, can_reclassify: false, next_retry_at: null, retries_left: 2, last_outcome: 'no_eligible_worker', can_reassign: false, reassign_at: null, ...overrides };
+  return { request_id: first, state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true, can_cancel: true, can_reclassify: false, next_retry_at: null, retries_left: 2, last_outcome: 'no_eligible_worker', can_reassign: false, reassign_at: null, job_stage: null, can_escalate: false, escalate_at: null, escalated_at: null, ...overrides };
 }
 
 function respond(body: unknown, ok = true, status = 200) {
@@ -34,7 +34,7 @@ test('no identifiers means no request', async () => {
 test('summaries are read through the owner scoped function and mapped', async () => {
   respond([row({ state: 'searching', open_invites: 2, earliest_expiry: '2026-11-12T10:30:00.000Z', can_retry: false })]);
   await expect(readDispatchSummaries('customer-a', [first], signal)).resolves.toEqual([
-    { requestId: first, state: 'searching', openInvites: 2, earliestExpiry: '2026-11-12T10:30:00.000Z', rounds: 1, canRetry: false, canCancel: true, canReclassify: false, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'no_eligible_worker', canReassign: false, reassignAt: null },
+    { requestId: first, state: 'searching', openInvites: 2, earliestExpiry: '2026-11-12T10:30:00.000Z', rounds: 1, canRetry: false, canCancel: true, canReclassify: false, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'no_eligible_worker', canReassign: false, reassignAt: null, jobStage: null, canEscalate: false, escalateAt: null, escalatedAt: null },
   ]);
   expect(global.fetch).toHaveBeenCalledWith(
     'http://127.0.0.1:54321/rest/v1/rpc/get_dispatch_summary',
@@ -73,6 +73,10 @@ test.each([
   ['a negative retry budget', row({ retries_left: -1 })],
   ['a non boolean reassign flag', row({ can_reassign: 'yes' })],
   ['a reassign time that is not a date', row({ reassign_at: 'soon' })],
+  ['a non boolean escalate flag', row({ can_escalate: 'yes' })],
+  ['an escalate time that is not a date', row({ escalate_at: 'soon' })],
+  ['an escalated time that is not a date', row({ escalated_at: 'soon' })],
+  ['an unknown job stage', row({ job_stage: 'teleporting' })],
   ['a retry time that is not a date', row({ next_retry_at: 'soon' })],
   ['a row that is not an object', null],
 ])('%s is rejected', async (_name, bad) => {
@@ -183,4 +187,36 @@ test('a reassignment sends one idempotency key and accepts only a release outcom
 test('a reassignment asked before the worker had time is a definitive early refusal', async () => {
   respond({ code: '22023', message: 'worker still has time' }, false, 400);
   await expect(requestReassignment('customer-a', first, signal)).rejects.toMatchObject({ failure: 'early' });
+});
+
+test('a job on site reads its escalation window and recorded escalation', async () => {
+  respond([row({ state: 'assigned', can_retry: false, can_cancel: false, job_stage: 'arrived', can_escalate: true, escalate_at: '2026-11-12T10:30:00.000Z', escalated_at: null })]);
+  await expect(readDispatchSummaries('customer-a', [first], signal)).resolves.toMatchObject([{ jobStage: 'arrived', canReassign: false, canEscalate: true, escalateAt: '2026-11-12T10:30:00.000Z', escalatedAt: null }]);
+  respond([row({ state: 'assigned', can_retry: false, can_cancel: false, job_stage: 'arrived', escalated_at: '2026-11-12T11:00:00.000Z' })]);
+  await expect(readDispatchSummaries('customer-a', [first], signal)).resolves.toMatchObject([{ canEscalate: false, escalatedAt: '2026-11-12T11:00:00.000Z' }]);
+});
+
+test('an escalation sends one idempotency key and accepts only an escalation outcome', async () => {
+  respond({ outcome: 'escalated' });
+  await expect(escalateJob('customer-a', first, signal)).resolves.toBeUndefined();
+  expect(global.fetch).toHaveBeenCalledWith(
+    'http://127.0.0.1:54321/rest/v1/rpc/escalate_service_job',
+    expect.objectContaining({ method: 'POST', body: JSON.stringify({ p_request_id: first, p_key: '33333333-3333-4333-8333-333333333333' }) }),
+  );
+  respond({ outcome: 'already_escalated' });
+  await expect(escalateJob('customer-a', first, signal)).resolves.toBeUndefined();
+  respond({ outcome: 'released' });
+  await expect(escalateJob('customer-a', first, signal)).rejects.toThrow('Invalid escalation response');
+  respond(7);
+  await expect(escalateJob('customer-a', first, signal)).rejects.toThrow('Invalid escalation response');
+});
+
+test('an escalation asked before the arrival window ends is a definitive early refusal', async () => {
+  respond({ code: '22023', message: 'worker still has time' }, false, 400);
+  await expect(escalateJob('customer-a', first, signal)).rejects.toMatchObject({ failure: 'early' });
+});
+
+test('an escalation for a job that already moved on is a definitive rejection', async () => {
+  respond({ code: '22023', message: 'escalation not allowed at this stage' }, false, 400);
+  await expect(escalateJob('customer-a', first, signal)).rejects.toMatchObject({ failure: 'rejected' });
 });

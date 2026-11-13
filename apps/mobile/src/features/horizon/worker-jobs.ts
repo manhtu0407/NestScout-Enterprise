@@ -20,6 +20,7 @@ export type WorkerJob = {
   step?: number;
   pause?: WorkerJobPause;
   delayReported?: boolean;
+  canRelease?: boolean;
   correctionNote?: string;
   canPropose?: boolean;
   preferredVisitLabel?: string;

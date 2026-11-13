@@ -160,6 +160,13 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
           throw new Error(workflowMessage(error));
         }
       }}
+      onEscalate={async request => {
+        try {
+          await customer.escalateRequest(request.id);
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+      }}
       onCancelRequest={async request => {
         try {
           await customer.cancelServiceRequest(request.id);

@@ -326,6 +326,7 @@ function JobActions({ job, actions }: { job: WorkerJob; actions: Actions }) {
         return (
           <View style={styles.actions}>
             <ActionButton disabled={busy} label="Xin làm tiếp" accessibilityLabel={`Xin làm tiếp ${title}`} onPress={actions.onResume} />
+            {job.canRelease === true ? <ActionButton secondary disabled={busy} label="Rút khỏi việc" accessibilityLabel={`Rút khỏi việc ${title}`} onPress={() => actions.onOpen('release')} /> : null}
           </View>
         );
       }
@@ -334,6 +335,7 @@ function JobActions({ job, actions }: { job: WorkerJob; actions: Actions }) {
         return (
           <View style={styles.actions}>
             <ActionButton disabled label={label} accessibilityLabel={`${label} ${title}`} onPress={actions.onResume} />
+            {job.canRelease === true ? <ActionButton secondary disabled={busy} label="Rút khỏi việc" accessibilityLabel={`Rút khỏi việc ${title}`} onPress={() => actions.onOpen('release')} /> : null}
           </View>
         );
       }

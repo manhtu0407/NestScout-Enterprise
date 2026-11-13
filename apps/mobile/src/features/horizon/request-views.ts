@@ -16,7 +16,7 @@ export type RequestProgress = {
   nextAction: string;
   quoteCount: number;
   closed?: 'cancelled';
-  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; nextRetryAt?: string | null; retriesLeft?: number };
+  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; canEscalate?: boolean; escalateAt?: string | null; escalatedAt?: string | null; nextRetryAt?: string | null; retriesLeft?: number };
 };
 
 const jobStatus: Record<string, { status: string; nextAction: string }> = {
@@ -106,8 +106,12 @@ export function deriveRequestProgress(quotes: readonly ServiceQuote[], job: Cust
   if (job) {
     const copy = jobStatus[job.stage] ?? { status: 'Đang xử lý', nextAction: 'Hệ thống đang cập nhật tiến trình.' };
     const step = job.stage === 'completed' ? workflowSteps.length : job.stage === 'submitted' ? 5 : 4;
-    const reassignable = summary !== undefined && summary.state === 'assigned' && (summary.canReassign || summary.reassignAt !== null);
-    const dispatch = reassignable ? { canRetry: false, canCancel: false, canReassign: summary.canReassign, reassignAt: summary.reassignAt } : undefined;
+    const recoverable = summary !== undefined && summary.state === 'assigned'
+      && (summary.canReassign || summary.reassignAt !== null || summary.canEscalate || summary.escalateAt !== null || summary.escalatedAt !== null);
+    const dispatch = recoverable ? {
+      canRetry: false, canCancel: false, canReassign: summary.canReassign, reassignAt: summary.reassignAt,
+      canEscalate: summary.canEscalate, escalateAt: summary.escalateAt, escalatedAt: summary.escalatedAt,
+    } : undefined;
     return { step, stage: stageFor(step), quoteCount: 0, ...(dispatch ? { dispatch } : {}), ...copy };
   }
   if (summary?.state === 'cancelled') {

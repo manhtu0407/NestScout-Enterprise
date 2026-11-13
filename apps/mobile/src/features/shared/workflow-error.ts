@@ -63,7 +63,7 @@ const definitive: Record<Exclude<WorkflowFailure, 'unknown'>, string> = {
   expired: 'This agreement has expired. Refresh to see whether a new one is available.',
   unavailable: 'This offer is no longer available. Refresh to see the current offers.',
   capacity: 'You already have the maximum number of active jobs, or this visit overlaps another job. Finish or release a job first.',
-  early: 'It is too early to ask for another worker. Please wait until the worker has had time to arrive.',
+  early: 'It is too early for this action. Please wait until the worker has had time to arrive or start the job.',
   invalid: 'Some of the details were not accepted. Check them and try again.',
   rejected: 'This step is no longer available. Refresh to see the current state.',
 };

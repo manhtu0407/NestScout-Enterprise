@@ -89,6 +89,7 @@ function jobView(job: Job, card: WorkerJobCard | undefined, snapshot: WorkerSnap
         stage: 'active',
         stageLabel: stamped ? `Tạm dừng ${stamped.toLocaleLowerCase('vi')}` : 'Đang tạm dừng',
         pause: pause?.category === 'safety_concern' ? 'safety' : pause?.resume_requested ? 'resume' : 'paused',
+        canRelease: pause?.category === 'ordinary_interruption' && (pause.prior_stage === 'assigned' || pause.prior_stage === 'en_route'),
       };
     case 'working':
       stage = correction ? 'review' : 'active';

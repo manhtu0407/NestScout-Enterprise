@@ -25,7 +25,7 @@ const empty: CustomerData = {
 function controller(overrides: Partial<CustomerDataController> = {}): CustomerDataController {
   return {
     data: empty, status: 'ready', loaded: true, refresh: jest.fn(), togglePin: jest.fn(), decideQuote: jest.fn(),
-    markRead: jest.fn(), saveProfile: jest.fn(), removeSavedWorker: jest.fn(), saveSettings: jest.fn(), clearChatHistory: jest.fn(), changeAvatar: jest.fn(), clearAvatar: jest.fn(), setWorkerSaved: jest.fn(), reviewJob: jest.fn(), retryDispatch: jest.fn(), reassignRequest: jest.fn(), classifyRequest: jest.fn(), cancelServiceRequest: jest.fn(), ...overrides,
+    markRead: jest.fn(), saveProfile: jest.fn(), removeSavedWorker: jest.fn(), saveSettings: jest.fn(), clearChatHistory: jest.fn(), changeAvatar: jest.fn(), clearAvatar: jest.fn(), setWorkerSaved: jest.fn(), reviewJob: jest.fn(), retryDispatch: jest.fn(), reassignRequest: jest.fn(), escalateRequest: jest.fn(), classifyRequest: jest.fn(), cancelServiceRequest: jest.fn(), ...overrides,
   };
 }
 
@@ -276,7 +276,7 @@ test('AI data sharing is a separate explicit privacy choice', async () => {
 });
 
 const acceptedQuote = { id: 'q1', request_id: 'r1', version: 1, scope: 'Thay vòi', amount_minor: 250000, currency: 'VND' as const, expires_at: '2099-01-01T00:00:00.000Z', basis: 'local_fixture', accepted_at: '2026-11-12T08:00:00.000Z', rejected_at: null };
-const exhausted: DispatchSummary = { requestId: 'r1', state: 'exhausted', openInvites: 0, earliestExpiry: null, rounds: 3, canRetry: true, canCancel: true, canReclassify: false, canReassign: false, reassignAt: null, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'invited' };
+const exhausted: DispatchSummary = { requestId: 'r1', state: 'exhausted', openInvites: 0, earliestExpiry: null, rounds: 3, canRetry: true, canCancel: true, canReclassify: false, canReassign: false, reassignAt: null, jobStage: null, canEscalate: false, escalateAt: null, escalatedAt: null, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'invited' };
 const activate = { nativeEvent: { actionName: 'activate' } };
 
 function dispatchController(overrides: Partial<CustomerDataController> = {}) {
@@ -373,4 +373,38 @@ test('a cancelled request moves to the finished tab with a cancelled status', as
   expect(screen.getByText('Đã hủy yêu cầu')).toBeTruthy();
   expect(screen.getByText('Đã hủy')).toBeTruthy();
   expect(screen.queryByLabelText('Mời thợ lại cho Sửa vòi nước')).toBeNull();
+});
+
+const onSite: DispatchSummary = { ...exhausted, state: 'assigned', canRetry: false, canCancel: false, jobStage: 'arrived', canEscalate: true, escalateAt: '2026-11-12T08:30:00.000Z' };
+
+test('a worker on site without starting can be escalated only after a deliberate slide and never replaced', async () => {
+  const escalateRequest = jest.fn().mockResolvedValue(undefined);
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], activity: { ...empty.activity, jobs: [{ id: 'j1', request_id: 'r1', stage: 'arrived', version: 3 }] }, dispatch: new Map([['r1', onSite]]) }, escalateRequest }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đang làm/ }));
+  expect(screen.queryByLabelText('Mời thợ khác cho Sửa vòi nước')).toBeNull();
+  await fireEvent.press(screen.getByLabelText('Báo sự cố cho Sửa vòi nước'));
+  expect(escalateRequest).not.toHaveBeenCalled();
+  const slider = screen.getByLabelText('Xác nhận báo sự cố cho yêu cầu Sửa vòi nước');
+  await fireEvent(slider, 'accessibilityAction', activate);
+  await fireEvent(slider, 'accessibilityAction', activate);
+  await waitFor(() => expect(escalateRequest).toHaveBeenCalledWith('r1'));
+});
+
+test('a worker on site inside the arrival window shows when escalation opens and no button', async () => {
+  const waiting: DispatchSummary = { ...onSite, canEscalate: false };
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], activity: { ...empty.activity, jobs: [{ id: 'j1', request_id: 'r1', stage: 'arrived', version: 3 }] }, dispatch: new Map([['r1', waiting]]) } }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đang làm/ }));
+  expect(screen.getByText(/bạn có thể báo sự cố sau/)).toBeTruthy();
+  expect(screen.queryByLabelText('Báo sự cố cho Sửa vòi nước')).toBeNull();
+});
+
+test('an escalated job says it was reported and offers no second report', async () => {
+  const escalated: DispatchSummary = { ...onSite, canEscalate: false, escalateAt: null, escalatedAt: '2026-11-12T09:00:00.000Z' };
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], activity: { ...empty.activity, jobs: [{ id: 'j1', request_id: 'r1', stage: 'arrived', version: 3 }] }, dispatch: new Map([['r1', escalated]]) } }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đang làm/ }));
+  expect(screen.getByText(/Bạn đã báo sự cố cho việc này/)).toBeTruthy();
+  expect(screen.queryByLabelText('Báo sự cố cho Sửa vòi nước')).toBeNull();
 });

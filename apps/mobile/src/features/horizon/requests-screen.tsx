@@ -40,7 +40,7 @@ export type ServiceRequest = {
   preferredVisitAt?: string | null;
   pendingSubmission?: { id: string; evidence: string; jobVersion: number };
   closed?: 'cancelled';
-  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; nextRetryAt?: string | null; retriesLeft?: number };
+  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; canEscalate?: boolean; escalateAt?: string | null; escalatedAt?: string | null; nextRetryAt?: string | null; retriesLeft?: number };
 };
 
 export const workflowSteps: readonly string[] = ['Đã gửi', 'Có báo giá', 'Chấp nhận', 'Ghép thợ', 'Thực hiện', 'Nghiệm thu'];
@@ -64,11 +64,12 @@ type Props = {
   onSetRequestService?: (request: ServiceRequest, serviceId: DispatchServiceId) => Promise<void>;
   onCancelRequest?: (request: ServiceRequest) => Promise<void>;
   onReassign?: (request: ServiceRequest) => Promise<void>;
+  onEscalate?: (request: ServiceRequest) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
   focusId?: string;
 };
 
-function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, onReassign, jobChanges }: CardProps) {
+function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, onReassign, onEscalate, jobChanges }: CardProps) {
   const finished = request.step >= workflowSteps.length;
   const caption = request.closed === 'cancelled' ? 'Đã hủy' : finished ? `Đủ ${workflowSteps.length}/${workflowSteps.length} bước` : `Bước ${request.step + 1}/${workflowSteps.length} · ${workflowSteps[request.step]}`;
   const needsYou = Boolean(request.quoteCount);
@@ -124,12 +125,16 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onS
           canReclassify={request.dispatch.canReclassify === true && onSetRequestService !== undefined}
           canReassign={request.dispatch.canReassign === true && onReassign !== undefined}
           reassignAt={request.dispatch.reassignAt ?? null}
+          canEscalate={request.dispatch.canEscalate === true && onEscalate !== undefined}
+          escalateAt={request.dispatch.escalateAt ?? null}
+          escalatedAt={request.dispatch.escalatedAt ?? null}
           nextRetryAt={request.dispatch.nextRetryAt ?? null}
           retriesLeft={request.dispatch.retriesLeft ?? null}
           onRetry={() => onRetryDispatch(request)}
           onSetService={serviceId => onSetRequestService ? onSetRequestService(request, serviceId) : Promise.resolve()}
           onCancel={() => onCancelRequest(request)}
           onReassign={() => onReassign ? onReassign(request) : Promise.resolve()}
+          onEscalate={() => onEscalate ? onEscalate(request) : Promise.resolve()}
         />
       ) : null}
       {expanded ? (
@@ -218,10 +223,11 @@ type CardProps = {
   onSetRequestService?: (request: ServiceRequest, serviceId: DispatchServiceId) => Promise<void>;
   onCancelRequest?: (request: ServiceRequest) => Promise<void>;
   onReassign?: (request: ServiceRequest) => Promise<void>;
+  onEscalate?: (request: ServiceRequest) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
 };
 
-export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, onReassign, jobChanges, focusId }: Props) {
+export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, onReassign, onEscalate, jobChanges, focusId }: Props) {
   const focused = requests.find(request => request.id === focusId);
   const [expandedIds, setExpandedIds] = useState<readonly string[]>(focused ? [focused.id] : []);
   const { reduceMotion } = useGlassAccessibility();
@@ -308,6 +314,7 @@ export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael,
               onSetRequestService={onSetRequestService}
               onCancelRequest={onCancelRequest}
               onReassign={onReassign}
+              onEscalate={onEscalate}
               jobChanges={jobChanges}
             />
           ))

@@ -462,16 +462,37 @@ with its events and reports as jsonb, then the job is deleted, so every reader o
 `service_jobs` keeps working unchanged. `release_service_job` (worker) is allowed
 only while the job is `assigned` or `en_route`; after arrival the worker has no
 exit and the case belongs to support or a dispute. `request_service_reassignment`
-(customer) is allowed only while the job is still `assigned`, after
-`reassign_idle_minutes` (default 120) from the later of the job's creation and
-the preferred visit time, and refuses with `worker still has time` before then.
-Both are idempotent on a key and refuse a stale job version. A release keeps the
+(customer) follows `nestscout_private.job_recovery`, which derives the action and
+the moment it becomes available from the job's own stage, not from a single
+inactivity clock:
+
+| Stage | Customer action | Available from |
+| --- | --- | --- |
+| `assigned` | `reassign` | the later of the job's creation (or last resume) and the preferred visit, plus `visit_grace_minutes` (default 30); without a visit time, creation plus `assigned_response_minutes` (default 120) |
+| `en_route` | `reassign` | `en_route_arrival_minutes` (default 120) after the worker started travelling, and not before the visit time plus `visit_grace_minutes` |
+| `paused` before arrival (ordinary interruption only) | `reassign` | `assigned_response_minutes` after the pause began, and not before the visit grace |
+| `arrived` | `escalate` | `arrival_escalation_minutes` (default 60) after arrival |
+| `working`, `submitted`, `completed`, safety or dispute pauses | none | not applicable |
+
+Before the moment, `request_service_reassignment` refuses with `worker still has
+time`; at any stage whose action is not `reassign` it refuses with `release not
+allowed at this stage`. Release is blocked only by work that cannot be archived
+safely: a pending change request, a pending scope change, a submission, a
+support case or a review. Events, reports, pauses and change requests of the
+released job are archived with it. After arrival the customer never replaces the
+worker automatically. `escalate_service_job` records one report per job
+(`service_job_escalations`), notifies the worker with `job_escalated`, leaves the
+job and its stage untouched and is idempotent on a key; a second call reports
+`already_escalated`. The report is a signal for an operator: no operator console
+reads it yet. All four timers are global settings in
+`nestscout_private.auto_dispatch_settings`. Both release paths are idempotent on
+a key and refuse a stale job version. A release keeps the
 releasing worker's invitation as accepted, so that worker is not invited again,
 opens a `worker_released` dispatch round that ignores the automatic round cap and
 the manual retry budget (a handover is not a customer retry), and notifies the
 other side (`job_released` to the customer, `job_withdrawn` to the worker).
-`get_dispatch_summary` reports `can_reassign` and `reassign_at` for an assigned
-request. Kael does not read them and has no reassignment effect: handing a
+`get_dispatch_summary` reports `job_stage`, `can_reassign`, `reassign_at`,
+`can_escalate`, `escalate_at` and `escalated_at` for an assigned request. Kael does not read them and has no reassignment effect: handing a
 request to another worker is a customer decision in the Requests screen, behind
 a slide to confirm.
 
