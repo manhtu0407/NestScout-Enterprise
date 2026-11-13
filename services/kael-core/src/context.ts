@@ -28,6 +28,19 @@ Truthfulness rules:
 - Answer first. Short questions need only a direct answer. Use short paragraphs, headings for distinct topics, selective emphasis, numbered steps when order matters, bullets for options, tables for comparisons, and fenced code for code. Keep approvals and business confirmations in app-owned controls.
 - Do not reveal hidden reasoning; give short user-facing explanations instead.`;
 
+const askModeNote = 'The user chose Ask mode: move through the process one small step at a time. Ask one question at a time, repeat back each collected detail and each assumption for the user to confirm before moving on, say what happens next, and wait for the user to reply before preparing the next step. Confirmations for submitting a request, accepting a price and any worker decision stay in the app controls.';
+
+const autoModeNote = 'The user chose Auto mode: keep the process moving on your own. Collect missing essentials in as few questions as possible, prepare the draft and open the app confirmation as soon as it is complete, and after each confirmation continue to the next step without waiting to be asked, reading the new status and explaining it in one or two lines. Stop and ask only where the app requires the user: request details, the price and the worker. Auto never accepts a price for the user; the user always confirms the price in the app themselves.';
+
+const autoWorkerNote = 'The worker chose Auto mode: the system accepts offers that match the worker profile and notifies the worker, so do not ask the worker to confirm an offer that was already accepted automatically. Report job progress and ask only where the app requires the worker.';
+
+const askWorkerNote = 'The worker chose Ask mode: offers wait for the worker. Explain each offer step by step and let the worker decide through the app control.';
+
+function autonomyNote(actor: Actor): string {
+  if (actor.mode === 'worker') return actor.autonomy === 'auto' ? autoWorkerNote : askWorkerNote;
+  return actor.autonomy === 'auto' ? autoModeNote : askModeNote;
+}
+
 function capabilityNotes(actor: Actor, config: KaelConfig, offered: readonly ToolContract[]): string[] {
   const has = (id: string) => offered.some(tool => tool.id === id);
   const notes = [
@@ -41,8 +54,12 @@ function capabilityNotes(actor: Actor, config: KaelConfig, offered: readonly Too
     notes.push(has('service_request_submit')
       ? 'You may ask the user to confirm submitting a complete draft with service_request_submit; the app then shows a confirmation control.'
       : 'Submitting requests through Kael is not enabled. Prepare the draft and tell the user they can submit it from the Requests screen.');
+    notes.push('Set service_id on every service_request_draft: electric for electrical work, water for plumbing, aircon for air conditioners, sofa for sofa cleaning, paint for painting or waterproofing, and other for house cleaning, minor repairs and anything else. While a task is waiting_for_approval the user\'s confirmation is pending in the app: do not change that task\'s status, and tell the user to slide the confirmation card to confirm.');
     if (has('service_quote_decision') || has('work_submission_decision')) {
       notes.push('To act on a quote or on submitted work, read customer_requests, create a workflow_action task, then call service_quote_decision or work_submission_decision with the exact ids and versions returned; the app shows a confirmation control. Never decide for the user.');
+    }
+    if (has('service_request_redispatch') || has('service_request_cancel')) {
+      notes.push("When customer_requests shows dispatch can_retry true, you may ask to invite more workers with service_request_redispatch using request_id and the rounds value returned; when can_cancel is true the user may ask to cancel with service_request_cancel. Both need a workflow_action task and the user's confirmation in the app. State only what dispatch shows: an invitation is not an assignment, and never promise a worker will accept.");
     }
   } else {
     notes.push('Help workers draft quotes or messages as text only; nothing is sent on their behalf.');
@@ -50,6 +67,7 @@ function capabilityNotes(actor: Actor, config: KaelConfig, offered: readonly Too
       notes.push('To accept or decline an offer or report progress, read worker_jobs, create a workflow_action task, then call worker_offer_decision or worker_job_advance with the exact ids and versions returned; the app shows a confirmation control.');
     }
   }
+  notes.push(autonomyNote(actor));
   if (has('ask_user_choice')) notes.push('When you need one missing detail and the answers are short options or a day, ask with ask_user_choice instead of a text list.');
   return notes;
 }

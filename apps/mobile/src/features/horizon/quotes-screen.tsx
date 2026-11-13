@@ -131,7 +131,7 @@ function QuoteCard({ entry, confirming, busy, failure, onReview, onCancelReview,
       {status === 'accepted' ? (
         <View style={styles.resultBlock}>
           <Badge label="Đã chấp nhận" tone="success" dot />
-          <Text style={styles.changeNote}>Chưa thu tiền và chưa có thợ được giao. Bước ghép thợ sẽ làm sau.</Text>
+          <Text style={styles.changeNote}>Chưa thu tiền. Sau khi bạn chấp nhận, Kael sẽ tìm thợ phù hợp và báo khi có thợ nhận việc.</Text>
         </View>
       ) : null}
       {status === 'rejected' ? (
@@ -157,7 +157,7 @@ function QuoteCard({ entry, confirming, busy, failure, onReview, onCancelReview,
           <Text style={styles.consentTitle}>Trước khi chấp nhận</Text>
           <Text style={styles.consentLine}>• Bạn đồng ý với phạm vi và số tiền {amount} ở trên.</Text>
           <Text style={styles.consentLine}>• Chấp nhận chưa thu tiền. Thanh toán chưa được kết nối.</Text>
-          <Text style={styles.consentLine}>• Chưa có thợ được giao. Bước ghép thợ sẽ làm sau.</Text>
+          <Text style={styles.consentLine}>• Chưa có thợ được giao. Sau khi chấp nhận, Kael sẽ tìm thợ phù hợp và báo khi có thợ nhận việc.</Text>
           <SlideToConfirm label="Trượt để chấp nhận" accessibilityLabel={`Xác nhận chấp nhận báo giá ${amount}`} disabled={busy} onConfirm={() => onDecide(quote.id, 'accepted')} />
           <PressScale accessibilityRole="button" accessibilityLabel="Quay lại, chưa chấp nhận" accessibilityState={{ disabled: busy }} disabled={busy} onPress={onCancelReview} style={supportStyles.secondary}>
             <Text style={supportStyles.secondaryLabel}>Quay lại</Text>

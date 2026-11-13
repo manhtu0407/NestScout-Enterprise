@@ -51,6 +51,13 @@ test('a pending scope proposal blocks another proposal', () => {
   expect(view?.canPropose).toBe(false);
 });
 
+test('a worker paused before arriving can step back, but not after arriving or on a safety concern', () => {
+  const before = (jobId: string, category: Pause['category'], prior: Pause['prior_stage']): Pause => ({ ...pause(jobId, category), prior_stage: prior });
+  const pauses = [before('a', 'ordinary_interruption', 'assigned'), before('b', 'ordinary_interruption', 'en_route'), before('c', 'ordinary_interruption', 'arrived'), before('d', 'ordinary_interruption', 'working'), before('e', 'safety_concern', 'assigned')];
+  const views = toWorkerJobs({ ...empty, jobs: ['a', 'b', 'c', 'd', 'e'].map(id => job(id, 'paused')), pauses }, [], now);
+  expect(views.map(view => view.canRelease)).toEqual([true, true, false, false, false]);
+});
+
 test('paused jobs report whether the worker can ask to resume, is waiting or is blocked for safety', () => {
   const pauses = [pause('a', 'ordinary_interruption'), pause('b', 'ordinary_interruption', true), pause('c', 'safety_concern')];
   const views = toWorkerJobs({ ...empty, jobs: [job('a', 'paused'), job('b', 'paused'), job('c', 'paused')], pauses }, [], now);
@@ -124,9 +131,9 @@ test('worker notifications point at the tab where the news can be acted on', () 
   const items = toWorkerNotificationItems([
     { ...base, id: 'a', kind: 'job_offered' }, { ...base, id: 'b', kind: 'work_approved' }, { ...base, id: 'c', kind: 'revision_requested' },
     { ...base, id: 'd', kind: 'work_disputed' }, { ...base, id: 'e', kind: 'scope_approved' }, { ...base, id: 'f', kind: 'scope_rejected' },
-    { ...base, id: 'g', kind: 'resume_agreed' }, { ...base, id: 'h', kind: 'review_received' },
+    { ...base, id: 'g', kind: 'resume_agreed' }, { ...base, id: 'h', kind: 'review_received' }, { ...base, id: 'i', kind: 'job_auto_accepted' },
   ], now);
-  expect(items.map(item => item.target)).toEqual(['worker-offers', 'worker-history', 'worker-review', 'worker-review', 'worker-active', 'worker-active', 'worker-active', 'worker-reviews']);
+  expect(items.map(item => item.target)).toEqual(['worker-offers', 'worker-history', 'worker-review', 'worker-review', 'worker-active', 'worker-active', 'worker-active', 'worker-reviews', 'worker-assigned']);
   expect(items.every(item => item.requestId === undefined && item.unread)).toBe(true);
 });
 
@@ -135,4 +142,13 @@ test('an offer shows the customer preferred visit time without presenting it as 
   expect(view?.preferredVisitLabel).toMatch(/15:00/);
   const [plain] = toWorkerJobs({ ...empty, offers: [offer] }, [card('offer', 'invite-1')], now);
   expect(plain?.preferredVisitLabel).toBeUndefined();
+});
+
+test('worker incident and withdrawal notices open the list where the worker can act', () => {
+  const base = { request_id: 'r1', title: 't', body: 'b', created_at: '2026-11-02T09:00:00Z', read_at: null };
+  const items = toWorkerNotificationItems([
+    { ...base, id: 'a', kind: 'job_escalated' }, { ...base, id: 'b', kind: 'escalation_resolved' }, { ...base, id: 'c', kind: 'job_withdrawn' },
+  ], now);
+  expect(items.map(item => item.target)).toEqual(['worker-assigned', 'worker-assigned', 'worker-offers']);
+  expect(items.map(item => item.icon)).toEqual(['help', 'check', 'briefcase']);
 });

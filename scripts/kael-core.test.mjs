@@ -679,7 +679,7 @@ test('tool arguments are validated strictly against the registry contract', () =
   assert.ok(!validateArguments(create, { title: ' ', kind: 'general', status: 'running', note: '' }), 'blank titles');
   assert.ok(!validateArguments(findTool('task_update'), { task_id: '1; drop table', status: 'paused', note: '' }), 'non-uuid ids');
   assert.ok(!validateArguments(findTool('customer_requests'), { limit: 1000 }), 'unbounded reads');
-  assert.ok(!validateArguments(findTool('service_request_draft'), { task_id: users.customer.id, description: 'x', location: '', preferred_time: '', missing: ['location', 'location'] }), 'duplicate items');
+  assert.ok(!validateArguments(findTool('service_request_draft'), { task_id: users.customer.id, description: 'x', location: '', preferred_time: '', service_id: '', missing: ['location', 'location'] }), 'duplicate items');
   assert.ok(!validateArguments(create, null));
 });
 
@@ -694,7 +694,7 @@ test('capability selection depends on mode, verified capability and owner-enable
   assert.deepEqual(names({ ...customer, mode: 'worker' }), ['task_create', 'task_update', 'ask_user_choice', 'knowledge_search', 'price_estimate_preview'], 'worker mode without worker capability exposes no worker data');
   assert.deepEqual(names({ ...customer, mode: 'worker', capabilities: new Set(['customer', 'worker']) }), ['task_create', 'task_update', 'ask_user_choice', 'worker_jobs', 'worker_earnings', 'worker_job_status', 'knowledge_search', 'price_estimate_preview']);
   const every = config({ enabledEffects: new Set(consequentialEffects) });
-  assert.deepEqual(names(customer, every).filter(name => findTool(name).effect !== null), ['service_request_submit', 'service_quote_decision', 'work_submission_decision'], 'a customer is offered only customer effects');
+  assert.deepEqual(names(customer, every).filter(name => findTool(name).effect !== null), ['service_request_submit', 'service_quote_decision', 'service_request_redispatch', 'service_request_cancel', 'work_submission_decision'], 'a customer is offered only customer effects');
   assert.deepEqual(names({ ...customer, mode: 'worker' }, every).filter(name => findTool(name).effect !== null), [], 'worker mode without worker capability is offered no effect');
   assert.deepEqual(names({ ...customer, mode: 'worker', capabilities: new Set(['customer', 'worker']) }, every).filter(name => findTool(name).effect !== null), ['worker_offer_decision', 'worker_job_advance'], 'a verified worker is offered only worker effects');
   assert.deepEqual(names(customer, config({ enabledEffects: new Set(['service_request_submit']) })).filter(name => findTool(name).effect !== null), ['service_request_submit'], 'each workflow effect needs its own owner gate');
@@ -729,6 +729,8 @@ test('the TypeScript task state machine matches the authoritative SQL transition
   const task = { id: 'x', title: 't', kind: 'service_request', status: 'running', version: 1, summary: '', conversation_id: 'c', updated_at: '', artifact: { effect_required: true } };
   assert.deepEqual(checkModelTransition(task, 'completed'), { ok: false, reason: 'effect_not_observed' });
   assert.deepEqual(checkModelTransition({ ...task, status: 'waiting_for_approval' }, 'running'), { ok: false, reason: 'not_model_settable' });
+  assert.deepEqual(checkModelTransition({ ...task, status: 'waiting_for_approval' }, 'waiting_for_input'), { ok: false, reason: 'not_model_settable' });
+  assert.deepEqual(checkModelTransition({ ...task, status: 'waiting_for_approval' }, 'paused'), { ok: true });
   assert.deepEqual(checkModelTransition(task, 'waiting_for_approval'), { ok: false, reason: 'not_model_settable' });
   assert.deepEqual(checkModelTransition({ ...task, status: 'cancelled' }, 'running'), { ok: false, reason: 'invalid_transition' });
   assert.deepEqual(checkModelTransition({ ...task, artifact: { effect_required: true, effect_result: { status: 'succeeded', resource_kind: 'service_request', resource_id: 'r' } } }, 'completed'), { ok: true });
@@ -874,10 +876,12 @@ test('the mobile parser rejects malformed or out-of-contract events', () => {
 const validInputs = {
   task_create: { title: 'Viết thư', kind: 'writing', status: 'running', note: '' },
   task_update: { task_id: users.customer.id, status: 'paused', note: '' },
-  service_request_draft: { task_id: users.customer.id, description: 'Máy lạnh rò nước', location: '', preferred_time: '', missing: ['location'] },
+  service_request_draft: { task_id: users.customer.id, description: 'Máy lạnh rò nước', location: '', preferred_time: '', service_id: 'aircon', missing: ['location'] },
   service_request_submit: { task_id: users.customer.id },
   ask_user_choice: { question: 'Thợ nên đến khi nào?', options: ['Sáng mai', 'Chiều mai'], allow_date: true },
   service_quote_decision: { task_id: users.customer.id, quote_id: users.other.id, quote_version: 2, decision: 'accepted' },
+  service_request_redispatch: { task_id: users.customer.id, request_id: users.other.id, rounds: 1 },
+  service_request_cancel: { task_id: users.customer.id, request_id: users.other.id },
   work_submission_decision: { task_id: users.customer.id, submission_id: users.other.id, job_version: 4, decision: 'revision_requested', reason: 'Máy vẫn chảy nước' },
   worker_offer_decision: { task_id: users.customer.id, invitation_id: users.other.id, quote_id: users.other.id, quote_version: 1, decision: 'accept' },
   worker_job_advance: { task_id: users.customer.id, job_id: users.other.id, version: 1, next: 'en_route' },
@@ -1102,6 +1106,8 @@ test('each workflow effect is recognised from the row it leaves behind', async (
     [{ tool: 'work_submission_decision', args: { submission_id: id, job_version: 3, decision: 'revision_requested', reason: 'x' } }, [{ id, decision: 'revision_requested' }], [{ id, decision: 'pending' }], /^service_submissions[?]/],
     [{ tool: 'worker_offer_decision', args: { decision: 'accept', invitation_id: id, quote_id: quoteId, quote_version: 1 } }, [{ id }], [], /^service_jobs[?]select=id&invitation_id=eq[.]/],
     [{ tool: 'worker_offer_decision', args: { decision: 'decline', invitation_id: id, quote_id: quoteId, quote_version: 1 } }, [{ id, state: 'declined' }], [{ id, state: 'open' }], /^service_invitations[?]/],
+    [{ tool: 'service_request_redispatch', args: { request_id: id, rounds: 1 } }, [{ request_id: id, round: 2, outcome: 'invited' }], [], /^service_dispatch_rounds[?]select=request_id,round,outcome&request_id=eq[.][^&]+&round=eq[.]2&outcome=eq[.]invited$/],
+    [{ tool: 'service_request_cancel', args: { request_id: id } }, [{ id, cancelled_at: '2026-11-12T01:00:00Z' }], [{ id, cancelled_at: null }], /^service_requests[?]select=id,cancelled_at&id=eq[.]/],
     [{ tool: 'worker_job_advance', args: { job_id: id, version: 4, next: 'arrived' } }, [{ id, stage: 'arrived', version: 5 }], [{ id, stage: 'en_route', version: 4 }], /^service_jobs[?]select=id,stage,version/],
   ];
   for (const [effect, applied, pending, path] of cases) {
@@ -1293,4 +1299,94 @@ test('a failed or missing probe claim never reaches a provider and normal chat i
   const reply = await app.send(users.customer, { request_id: '22222222-2222-4222-8222-222222222222', conversation_id: null, mode: 'client', action: { type: 'message', text: 'Xin chào' } });
   assert.equal(reply.status, 200, 'chat does not depend on the probe window');
   assert.equal(provider.requests.length, 1);
+});
+
+test('Ask and Auto change how Kael paces the process but never who confirms the price', async () => {
+  const cfg = config({ enabledEffects: new Set(consequentialEffects) });
+  const customer = { userId: users.customer.id, capabilities: new Set(['customer']), mode: 'client' };
+  const promptFor = actor => buildSystemPrompt(actor, cfg, [], [], crypto.randomUUID(), '2026-11-12', undefined, 'Cần thợ điện');
+  assert.match(promptFor(customer), /chose Ask mode/, 'an unset mode is Ask');
+  assert.match(promptFor({ ...customer, autonomy: 'ask' }), /one small step at a time/);
+  const auto = promptFor({ ...customer, autonomy: 'auto' });
+  assert.match(auto, /chose Auto mode/);
+  assert.match(auto, /Auto never accepts a price for the user/);
+  assert.doesNotMatch(auto, /chose Ask mode/);
+  const worker = { userId: users.worker.id, capabilities: new Set(['worker']), mode: 'worker' };
+  assert.match(promptFor({ ...worker, autonomy: 'auto' }), /accepts offers that match the worker profile/);
+  assert.match(promptFor(worker), /offers wait for the worker/);
+  const quoteArgs = { task_id: users.customer.id, quote_id: users.customer.id, quote_version: 1, decision: 'accepted' };
+  const actors = [customer, { ...customer, autonomy: 'auto' }];
+  for (const actor of actors) {
+    const decision = evaluateCall({ id: 'c', name: 'service_quote_decision', input: quoteArgs }, selectTools(actor, cfg), actor, cfg, 0);
+    assert.equal(decision.kind, 'approval', `price acceptance needs the app confirmation in ${actor.autonomy ?? 'default'} mode`);
+  }
+  const draft = findTool('service_request_draft');
+  const base = { task_id: users.customer.id, description: 'x', location: '', preferred_time: '', missing: [] };
+  assert.ok(validateArguments(draft, { ...base, service_id: 'electric' }));
+  assert.ok(validateArguments(draft, { ...base, service_id: '' }));
+  assert.ok(!validateArguments(draft, { ...base, service_id: 'plumber' }), 'unknown categories');
+  assert.ok(!validateArguments(draft, base), 'the category is always stated');
+});
+
+test('the stored mode is read through the user-scoped store and defaults to Ask', async () => {
+  const paths = [];
+  let rows = [{ mode: 'auto' }];
+  const store = createSupabaseStore(async path => {
+    paths.push(path);
+    return path.startsWith('kael_autonomy') ? Response.json(rows) : assert.fail(path);
+  }, async () => assert.fail('The mode must use the user-scoped store'), users.customer.id);
+  assert.equal(await store.autonomy('client', new AbortController().signal), 'auto');
+  assert.equal(await store.autonomy('worker', new AbortController().signal), 'auto');
+  rows = [];
+  assert.equal(await store.autonomy('client', new AbortController().signal), 'ask');
+  rows = [{ mode: 'unknown' }];
+  assert.equal(await store.autonomy('client', new AbortController().signal), 'ask');
+  assert.deepEqual(paths.slice(0, 2), ['kael_autonomy?select=mode&role=eq.customer', 'kael_autonomy?select=mode&role=eq.worker']);
+});
+
+const rustSource = relative => readFileSync(new URL(`../services/kael-core/durable/${relative}`, import.meta.url), 'utf8');
+const approvalRequest = { tool: 'service_request_redispatch', args: { request_id: users.other.id, rounds: 1 } };
+const jsonResponse = value => () => new Response(JSON.stringify(value), { status: 200, headers: { 'content-type': 'application/json' } });
+
+test('a redispatch that invited nobody is reported as an unsuccessful outcome, never as a success', async () => {
+  const empty = effectRest(jsonResponse(0), rows([]));
+  assert.deepEqual(await executeApprovedEffect('approval-1', { status: 'ok', ...approvalRequest }, empty.rest, new AbortController().signal), { status: 'failed', reason: 'no_eligible_worker' });
+  const replayed = effectRest(jsonResponse(0), rows([]));
+  assert.deepEqual(await executeApprovedEffect('approval-1', { status: 'reconcile', ...approvalRequest }, replayed.rest, new AbortController().signal), { status: 'failed', reason: 'no_eligible_worker' }, 'a replay of the unsuccessful round stays unsuccessful');
+  const invited = effectRest(jsonResponse(2), rows([]));
+  assert.deepEqual(await executeApprovedEffect('approval-1', { status: 'ok', ...approvalRequest }, invited.rest, new AbortController().signal), { status: 'succeeded', resourceId: users.other.id });
+});
+
+test('a redispatch approval is bound to the round it was approved for', async () => {
+  const bodies = [];
+  const rest = async (path, init = {}) => {
+    if (init.method === 'POST') bodies.push({ path, body: init.body });
+    return new Response('2', { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  await executeApprovedEffect('approval-1', { status: 'ok', ...approvalRequest }, rest, new AbortController().signal);
+  assert.deepEqual(bodies, [{ path: 'rpc/redispatch_service_request', body: { p_request_id: users.other.id, p_expected_round: 2 } }]);
+});
+
+test('the Rust runtime offers the same service categories as the TypeScript runtime and rejects any other', () => {
+  const draft = findTool('service_request_draft');
+  const categories = draft.inputSchema.properties.service_id.enum;
+  assert.deepEqual(categories, ['electric', 'water', 'aircon', 'paint', 'sofa', 'other', '']);
+  const policy = rustSource('src/policy.rs');
+  const listed = /\("service_id", json!\(\{"type": "string", "enum": \[([^\]]*)\]/u.exec(policy);
+  assert.ok(listed, 'the Rust draft schema declares service_id');
+  assert.deepEqual([...listed[1].matchAll(/"([^"]*)"/gu)].map(match => match[1]), categories);
+  const base = { task_id: users.customer.id, description: 'x', location: '', preferred_time: '', missing: [] };
+  for (const category of categories) assert.ok(validateArguments(draft, { ...base, service_id: category }), category || 'unknown category');
+  assert.ok(!validateArguments(draft, { ...base, service_id: 'plumber' }), 'an unknown category');
+});
+
+test('the approval fingerprint of a draft with a service category is identical in both runtimes', async () => {
+  const args = { task_id: '11111111-1111-4111-8111-111111111111', description: 'Sửa vòi nước', location: 'Quận 1', preferred_time: 'Sáng mai', service_id: 'water' };
+  const bound = { tool: 'service_request_submit', actor: '00000000-0000-4000-8000-0000000000a1', task_id: args.task_id, base_version: 3, args };
+  const golden = await fingerprint(bound);
+  const unclassified = await fingerprint({ ...bound, args: { ...args, service_id: '' } });
+  assert.notEqual(golden, unclassified, 'the category is part of what the user approves');
+  const contracts = rustSource('tests/contracts.rs');
+  assert.ok(contracts.includes(golden), 'the Rust contract test pins the same fingerprint');
+  assert.ok(contracts.includes(unclassified), 'the Rust contract test pins the unclassified fingerprint');
 });

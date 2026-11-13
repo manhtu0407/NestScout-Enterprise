@@ -33,12 +33,13 @@ type Props = {
   sample?: boolean;
 };
 
-type FormKind = 'submit' | 'propose' | 'report' | 'pause';
+type FormKind = 'submit' | 'propose' | 'report' | 'pause' | 'release';
 
 type FormState = { jobId: string; kind: FormKind; key: string };
 
 type Actions = {
   busy: boolean;
+  refusals: number;
   onAccept: () => void;
   onDecline: () => void;
   onAdvance: () => void;
@@ -59,6 +60,7 @@ export function WorkerJobsScreen({ initialStage, jobs, perform, jobChanges, onBa
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [refusals, setRefusals] = useState(0);
   const running = useRef(false);
   const mounted = useRef(true);
   const retainedNotice = useRetained(notice);
@@ -92,7 +94,10 @@ export function WorkerJobsScreen({ initialStage, jobs, perform, jobChanges, onBa
       setNotice(message);
       setForm(null);
     } catch (failure) {
-      if (mounted.current) setError(workflowMessage(failure));
+      if (mounted.current) {
+        setError(workflowMessage(failure));
+        setRefusals(count => count + 1);
+      }
     } finally {
       running.current = false;
       if (mounted.current) setBusyId(null);
@@ -107,6 +112,7 @@ export function WorkerJobsScreen({ initialStage, jobs, perform, jobChanges, onBa
 
   const actionsFor = (job: WorkerJob): Actions => ({
     busy: busyId !== null,
+    refusals,
     onAccept: () => {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       void run(job.id, { type: 'accept' });
@@ -209,6 +215,20 @@ function JobForm({ job, form, busy, error, onCancel, onRun, onInvalid }: FormPro
     if (!scope || !rationale || !/^\d+$/.test(amount) || !Number.isSafeInteger(value)) return onInvalid('Nhập phạm vi mới, số tiền (chỉ chữ số) và lý do thay đổi.');
     return onRun({ type: 'propose', scope, amount: value, rationale, key: form.key });
   };
+  if (form.kind === 'release') {
+    return (
+      <View style={styles.form}>
+        <Text style={styles.formTitle}>Vì sao bạn rút khỏi việc?</Text>
+        <ActionButton secondary disabled={busy} label="Tôi không rảnh nữa" accessibilityLabel={`Rút khỏi việc vì không rảnh ${job.title}`} onPress={() => onRun({ type: 'release', reason: 'unavailable', key: form.key })} />
+        <ActionButton secondary disabled={busy} label="Trùng lịch" accessibilityLabel={`Rút khỏi việc vì trùng lịch ${job.title}`} onPress={() => onRun({ type: 'release', reason: 'schedule_conflict', key: form.key })} />
+        <ActionButton secondary disabled={busy} label="Không thể đến nơi" accessibilityLabel={`Rút khỏi việc vì không thể đến ${job.title}`} onPress={() => onRun({ type: 'release', reason: 'cannot_reach', key: form.key })} />
+        <ActionButton secondary disabled={busy} label="Lý do khác" accessibilityLabel={`Rút khỏi việc vì lý do khác ${job.title}`} onPress={() => onRun({ type: 'release', reason: 'other', key: form.key })} />
+        <Text style={styles.footnoteInline}>Việc sẽ được mời cho thợ khác và khách được báo ngay. Bạn sẽ không được mời lại việc này. Chỉ rút được trước khi đến nơi.</Text>
+        {error ? <Text accessibilityRole="alert" style={styles.problemText}>{error}</Text> : null}
+        <ActionButton secondary disabled={busy} label="Đóng" accessibilityLabel="Đóng lựa chọn rút khỏi việc" onPress={onCancel} />
+      </View>
+    );
+  }
   if (form.kind === 'pause') {
     return (
       <View style={styles.form}>
@@ -289,7 +309,7 @@ function JobActions({ job, actions }: { job: WorkerJob; actions: Actions }) {
     case 'offer':
       return (
         <View style={styles.offerActions}>
-          <SlideToConfirm label="Trượt để nhận việc" accessibilityLabel={`Nhận việc ${title}`} disabled={busy} onConfirm={actions.onAccept} />
+          <SlideToConfirm key={actions.refusals} label="Trượt để nhận việc" accessibilityLabel={`Nhận việc ${title}`} disabled={busy} onConfirm={actions.onAccept} />
           <ActionButton secondary disabled={busy} label="Từ chối" accessibilityLabel={`Từ chối ${title}`} onPress={actions.onDecline} />
         </View>
       );
@@ -298,6 +318,7 @@ function JobActions({ job, actions }: { job: WorkerJob; actions: Actions }) {
         <View style={styles.actions}>
           <ActionButton secondary disabled={busy || job.delayReported === true} label={job.delayReported ? 'Đã ghi nhận' : delayLabel} accessibilityLabel={`${delayLabel} ${title}`} onPress={() => actions.onOpen('report')} />
           <ActionButton disabled={busy} label={advanceLabel} accessibilityLabel={`${advanceLabel}, ${title}`} onPress={actions.onAdvance} />
+          {(job.step ?? 0) < 2 ? <ActionButton secondary disabled={busy} label="Rút khỏi việc" accessibilityLabel={`Rút khỏi việc ${title}`} onPress={() => actions.onOpen('release')} /> : null}
         </View>
       );
     case 'active':
@@ -305,6 +326,7 @@ function JobActions({ job, actions }: { job: WorkerJob; actions: Actions }) {
         return (
           <View style={styles.actions}>
             <ActionButton disabled={busy} label="Xin làm tiếp" accessibilityLabel={`Xin làm tiếp ${title}`} onPress={actions.onResume} />
+            {job.canRelease === true ? <ActionButton secondary disabled={busy} label="Rút khỏi việc" accessibilityLabel={`Rút khỏi việc ${title}`} onPress={() => actions.onOpen('release')} /> : null}
           </View>
         );
       }
@@ -313,6 +335,7 @@ function JobActions({ job, actions }: { job: WorkerJob; actions: Actions }) {
         return (
           <View style={styles.actions}>
             <ActionButton disabled label={label} accessibilityLabel={`${label} ${title}`} onPress={actions.onResume} />
+            {job.canRelease === true ? <ActionButton secondary disabled={busy} label="Rút khỏi việc" accessibilityLabel={`Rút khỏi việc ${title}`} onPress={() => actions.onOpen('release')} /> : null}
           </View>
         );
       }

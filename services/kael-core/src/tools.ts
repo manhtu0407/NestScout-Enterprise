@@ -62,6 +62,7 @@ export const toolRegistry: readonly ToolContract[] = [
       description: { type: 'string', minLength: 1, maxLength: 4000 },
       location: { type: 'string', maxLength: 200 },
       preferred_time: { type: 'string', maxLength: 120 },
+      service_id: { type: 'string', enum: ['electric', 'water', 'aircon', 'paint', 'sofa', 'other', ''], description: 'Service category of the work: electric, water, aircon, paint, sofa or other. Empty string only when the category is genuinely unknown.' },
       missing: { type: 'array', maxItems: 3, items: { type: 'string', enum: ['description', 'location', 'preferred_time'] } },
     }),
     sideEffect: 'prepare', executionClass: 'internal_prepare', resource: 'kael_task', requires: 'customer', modes: ['client'], label: 'Đang chuẩn bị bản nháp yêu cầu',
@@ -89,6 +90,20 @@ export const toolRegistry: readonly ToolContract[] = [
     inputSchema: schema({ task_id: uuid, quote_id: uuid, quote_version: { type: 'integer', minimum: 1, maximum: 1000 }, decision: { type: 'string', enum: ['accepted', 'rejected'] } }),
     sideEffect: 'consequential', executionClass: 'explicit_confirmation', resource: 'service_quote', requires: 'customer', modes: ['client'], effect: 'service_quote_decision',
     retry: 'same_submission_key', label: 'Đang chuẩn bị bước xác nhận báo giá',
+  }),
+  contract({
+    id: 'service_request_redispatch',
+    description: 'Ask the customer to confirm inviting more workers for one request returned by customer_requests whose dispatch shows can_retry true, inside an open workflow_action task. Pass the dispatch rounds value returned. Nothing changes until the user confirms in the app. Inviting is not an assignment: no worker is promised.',
+    inputSchema: schema({ task_id: uuid, request_id: uuid, rounds: { type: 'integer', minimum: 0, maximum: 1000 } }),
+    sideEffect: 'consequential', executionClass: 'explicit_confirmation', resource: 'service_request', requires: 'customer', modes: ['client'], effect: 'service_request_redispatch',
+    retry: 'same_submission_key', label: 'Đang chuẩn bị bước mời thêm thợ',
+  }),
+  contract({
+    id: 'service_request_cancel',
+    description: 'Ask the customer to confirm cancelling one request returned by customer_requests whose dispatch shows can_cancel true, inside an open workflow_action task. Nothing changes until the user confirms in the app. A request that already has an assigned worker cannot be cancelled this way.',
+    inputSchema: schema({ task_id: uuid, request_id: uuid }),
+    sideEffect: 'consequential', executionClass: 'explicit_confirmation', resource: 'service_request', requires: 'customer', modes: ['client'], effect: 'service_request_cancel',
+    retry: 'same_submission_key', label: 'Đang chuẩn bị bước hủy yêu cầu',
   }),
   contract({
     id: 'work_submission_decision',

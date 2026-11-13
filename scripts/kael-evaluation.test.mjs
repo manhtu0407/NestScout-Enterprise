@@ -35,7 +35,7 @@ function draftFlow(location = 'Quận 3, TP.HCM') {
     { tools: [call('task_create', { title: 'Sửa máy lạnh rò nước', kind: 'service_request', status: 'running', note: '' })] },
     request => {
       const taskId = lastToolResults(request)[0].task.id;
-      return { tools: [call('service_request_draft', { task_id: taskId, description: 'Máy lạnh phòng ngủ rò nước từ dàn lạnh', location, preferred_time: 'Sáng thứ Bảy', missing: location ? [] : ['location'] })] };
+      return { tools: [call('service_request_draft', { task_id: taskId, description: 'Máy lạnh phòng ngủ rò nước từ dàn lạnh', location, preferred_time: 'Sáng thứ Bảy', service_id: 'aircon', missing: location ? [] : ['location'] })] };
     },
   ];
 }
@@ -162,6 +162,25 @@ test('guessed, foreign or stale task references are refused instead of acted on'
   assert.equal(owner.db.tasks.get(task.id).status, 'waiting_for_input');
 });
 
+test('a model status change cannot orphan a pending approval', async () => {
+  const h = scripted(effects, [
+    ...draftFlow(),
+    request => ({ tools: [call('service_request_submit', { task_id: lastToolResults(request)[0].task.id })] }),
+    request => ({ tools: [call('task_update', { task_id: tasksOf(h.db)[0].id, status: 'waiting_for_input', note: 'Chờ khách xác nhận' })] }),
+    request => {
+      assert.equal(lastToolResults(request)[0].error, 'not_model_settable');
+      return { text: ['Bản nháp đã sẵn sàng. Bạn trượt thẻ xác nhận để gửi nhé.'] };
+    },
+  ]);
+  const result = await h.message(users.customer, 'Gửi yêu cầu sửa máy lạnh ở Quận 3 sáng thứ Bảy giúp mình');
+  assert.equal(terminal(result).type, 'run_completed');
+  assert.equal(tasksOf(h.db)[0].status, 'waiting_for_approval');
+  const approval = result.events.find(event => event.type === 'approval_required').approval;
+  const approved = await h.decide(users.customer, conversationOf(result), approval);
+  assert.equal(terminal(approved).type, 'run_completed');
+  assert.equal(effectsCount(h.db), 1);
+});
+
 test('a consequential submission waits for an exact, single-use human approval', async () => {
   const h = scripted(effects, [
     ...draftFlow(),
@@ -187,7 +206,7 @@ test('a consequential submission waits for an exact, single-use human approval',
 
   const approved = await h.decide(users.customer, conversation, approval);
   assert.equal(terminal(approved).type, 'run_completed');
-  assert.match(terminal(approved).text, /chưa có thợ, báo giá hay lịch hẹn nào được xác nhận/);
+  assert.match(terminal(approved).text, /Chưa có thợ hay lịch hẹn nào được xác nhận/);
   assert.equal(effectsCount(h.db), 1);
   const [task] = tasksOf(h.db);
   assert.equal(task.status, 'completed');
@@ -300,6 +319,51 @@ test('instructions injected through stored data cannot trigger an effect', async
   assert.deepEqual(toolOutcomes(result), ['customer_requests:succeeded', 'service_request_submit:failed', 'mark_paid:denied']);
   assert.equal(result.events.some(event => event.type === 'approval_required'), false);
   assert.equal(effectsCount(h.db), 0);
+});
+
+test('the request read reports the dispatch outcome of the caller own requests and nothing Kael could act on', async () => {
+  const mine = randomUUID();
+  const theirs = randomUUID();
+  const fixtures = {
+    requests: [
+      { id: mine, owner_id: users.customer.id, description: 'Máy lạnh không mát', location: '', created_at: '2026-11-01T00:00:00Z' },
+      { id: theirs, owner_id: users.other.id, description: 'Việc của người khác', location: '', created_at: '2026-11-01T00:00:00Z' },
+    ],
+    dispatch: [
+      { request_id: mine, state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true, can_cancel: true, can_reclassify: false, next_retry_at: null, retries_left: 2, last_outcome: 'no_eligible_worker' },
+      { request_id: theirs, state: 'searching', open_invites: 3, earliest_expiry: '2026-11-01T01:00:00Z', rounds: 1, can_retry: false, can_cancel: true, can_reclassify: false, next_retry_at: null, retries_left: 2, last_outcome: 'invited' },
+    ],
+  };
+  let seen;
+  const h = scripted(effects, [
+    { tools: [call('customer_requests', { limit: 5 })] },
+    request => {
+      seen = lastToolResults(request)[0];
+      return { text: ['Chưa có thợ nhận việc cho yêu cầu máy lạnh.'] };
+    },
+  ], fixtures);
+  const result = await h.message(users.customer, 'Yêu cầu máy lạnh của tôi đến đâu rồi?');
+  assert.equal(terminal(result).type, 'run_completed');
+  assert.deepEqual(seen.requests.map(row => row.dispatch), [{
+    state: 'no_match', open_invites: 0, earliest_expiry: null, rounds: 1, can_retry: true, can_cancel: true, can_reclassify: false,
+    next_retry_at: null, retries_left: 2, last_outcome: 'no_eligible_worker',
+  }]);
+  assert.match(seen.notice, /Invited workers are not an assignment/);
+  assert.equal(JSON.stringify(seen).includes(theirs), false);
+  assert.equal(effectsCount(h.db), 0);
+});
+
+test('a dispatch summary that cannot be read fails the request read instead of reporting a guess', async () => {
+  const fixtures = {
+    requests: [{ id: randomUUID(), owner_id: users.customer.id, description: 'Máy lạnh không mát', location: '', created_at: '2026-11-01T00:00:00Z' }],
+    dispatchUnavailable: true,
+  };
+  const h = scripted(effects, [
+    { tools: [call('customer_requests', { limit: 5 })] },
+    { text: ['Mình chưa đọc được trạng thái yêu cầu.'] },
+  ], fixtures);
+  const result = await h.message(users.customer, 'Yêu cầu của tôi đến đâu rồi?');
+  assert.deepEqual(toolOutcomes(result), ['customer_requests:failed']);
 });
 
 test('provider failures fall back only before output and interrupted output is never reported as complete', async () => {

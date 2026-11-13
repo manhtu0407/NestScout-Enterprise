@@ -3,7 +3,7 @@ import { readJobReports } from './job-reports';
 import { readScopeChanges } from './scope-changes';
 import { WorkflowError } from './workflow-error';
 
-import { advanceJob, pauseJob, readJobs, readOffers, readWorkerJobCards, readWorkerCorrections, readWorkerPauses, readWorkerSnapshot, requestResume, type Job } from './worker-repository';
+import { advanceJob, pauseJob, readJobs, readOffers, readWorkerJobCards, readWorkerCorrections, readWorkerPauses, readWorkerSnapshot, releaseJob, requestResume, type Job } from './worker-repository';
 
 jest.mock('@/lib/authenticated-rest', () => ({ authenticatedRequest: jest.fn() }));
 jest.mock('./job-reports', () => ({ readJobReports: jest.fn() }));
@@ -288,4 +288,32 @@ test.each([
 ])('job cards with %s are rejected', async (_label, row) => {
   answer([row]);
   await expect(readWorkerJobCards('worker-a', new AbortController().signal)).rejects.toThrow('Invalid job cards');
+});
+
+test('releasing a job sends the exact version, reason and idempotency key', async () => {
+  answer({ outcome: 'released' });
+  await releaseJob('worker-a', pausedJob, 'schedule_conflict', 'key-1', new AbortController().signal);
+  expect(requestedPath()).toBe('rpc/release_service_job');
+  expect(JSON.parse(String(jest.mocked(authenticatedRequest).mock.calls[0]?.[2]?.body))).toEqual({ p_job_id: job.job_id, p_version: 5, p_key: 'key-1', p_reason: 'schedule_conflict' });
+  answer({ outcome: 'already_released' });
+  await expect(releaseJob('worker-a', pausedJob, 'other', 'key-1', new AbortController().signal)).resolves.toBeUndefined();
+});
+
+test.each([
+  ['an unknown outcome', { outcome: 'kept' }],
+  ['a bare number', 6],
+  ['a missing outcome', {}],
+])('releasing a job with %s is rejected', async (_label, body) => {
+  answer(body);
+  await expect(releaseJob('worker-a', pausedJob, 'unavailable', 'key-1', new AbortController().signal)).rejects.toThrow('Invalid release result');
+});
+
+test('an unknown release reason is refused before any request', async () => {
+  await expect(releaseJob('worker-a', pausedJob, 'bored' as never, 'key-1', new AbortController().signal)).rejects.toThrow('Invalid release reason');
+  expect(authenticatedRequest).not.toHaveBeenCalled();
+});
+
+test('a release refused after arrival keeps its classification', async () => {
+  jest.mocked(authenticatedRequest).mockResolvedValue({ ok: false, status: 400, json: async () => ({ code: '22023', message: 'release not allowed at this stage' }) } as Response);
+  await expect(releaseJob('worker-a', pausedJob, 'unavailable', 'key-1', new AbortController().signal)).rejects.toMatchObject({ failure: 'rejected' });
 });

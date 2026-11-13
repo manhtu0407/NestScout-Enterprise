@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 
 import { WorkflowError } from '@/features/shared';
 
-import { sampleWorkerProfileView, workerProfileTabForSidebarId, type WorkerProfileView } from './worker-profile';
+import { otherServiceChecks, sampleWorkerProfileView, workerProfileTabForSidebarId, type WorkerProfileView } from './worker-profile';
 import { WorkerProfileScreen } from './worker-profile-screen';
 
 const profile: WorkerProfileView = { ...sampleWorkerProfileView };
@@ -97,7 +97,7 @@ test('a full qualification slot offers no more uploads', async () => {
 test('the areas tab shows the saved coverage and saves a new radius', async () => {
   const { perform } = await setup({ tab: 'areas' });
   expect(screen.getByText('Bán kính 5 km')).toBeTruthy();
-  expect(screen.getByText('Dịch vụ nhận · 3/5')).toBeTruthy();
+  expect(screen.getByText('Dịch vụ nhận · 3/6')).toBeTruthy();
   await fireEvent.press(screen.getByLabelText('Bán kính 10 km'));
   await waitFor(() => expect(perform).toHaveBeenCalledWith({ type: 'coverage', radiusKm: 10, serviceIds: ['electric', 'water', 'aircon'] }));
   expect(screen.getByText('Bán kính 10 km')).toBeTruthy();
@@ -108,8 +108,32 @@ test('switching a service saves the new list and a refusal restores the saved st
   await setup({ tab: 'areas', perform });
   await fireEvent.press(screen.getByLabelText('Nhận việc Vệ sinh sofa'));
   await waitFor(() => expect(perform).toHaveBeenCalledWith({ type: 'coverage', radiusKm: 5, serviceIds: ['electric', 'water', 'aircon', 'sofa'] }));
-  await waitFor(() => expect(screen.getByText('Dịch vụ nhận · 3/5')).toBeTruthy());
+  await waitFor(() => expect(screen.getByText('Dịch vụ nhận · 3/6')).toBeTruthy());
   expect(screen.getByText('Bước này không còn khả dụng. Đã tải lại trạng thái mới nhất.')).toBeTruthy();
+});
+
+test('turning on Dịch vụ khác makes Kael ask first and saves only after both answers are yes', async () => {
+  const { perform } = await setup({ tab: 'areas' });
+  await fireEvent.press(screen.getByLabelText('Nhận việc Dịch vụ khác'));
+  expect(perform).not.toHaveBeenCalled();
+  expect(screen.getByText('Kael cần hỏi bạn trước khi nhận Dịch vụ khác')).toBeTruthy();
+  expect(screen.getByLabelText('Xác nhận và nhận Dịch vụ khác').props.accessibilityState.disabled).toBe(true);
+  const [skillCheck, flexibleCheck] = otherServiceChecks;
+  await fireEvent.press(screen.getByLabelText(`Có, tôi đảm bảo. ${skillCheck?.question}`));
+  expect(screen.getByLabelText('Xác nhận và nhận Dịch vụ khác').props.accessibilityState.disabled).toBe(true);
+  await fireEvent.press(screen.getByLabelText(`Có, tôi đảm bảo. ${flexibleCheck?.question}`));
+  await fireEvent.press(screen.getByLabelText('Xác nhận và nhận Dịch vụ khác'));
+  await waitFor(() => expect(perform).toHaveBeenCalledWith({ type: 'coverage', radiusKm: 5, serviceIds: ['electric', 'water', 'aircon', 'other'] }));
+});
+
+test('an unsure answer or declining leaves Dịch vụ khác unsaved', async () => {
+  const { perform } = await setup({ tab: 'areas' });
+  await fireEvent.press(screen.getByLabelText('Nhận việc Dịch vụ khác'));
+  await fireEvent.press(screen.getByLabelText(`Chưa chắc. ${otherServiceChecks[0]?.question}`));
+  expect(screen.getByLabelText('Xác nhận và nhận Dịch vụ khác').props.accessibilityState.disabled).toBe(true);
+  await fireEvent.press(screen.getByLabelText('Không nhận Dịch vụ khác'));
+  expect(screen.queryByText('Kael cần hỏi bạn trước khi nhận Dịch vụ khác')).toBeNull();
+  expect(perform).not.toHaveBeenCalled();
 });
 
 test('areas and reviews ask a worker without a profile to create one first', async () => {

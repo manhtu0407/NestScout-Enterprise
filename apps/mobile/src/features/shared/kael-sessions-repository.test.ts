@@ -37,6 +37,15 @@ test('opens a conversation by identifier and refuses a snapshot for a different 
   await expect(openKaelConversation('user-a', 'client', first, signal, reply(snapshot(second)))).rejects.toMatchObject({ failure: 'failed' });
 });
 
+test('a stored message carries its send time and tolerates a snapshot without one', async () => {
+  const message = (extra: Record<string, unknown>) => ({ id: '44444444-4444-4444-8444-444444444444', role: 'user', content: 'Xin chào', status: 'complete', ...extra });
+  const snapshot = (messages: unknown[]) => ({ conversation_id: first, busy: false, messages, tasks: [], approvals: [] });
+  const timed = await openKaelConversation('user-a', 'client', first, signal, reply(snapshot([message({ created_at: '2026-11-12T03:31:37.958262+00:00' })])));
+  expect(timed.messages[0]?.sentAt).toBe(Date.parse('2026-11-12T03:31:37.958262+00:00'));
+  const untimed = await openKaelConversation('user-a', 'client', first, signal, reply(snapshot([message({}), message({ created_at: 'not a date' })])));
+  expect(untimed.messages.map(item => item.sentAt)).toEqual([undefined, undefined]);
+});
+
 test.each([
   ['conversation unavailable', 'unavailable'],
   ['run active', 'run_active'],

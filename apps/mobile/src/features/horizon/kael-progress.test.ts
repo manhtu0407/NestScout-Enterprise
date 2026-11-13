@@ -23,10 +23,19 @@ test('the newest request that is not done is the one that is tracked', () => {
   expect(pickProgressRequest([])).toBeNull();
 });
 
+test('a cancelled request is never the one that is tracked', () => {
+  const cancelled: ServiceRequest = { ...request('cancelled', 0, 'done', 'Đã hủy yêu cầu'), closed: 'cancelled' };
+  expect(pickProgressRequest([cancelled, request('finished', 6, 'done', 'Đã hoàn tất')])?.id).toBe('finished');
+  expect(pickProgressRequest([cancelled, request('open', 1, 'waiting')])?.id).toBe('open');
+  expect(pickProgressRequest([cancelled])).toBeNull();
+});
+
 test('a request becomes a progress with its real status and step', () => {
   const progress = progressForRequest(request('a', 1, 'waiting', 'Có báo giá mới'));
   expect(progress).toMatchObject({ hint: 'Yêu cầu a · Có báo giá mới', current: 1, finished: false });
   expect(progress.steps).toEqual(['Đã gửi', 'Có báo giá', 'Chấp nhận', 'Ghép thợ', 'Thực hiện', 'Nghiệm thu']);
+  expect(progressForRequest({ ...request('c', 3, 'waiting', 'Chưa có thợ phù hợp'), dispatch: { canRetry: true, canCancel: true } })).toMatchObject({ finished: false, spinnerLabel: 'Đang chờ bạn xử lý' });
+  expect(progressForRequest({ ...request('d', 3, 'waiting', 'Đã mời 2 thợ'), dispatch: { canRetry: false, canCancel: true } })).toMatchObject({ spinnerLabel: 'Đang tiến hành' });
   expect(progressForRequest(request('b', 6, 'done', 'Đã hoàn tất'))).toMatchObject({ current: 6, finished: true, spinnerLabel: 'Yêu cầu đã hoàn tất' });
 });
 
@@ -41,4 +50,17 @@ test('a worker job maps onto the five steps and a finished job completes all of 
   expect(progressForWorkerJob(job('a', 'active', 'Bắt đầu 10:20'))).toMatchObject({ hint: 'Việc a · Bắt đầu 10:20', current: 2, finished: false });
   expect(progressForWorkerJob(job('s', 'assigned'))).toMatchObject({ hint: 'Việc s · Đã nhận', current: 1 });
   expect(progressForWorkerJob(job('d', 'done'))).toMatchObject({ current: 5, finished: true, spinnerLabel: 'Việc đã hoàn tất' });
+});
+
+test('a request waiting on the customer, recovering, escalated or reviewed reads as such', () => {
+  const assigned = (dispatch: NonNullable<ServiceRequest['dispatch']>, status: string) => progressForRequest({ ...request('e', 4, 'active', status), dispatch });
+  const base = { canRetry: false, canCancel: false };
+  expect(assigned({ ...base, canReassign: true }, 'Thợ đang trên đường tới')).toMatchObject({ hint: 'Yêu cầu e · Thợ đang trên đường tới', spinnerLabel: 'Đang chờ bạn xử lý' });
+  expect(assigned({ ...base, canEscalate: true }, 'Thợ đã đến nơi')).toMatchObject({ spinnerLabel: 'Đang chờ bạn xử lý' });
+  expect(assigned({ ...base, reassignAt: '2026-11-13T10:00:00.000Z' }, 'Thợ đã nhận việc')).toMatchObject({ spinnerLabel: 'Đang tiến hành' });
+  expect(assigned({ ...base, escalatedAt: '2026-11-13T10:00:00.000Z', escalationStatus: 'open' }, 'Thợ đã đến nơi')).toMatchObject({ spinnerLabel: 'Đã báo sự cố, đang chờ xử lý' });
+  expect(assigned({ ...base, escalatedAt: '2026-11-13T10:00:00.000Z', escalationStatus: null }, 'Thợ đã đến nơi')).toMatchObject({ spinnerLabel: 'Đã báo sự cố, đang chờ xử lý' });
+  expect(assigned({ ...base, escalatedAt: '2026-11-13T10:00:00.000Z', escalationStatus: 'reviewing' }, 'Thợ đã đến nơi')).toMatchObject({ spinnerLabel: 'Đội hỗ trợ đang xem xét sự cố' });
+  expect(assigned({ ...base, escalatedAt: '2026-11-13T10:00:00.000Z', escalationStatus: 'resolved', escalationResolution: 'proceed' }, 'Thợ đã đến nơi')).toMatchObject({ spinnerLabel: 'Đang tiến hành' });
+  expect(progressForRequest({ ...request('r', 3, 'waiting', 'Đang cập nhật lời mời'), dispatch: { ...base } })).toMatchObject({ hint: 'Yêu cầu r · Đang cập nhật lời mời', spinnerLabel: 'Đang tiến hành' });
 });

@@ -104,6 +104,32 @@ impl Stack {
         assert!(reply.ok(), "read {path} failed with HTTP {}", reply.status);
         reply.body.as_array().cloned().unwrap_or_default()
     }
+
+    pub fn rpc(&self, user: &User, name: &str, body: &Value) -> kael_durable::backend::Reply {
+        let began = Instant::now();
+        let reply = self.backend().user(&user.token, "POST", &format!("rpc/{name}"), Some(body), Duration::from_secs(15), None).expect("rpc transport");
+        note(format!("rpc {name} status={} in {}ms", reply.status, began.elapsed().as_millis()));
+        reply
+    }
+
+    pub fn submitted_request(&self, user: &User, description: &str) -> String {
+        let submitted = self.rpc(user, "submit_service_request", &json!({"p_submission_key": random_uuid(), "p_description": description, "p_location": "Quận 7", "p_service_id": "electric"}));
+        assert!(submitted.ok(), "submit_service_request failed with HTTP {}: {}", submitted.status, submitted.body);
+        submitted.body.as_str().expect("request id").to_owned()
+    }
+
+    pub fn accept_quote(&self, user: &User, request_id: &str) {
+        let quotes = self.rows(user, &format!("service_quotes?select=id&request_id=eq.{request_id}"));
+        let quote_id = quotes.first().and_then(|row| row["id"].as_str()).expect("automatic quote").to_owned();
+        let accepted = self.rpc(user, "accept_service_quote", &json!({"p_quote_id": quote_id, "p_version": 1}));
+        assert!(accepted.ok(), "accept_service_quote failed with HTTP {}: {}", accepted.status, accepted.body);
+    }
+
+    pub fn dispatch(&self, user: &User, request_id: &str) -> Value {
+        let reply = self.rpc(user, "get_dispatch_summary", &json!({"p_request_ids": [request_id]}));
+        assert!(reply.ok(), "get_dispatch_summary failed with HTTP {}", reply.status);
+        reply.body.as_array().and_then(|rows| rows.first()).cloned().unwrap_or(Value::Null)
+    }
 }
 
 #[derive(Clone)]
@@ -667,3 +693,59 @@ impl Drop for Report {
         eprintln!("---- end diagnostics ----");
     }
 }
+
+pub fn turn_body(request_id: &str, text: &str) -> Value {
+    json!({"request_id": request_id, "conversation_id": null, "mode": "client", "action": {"type": "message", "text": text}})
+}
+
+pub fn task_id_from(request: &Value) -> String {
+    let messages = request["messages"].as_array().expect("messages");
+    let tool = messages.iter().rev().find(|message| message["role"] == "tool").expect("tool result");
+    let content = tool["content"].as_str().expect("tool content");
+    let at = content.find("\"id\":\"").expect("task id in tool result") + 6;
+    content[at..at + 36].to_owned()
+}
+
+pub fn tool_payloads(request: &Value) -> Vec<Value> {
+    request["messages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|message| message["role"] == "tool")
+        .filter_map(|message| message["content"].as_str().and_then(|content| serde_json::from_str(content).ok()))
+        .collect()
+}
+
+pub fn listed_dispatch(request: &Value) -> (String, Value) {
+    let listing = tool_payloads(request).into_iter().find(|payload| payload["requests"].is_array()).expect("customer_requests result");
+    let first = &listing["requests"][0];
+    (first["request_id"].as_str().expect("request id").to_owned(), first["dispatch"].clone())
+}
+
+pub fn dispatch_action(request: &Value, name: &'static str) -> Step {
+    let (request_id, dispatch) = listed_dispatch(request);
+    let mut arguments = json!({"task_id": task_id_from(request), "request_id": request_id});
+    if name == "service_request_redispatch" {
+        arguments["rounds"] = dispatch["rounds"].clone();
+    }
+    Step::Tool { name, arguments }
+}
+
+pub fn redispatch_step(request: &Value) -> Step {
+    dispatch_action(request, "service_request_redispatch")
+}
+
+pub fn cancel_step(request: &Value) -> Step {
+    dispatch_action(request, "service_request_cancel")
+}
+
+pub fn dispatch_script(action: fn(&Value) -> Step) -> Vec<Step> {
+    vec![
+        Step::Tool { name: "customer_requests", arguments: json!({"limit": 5}) },
+        Step::Tool { name: "task_create", arguments: json!({"title": "Xử lý yêu cầu chưa có thợ", "kind": "workflow_action", "status": "running", "note": ""}) },
+        Step::Compute(action),
+        Step::Text("Mời bạn xác nhận trong ứng dụng."),
+    ]
+}
+
+pub const DISPATCH_EFFECTS: [(&str, &str); 1] = [("KAEL_ENABLED_EFFECTS", "service_request_redispatch,service_request_cancel")];

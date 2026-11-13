@@ -203,7 +203,7 @@ state, not open connections.
 | `KAEL_MODEL_ROUTE` | Provider order; defaults to DeepSeek followed by Anthropic when configured. Unknown or duplicate entries fail closed |
 | `PERPLEXITY_API_KEY` + `KAEL_WEB_SEARCH=enabled` | Enables the `web_search` tool |
 | `KAEL_ANTHROPIC_SERVER_FALLBACK` | Enables Anthropic's provider-side fallback for supported configured models |
-| `KAEL_ENABLED_EFFECTS` | Owner opt-in for explicit-confirmation actions: `service_request_submit`, `service_quote_decision`, `work_submission_decision`, `worker_offer_decision` and `worker_job_advance`; omitted actions stay unavailable |
+| `KAEL_ENABLED_EFFECTS` | Owner opt-in for explicit-confirmation actions: `service_request_submit`, `service_quote_decision`, `service_request_redispatch`, `service_request_cancel`, `work_submission_decision`, `worker_offer_decision` and `worker_job_advance`; omitted actions stay unavailable |
 | `KAEL_KNOWLEDGE=disabled` | Removes both Intelligence tools; general conversation stays available |
 | `KAEL_ESTIMATE_PREVIEW=local_only` | Enables numeric synthetic preview only when the configured Supabase target is loopback; default disabled |
 
@@ -310,6 +310,21 @@ after account erasure or session deletion, and a second instance streaming a run
 instance owns. The tests are `#[ignore]`d until
 `KAEL_TEST_GATEWAY`, `KAEL_TEST_ANON` and `KAEL_TEST_SERVICE` point at such a stack,
 then run with `cargo test --locked --test process_recovery -- --ignored --test-threads=1`.
+Three of the tests drive the dispatch tools. A proposed cancel needs the account's
+confirmation, cannot be applied by another account, closes the request once and cannot
+be applied twice; a redispatch proposal for a request that cannot be retried gets no
+approval and records no round; and, only when built with `--features dispatch-fixture`
+against a stack with automatic dispatch enabled and one dispatch-eligible worker, a
+confirmed redispatch invites the worker once and never reports an assignment. The model
+in these tests is a scripted local server, so they prove the tool, approval and effect
+path, not provider output.
+
+On a machine without a Linux toolchain, run the suite in a `rust` container and give it
+the stack through a TCP proxy to the host. The gateway URL must keep the hostname
+`host.docker.internal`, because the service rejects non-local plain HTTP addresses by IP
+literal, and that name must resolve to IPv4 only (`--add-host`), since the proxy
+listens there.
+
 They must run one at a time: every started service runs the reconciler, which adopts
 and purges any run in the shared database, so a parallel test's service would close or
 purge another test's runs, whose files live in a different data directory. The same

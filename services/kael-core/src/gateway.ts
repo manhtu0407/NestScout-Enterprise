@@ -7,7 +7,7 @@ import { encodeEvent, isTerminalEvent, kaelProtocolVersion } from './events.ts';
 import type { KaelEventBody, KaelFailureCode } from './events.ts';
 import { ProviderError } from './model.ts';
 import type { Fetcher, ModelProvider } from './model.ts';
-import type { Actor } from './policy.ts';
+import type { Actor, Autonomy } from './policy.ts';
 import { failureMessage, isRetryable, resolveApproval, runAgentTurn } from './runtime.ts';
 import type { RunOutcome } from './runtime.ts';
 import { createRest, createServerRpc, createSupabaseStore, StoreError } from './store.ts';
@@ -286,7 +286,13 @@ export function createKaelHandler(dependencies: GatewayDependencies) {
     const runStartedAt = performance.now();
     const runId = started.run_id;
     const conversationId = started.conversation_id;
-    const actor: Actor = { userId, capabilities, mode: turn.mode };
+    let autonomy: Autonomy = 'ask';
+    try {
+      autonomy = await store.autonomy?.(turn.mode, setup) ?? 'ask';
+    } catch (error) {
+      log({ event: 'kael_autonomy_unavailable', deployment, request_id: turn.request_id, http_status: error instanceof StoreError ? error.status : null });
+    }
+    const actor: Actor = { userId, capabilities, mode: turn.mode, autonomy };
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, request.signal]);
     let seq = 0;

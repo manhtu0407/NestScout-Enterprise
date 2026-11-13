@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+use crate::backend::Reply;
 use crate::policy::confirmable_tools;
 use crate::runctx::{Fail, RunContext, text_of};
 use crate::store::Outcome;
@@ -74,6 +75,18 @@ fn effect_copy(tool: &str, args: &Value) -> Copy {
             }
         }
         "worker_job_advance" => flow("Đang cập nhật tiến độ", "service_job"),
+        "service_request_redispatch" => Copy {
+            label: "Đang mời thêm thợ",
+            kind: "dispatch_round",
+            refused: "Hệ thống chưa mời thêm thợ: yêu cầu đã thay đổi, chưa đến lúc thử lại hoặc chưa có thợ phù hợp. Chưa có gì thay đổi; hãy xem lại trạng thái mới nhất.",
+            uncertain: WORKFLOW_UNCERTAIN,
+        },
+        "service_request_cancel" => Copy {
+            label: "Đang hủy yêu cầu",
+            kind: "service_request",
+            refused: "Hệ thống chưa hủy yêu cầu này vì đã có thợ nhận việc hoặc yêu cầu đã thay đổi. Chưa có gì thay đổi; hãy xem lại trạng thái mới nhất.",
+            uncertain: WORKFLOW_UNCERTAIN,
+        },
         _ => Copy {
             label: "Đang gửi yêu cầu dịch vụ",
             kind: "service_request",
@@ -113,6 +126,8 @@ fn effect_done(tool: &str, args: &Value, resource_id: &str) -> String {
             _ => "Đã cập nhật tiến độ.",
         }
         .to_owned(),
+        "service_request_redispatch" => "Đã mời thêm thợ cho yêu cầu này. Chưa có thợ nhận việc: yêu cầu chỉ được giao khi một thợ xác nhận.".to_owned(),
+        "service_request_cancel" => "Đã hủy yêu cầu. Các lời mời đang mở cho thợ đã được đóng.".to_owned(),
         _ => format!(
             "Đã gửi yêu cầu dịch vụ (mã {}). Đây mới là bước gửi yêu cầu: chưa có thợ, báo giá hay lịch hẹn nào được xác nhận.",
             resource_id.chars().take(8).collect::<String>()
@@ -138,6 +153,7 @@ struct EffectCall {
     refusals: &'static [u16],
     sqlstate_refuses: bool,
     integer_resource_job: Option<String>,
+    unsuccessful_at_zero: Option<&'static str>,
     evidence: Option<Evidence>,
 }
 
@@ -154,16 +170,19 @@ fn effect_call(approval_id: &str, tool: &str, args: &Value) -> Option<EffectCall
         let description = text_of(&args["description"]);
         let preferred = text_of(&args["preferred_time"]);
         let location = args["location"].as_str().unwrap_or("").to_owned();
+        let service = args["service_id"].as_str().filter(|id| !id.is_empty());
         return Some(EffectCall {
             path: "rpc/submit_service_request".into(),
             body: json!({
                 "p_submission_key": approval_id,
                 "p_description": if preferred.is_empty() || args["preferred_time"].is_null() { description } else { format!("{description}\nThời gian mong muốn: {preferred}") },
                 "p_location": location,
+                "p_service_id": service.map_or(Value::Null, Value::from),
             }),
             refusals: &[400, 422],
             sqlstate_refuses: false,
             integer_resource_job: None,
+            unsuccessful_at_zero: None,
             evidence: None,
         });
     }
@@ -174,6 +193,7 @@ fn effect_call(approval_id: &str, tool: &str, args: &Value) -> Option<EffectCall
         refusals,
         sqlstate_refuses: true,
         integer_resource_job: job,
+        unsuccessful_at_zero: None,
         evidence,
     };
     match tool {
@@ -242,6 +262,32 @@ fn effect_call(approval_id: &str, tool: &str, args: &Value) -> Option<EffectCall
                 Some(text_of(&args["job_id"])),
             ))
         }
+        "service_request_redispatch" => {
+            let target = text_of(&args["request_id"]);
+            let next_round = args["rounds"].as_i64().unwrap_or(0) + 1;
+            let mut call = build(
+                "rpc/redispatch_service_request",
+                json!({"p_request_id": args["request_id"], "p_expected_round": next_round}),
+                Some(Evidence {
+                    path: format!(
+                        "service_dispatch_rounds?select=request_id,round,outcome&request_id=eq.{target}&round=eq.{next_round}&outcome=eq.invited"
+                    ),
+                    observed: Box::new(|row| text_id(&row["request_id"])),
+                }),
+                Some(target),
+            );
+            call.unsuccessful_at_zero = Some("no_eligible_worker");
+            Some(call)
+        }
+        "service_request_cancel" => Some(build(
+            "rpc/cancel_service_request",
+            json!({"p_request_id": args["request_id"]}),
+            Some(Evidence {
+                path: row_read("service_requests", "id,cancelled_at", "id", &args["request_id"]),
+                observed: Box::new(|row| row["cancelled_at"].is_string().then(|| text_id(&row["id"])).flatten()),
+            }),
+            None,
+        )),
         _ => None,
     }
 }
@@ -288,6 +334,15 @@ pub fn execute_approved_effect(ctx: &RunContext, approval_id: &str, approval: &V
             return Effect::Uncertain(reason);
         }
         return if database_refused(&reply.body) { Effect::Failed(reason) } else { Effect::Uncertain(reason) };
+    }
+    settle_success(&call, &reply)
+}
+
+fn settle_success(call: &EffectCall, reply: &Reply) -> Effect {
+    if let Some(reason) = call.unsuccessful_at_zero {
+        if reply.body.as_i64() == Some(0) {
+            return Effect::Failed(reason.into());
+        }
     }
     match &call.integer_resource_job {
         Some(job) => {
@@ -533,5 +588,48 @@ pub fn resolve_approval(ctx: &RunContext, resolution: &Resolution) -> Outcome {
             say(&mut outcome, copy.uncertain);
             outcome
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const APPROVAL: &str = "22222222-2222-4222-8222-222222222222";
+
+    fn submit(service: Value) -> Value {
+        json!({"task_id": APPROVAL, "description": "Sửa vòi nước", "location": "Quận 1", "preferred_time": "Sáng mai", "service_id": service})
+    }
+
+    #[test]
+    fn a_submission_carries_its_service_category_to_the_database() {
+        let call = effect_call(APPROVAL, "service_request_submit", &submit(json!("water"))).expect("submit call");
+        assert_eq!(call.body["p_service_id"], json!("water"));
+        assert_eq!(call.body["p_submission_key"], json!(APPROVAL));
+    }
+
+    #[test]
+    fn a_submission_without_a_category_sends_null_instead_of_guessing() {
+        for empty in [json!(""), Value::Null] {
+            let call = effect_call(APPROVAL, "service_request_submit", &submit(empty)).expect("submit call");
+            assert_eq!(call.body["p_service_id"], Value::Null);
+        }
+    }
+
+    #[test]
+    fn a_redispatch_is_bound_to_the_next_round() {
+        let args = json!({"request_id": "33333333-3333-4333-8333-333333333333", "rounds": 4});
+        let call = effect_call(APPROVAL, "service_request_redispatch", &args).expect("redispatch call");
+        assert_eq!(call.body["p_expected_round"], json!(5));
+        assert_eq!(call.body["p_request_id"], args["request_id"]);
+    }
+
+    #[test]
+    fn a_redispatch_that_invited_nobody_is_an_unsuccessful_outcome() {
+        let args = json!({"request_id": "33333333-3333-4333-8333-333333333333", "rounds": 1});
+        let call = effect_call(APPROVAL, "service_request_redispatch", &args).expect("redispatch call");
+        assert!(matches!(settle_success(&call, &Reply { status: 200, body: json!(0) }), Effect::Failed(reason) if reason == "no_eligible_worker"));
+        assert!(matches!(settle_success(&call, &Reply { status: 200, body: json!(2) }), Effect::Succeeded(_)));
+        assert!(matches!(settle_success(&call, &Reply { status: 200, body: json!("x") }), Effect::Uncertain(_)));
     }
 }

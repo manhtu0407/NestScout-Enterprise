@@ -26,6 +26,7 @@ jest.mock('@/features/shared', () => ({
   submitWork: jest.fn(),
   proposeScope: jest.fn(),
   reportJob: jest.fn(),
+  releaseJob: jest.fn(),
 }));
 
 const offer = { invitation_id: 'invite-1', quote_id: 'quote-1', quote_version: 3, scope: 'Sửa vòi', amount_minor: 1, currency: 'VND' as const, expires_at: '2026-11-03T00:00:00Z', basis: 'local_fixture' };
@@ -196,4 +197,12 @@ test('a refused read marker reloads and reports the failure, and nothing is sent
   });
   const idle = await mount('working', null);
   await expect(idle.result.current.markRead(['n1'])).rejects.toMatchObject({ failure: 'forbidden' });
+});
+
+test('releasing a job sends the version the worker saw and confirms to the worker', async () => {
+  const view = await mount('assigned');
+  let message: string | void = undefined;
+  await act(async () => { message = await view.result.current.perform('job-1', { type: 'release', reason: 'unavailable', key: 'k4' }); });
+  expect(shared.releaseJob).toHaveBeenCalledWith('worker-1', job('assigned'), 'unavailable', 'k4', expect.any(AbortSignal));
+  expect(message).toMatch(/Đã rút khỏi việc này/);
 });

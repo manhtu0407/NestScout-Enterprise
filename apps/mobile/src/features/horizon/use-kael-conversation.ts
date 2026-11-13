@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { loadKaelConversation, openKaelConversation, setKaelFeedback, streamKaelTurn, type KaelApproval, type KaelConversationSnapshot, type KaelEvent, type KaelFeedbackRating, type KaelFeedbackReason, type KaelMode, type KaelQuestion, type KaelTask, type KaelTaskStatus, type KaelTurnAction, type KaelTurnOutcome } from '@/features/shared';
 
-export type KaelChatMessage = { id: string; role: 'user' | 'assistant'; text: string; incomplete?: boolean; runId?: string; storedId?: string };
+export type KaelChatMessage = { id: string; role: 'user' | 'assistant'; text: string; incomplete?: boolean; runId?: string; storedId?: string; sentAt?: number };
 
 export type KaelConversationState = {
   messages: KaelChatMessage[];
@@ -125,7 +125,7 @@ function restored(state: KaelConversationState, snapshot: KaelConversationSnapsh
   return {
     ...state,
     conversationId: snapshot.conversationId,
-    messages: snapshot.messages.map(message => ({ id: `stored-${message.id}`, storedId: message.id, role: message.role, text: message.text, incomplete: message.incomplete })),
+    messages: snapshot.messages.map(message => ({ id: `stored-${message.id}`, storedId: message.id, role: message.role, text: message.text, incomplete: message.incomplete, sentAt: message.sentAt })),
     tasks: snapshot.tasks,
     approvals: snapshot.approvals,
     notice: restoredNotice(state, snapshot, interrupted),
@@ -280,7 +280,7 @@ export function useKaelConversation(userId: string | null, mode: KaelMode, strea
       processingTaskId: decided !== null && action.type !== 'reject' ? decided.task_id : null,
       receipt: null,
       question: null,
-      messages: [...current.messages, { id: `user-${requestId}`, role: 'user', text: userText }],
+      messages: [...current.messages, { id: `user-${requestId}`, role: 'user', text: userText, sentAt: Date.now() }],
       approvals: action.type === 'message' ? current.approvals : current.approvals.filter(item => item.id !== action.approval_id),
     }));
     let outcome: KaelTurnOutcome;

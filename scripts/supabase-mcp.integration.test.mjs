@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { localRuntime, withLocalLock } from './supabase-local.mjs';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { root } from './tool-path.mjs';
@@ -400,7 +400,7 @@ test('two workers accepting the same request produce exactly one assignment', as
       const [held, late] = await Promise.all([holder, expired]);
       assert.equal(held.code, 0);
       assert.notEqual(late.code, 0);
-      assert.match(late.errors, /invitation unavailable/);
+      assert.match(late.errors, /invitation expired/);
       assert.ok(late.elapsed >= 1500, 'The acceptance must wait for the request lock');
       assert.equal(query(`select count(*) from public.service_jobs where request_id='${request}';`).trim(), '0');
       const assignmentBarrier = barrierKey();
@@ -1094,7 +1094,7 @@ function draftSteps({ missing = false, submit = true } = {}) {
     { tools: [call('task_create', { title: 'Synthetic local service request', kind: 'service_request', status: 'running', note: '' })] },
     request => ({ tools: [call('service_request_draft', {
       task_id: lastToolResults(request)[0].task.id, description: 'Synthetic local repair',
-      location: missing ? '' : 'Synthetic local location', preferred_time: 'Synthetic local time', missing: missing ? ['location'] : [],
+      location: missing ? '' : 'Synthetic local location', preferred_time: 'Synthetic local time', service_id: '', missing: missing ? ['location'] : [],
     })] }),
     ...(submit ? [request => ({ tools: [call('service_request_submit', { task_id: lastToolResults(request)[0].task.id })] })] : []),
     { text: [missing ? 'Please provide a location.' : 'Prepared, not submitted.'] },
@@ -1111,6 +1111,8 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
     const serviceKey = status.env.SERVICE_ROLE_KEY;
     assert.ok(publicKey?.startsWith('sb_publishable_'));
     assert.ok(serviceKey?.startsWith('eyJ'));
+    const worker = await fetch(`${origin}/functions/v1/kael`, { method: 'POST', headers: { apikey: publicKey, 'content-type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(15000) });
+    assert.notEqual(worker.status, 404, 'No Kael Edge worker is registered for this stack. Run npm run kael:serve in a separate terminal; stopping or restarting the stack removes the worker.');
     const containers = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/);
     assert.equal(containers.length, 1);
     assert.match(containers[0], /^[a-f0-9]{12,64}$/);
@@ -1855,7 +1857,7 @@ test('Kael coordinates the authorized Customer–Worker lifecycle through confir
         { tools: [call('task_create', { title: 'Sửa máy lạnh phòng ngủ', kind: 'service_request', status: 'running', note: '' })] },
         request => {
           intakeTask = lastToolResults(request)[0].task.id;
-          return { tools: [call('service_request_draft', { task_id: intakeTask, description: 'Máy lạnh phòng ngủ không mát', location: '12 Lê Lợi, Quận 1', preferred_time: 'Chiều mai', missing: [] })] };
+          return { tools: [call('service_request_draft', { task_id: intakeTask, description: 'Máy lạnh phòng ngủ không mát', location: '12 Lê Lợi, Quận 1', preferred_time: 'Chiều mai', service_id: 'aircon', missing: [] })] };
         },
         () => ({ tools: [call('service_request_submit', { task_id: intakeTask })] }),
         { text: ['Bạn kiểm tra rồi xác nhận gửi nhé.'] },
@@ -1871,7 +1873,7 @@ test('Kael coordinates the authorized Customer–Worker lifecycle through confir
       assert.equal(forged.end.code, 'approval_invalid');
       const submitted = await approve(customer, 'client', submitApproval, intake.conversation);
       assert.equal(submitted.end.type, 'run_completed');
-      assert.match(text(submitted), /chưa có thợ, báo giá hay lịch hẹn nào được xác nhận/);
+      assert.match(text(submitted), /Chưa có thợ hay lịch hẹn nào được xác nhận/);
       requestId = one(`select id from public.service_requests where owner_id='${customer.id}' and submission_key='${submitApproval.id}';`);
       assert.match(requestId, uuid);
       const replayed = await approve(customer, 'client', submitApproval, intake.conversation);
@@ -2035,4 +2037,939 @@ test('Kael coordinates the authorized Customer–Worker lifecycle through confir
       assert.equal(query('select count(*) from auth.users;'), initialUsers);
     }
   });
+});
+
+test('Kael retries and cancels an unmatched dispatch only through confirmed effects on real Auth and PostgreSQL', { timeout: 300000 }, async () => {
+  await withLocalLock(async () => {
+    const runtime = localRuntime();
+    const stack = runtime.verify();
+    const status = runtime.status();
+    const origin = stack.endpoints['rest.http'].url.replace(/\/$/, '');
+    const publicKey = status.env.PUBLISHABLE_KEY;
+    const serviceKey = status.env.SERVICE_ROLE_KEY;
+    const container = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim();
+    assert.match(container, /^[a-f0-9]{12,64}$/);
+    const query = sql => execFileSync('docker', ['exec', '-i', container, 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], { input: sql, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    const initialUsers = query('select count(*) from auth.users;');
+    const settings = query('select enabled, max_invites, max_rounds, retry_cooldown_minutes, max_manual_retries, empty_retry_cooldown_seconds from nestscout_private.auto_dispatch_settings;');
+    const [enabled, maxInvites, maxRounds, cooldown, manual, emptyCooldown] = settings.split('|');
+    const env = { SUPABASE_URL: `${origin}/`, SUPABASE_ANON_KEY: publicKey, SUPABASE_SERVICE_ROLE_KEY: serviceKey, KAEL_ENABLED_EFFECTS: 'service_request_redispatch,service_request_cancel' };
+    const accounts = [];
+    const request = (route, token, body, admin = false) => fetch(`${origin}${route}`, {
+      method: body === undefined ? 'GET' : 'POST', signal: AbortSignal.timeout(30000),
+      headers: { apikey: admin ? serviceKey : publicKey, ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const rpc = (user, name, body = {}) => request(`/rest/v1/rpc/${name}`, user.token, body);
+    const newUser = async label => {
+      const email = `${randomUUID()}@example.invalid`;
+      const password = randomUUID();
+      const created = await request('/auth/v1/admin/users', serviceKey, { email, password, email_confirm: true }, true);
+      assert.equal(created.status, 200, `${label} provisioning`);
+      const user = { id: (await created.json()).id, token: null, label };
+      accounts.push(user);
+      const login = await request('/auth/v1/token?grant_type=password', null, { email, password });
+      assert.equal(login.status, 200, `${label} password session`);
+      user.token = (await login.json()).access_token;
+      return user;
+    };
+    const send = async (provider, user, action, conversation, mode, fetcher) => {
+      while (Number(query(`select count(*) from public.kael_runs where owner_id='${user.id}' and started_at > clock_timestamp() - interval '1 minute';`)) >= 12) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      const handle = createKaelHandler({ env, providers: () => (provider ? [provider] : []), log: () => {}, ...(fetcher ? { fetcher } : {}) });
+      const response = await handle(new Request(`${origin}/functions/v1/kael`, {
+        method: 'POST', headers: { authorization: `Bearer ${user.token}`, apikey: publicKey, 'content-type': 'application/json' },
+        body: JSON.stringify({ request_id: randomUUID(), conversation_id: conversation, mode, action }),
+      }));
+      assert.equal(response.status, 200, `${user.label} turn is accepted`);
+      const events = (await response.text()).trim().split('\n').map(line => parseKaelEvent(line));
+      const sequence = createKaelSequence();
+      for (const event of events) {
+        assert.ok(event, 'every gateway event satisfies the mobile parser');
+        assert.equal(sequence(event), 'accept');
+      }
+      return { events, conversation: events[0].conversation_id, end: events.at(-1) };
+    };
+    const say = (user, steps, conversation = null) => send(scriptedProvider('anthropic', steps), user, { type: 'message', text: 'Synthetic dispatch message' }, conversation, 'client');
+    const approve = (user, approval, conversation, type = 'approve', fetcher) => send(null, user, { type, approval_id: approval.id, fingerprint: approval.fingerprint }, conversation, 'client', fetcher);
+    const approvalOf = result => result.events.find(event => event.type === 'approval_required')?.approval;
+    const text = result => result.events.filter(event => event.type === 'message_delta').map(event => event.text).join('');
+    const one = sql => query(sql);
+    const proposal = (title, tool, extra) => [
+      { tools: [call('customer_requests', { limit: 5 })] },
+      request => ({ seen: lastToolResults(request)[0], tools: [call('task_create', { title, kind: 'workflow_action', status: 'running', note: '' })] }),
+      request => {
+        const [created] = lastToolResults(request);
+        const earlier = request.transcript.flatMap(entry => (entry.role === 'tool' ? entry.results.map(result => JSON.parse(result.content)) : [])).find(item => item.requests);
+        return { tools: [call(tool, { task_id: created.task.id, ...extra(earlier) })] };
+      },
+      { text: ['Mời bạn xác nhận trong ứng dụng.'] },
+    ];
+    const dispatchOf = (seen, id) => seen.requests.find(item => item.request_id === id).dispatch;
+    try {
+      const customer = await newUser('Customer A');
+      const customerB = await newUser('Customer B');
+      const worker = await newUser('Worker A');
+      query(`insert into public.consent_events (user_id, purpose, granted, policy_version) values
+          ('${customer.id}', 'ai_sharing', true, '2026-11-09'), ('${customerB.id}', 'ai_sharing', true, '2026-11-09');
+        insert into public.worker_access_grants (user_id) values ('${worker.id}');
+        insert into nestscout_private.worker_dispatch_eligibility (user_id, basis, active) values ('${worker.id}', 'local_fixture', true);
+        insert into public.worker_public_profiles (worker_id, display_name, trade, area, experience_years, about, skills, service_ids, accepting_jobs) values
+          ('${worker.id}', 'Thợ thử', 'Thợ điện', 'Quận 7', 5, 'Sửa điện', array['Điện'], array['electric'], false);
+        update nestscout_private.auto_dispatch_settings set enabled = true, max_invites = 1, max_rounds = 3, retry_cooldown_minutes = 5, max_manual_retries = 3, empty_retry_cooldown_seconds = 10;`);
+      const submit = async (user, description) => {
+        const response = await rpc(user, 'submit_service_request', { p_submission_key: randomUUID(), p_description: description, p_location: 'Quận 7', p_service_id: 'electric' });
+        assert.equal(response.status, 200, 'the customer submits a request');
+        const id = await response.json();
+        const quote = one(`select id from public.service_quotes where request_id='${id}';`);
+        assert.match(quote, uuid);
+        assert.equal((await rpc(user, 'accept_service_quote', { p_quote_id: quote, p_version: 1 })).status, 200, 'the customer accepts the automatic quote');
+        return id;
+      };
+      const first = await submit(customer, 'Mất điện bếp');
+      assert.equal(one(`select outcome from public.service_dispatch_rounds where request_id='${first}';`), 'no_eligible_worker', 'with nobody accepting jobs the first round is recorded as empty');
+
+      const retrySteps = proposal('Mời thêm thợ', 'service_request_redispatch', seen => {
+        const dispatch = dispatchOf(seen, first);
+        assert.deepEqual([dispatch.state, dispatch.can_retry, dispatch.can_cancel, dispatch.last_outcome], ['no_match', true, true, 'no_eligible_worker']);
+        return { request_id: first, rounds: dispatch.rounds };
+      });
+      const proposed = await say(customer, retrySteps);
+      const retryApproval = approvalOf(proposed);
+      assert.equal(retryApproval.tool, 'service_request_redispatch');
+      assert.equal(one(`select count(*) from public.service_invitations where request_id='${first}';`), '0', 'a proposed retry invites nobody');
+      assert.equal(one(`select count(*) from public.service_dispatch_rounds where request_id='${first}';`), '1', 'a proposed retry records no round');
+      const noWorker = await approve(customer, retryApproval, proposed.conversation);
+      assert.equal(noWorker.end.type, 'run_failed', 'a retry with nobody eligible is a definitive refusal, not a success');
+      assert.match(text(noWorker), /chưa mời thêm thợ/);
+      assert.equal(one(`select outcome from nestscout_private.kael_approvals where id='${retryApproval.id}';`), 'failed');
+      assert.equal(one(`select count(*) from public.service_invitations where request_id='${first}';`), '0');
+      assert.equal(one(`select count(*) from public.service_dispatch_rounds where request_id='${first}';`), '2', 'the empty search stays on record');
+      assert.equal(one(`select outcome || ':' || reason from public.service_dispatch_rounds where request_id='${first}' and round=2;`), 'no_eligible_worker:manual_retry');
+      assert.equal(one(`select (next_retry_at > clock_timestamp())::text from nestscout_private.dispatch_state('${customer.id}', array['${first}']::uuid[]);`), 'true', 'the empty search keeps its cooldown');
+      await approve(customer, retryApproval, proposed.conversation);
+      assert.equal(one(`select count(*) from public.service_dispatch_rounds where request_id='${first}';`), '2', 'replaying an unsuccessful approval records no further round');
+
+      const raced = await submit(customer, 'Hỏng ổ cắm');
+      const racing = () => rpc(customer, 'redispatch_service_request', { p_request_id: raced, p_expected_round: 2 });
+      const results = await Promise.all([racing(), racing(), racing()]);
+      assert.deepEqual(await Promise.all(results.map(async response => [response.status, await response.json()])), [[200, 0], [200, 0], [200, 0]], 'concurrent approvals of one round all see the same unsuccessful result');
+      assert.equal(one(`select count(*) from public.service_dispatch_rounds where request_id='${raced}';`), '2', 'concurrent approvals of one round record it once');
+      const stale = await rpc(customer, 'redispatch_service_request', { p_request_id: raced, p_expected_round: 7 });
+      assert.notEqual(stale.status, 200, 'an approval bound to a round that is not next is refused');
+      assert.equal(one(`select count(*) from public.service_dispatch_rounds where request_id='${raced}';`), '2', 'the refused approval records nothing');
+
+      query(`update public.worker_public_profiles set accepting_jobs = true where worker_id='${worker.id}'; select pg_sleep(10.5);`);
+      const secondTurn = await say(customer, proposal('Mời thêm thợ lần hai', 'service_request_redispatch', seen => ({ request_id: first, rounds: dispatchOf(seen, first).rounds })));
+      const secondApproval = approvalOf(secondTurn);
+      assert.equal(secondApproval.tool, 'service_request_redispatch');
+      const strangerView = await rpc(customerB, 'get_dispatch_summary', { p_request_ids: [first] });
+      assert.deepEqual(await strangerView.json(), [], 'another customer never sees this dispatch');
+      const invited = await approve(customer, secondApproval, secondTurn.conversation);
+      assert.equal(invited.end.type, 'run_completed');
+      assert.match(text(invited), /Đã mời thêm thợ/);
+      assert.match(text(invited), /Chưa có thợ nhận việc/, 'an invitation is never reported as an assignment');
+      assert.equal(one(`select count(*) from public.service_invitations where request_id='${first}' and state='open';`), '1');
+      assert.equal(one(`select count(*) from public.service_jobs where request_id='${first}';`), '0');
+      const replayed = await approve(customer, secondApproval, secondTurn.conversation);
+      assert.equal(one(`select count(*) from public.service_invitations where request_id='${first}';`), '1', 'replaying a consumed approval invites nobody again');
+      assert.equal(replayed.end.type, 'run_completed');
+
+      let busy;
+      const busyTurn = await say(customer, [
+        { tools: [call('customer_requests', { limit: 5 })] },
+        request => { busy = dispatchOf(lastToolResults(request)[0], first); return { tools: [call('task_create', { title: 'Mời thêm', kind: 'workflow_action', status: 'running', note: '' })] }; },
+        request => ({ tools: [call('service_request_redispatch', { task_id: lastToolResults(request)[0].task.id, request_id: first, rounds: 2 })] }),
+        request => { busy = { ...busy, refusal: lastToolResults(request)[0] }; return { text: ['Đang có lời mời mở.'] }; },
+      ]);
+      assert.deepEqual([busy.state, busy.can_retry, busy.open_invites], ['searching', false, 1]);
+      assert.equal(busy.refusal.error, 'request_not_current');
+      assert.equal(approvalOf(busyTurn), undefined, 'an active search never reaches the confirmation control');
+
+      let foreignResult;
+      const foreign = await say(customerB, [
+        { tools: [call('task_create', { title: 'Hủy yêu cầu', kind: 'workflow_action', status: 'running', note: '' })] },
+        request => ({ tools: [call('service_request_cancel', { task_id: lastToolResults(request)[0].task.id, request_id: first })] }),
+        request => { foreignResult = lastToolResults(request)[0]; return { text: ['Không tìm thấy.'] }; },
+      ]);
+      assert.equal(foreignResult.error, 'request_not_current');
+      assert.equal(approvalOf(foreign), undefined, 'another customer cannot propose a cancellation');
+
+      const cancelProposed = await say(customer, proposal('Hủy yêu cầu', 'service_request_cancel', () => ({ request_id: first })));
+      const cancelApproval = approvalOf(cancelProposed);
+      assert.equal(cancelApproval.tool, 'service_request_cancel');
+      assert.equal(one(`select cancelled_at is null from public.service_requests where id='${first}';`), 't', 'a proposed cancellation changes nothing');
+      const cancelled = await approve(customer, cancelApproval, cancelProposed.conversation);
+      assert.equal(cancelled.end.type, 'run_completed');
+      assert.match(text(cancelled), /Đã hủy yêu cầu/);
+      assert.equal(one(`select cancelled_by='${customer.id}' from public.service_requests where id='${first}';`), 't');
+      assert.equal(one(`select state from public.service_invitations where request_id='${first}';`), 'cancelled');
+      const workerOffers = await (await rpc(worker, 'worker_offers', {})).json();
+      assert.deepEqual(workerOffers.filter(offer => offer.request_id === first), [], 'the worker no longer sees the offer of a cancelled request');
+      const afterCancel = await rpc(customer, 'retry_service_dispatch', { p_request_id: first });
+      assert.equal((await afterCancel.json()).outcome, 'cancelled', 'a cancelled request cannot be retried');
+
+      query(`update public.worker_public_profiles set accepting_jobs = false where worker_id='${worker.id}';`);
+      const other = await submit(customer, 'Chập điện phòng khách');
+      const lostTurn = await say(customer, proposal('Mời thêm thợ cho yêu cầu hai', 'service_request_redispatch', seen => ({ request_id: other, rounds: dispatchOf(seen, other).rounds })));
+      const lostApproval = approvalOf(lostTurn);
+      query(`update public.worker_public_profiles set accepting_jobs = true where worker_id='${worker.id}';`);
+      const offline = async (url, init) => {
+        if (String(url).includes('/rpc/redispatch_service_request')) throw new TypeError('network down');
+        return fetch(url, init);
+      };
+      const unknown = await approve(customer, lostApproval, lostTurn.conversation, 'approve', offline);
+      assert.match(text(unknown), /Chưa xác định/, 'an unreachable backend is reported as uncertain, never as done');
+      assert.equal(one(`select count(*) from public.service_invitations where request_id='${other}';`), '0');
+      const reconciled = await approve(customer, lostApproval, lostTurn.conversation, 'reconcile');
+      assert.equal(reconciled.end.type, 'run_completed');
+      assert.match(text(reconciled), /Đã mời thêm thợ/);
+      assert.equal(one(`select count(*) from public.service_invitations where request_id='${other}';`), '1', 'the reconcile check completes the same retry exactly once');
+      const again = await approve(customer, lostApproval, lostTurn.conversation, 'reconcile');
+      assert.equal(one(`select count(*) from public.service_invitations where request_id='${other}';`), '1', 'a second check never invites again');
+      assert.equal(again.end.type, 'run_completed');
+    } finally {
+      assert.equal(runtime.verify().id, stack.id);
+      const ids = accounts.map(user => `'${user.id}'`).join(',') || 'null';
+      query(`begin;
+        delete from nestscout_private.kael_approvals where owner_id in (${ids});
+        delete from nestscout_private.kael_tool_executions where owner_id in (${ids});
+        delete from nestscout_private.kael_tool_audit where actor_id in (${ids});
+        delete from public.kael_task_events where owner_id in (${ids});
+        delete from public.kael_tasks where owner_id in (${ids});
+        delete from public.kael_messages where owner_id in (${ids});
+        delete from public.kael_runs where owner_id in (${ids});
+        delete from public.kael_conversations where owner_id in (${ids});
+        delete from public.notifications where recipient_id in (${ids}) or request_id in (select id from public.service_requests where owner_id in (${ids}));
+        delete from public.service_invitations where request_id in (select id from public.service_requests where owner_id in (${ids}));
+        delete from public.service_dispatch_rounds where request_id in (select id from public.service_requests where owner_id in (${ids}));
+        delete from public.service_quotes where request_id in (select id from public.service_requests where owner_id in (${ids}));
+        delete from public.service_requests where owner_id in (${ids});
+        delete from public.worker_public_profiles where worker_id in (${ids});
+        delete from nestscout_private.worker_dispatch_eligibility where user_id in (${ids});
+        delete from public.worker_access_grants where user_id in (${ids});
+        delete from public.consent_events where user_id in (${ids});
+        update nestscout_private.auto_dispatch_settings set enabled = ${enabled === 't'}, max_invites = ${maxInvites}, max_rounds = ${maxRounds}, retry_cooldown_minutes = ${cooldown}, max_manual_retries = ${manual}, empty_retry_cooldown_seconds = ${emptyCooldown};
+        commit;`);
+      for (const user of accounts) {
+        const removed = await fetch(`${origin}/auth/v1/admin/users/${user.id}`, { method: 'DELETE', headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` } });
+        assert.equal(removed.status, 200, 'remove only this test-created identity');
+      }
+      assert.equal(query('select count(*) from auth.users;'), initialUsers);
+    }
+  });
+});
+
+const barrierNamespace = 1638597420;
+const uuidPattern = /\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/gi;
+const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+function connect() {
+  const stack = localRuntime().verify();
+  const ids = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/);
+  assert.equal(ids.length, 1);
+  assert.match(ids[0], /^[a-f0-9]{12,64}$/);
+  const args = ['exec', '-i', ids[0], 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'];
+  const query = sql => execFileSync('docker', args, { input: sql, encoding: 'utf8' });
+  const run = sql => new Promise((resolve, reject) => {
+    const child = spawn('docker', args);
+    let output = '';
+    let errors = '';
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { errors += chunk; });
+    child.on('error', reject);
+    child.on('close', code => resolve({ code, output, errors, finished: Date.now() }));
+    child.stdin.end(sql);
+  });
+  return { query, run };
+}
+
+const asUser = (user, sql) => `begin; set local role authenticated; select set_config('request.jwt.claims', '{"sub":"${user}","role":"authenticated"}', true); ${sql} commit;`;
+const result = output => output.split('\n').find(line => line.startsWith('RESULT:'))?.slice(7).trim();
+const lastUuid = output => output.match(uuidPattern)?.at(-1);
+const list = ids => ids.map(id => `'${id}'`).join(',');
+
+async function waitForRaceBarrier(query, key) {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    if (query(`select pg_try_advisory_lock(${barrierNamespace}, ${key});`).trim() === 'f') return;
+    await pause(100);
+  }
+  throw new Error('The lock holder did not acquire its barrier');
+}
+
+async function holdingRequestLock(db, request, seconds, contenders) {
+  const key = barrierKey();
+  const holder = db.run(`begin; select id from public.service_requests where id='${request}' for update; select pg_advisory_xact_lock(${barrierNamespace}, ${key}); select pg_sleep(${seconds}); commit;`);
+  await waitForRaceBarrier(db.query, key);
+  const running = [];
+  for (const contender of contenders) {
+    running.push(db.run(contender));
+    await pause(500);
+  }
+  const held = await holder;
+  assert.equal(held.code, 0);
+  return Promise.all(running);
+}
+
+async function holdingEscalationLock(db, escalation, seconds, contenders) {
+  const key = barrierKey();
+  const holder = db.run(`begin; select id from public.service_job_escalations where id='${escalation}' for update; select pg_advisory_xact_lock(${barrierNamespace}, ${key}); select pg_sleep(${seconds}); commit;`);
+  await waitForRaceBarrier(db.query, key);
+  const running = [];
+  for (const contender of contenders) {
+    running.push(db.run(contender));
+    await pause(500);
+  }
+  const held = await holder;
+  assert.equal(held.code, 0);
+  return Promise.all(running);
+}
+
+async function holdingJobLock(db, job, seconds, contenders) {
+  const key = barrierKey();
+  const holder = db.run(`begin; select id from public.service_jobs where id='${job}' for update; select pg_advisory_xact_lock(${barrierNamespace}, ${key}); select pg_sleep(${seconds}); commit;`);
+  await waitForRaceBarrier(db.query, key);
+  const running = [];
+  for (const contender of contenders) {
+    running.push(db.run(contender));
+    await pause(500);
+  }
+  const held = await holder;
+  assert.equal(held.code, 0);
+  return Promise.all(running);
+}
+
+function world(db, options) {
+  const settings = JSON.parse(db.query('select row_to_json(s) from nestscout_private.auto_dispatch_settings s;').trim());
+  const users = [];
+  const requests = [];
+  const tuned = { enabled: true, max_invites: 1, offer_minutes: 30, retry_cooldown_minutes: 5, max_rounds: 3, max_manual_retries: 3,
+    empty_retry_cooldown_seconds: 60, max_invites_per_worker: 2, reinvite_declined_after_minutes: 1440, reinvite_expired_after_minutes: 60, ...options };
+  db.query(`update nestscout_private.auto_dispatch_settings set ${Object.entries(tuned).map(([key, value]) => `${key} = ${value}`).join(', ')};`);
+  return {
+    customer() {
+      const id = randomUUID();
+      users.push(id);
+      db.query(`insert into auth.users (id, aud, role) values ('${id}', 'authenticated', 'authenticated');`);
+      return id;
+    },
+    worker() {
+      const id = randomUUID();
+      users.push(id);
+      db.query(`insert into auth.users (id, aud, role) values ('${id}', 'authenticated', 'authenticated');
+        insert into public.worker_access_grants (user_id) values ('${id}');
+        insert into nestscout_private.worker_dispatch_eligibility (user_id, basis, active) values ('${id}', 'local_fixture', true);
+        insert into public.worker_public_profiles (worker_id, display_name, trade, area, experience_years, about, skills, service_ids, accepting_jobs)
+          values ('${id}', 'Race worker', 'Thợ điện', 'Quận 7', 5, 'Race', array['Điện'], array['electric'], true);`);
+      return id;
+    },
+    operator() {
+      const id = randomUUID();
+      users.push(id);
+      db.query(`insert into auth.users (id, aud, role) values ('${id}', 'authenticated', 'authenticated');
+        select nestscout_private.grant_beta_operator('${id}', 'race test operator', 30);`);
+      return id;
+    },
+    request(customer) {
+      const output = db.query(asUser(customer, `select 'RESULT:' || public.submit_service_request('${randomUUID()}', 'Race request', 'Quận 7', 'electric');`));
+      const id = result(output);
+      requests.push(id);
+      const quote = db.query(`select id from public.service_quotes where request_id='${id}' order by version desc limit 1;`).trim();
+      return { id, quote };
+    },
+    accept(customer, request) {
+      db.query(asUser(customer, `select public.accept_service_quote('${request.quote}', 1);`));
+    },
+    invitation(request, worker) {
+      return db.query(`select id from public.service_invitations where request_id='${request.id}' and worker_id='${worker}' order by created_at desc limit 1;`).trim();
+    },
+    count(sql) {
+      return Number(db.query(`select 'RESULT:' || count(*) from (${sql}) counted;`).split('\n').find(line => line.startsWith('RESULT:')).slice(7));
+    },
+    dispose() {
+      try {
+        const ids = list(requests);
+        if (requests.length > 0) {
+          db.query(`delete from public.service_job_escalations where request_id in (${ids});
+            delete from public.service_job_events where job_id in (select id from public.service_jobs where request_id in (${ids}));
+            delete from public.service_jobs where request_id in (${ids});
+            delete from public.service_job_releases where request_id in (${ids});
+            delete from public.service_invitations where request_id in (${ids});
+            delete from public.service_dispatch_rounds where request_id in (${ids});
+            delete from public.notifications where request_id in (${ids});
+            delete from public.service_quotes where request_id in (${ids});
+            delete from public.service_requests where id in (${ids});`);
+        }
+        if (users.length > 0) {
+          db.query(`delete from nestscout_private.operator_grants where user_id in (${list(users)});
+            delete from nestscout_private.operator_grant_events where user_id in (${list(users)});
+            delete from public.kael_autonomy where user_id in (${list(users)});
+            delete from public.notifications where recipient_id in (${list(users)});
+            delete from public.worker_public_profiles where worker_id in (${list(users)});
+            delete from nestscout_private.worker_dispatch_eligibility where user_id in (${list(users)});
+            delete from public.worker_access_grants where user_id in (${list(users)});
+            delete from auth.users where id in (${list(users)});`);
+        }
+      } finally {
+        db.query(`update nestscout_private.auto_dispatch_settings set ${Object.keys(tuned).map(key => `${key} = ${settings[key]}`).join(', ')};`);
+      }
+    },
+  };
+}
+
+const raceOutcomes = [];
+
+test('cancelling while a worker accepts leaves exactly one consistent outcome', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const cancelFirst of [false, true, false, true]) {
+      const env = world(db, {});
+      try {
+        const customer = env.customer();
+        const worker = env.worker();
+        const request = env.request(customer);
+        env.accept(customer, request);
+        const invitation = env.invitation(request, worker);
+        const acceptSql = asUser(worker, `select 'RESULT:ok:' || public.accept_service_invitation('${invitation}', '${request.quote}', 1);`);
+        const cancelSql = asUser(customer, `select 'RESULT:ok:' || public.cancel_service_request('${request.id}');`);
+        const [first, second] = await holdingRequestLock(db, request.id, 4, cancelFirst ? [cancelSql, acceptSql] : [acceptSql, cancelSql]);
+        const accept = cancelFirst ? second : first;
+        const cancel = cancelFirst ? first : second;
+        const jobs = env.count(`select 1 from public.service_jobs where request_id='${request.id}'`);
+        const cancelled = env.count(`select 1 from public.service_requests where id='${request.id}' and cancelled_at is not null`);
+        assert.notEqual(accept.code === 0, cancel.code === 0, 'Exactly one of accept and cancel may win');
+        assert.equal(jobs + cancelled, 1, 'A request is either assigned or cancelled, never both and never neither');
+        if (accept.code === 0) {
+          assert.match(cancel.errors, /already assigned/);
+          assert.equal(env.count(`select 1 from public.service_invitations where id='${invitation}' and state='accepted'`), 1);
+        } else {
+          assert.match(accept.errors, /request cancelled/);
+          assert.equal(env.count(`select 1 from public.service_invitations where id='${invitation}' and state='cancelled'`), 1);
+        }
+        raceOutcomes.push(`cancel_vs_accept winner=${accept.code === 0 ? 'accept' : 'cancel'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+test('cancelling while a retry runs leaves no live invitation', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const cancelFirst of [false, true]) {
+      const env = world(db, {});
+      try {
+        const customer = env.customer();
+        const request = env.request(customer);
+        env.accept(customer, request);
+        assert.equal(env.count(`select 1 from public.service_invitations where request_id='${request.id}'`), 0, 'No worker exists yet');
+        const worker = env.worker();
+        const retrySql = asUser(customer, `select 'RESULT:' || (public.retry_service_dispatch('${request.id}') ->> 'outcome');`);
+        const cancelSql = asUser(customer, `select 'RESULT:' || public.cancel_service_request('${request.id}');`);
+        const [first, second] = await holdingRequestLock(db, request.id, 4, cancelFirst ? [cancelSql, retrySql] : [retrySql, cancelSql]);
+        const retry = cancelFirst ? second : first;
+        const cancel = cancelFirst ? first : second;
+        assert.equal(cancel.code, 0, 'Cancelling an unassigned request always succeeds');
+        assert.equal(env.count(`select 1 from public.service_requests where id='${request.id}' and cancelled_at is not null`), 1);
+        assert.equal(env.count(`select 1 from public.service_invitations where request_id='${request.id}' and state='open'`), 0, 'No invitation survives a successful cancel');
+        const retryOutcome = result(retry.output);
+        assert.ok(cancelFirst ? retryOutcome === 'cancelled' : retryOutcome === 'invited', `retry outcome ${retryOutcome}`);
+        if (!cancelFirst) {
+          assert.equal(env.count(`select 1 from public.service_invitations where request_id='${request.id}' and worker_id='${worker}' and state='cancelled'`), 1);
+        }
+        raceOutcomes.push(`cancel_vs_retry first=${cancelFirst ? 'cancel' : 'retry'} retry=${retryOutcome}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+test('two simultaneous retries produce one search, one round and one invitation', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    const env = world(db, {});
+    try {
+      const customer = env.customer();
+      const request = env.request(customer);
+      env.accept(customer, request);
+      env.worker();
+      env.worker();
+      const retrySql = asUser(customer, `select 'RESULT:' || (public.retry_service_dispatch('${request.id}') ->> 'outcome');`);
+      const [first, second] = await holdingRequestLock(db, request.id, 4, [retrySql, retrySql]);
+      const seen = [result(first.output), result(second.output)].sort();
+      assert.deepEqual(seen, ['already_searching', 'invited']);
+      assert.equal(env.count(`select 1 from public.service_invitations where request_id='${request.id}'`), 1);
+      assert.equal(env.count(`select 1 from public.service_dispatch_rounds where request_id='${request.id}' and reason='manual_retry'`), 1);
+      assert.equal(env.count(`select 1 from public.service_dispatch_rounds where request_id='${request.id}'`), 2);
+      raceOutcomes.push(`double_retry raceOutcomes=${seen.join('+')}`);
+    } finally {
+      env.dispose();
+    }
+  });
+});
+
+test('declining and accepting the same offer at once never redispatches an assigned request', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const declineFirst of [false, true, false, true]) {
+      const env = world(db, {});
+      try {
+        const customer = env.customer();
+        const worker = env.worker();
+        const spare = env.worker();
+        const request = env.request(customer);
+        env.accept(customer, request);
+        const firstInvited = env.count(`select 1 from public.service_invitations where request_id='${request.id}' and worker_id='${worker}'`) === 1 ? worker : spare;
+        const other = firstInvited === worker ? spare : worker;
+        const invitation = env.invitation(request, firstInvited);
+        const acceptSql = asUser(firstInvited, `select 'RESULT:' || public.accept_service_invitation('${invitation}', '${request.quote}', 1);`);
+        const declineSql = asUser(firstInvited, `select 'RESULT:' || public.decline_service_invitation('${invitation}', '${request.quote}', 1);`);
+        const [first, second] = await holdingRequestLock(db, request.id, 4, declineFirst ? [declineSql, acceptSql] : [acceptSql, declineSql]);
+        const decline = declineFirst ? first : second;
+        const accept = declineFirst ? second : first;
+        assert.notEqual(accept.code === 0, decline.code === 0, 'Exactly one of accept and decline may win');
+        if (accept.code === 0) {
+          assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}'`), 1);
+          assert.equal(env.count(`select 1 from public.service_invitations where request_id='${request.id}' and worker_id='${other}'`), 0, 'No redispatch after assignment');
+          assert.equal(env.count(`select 1 from public.service_dispatch_rounds where request_id='${request.id}' and reason='declined'`), 0);
+        } else {
+          assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}'`), 0);
+          assert.equal(env.count(`select 1 from public.service_invitations where request_id='${request.id}' and worker_id='${other}' and state='open'`), 1, 'The decline reaches the next worker');
+        }
+        raceOutcomes.push(`decline_vs_accept winner=${accept.code === 0 ? 'accept' : 'decline'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+test('an offer that lapses while acceptance waits is refused and swept exactly once', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    const env = world(db, {});
+    try {
+      const customer = env.customer();
+      const worker = env.worker();
+      const next = env.worker();
+      const request = env.request(customer);
+      env.accept(customer, request);
+      const first = env.invitation(request, worker) ? worker : next;
+      const second = first === worker ? next : worker;
+      const invitation = env.invitation(request, first);
+      db.query(`update public.service_invitations set expires_at = clock_timestamp() + interval '2 seconds' where id='${invitation}';`);
+      const acceptSql = asUser(first, `select 'RESULT:' || public.accept_service_invitation('${invitation}', '${request.quote}', 1);`);
+      const autoSql = `select 'RESULT:' || coalesce(nestscout_private.auto_accept_invitation('${invitation}')::text, 'none');`;
+      const [accept, auto] = await holdingRequestLock(db, request.id, 4, [acceptSql, autoSql]);
+      assert.notEqual(accept.code, 0);
+      assert.match(accept.errors, /invitation expired/);
+      assert.equal(result(auto.output), 'none', 'A lapsed offer is never auto-accepted');
+      assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}'`), 0);
+      const sweeps = await Promise.all([db.run(`select 'RESULT:' || nestscout_private.sweep_expired_invitations();`), db.run(`select 'RESULT:' || nestscout_private.sweep_expired_invitations();`)]);
+      const handled = sweeps.map(sweep => Number(result(sweep.output))).sort();
+      assert.equal(handled[0] + handled[1], 1, 'Concurrent ticks handle the lapse exactly once');
+      assert.equal(env.count(`select 1 from public.service_invitations where id='${invitation}' and state='expired'`), 1);
+      assert.equal(env.count(`select 1 from public.service_invitations where request_id='${request.id}' and worker_id='${second}' and state='open'`), 1);
+      assert.equal(env.count(`select 1 from public.service_dispatch_rounds where request_id='${request.id}' and reason='expired'`), 1);
+      raceOutcomes.push(`expiry_vs_accept sweeps=${handled.join('+')}`);
+    } finally {
+      env.dispose();
+    }
+  });
+});
+
+test('overlapping sweeper ticks never double invite or double notify', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    const env = world(db, { max_rounds: 1 });
+    try {
+      const customer = env.customer();
+      env.worker();
+      env.worker();
+      const requests = [];
+      for (let index = 0; index < 4; index += 1) {
+        const request = env.request(customer);
+        env.accept(customer, request);
+        requests.push(request);
+      }
+      db.query(`update public.service_invitations set expires_at = clock_timestamp() - interval '1 minute' where request_id in (${list(requests.map(request => request.id))}) and state='open';`);
+      const ticks = await Promise.all([1, 2, 3].map(() => db.run(`select 'RESULT:' || nestscout_private.sweep_expired_invitations();`)));
+      assert.ok(ticks.every(tick => tick.code === 0));
+      for (let settle = 0; settle < 3; settle += 1) db.query('select nestscout_private.sweep_expired_invitations();');
+      for (const request of requests) {
+        assert.equal(env.count(`select 1 from public.service_invitations where request_id='${request.id}' and state='expired'`), 1);
+        assert.equal(env.count(`select 1 from public.service_dispatch_rounds where request_id='${request.id}'`), 2, 'One initial round and one sweeper round');
+        assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='dispatch_exhausted'`), 1, 'One exhaustion notice per request');
+      }
+      raceOutcomes.push(`overlapping_sweepers ticks=${ticks.map(tick => result(tick.output)).join('+')}`);
+    } finally {
+      env.dispose();
+    }
+  });
+});
+
+test('a worker releasing and the customer reassigning at once end in exactly one handover', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const releaseFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const workerA = env.worker();
+        const workerB = env.worker();
+        const request = env.request(customer);
+        env.accept(customer, request);
+        const holder = env.invitation(request, workerA) ? workerA : workerB;
+        const invitation = env.invitation(request, holder);
+        db.query(asUser(holder, `select public.accept_service_invitation('${invitation}', '${request.quote}', 1);`));
+        db.query(`update public.service_jobs set created_at = clock_timestamp() - interval '3 hours' where request_id='${request.id}';`);
+        const job = JSON.parse(db.query(`select row_to_json(j) from (select id, version from public.service_jobs where request_id='${request.id}') j;`).trim());
+        const releaseSql = asUser(holder, `select 'RESULT:' || (public.release_service_job('${job.id}', ${job.version}, '${randomUUID()}', 'unavailable') ->> 'outcome');`);
+        const reassignSql = asUser(customer, `select 'RESULT:' || (public.request_service_reassignment('${request.id}', '${randomUUID()}') ->> 'outcome');`);
+        const outcomes = await holdingRequestLock(db, request.id, 4, releaseFirst ? [releaseSql, reassignSql] : [reassignSql, releaseSql]);
+        const succeeded = outcomes.filter(outcome => outcome.code === 0);
+        assert.equal(succeeded.length, 1, 'Exactly one of release and reassignment may win');
+        assert.equal(result(succeeded[0].output), 'released');
+        assert.equal(env.count(`select 1 from public.service_job_releases where request_id='${request.id}'`), 1, 'One archived handover');
+        assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}'`), 0, 'No job survives the handover');
+        assert.equal(env.count(`select 1 from public.service_dispatch_rounds where request_id='${request.id}' and reason='worker_released'`), 1, 'One replacement search');
+        assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind in ('job_released','job_withdrawn')`), 1, 'One notice to the other side');
+        assert.equal(env.count(`select 1 from public.service_invitations where request_id='${request.id}' and worker_id='${holder}' and state='open'`), 0, 'The former worker is never re-invited');
+        raceOutcomes.push(`release_vs_reassign first=${releaseFirst ? 'release' : 'reassign'} winner=${succeeded.length === 1 && outcomes[0].code === 0 ? 'first' : 'second'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+test('one worker with a single free slot can win only one of two simultaneous acceptances', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (let round = 0; round < 3; round += 1) {
+      const env = world(db, { max_invites: 1, max_active_jobs_per_worker: 1 });
+      try {
+        const customer = env.customer();
+        const worker = env.worker();
+        const first = env.request(customer);
+        env.accept(customer, first);
+        const second = env.request(customer);
+        env.accept(customer, second);
+        const invitationA = env.invitation(first, worker);
+        const invitationB = env.invitation(second, worker);
+        assert.ok(invitationA && invitationB, 'The worker holds one open offer per request before either is accepted');
+        const key = barrierKey();
+        const holder = db.run(`begin; select id from public.service_requests where id in ('${first.id}', '${second.id}') order by id for update; select pg_advisory_xact_lock(${barrierNamespace}, ${key}); select pg_sleep(4); commit;`);
+        await waitForRaceBarrier(db.query, key);
+        const acceptA = db.run(asUser(worker, `select 'RESULT:' || public.accept_service_invitation('${invitationA}', '${first.quote}', 1);`));
+        const acceptB = db.run(asUser(worker, `select 'RESULT:' || public.accept_service_invitation('${invitationB}', '${second.quote}', 1);`));
+        const [held, a, b] = await Promise.all([holder, acceptA, acceptB]);
+        assert.equal(held.code, 0);
+        assert.notEqual(a.code === 0, b.code === 0, 'Exactly one acceptance may win the single slot');
+        const loser = a.code === 0 ? b : a;
+        assert.match(loser.errors, /worker at capacity/);
+        assert.equal(env.count(`select 1 from public.service_jobs where worker_id='${worker}'`), 1, 'Only one active job exists for the worker');
+        raceOutcomes.push(`capacity_double_accept winner=${a.code === 0 ? 'first' : 'second'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+function stagedJob(db, env, customer, stages) {
+  const workerA = env.worker();
+  const workerB = env.worker();
+  const request = env.request(customer);
+  env.accept(customer, request);
+  const holder = env.invitation(request, workerA) ? workerA : workerB;
+  const invitation = env.invitation(request, holder);
+  db.query(asUser(holder, `select public.accept_service_invitation('${invitation}', '${request.quote}', 1);`));
+  const job = JSON.parse(db.query(`select row_to_json(j) from (select id from public.service_jobs where request_id='${request.id}') j;`).trim());
+  stages.forEach((stage, index) => {
+    db.query(asUser(holder, `select public.advance_service_job('${job.id}', ${index + 1}, '${stage}');`));
+    db.query(`update public.service_job_events set created_at = clock_timestamp() - interval '3 hours' where job_id='${job.id}' and event='${stage}';`);
+  });
+  return { request, holder, job };
+}
+
+test('replacing an en route worker and the worker arriving at once leave exactly one consistent outcome', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const reassignFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const { request, holder, job } = stagedJob(db, env, customer, ['en_route']);
+        const reassignSql = asUser(customer, `select 'RESULT:' || (public.request_service_reassignment('${request.id}', '${randomUUID()}') ->> 'outcome');`);
+        const arriveSql = asUser(holder, `select 'RESULT:' || public.advance_service_job('${job.id}', 2, 'arrived');`);
+        const outcomes = await holdingJobLock(db, job.id, 4, reassignFirst ? [reassignSql, arriveSql] : [arriveSql, reassignSql]);
+        const reassign = reassignFirst ? outcomes[0] : outcomes[1];
+        const arrive = reassignFirst ? outcomes[1] : outcomes[0];
+        assert.notEqual(reassign.code === 0, arrive.code === 0, 'Exactly one of the handover and the arrival may win');
+        if (reassign.code === 0) {
+          assert.match(arrive.errors, /job unavailable/);
+          assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}'`), 0);
+          assert.equal(env.count(`select 1 from public.service_job_releases where request_id='${request.id}' and stage='en_route'`), 1);
+          assert.equal(env.count(`select 1 from public.service_job_events where job_id='${job.id}'`), 0, 'No orphaned history remains');
+        } else {
+          assert.match(reassign.errors, /release not allowed at this stage/);
+          assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}' and stage='arrived'`), 1);
+          assert.equal(env.count(`select 1 from public.service_job_releases where request_id='${request.id}'`), 0, 'A worker who arrived is never released');
+        }
+        raceOutcomes.push(`reassign_vs_arrival first=${reassignFirst ? 'reassign' : 'arrive'} winner=${reassign.code === 0 ? 'reassign' : 'arrive'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+test('three simultaneous escalations of a worker on site record one report and tell the worker once', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    const env = world(db, { max_invites: 1 });
+    try {
+      const customer = env.customer();
+      const { request, job } = stagedJob(db, env, customer, ['en_route', 'arrived']);
+      const escalateSql = () => asUser(customer, `select 'RESULT:' || (public.escalate_service_job('${request.id}', '${randomUUID()}') ->> 'outcome');`);
+      const outcomes = await holdingRequestLock(db, request.id, 4, [escalateSql(), escalateSql(), escalateSql()]);
+      assert.ok(outcomes.every(outcome => outcome.code === 0));
+      const results = outcomes.map(outcome => result(outcome.output)).sort();
+      assert.deepEqual(results, ['already_escalated', 'already_escalated', 'escalated'], 'One escalation wins and the others report it');
+      assert.equal(env.count(`select 1 from public.service_job_escalations where job_id='${job.id}'`), 1);
+      assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='job_escalated'`), 1, 'The worker is told once');
+      assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='arrived'`), 1, 'The job is untouched');
+      raceOutcomes.push(`triple_escalation results=${results.join('+')}`);
+    } finally {
+      env.dispose();
+    }
+  });
+});
+
+test('an escalation and the worker starting the job at once never lose the job or duplicate the report', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const escalateFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const { request, holder, job } = stagedJob(db, env, customer, ['en_route', 'arrived']);
+        const escalateSql = asUser(customer, `select 'RESULT:' || (public.escalate_service_job('${request.id}', '${randomUUID()}') ->> 'outcome');`);
+        const startSql = asUser(holder, `select 'RESULT:' || public.advance_service_job('${job.id}', 3, 'working');`);
+        const outcomes = await holdingJobLock(db, job.id, 4, escalateFirst ? [escalateSql, startSql] : [startSql, escalateSql]);
+        const escalate = escalateFirst ? outcomes[0] : outcomes[1];
+        const start = escalateFirst ? outcomes[1] : outcomes[0];
+        assert.equal(start.code, 0, 'Starting the job always succeeds');
+        assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='working'`), 1, 'The job ends up working');
+        if (escalate.code === 0) {
+          assert.equal(result(escalate.output), 'escalated');
+          assert.equal(env.count(`select 1 from public.service_job_escalations where job_id='${job.id}'`), 1);
+        } else {
+          assert.match(escalate.errors, /escalation not allowed at this stage/);
+          assert.equal(env.count(`select 1 from public.service_job_escalations where job_id='${job.id}'`), 0);
+        }
+        raceOutcomes.push(`escalate_vs_start first=${escalateFirst ? 'escalate' : 'start'} escalation=${escalate.code === 0 ? 'recorded' : 'refused'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+function stagedEscalation(db, env, customer) {
+  const staged = stagedJob(db, env, customer, ['en_route', 'arrived']);
+  db.query(asUser(customer, `select public.escalate_service_job('${staged.request.id}', '${randomUUID()}');`));
+  const escalation = db.query(`select id from public.service_job_escalations where request_id='${staged.request.id}';`).trim();
+  return { ...staged, escalation };
+}
+
+const reviewSql = (operator, escalation) => asUser(operator, `select 'RESULT:' || (public.review_service_escalation('${escalation}', '${randomUUID()}') ->> 'outcome');`);
+const resolveSql = (operator, escalation, resolution, key = randomUUID()) => asUser(operator, `select 'RESULT:' || (public.resolve_service_escalation('${escalation}', '${resolution}', null, '${key}') ->> 'outcome');`);
+
+test('two operators reviewing the same case at once record one reviewer', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    const env = world(db, { max_invites: 1 });
+    try {
+      const customer = env.customer();
+      const { escalation } = stagedEscalation(db, env, customer);
+      const first = env.operator();
+      const second = env.operator();
+      const outcomes = await holdingEscalationLock(db, escalation, 4, [reviewSql(first, escalation), reviewSql(second, escalation)]);
+      assert.ok(outcomes.every(outcome => outcome.code === 0));
+      const results = outcomes.map(outcome => result(outcome.output)).sort();
+      assert.deepEqual(results, ['already_reviewing', 'reviewing'], 'One operator takes the case and the other is told it is taken');
+      assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='reviewing' and reviewed_by in ('${first}', '${second}')`), 1);
+      raceOutcomes.push(`double_review results=${results.join('+')}`);
+    } finally {
+      env.dispose();
+    }
+  });
+});
+
+const staleSql = escalation => `update public.service_job_escalations set reviewed_at = clock_timestamp() - interval '31 minutes' where id='${escalation}';`;
+
+test('two operators racing to take over a timed out review record exactly one takeover', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    const env = world(db, { max_invites: 1 });
+    try {
+      const customer = env.customer();
+      const { escalation } = stagedEscalation(db, env, customer);
+      const holder = env.operator();
+      const first = env.operator();
+      const second = env.operator();
+      db.query(reviewSql(holder, escalation));
+      db.query(staleSql(escalation));
+      const outcomes = await holdingEscalationLock(db, escalation, 4, [reviewSql(first, escalation), reviewSql(second, escalation)]);
+      assert.ok(outcomes.every(outcome => outcome.code === 0));
+      const results = outcomes.map(outcome => result(outcome.output)).sort();
+      assert.deepEqual(results, ['already_reviewing', 'taken_over'], 'One operator takes over and the other finds a fresh review');
+      assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='reviewing' and takeover_count=1 and jsonb_array_length(review_history)=1 and reviewed_by in ('${first}', '${second}')`), 1);
+      raceOutcomes.push(`double_takeover results=${results.join('+')}`);
+    } finally {
+      env.dispose();
+    }
+  });
+});
+
+test('the operator who lost a review and the one who took it over resolve at once and only the holder decides', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const formerFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const { request, job, escalation } = stagedEscalation(db, env, customer);
+        const former = env.operator();
+        const holder = env.operator();
+        db.query(reviewSql(former, escalation));
+        db.query(staleSql(escalation));
+        assert.equal(result(db.query(reviewSql(holder, escalation))), 'taken_over');
+        const lost = resolveSql(former, escalation, 'dismiss');
+        const kept = resolveSql(holder, escalation, 'proceed');
+        const outcomes = await holdingEscalationLock(db, escalation, 4, formerFirst ? [lost, kept] : [kept, lost]);
+        const lostOutcome = formerFirst ? outcomes[0] : outcomes[1];
+        const keptOutcome = formerFirst ? outcomes[1] : outcomes[0];
+        assert.equal(keptOutcome.code, 0, 'The holder always decides');
+        assert.equal(result(keptOutcome.output), 'resolved');
+        if (formerFirst) {
+          assert.notEqual(lostOutcome.code, 0);
+          assert.match(lostOutcome.errors, /review held by another operator/);
+        } else {
+          assert.equal(lostOutcome.code, 0);
+          assert.equal(result(lostOutcome.output), 'already_resolved');
+        }
+        assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='resolved' and resolution='proceed' and resolved_by='${holder}'`), 1, 'Only the holder decision is recorded');
+        assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='escalation_resolved'`), 2, 'The customer and the worker are each told once');
+        assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='arrived'`), 1, 'Neither decision touches the job');
+        raceOutcomes.push(`former_vs_holder first=${formerFirst ? 'former' : 'holder'} former=${lostOutcome.code === 0 ? 'already_resolved' : 'refused'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+test('resolving with a replacement and with a continue at once end in exactly one consistent outcome', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const replaceFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const { request, job, escalation } = stagedEscalation(db, env, customer);
+        const first = env.operator();
+        db.query(reviewSql(first, escalation));
+        const replace = resolveSql(first, escalation, 'replace_worker');
+        const proceed = resolveSql(first, escalation, 'proceed');
+        const outcomes = await holdingEscalationLock(db, escalation, 4, replaceFirst ? [replace, proceed] : [proceed, replace]);
+        assert.ok(outcomes.every(outcome => outcome.code === 0));
+        const results = outcomes.map(outcome => result(outcome.output)).sort();
+        assert.deepEqual(results, ['already_resolved', 'resolved']);
+        const replaced = env.count(`select 1 from public.service_job_releases where request_id='${request.id}' and released_by_role='operator'`) === 1;
+        if (replaced) {
+          assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}'`), 0, 'A replaced job is detached');
+          assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and resolution='replace_worker'`), 1);
+          assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='job_withdrawn'`), 1, 'The replaced worker is told once');
+        } else {
+          assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='arrived'`), 1, 'A job that continues stays assigned');
+          assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and resolution='proceed'`), 1);
+          assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='job_withdrawn'`), 0);
+        }
+        assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='escalation_resolved' and recipient_id='${customer}'`), 1, 'The customer is told once');
+        raceOutcomes.push(`replace_vs_proceed first=${replaceFirst ? 'replace' : 'proceed'} outcome=${replaced ? 'replaced' : 'continued'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+test('the same replacement sent three times at once releases the worker once', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    const env = world(db, { max_invites: 1 });
+    try {
+      const customer = env.customer();
+      const { request, escalation } = stagedEscalation(db, env, customer);
+      const operator = env.operator();
+      db.query(reviewSql(operator, escalation));
+      const key = randomUUID();
+      const outcomes = await holdingEscalationLock(db, escalation, 4, [resolveSql(operator, escalation, 'replace_worker', key), resolveSql(operator, escalation, 'replace_worker', key), resolveSql(operator, escalation, 'replace_worker', key)]);
+      assert.ok(outcomes.every(outcome => outcome.code === 0));
+      const results = outcomes.map(outcome => result(outcome.output)).sort();
+      assert.deepEqual(results, ['already_resolved', 'already_resolved', 'resolved']);
+      assert.equal(env.count(`select 1 from public.service_job_releases where request_id='${request.id}'`), 1, 'One release is archived');
+      assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='job_withdrawn'`), 1, 'The worker is told once');
+      assert.equal(env.count(`select 1 from public.service_dispatch_rounds where request_id='${request.id}' and reason='worker_released'`), 1, 'One replacement search starts');
+      raceOutcomes.push(`triple_replace results=${results.join('+')}`);
+    } finally {
+      env.dispose();
+    }
+  });
+});
+
+test('an operator replacing the worker and the worker starting the job at once never lose the job or the case', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const replaceFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const { request, holder, job, escalation } = stagedEscalation(db, env, customer);
+        const operator = env.operator();
+        db.query(reviewSql(operator, escalation));
+        const replace = resolveSql(operator, escalation, 'replace_worker');
+        const start = asUser(holder, `select 'RESULT:' || public.advance_service_job('${job.id}', 3, 'working');`);
+        const outcomes = await holdingJobLock(db, job.id, 4, replaceFirst ? [replace, start] : [start, replace]);
+        const replaceOutcome = replaceFirst ? outcomes[0] : outcomes[1];
+        const startOutcome = replaceFirst ? outcomes[1] : outcomes[0];
+        assert.notEqual(replaceOutcome.code === 0, startOutcome.code === 0, 'Exactly one of the replacement and the start may win');
+        if (replaceOutcome.code === 0) {
+          assert.match(startOutcome.errors, /job unavailable/);
+          assert.equal(env.count(`select 1 from public.service_jobs where request_id='${request.id}'`), 0);
+          assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='resolved' and resolution='replace_worker'`), 1);
+        } else {
+          assert.match(replaceOutcome.errors, /release not allowed at this stage/);
+          assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='working'`), 1, 'A worker who started keeps the job');
+          assert.equal(env.count(`select 1 from public.service_job_releases where request_id='${request.id}'`), 0);
+          assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='reviewing'`), 1, 'The refused decision leaves the case in review');
+          assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind in ('job_withdrawn', 'escalation_resolved')`), 0, 'Nobody is told about a decision that did not happen');
+        }
+        raceOutcomes.push(`operator_replace_vs_start first=${replaceFirst ? 'replace' : 'start'} winner=${replaceOutcome.code === 0 ? 'replace' : 'start'}`);
+      } finally {
+        env.dispose();
+      }
+    }
+  });
+});
+
+after(() => {
+  for (const line of raceOutcomes) console.log(`RACE_OBSERVED ${line}`);
 });

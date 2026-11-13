@@ -38,6 +38,7 @@ export const iconMorphs: Readonly<Record<IconName, MorphSpec>> = {
   wrench: { motion: 'shake', label: 'Lắc khi đang sửa' },
   drop: { motion: 'fill', label: 'Chọn: rỗng → đầy' },
   sofa: { motion: 'pop', label: 'Nảy khi chọn' },
+  paint: { motion: 'pop', label: 'Nảy khi chọn' },
   grid: { motion: 'swap', alt: List, label: 'Lưới ↔ Danh sách' },
   gear: { motion: 'spin', label: 'Xoay khi mở cài đặt' },
   bolt: { motion: 'fill', label: 'Bật: rỗng → đầy' },

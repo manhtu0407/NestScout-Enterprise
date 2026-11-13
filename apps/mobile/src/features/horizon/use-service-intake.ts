@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { clearPendingRequest, isDefinitiveFailure, loadPendingRequest, savePendingRequest, submitRequest, type PendingRequest, type WorkflowError } from '@/features/shared';
 import { AuthSessionError } from '@/lib/authenticated-rest';
 
-import type { ServiceCategory } from './service-catalog';
+import { dispatchServiceFor, type ServiceCategory } from './service-catalog';
 import { clearIntakeDraft, readIntakeDraft, writeIntakeDraft } from './service-intake-drafts';
 import { composeSubmission, validateIntake, type IntakeAnswers, type IntakeErrors } from './service-intake';
 
@@ -110,7 +110,7 @@ export function useServiceIntake(userId: string, category: ServiceCategory, deps
     const item: PendingRequest | null = snapshot.pending ?? (() => {
       if (Object.keys(validateIntake(category, snapshot.answers)).length > 0) return null;
       const { description, location } = composeSubmission(category, snapshot.answers);
-      return { key: deps.newKey(), description, location };
+      return { key: deps.newKey(), description, location, serviceId: dispatchServiceFor(category.id) };
     })();
     if (item === null) return;
     inFlight.current = true;
@@ -128,7 +128,7 @@ export function useServiceIntake(userId: string, category: ServiceCategory, deps
       }
       if (controller.signal.aborted) return;
       setState(current => ({ ...current, pending: item }));
-      const requestId = await deps.submit(userId, item.key, item.description, controller.signal, item.location);
+      const requestId = await deps.submit(userId, item.key, item.description, controller.signal, item.location, item.serviceId);
       await deps.clear(userId).catch(() => undefined);
       const own = composeSubmission(category, snapshot.answers);
       const clearsDraft = snapshot.pending === null || (snapshot.pending.description === own.description && snapshot.pending.location === own.location);

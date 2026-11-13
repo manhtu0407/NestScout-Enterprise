@@ -44,6 +44,7 @@ select throws_ok($$ select public.kael_list_conversations('admin') $$, '22023', 
 
 select is(public.kael_open_conversation(current_setting('test.a_conv')::uuid, 'client') #>> '{messages,0,content}', 'Sửa vòi nước bị rò ở bếp', 'Opening by identifier loads that conversation''s messages');
 select is(jsonb_array_length(public.kael_open_conversation(current_setting('test.a_conv')::uuid, 'client') -> 'messages'), 2, 'Opening loads only that conversation''s messages');
+select ok((public.kael_open_conversation(current_setting('test.a_conv')::uuid, 'client') #>> '{messages,0,created_at}')::timestamptz is not null, 'Each opened message carries the time it was sent');
 select is(public.kael_open_conversation(current_setting('test.b_conv')::uuid, 'client') #>> '{messages,0,content}', 'Cần vệ sinh sofa vải ba chỗ ngồi', 'Another session opens independently');
 select throws_ok(format($$ select public.kael_open_conversation(%L, 'client') $$, current_setting('test.c_conv')), '22023', null, 'Another owner''s conversation cannot be opened');
 select throws_ok(format($$ select public.kael_open_conversation(%L, 'worker') $$, current_setting('test.a_conv')), '22023', null, 'A conversation cannot be opened in the other mode');

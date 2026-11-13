@@ -89,6 +89,7 @@ function jobView(job: Job, card: WorkerJobCard | undefined, snapshot: WorkerSnap
         stage: 'active',
         stageLabel: stamped ? `Tạm dừng ${stamped.toLocaleLowerCase('vi')}` : 'Đang tạm dừng',
         pause: pause?.category === 'safety_concern' ? 'safety' : pause?.resume_requested ? 'resume' : 'paused',
+        canRelease: pause?.category === 'ordinary_interruption' && (pause.prior_stage === 'assigned' || pause.prior_stage === 'en_route'),
       };
     case 'working':
       stage = correction ? 'review' : 'active';
@@ -146,6 +147,10 @@ export function nextJobLabel(jobs: readonly WorkerJob[]): string {
 
 const notificationTargets: Readonly<Partial<Record<NotificationKind, string>>> = {
   job_offered: 'worker-offers',
+  job_auto_accepted: 'worker-assigned',
+  job_withdrawn: 'worker-offers',
+  job_escalated: 'worker-assigned',
+  escalation_resolved: 'worker-assigned',
   work_approved: 'worker-history',
   revision_requested: 'worker-review',
   work_disputed: 'worker-review',

@@ -76,6 +76,7 @@ function knownTask(ctx: ToolContext, id: unknown): TaskRecord | null {
 }
 
 const fixtureNotice = 'A quote or offer whose basis is local_fixture is controlled test data, never a real commercial price or dispatch.';
+const dispatchNotice = "dispatch.state is the backend view of the worker search for an accepted quote. Invited workers are not an assignment. When can_retry is true you may offer service_request_redispatch with the returned rounds; when can_cancel is true you may offer service_request_cancel; needs_service means the request has no service category yet and the app must set it first. Both actions need the customer's confirmation.";
 
 async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolExecution> {
   const requests = await getJson(ctx, `service_requests?select=id,description,location,created_at,preferred_visit_at&order=created_at.desc&limit=${limit}`) as Record<string, unknown>[];
@@ -84,14 +85,17 @@ async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolEx
   const quotes = await getJson(ctx, `service_quotes?select=id,request_id,version,scope,amount_minor,currency,expires_at,basis,accepted_at,rejected_at&request_id=in.(${ids})&order=version.desc`) as Record<string, unknown>[];
   const jobs = await getJson(ctx, `service_jobs?select=id,request_id,stage,version&request_id=in.(${ids})`) as Record<string, unknown>[];
   const jobIds = jobs.map(row => String(row.id)).join(',');
-  const submissions = jobIds ? await getJson(ctx, `service_submissions?select=id,job_id,evidence,decision&job_id=in.(${jobIds})&decision=eq.pending`) as Record<string, unknown>[] : [];
+  const submissions = jobIds ? await getJson(ctx, `service_submissions?select=id,job_id,evidence,decision&job_id=in.(${jobIds})`) as Record<string, unknown>[] : [];
+  const dispatch = await getJson(ctx, 'rpc/get_dispatch_summary', { method: 'POST', body: { p_request_ids: requests.map(row => String(row.id)) } }) as Record<string, unknown>[];
   const now = Date.now();
   return ok({
-    notice: `${dataNotice} ${fixtureNotice} A preferred visit time is the customer's wish, not a confirmed appointment.`,
+    notice: `${dataNotice} ${fixtureNotice} ${dispatchNotice} A preferred visit time is the customer's wish, not a confirmed appointment.`,
     requests: requests.map(request => {
       const quote = quotes.find(row => row.request_id === request.id);
       const job = jobs.find(row => row.request_id === request.id);
-      const submission = job ? submissions.find(row => row.job_id === job.id) : undefined;
+      const summary = dispatch.find(row => row.request_id === request.id);
+      const jobSubmissions = job ? submissions.filter(row => row.job_id === job.id) : [];
+      const submission = jobSubmissions.find(row => row.decision === 'pending');
       const quoteStatus = !quote ? 'no_quote'
         : quote.accepted_at ? 'quote_accepted'
         : quote.rejected_at ? 'quote_rejected'
@@ -107,7 +111,12 @@ async function customerRequests(ctx: ToolContext, limit: number): Promise<ToolEx
           quote_id: quote.id, version: quote.version, scope: clip(quote.scope, 300), amount_minor: quote.amount_minor, currency: quote.currency,
           expires_at: quote.expires_at, basis: quote.basis,
         } : null,
-        job: job ? { job_id: job.id, stage: job.stage, version: job.version } : null,
+        dispatch: summary ? {
+          state: summary.state, open_invites: summary.open_invites, earliest_expiry: summary.earliest_expiry ?? null, rounds: summary.rounds,
+          can_retry: summary.can_retry, can_cancel: summary.can_cancel, can_reclassify: summary.can_reclassify,
+          next_retry_at: summary.next_retry_at ?? null, retries_left: summary.retries_left, last_outcome: summary.last_outcome ?? null,
+        } : null,
+        job: job ? { job_id: job.id, stage: job.stage, version: job.version, work_accepted: jobSubmissions.some(row => row.decision === 'accepted') } : null,
         pending_submission: submission ? { submission_id: submission.id, evidence: clip(submission.evidence, 300) } : null,
       };
     }),
@@ -160,6 +169,35 @@ const advanceSummaries: Record<string, string> = { en_route: 'Báo đang đi t�
 type WorkflowPlan = { summary: string; details: Record<string, string>; approvalArgs: Record<string, unknown> } | { error: string };
 
 async function planWorkflowApproval(ctx: ToolContext, tool: string, task: TaskRecord, args: Record<string, unknown>): Promise<WorkflowPlan> {
+  if (tool === 'service_request_redispatch' || tool === 'service_request_cancel') {
+    const requestId = String(args.request_id);
+    const found = await getJson(ctx, `service_requests?select=id,description,location,cancelled_at&id=eq.${encodeURIComponent(requestId)}`) as Record<string, unknown>[];
+    const request = found[0];
+    if (!request || request.cancelled_at) return { error: 'request_not_current' };
+    const summaries = await getJson(ctx, 'rpc/get_dispatch_summary', { method: 'POST', body: { p_request_ids: [request.id] } }) as Record<string, unknown>[];
+    const summary = summaries[0];
+    if (!summary) return { error: 'request_not_current' };
+    if (tool === 'service_request_cancel') {
+      if (summary.can_cancel !== true) return { error: 'request_not_current' };
+      return {
+        summary: 'Hủy yêu cầu dịch vụ',
+        details: {
+          'Yêu cầu': clip(request.description, 300), 'Địa điểm': clip(request.location, 200),
+          'Sau khi xác nhận': 'Các lời mời đang mở cho thợ được đóng và yêu cầu không còn được tìm thợ.',
+        },
+        approvalArgs: { task_id: task.id, request_id: request.id },
+      };
+    }
+    if (summary.can_retry !== true || summary.rounds !== args.rounds) return { error: 'request_not_current' };
+    return {
+      summary: 'Mời thêm thợ cho yêu cầu',
+      details: {
+        'Yêu cầu': clip(request.description, 300), 'Địa điểm': clip(request.location, 200), 'Lượt mời còn lại': String(summary.retries_left),
+        'Sau khi xác nhận': 'Hệ thống mời thợ phù hợp chưa được mời. Mời chưa phải là có thợ nhận việc.',
+      },
+      approvalArgs: { task_id: task.id, request_id: request.id, rounds: summary.rounds },
+    };
+  }
   if (tool === 'service_quote_decision') {
     const rows = await getJson(ctx, `service_quotes?select=id,request_id,version,scope,amount_minor,expires_at,basis,accepted_at,rejected_at&id=eq.${String(args.quote_id)}`) as Record<string, unknown>[];
     const quote = rows[0];
@@ -282,7 +320,7 @@ async function draftServiceRequest(ctx: ToolContext, args: Record<string, unknow
   if (!task) return failed('unknown_task');
   if (task.kind !== 'service_request' || isTerminal(task.status)) return failed('task_not_open_service_request', task.id);
   const missing = (args.missing as string[]).filter(item => item !== 'description' || String(args.description).trim() === '');
-  const draft = { description: String(args.description).trim(), location: String(args.location).trim(), preferred_time: String(args.preferred_time).trim(), missing };
+  const draft = { description: String(args.description).trim(), location: String(args.location).trim(), preferred_time: String(args.preferred_time).trim(), service_id: String(args.service_id ?? '').trim(), missing };
   const status: KaelTaskStatus = missing.length > 0 ? 'waiting_for_input' : 'running';
   const summary = missing.length > 0 ? `Bản nháp còn thiếu: ${missing.join(', ')}` : 'Bản nháp đã đủ thông tin, chưa gửi';
   return await saveTask(ctx, task, { title: task.title, kind: task.kind, status, summary, artifact: { ...task.artifact, draft }, event: 'draft_prepared' });
@@ -293,7 +331,7 @@ async function requestSubmitApproval(ctx: ToolContext, args: Record<string, unkn
   if (!task) return failed('unknown_task');
   const draft = task.artifact.draft;
   if (task.kind !== 'service_request' || !draft || draft.missing.length > 0 || draft.description === '') return failed('draft_incomplete', task.id);
-  const approvalArgs = { task_id: task.id, description: draft.description, location: draft.location, preferred_time: draft.preferred_time };
+  const approvalArgs = { task_id: task.id, description: draft.description, location: draft.location, preferred_time: draft.preferred_time, service_id: draft.service_id ?? '' };
   const bound = await fingerprint({ tool, actor: ctx.actor.userId, task_id: task.id, base_version: task.version, args: approvalArgs });
   const details = { 'Mô tả': draft.description, 'Địa điểm': draft.location || 'Chưa cung cấp', 'Thời gian mong muốn': draft.preferred_time || 'Chưa cung cấp' };
   const result = await ctx.store.requestApproval({
@@ -352,6 +390,8 @@ export async function executeDecision(decision: Extract<Decision, { kind: 'execu
       case 'work_submission_decision':
       case 'worker_offer_decision':
       case 'worker_job_advance':
+      case 'service_request_redispatch':
+      case 'service_request_cancel':
         return await requestWorkflowApproval(ctx, args, tool.id);
       case 'ask_user_choice':
         return askUserChoice(ctx, args);
@@ -392,7 +432,7 @@ export type EffectOutcome = { status: 'succeeded'; resourceId: string } | { stat
 
 type Evidence = { path: string; observed: (row: Record<string, unknown>) => string | null };
 
-type EffectCall = { path: string; body: Record<string, unknown>; refusals: readonly number[]; sqlstateRefuses: boolean; resource: (value: unknown) => string | null; evidence: Evidence | null };
+type EffectCall = { path: string; body: Record<string, unknown>; refusals: readonly number[]; sqlstateRefuses: boolean; resource: (value: unknown) => string | null; evidence: Evidence | null; unsuccessful?: (value: unknown) => string | null };
 
 const rowRead = (table: string, columns: string, key: string, value: unknown): string => `${table}?select=${columns}&${key}=eq.${encodeURIComponent(String(value))}`;
 
@@ -428,7 +468,7 @@ function effectCall(approvalId: string, tool: string, args: Record<string, unkno
     const preferred = String(args.preferred_time ?? '');
     return {
       path: 'rpc/submit_service_request', refusals: [400, 422], sqlstateRefuses: false, resource: textId, evidence: null,
-      body: { p_submission_key: approvalId, p_description: preferred ? `${description}\nThời gian mong muốn: ${preferred}` : description, p_location: String(args.location ?? '') },
+      body: { p_submission_key: approvalId, p_description: preferred ? `${description}\nThời gian mong muốn: ${preferred}` : description, p_location: String(args.location ?? ''), p_service_id: String(args.service_id ?? '') || null },
     };
   }
   const refusals = [400, 403, 409, 422];
@@ -456,6 +496,18 @@ function effectCall(approvalId: string, tool: string, args: Record<string, unkno
     return { path: 'rpc/advance_service_job', refusals, sqlstateRefuses, resource: value => Number.isSafeInteger(value) ? String(args.job_id) : null,
       evidence: { path: rowRead('service_jobs', 'id,stage,version', 'id', args.job_id), observed: row => row.stage === args.next && typeof row.version === 'number' && row.version > Number(args.version) ? textId(row.id) : null },
       body: { p_job_id: args.job_id, p_version: args.version, p_next: args.next } };
+  }
+  if (tool === 'service_request_redispatch') {
+    const nextRound = Number(args.rounds) + 1;
+    return { path: 'rpc/redispatch_service_request', refusals, sqlstateRefuses, resource: value => Number.isSafeInteger(value) ? String(args.request_id) : null,
+      unsuccessful: value => value === 0 ? 'no_eligible_worker' : null,
+      evidence: { path: `service_dispatch_rounds?select=request_id,round,outcome&request_id=eq.${encodeURIComponent(String(args.request_id))}&round=eq.${nextRound}&outcome=eq.invited`, observed: row => textId(row.request_id) },
+      body: { p_request_id: args.request_id, p_expected_round: nextRound } };
+  }
+  if (tool === 'service_request_cancel') {
+    return { path: 'rpc/cancel_service_request', refusals, sqlstateRefuses, resource: textId,
+      evidence: { path: rowRead('service_requests', 'id,cancelled_at', 'id', args.request_id), observed: row => typeof row.cancelled_at === 'string' ? textId(row.id) : null },
+      body: { p_request_id: args.request_id } };
   }
   return null;
 }
@@ -486,7 +538,10 @@ export async function executeApprovedEffect(approvalId: string, approval: Extrac
     return { status: await databaseRefused(response) ? 'failed' : 'uncertain', reason: `backend_http_${response.status}` };
   }
   try {
-    const resource = call.resource(await response.json());
+    const body: unknown = await response.json();
+    const unsuccessful = call.unsuccessful?.(body);
+    if (unsuccessful) return { status: 'failed', reason: unsuccessful };
+    const resource = call.resource(body);
     return resource ? { status: 'succeeded', resourceId: resource } : { status: 'uncertain', reason: 'invalid_backend_response' };
   } catch {
     return { status: 'uncertain', reason: 'invalid_backend_response' };

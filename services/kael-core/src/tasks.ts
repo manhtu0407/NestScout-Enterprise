@@ -18,7 +18,7 @@ export const taskKinds = ['general', 'service_request', 'customer_lookup', 'work
 export type TaskKind = typeof taskKinds[number];
 
 export type TaskArtifact = {
-  draft?: { description: string; location: string; preferred_time: string; missing: string[] };
+  draft?: { description: string; location: string; preferred_time: string; service_id?: string; missing: string[] };
   effect_required?: boolean;
   effect_result?: { status: 'succeeded'; resource_kind: string; resource_id: string };
 };
@@ -37,7 +37,7 @@ export type TransitionCheck = { ok: true } | { ok: false; reason: 'invalid_trans
 
 export function checkModelTransition(task: TaskRecord, to: KaelTaskStatus): TransitionCheck {
   if (!modelSettableStatuses.includes(to)) return { ok: false, reason: 'not_model_settable' };
-  if (task.status === 'waiting_for_approval' && to === 'running') return { ok: false, reason: 'not_model_settable' };
+  if (task.status === 'waiting_for_approval' && (to === 'running' || to === 'waiting_for_input')) return { ok: false, reason: 'not_model_settable' };
   if (!canTransition(task.status, to)) return { ok: false, reason: 'invalid_transition' };
   if (to === 'completed' && task.artifact.effect_required && task.artifact.effect_result?.status !== 'succeeded') {
     return { ok: false, reason: 'effect_not_observed' };

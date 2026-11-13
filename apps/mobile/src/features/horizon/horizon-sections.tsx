@@ -12,6 +12,7 @@ import { screenTitles } from './content';
 import { CustomerSection, isCustomerSection, type CustomerSectionId } from './customer-sections';
 import { WorkerSection, isWorkerSection } from './worker-sections';
 import { handOffToKael } from './kael-handoff';
+import { OperatorEscalationsSection } from './operator-escalations-screen';
 
 export function useAskKael(): (prompt: string, options?: { fresh?: boolean }) => void {
   const router = useRouter();
@@ -22,6 +23,7 @@ export function useAskKael(): (prompt: string, options?: { fresh?: boolean }) =>
 }
 
 const metrics = horizonLayout.horizonEntry;
+const operatorEscalationsSectionId = 'operator-escalations';
 
 function useCustomerNavigation() {
   const router = useRouter();
@@ -62,7 +64,15 @@ export function SectionRoute() {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <StatusBar style="dark" />
-        <CustomerSection id={id} onBack={() => router.back()} onNavigate={navigate} onAskKael={askKael} />
+        <CustomerSection id={id} onBack={() => router.back()} onNavigate={navigate} onOpenTarget={target => router.push({ pathname: '/section', params: { id: target } })} onAskKael={askKael} />
+      </SafeAreaView>
+    );
+  }
+  if (id === operatorEscalationsSectionId) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <StatusBar style="dark" />
+        <OperatorEscalationsSection onBack={() => router.back()} />
       </SafeAreaView>
     );
   }

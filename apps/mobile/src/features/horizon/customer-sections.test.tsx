@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import { recordConsent, setPreferredVisit, submitSupportRequest } from '@/features/shared';
+import { WorkflowError, recordConsent, setPreferredVisit, submitSupportRequest, type DispatchSummary } from '@/features/shared';
 
 import type { CustomerData, CustomerDataController } from './use-customer-data';
 import { CustomerSection } from './customer-sections';
@@ -18,14 +18,14 @@ jest.mock('@/features/shared', () => ({ ...jest.requireActual('@/features/shared
 const mockSetAiConsent = jest.fn();
 
 const empty: CustomerData = {
-  requests: [], quotes: [], pinnedIds: new Set(), notifications: [], profile: null, avatar: null, photos: new Map(), savedWorkers: [], settings: null, phone: '', jobWorkers: [],
+  requests: [], quotes: [], pinnedIds: new Set(), notifications: [], profile: null, avatar: null, photos: new Map(), savedWorkers: [], settings: null, phone: '', jobWorkers: [], dispatch: new Map(),
   activity: { jobs: [], submissions: [], cases: [], changes: [], reports: [], pauses: [] },
 };
 
 function controller(overrides: Partial<CustomerDataController> = {}): CustomerDataController {
   return {
     data: empty, status: 'ready', loaded: true, refresh: jest.fn(), togglePin: jest.fn(), decideQuote: jest.fn(),
-    markRead: jest.fn(), saveProfile: jest.fn(), removeSavedWorker: jest.fn(), saveSettings: jest.fn(), clearChatHistory: jest.fn(), changeAvatar: jest.fn(), clearAvatar: jest.fn(), setWorkerSaved: jest.fn(), reviewJob: jest.fn(), ...overrides,
+    markRead: jest.fn(), saveProfile: jest.fn(), removeSavedWorker: jest.fn(), saveSettings: jest.fn(), clearChatHistory: jest.fn(), changeAvatar: jest.fn(), clearAvatar: jest.fn(), setWorkerSaved: jest.fn(), reviewJob: jest.fn(), retryDispatch: jest.fn(), reassignRequest: jest.fn(), escalateRequest: jest.fn(), classifyRequest: jest.fn(), cancelServiceRequest: jest.fn(), ...overrides,
   };
 }
 
@@ -273,4 +273,152 @@ test('AI data sharing is a separate explicit privacy choice', async () => {
   expect(screen.getByText(/Perplexity/)).toBeTruthy();
   await fireEvent.press(screen.getByLabelText('Chia sẻ dữ liệu với AI'));
   expect(mockSetAiConsent).toHaveBeenCalledWith(true);
+});
+
+const acceptedQuote = { id: 'q1', request_id: 'r1', version: 1, scope: 'Thay vòi', amount_minor: 250000, currency: 'VND' as const, expires_at: '2099-01-01T00:00:00.000Z', basis: 'local_fixture', accepted_at: '2026-11-12T08:00:00.000Z', rejected_at: null };
+const exhausted: DispatchSummary = { requestId: 'r1', state: 'exhausted', openInvites: 0, earliestExpiry: null, rounds: 3, canRetry: true, canCancel: true, canReclassify: false, canReassign: false, reassignAt: null, jobStage: null, canEscalate: false, escalateAt: null, escalatedAt: null, escalationStatus: null, escalationResolution: null, nextRetryAt: null, retriesLeft: 2, lastOutcome: 'invited' };
+const activate = { nativeEvent: { actionName: 'activate' } };
+
+function dispatchController(overrides: Partial<CustomerDataController> = {}) {
+  return controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], dispatch: new Map([['r1', exhausted]]) }, ...overrides });
+}
+
+const invitedResult = { outcome: 'invited' as const, state: 'searching' as const, canRetry: false, retriesLeft: 1, openInvites: 1, nextRetryAt: null };
+
+test('a retry that found nobody tells the customer instead of pretending workers were invited', async () => {
+  const retryDispatch = jest.fn().mockResolvedValue({ ...invitedResult, outcome: 'no_eligible_worker', state: 'no_match', canRetry: true, openInvites: 0 });
+  jest.mocked(useCustomerData).mockReturnValue(dispatchController({ retryDispatch }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByLabelText('Mời thợ lại cho Sửa vòi nước'));
+  expect(await screen.findByText('Hiện chưa có thợ phù hợp để mời. Bạn có thể thử lại sau ít phút hoặc hủy yêu cầu.')).toBeTruthy();
+});
+
+test('a retry that invited workers says they are invited and not assigned', async () => {
+  const retryDispatch = jest.fn().mockResolvedValue(invitedResult);
+  jest.mocked(useCustomerData).mockReturnValue(dispatchController({ retryDispatch }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByLabelText('Mời thợ lại cho Sửa vòi nước'));
+  expect(await screen.findByText('Đã mời thêm thợ. Chưa có thợ nhận việc; yêu cầu chỉ được giao khi một thợ xác nhận.')).toBeTruthy();
+});
+
+test('a request without a service category asks for one and sends the owner command', async () => {
+  const classifyRequest = jest.fn().mockResolvedValue(undefined);
+  const needsService: DispatchSummary = { ...exhausted, state: 'needs_service', canRetry: false, canReclassify: true };
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], dispatch: new Map([['r1', needsService]]) }, classifyRequest }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  expect(screen.getByText('Cần chọn loại dịch vụ')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('Chọn loại dịch vụ Máy lạnh cho Sửa vòi nước'));
+  await waitFor(() => expect(classifyRequest).toHaveBeenCalledWith('r1', 'aircon'));
+});
+
+test('a request nobody accepted shows its outcome and retries through the owner command', async () => {
+  const retryDispatch = jest.fn().mockResolvedValue(invitedResult);
+  jest.mocked(useCustomerData).mockReturnValue(dispatchController({ retryDispatch }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  expect(screen.getByText('Chưa có thợ nhận việc')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('Mời thợ lại cho Sửa vòi nước'));
+  await waitFor(() => expect(retryDispatch).toHaveBeenCalledWith('r1'));
+});
+
+test('a refused retry shows the classified message instead of pretending to succeed', async () => {
+  const retryDispatch = jest.fn().mockRejectedValue(new WorkflowError('rejected'));
+  jest.mocked(useCustomerData).mockReturnValue(dispatchController({ retryDispatch }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByLabelText('Mời thợ lại cho Sửa vòi nước'));
+  expect(await screen.findByText('Bước này không còn khả dụng. Đã tải lại trạng thái mới nhất.')).toBeTruthy();
+});
+
+test('cancelling needs a deliberate slide and then goes through the owner command', async () => {
+  const cancelServiceRequest = jest.fn().mockResolvedValue(undefined);
+  jest.mocked(useCustomerData).mockReturnValue(dispatchController({ cancelServiceRequest }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByLabelText('Hủy yêu cầu Sửa vòi nước'));
+  expect(cancelServiceRequest).not.toHaveBeenCalled();
+  const slider = screen.getByLabelText('Xác nhận hủy yêu cầu Sửa vòi nước');
+  await fireEvent(slider, 'accessibilityAction', activate);
+  await fireEvent(slider, 'accessibilityAction', activate);
+  await waitFor(() => expect(cancelServiceRequest).toHaveBeenCalledWith('r1'));
+});
+
+const handover: DispatchSummary = { ...exhausted, state: 'assigned', canRetry: false, canCancel: false, canReassign: true, reassignAt: '2026-11-12T08:30:00.000Z' };
+
+test('an assigned worker who has not arrived can be replaced only after a deliberate slide', async () => {
+  const reassignRequest = jest.fn().mockResolvedValue(undefined);
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], activity: { ...empty.activity, jobs: [{ id: 'j1', request_id: 'r1', stage: 'assigned', version: 1 }] }, dispatch: new Map([['r1', handover]]) }, reassignRequest }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đang làm/ }));
+  await fireEvent.press(screen.getByLabelText('Mời thợ khác cho Sửa vòi nước'));
+  expect(reassignRequest).not.toHaveBeenCalled();
+  const slider = screen.getByLabelText('Xác nhận mời thợ khác cho yêu cầu Sửa vòi nước');
+  await fireEvent(slider, 'accessibilityAction', activate);
+  await fireEvent(slider, 'accessibilityAction', activate);
+  await waitFor(() => expect(reassignRequest).toHaveBeenCalledWith('r1'));
+});
+
+test('a worker who still has time shows when a handover becomes possible and no button', async () => {
+  const waiting: DispatchSummary = { ...handover, canReassign: false };
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], activity: { ...empty.activity, jobs: [{ id: 'j1', request_id: 'r1', stage: 'assigned', version: 1 }] }, dispatch: new Map([['r1', waiting]]) } }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đang làm/ }));
+  expect(screen.getByText(/Nếu thợ chưa đến, bạn có thể mời thợ khác sau/)).toBeTruthy();
+  expect(screen.queryByLabelText('Mời thợ khác cho Sửa vòi nước')).toBeNull();
+});
+
+test('a cancelled request moves to the finished tab with a cancelled status', async () => {
+  const cancelled: DispatchSummary = { ...exhausted, state: 'cancelled', canRetry: false, canCancel: false };
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], dispatch: new Map([['r1', cancelled]]) } }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  expect(screen.queryByText('Sửa vòi nước')).toBeNull();
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đã xong/ }));
+  expect(screen.getByText('Đã hủy yêu cầu')).toBeTruthy();
+  expect(screen.getByText('Đã hủy')).toBeTruthy();
+  expect(screen.queryByLabelText('Mời thợ lại cho Sửa vòi nước')).toBeNull();
+});
+
+const onSite: DispatchSummary = { ...exhausted, state: 'assigned', canRetry: false, canCancel: false, jobStage: 'arrived', canEscalate: true, escalateAt: '2026-11-12T08:30:00.000Z' };
+
+test('a worker on site without starting can be escalated only after a deliberate slide and never replaced', async () => {
+  const escalateRequest = jest.fn().mockResolvedValue(undefined);
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], activity: { ...empty.activity, jobs: [{ id: 'j1', request_id: 'r1', stage: 'arrived', version: 3 }] }, dispatch: new Map([['r1', onSite]]) }, escalateRequest }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đang làm/ }));
+  expect(screen.queryByLabelText('Mời thợ khác cho Sửa vòi nước')).toBeNull();
+  await fireEvent.press(screen.getByLabelText('Báo sự cố cho Sửa vòi nước'));
+  expect(escalateRequest).not.toHaveBeenCalled();
+  const slider = screen.getByLabelText('Xác nhận báo sự cố cho yêu cầu Sửa vòi nước');
+  await fireEvent(slider, 'accessibilityAction', activate);
+  await fireEvent(slider, 'accessibilityAction', activate);
+  await waitFor(() => expect(escalateRequest).toHaveBeenCalledWith('r1'));
+});
+
+test('a worker on site inside the arrival window shows when escalation opens and no button', async () => {
+  const waiting: DispatchSummary = { ...onSite, canEscalate: false };
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], activity: { ...empty.activity, jobs: [{ id: 'j1', request_id: 'r1', stage: 'arrived', version: 3 }] }, dispatch: new Map([['r1', waiting]]) } }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đang làm/ }));
+  expect(screen.getByText(/bạn có thể báo sự cố sau/)).toBeTruthy();
+  expect(screen.queryByLabelText('Báo sự cố cho Sửa vòi nước')).toBeNull();
+});
+
+test('an escalated job says it was reported and offers no second report', async () => {
+  const escalated: DispatchSummary = { ...onSite, canEscalate: false, escalateAt: null, escalatedAt: '2026-11-12T09:00:00.000Z' };
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], activity: { ...empty.activity, jobs: [{ id: 'j1', request_id: 'r1', stage: 'arrived', version: 3 }] }, dispatch: new Map([['r1', escalated]]) } }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đang làm/ }));
+  expect(screen.getByText(/Bạn đã báo sự cố cho việc này/)).toBeTruthy();
+  expect(screen.queryByLabelText('Báo sự cố cho Sửa vòi nước')).toBeNull();
+});
+
+test.each<[string, Partial<DispatchSummary>, RegExp]>([
+  ['waiting for the operator', { escalationStatus: 'open' }, /Thợ đã được báo và yêu cầu đang chờ xử lý/],
+  ['in review', { escalationStatus: 'reviewing' }, /Đội hỗ trợ đang xem xét/],
+  ['resolved to continue', { escalationStatus: 'resolved', escalationResolution: 'proceed' }, /Thợ sẽ tiếp tục công việc/],
+  ['resolved as closed', { escalationStatus: 'resolved', escalationResolution: 'dismiss' }, /đóng, chưa cần xử lý thêm/],
+])('a report %s tells the customer where it stands and offers no second report', async (_name, overrides, expected) => {
+  const escalated: DispatchSummary = { ...onSite, canEscalate: false, escalateAt: null, escalatedAt: '2026-11-12T09:00:00.000Z', ...overrides };
+  jest.mocked(useCustomerData).mockReturnValue(controller({ data: { ...empty, requests: [request], quotes: [acceptedQuote], activity: { ...empty.activity, jobs: [{ id: 'j1', request_id: 'r1', stage: 'arrived', version: 3 }] }, dispatch: new Map([['r1', escalated]]) } }));
+  await render(<CustomerSection id="requests" onBack={() => undefined} onNavigate={() => undefined} />);
+  await fireEvent.press(screen.getByRole('tab', { name: /^Đang làm/ }));
+  expect(screen.getByText(expected)).toBeTruthy();
+  expect(screen.queryByLabelText('Báo sự cố cho Sửa vòi nước')).toBeNull();
 });

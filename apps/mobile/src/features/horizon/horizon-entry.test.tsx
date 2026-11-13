@@ -98,42 +98,36 @@ test('a pending confirmation shows the gray attention banner with the approval c
   expect(screen.queryByText('Đã gửi yêu cầu')).toBeNull();
 });
 
-test('without AI sharing consent an inline card, not a dialog, asks once and the message is not sent', async () => {
+test('without AI sharing consent no card is shown and the message is not sent, pointing to Settings › Privacy', async () => {
   mockConsent.granted = false;
   const requests = script([started, completed('unused')]);
   await renderEntry();
-  expect(screen.getByTestId('kael-consent-card')).toBeTruthy();
+  expect(screen.queryByTestId('kael-consent-card')).toBeNull();
+  expect(screen.queryByLabelText('Cho phép và bắt đầu')).toBeNull();
   await say('Nhờ Kael giúp tôi');
   expect(requests).toHaveLength(0);
-  expect(screen.getByText(/Tin nhắn chưa được gửi. Chọn “Cho phép và bắt đầu”/)).toBeTruthy();
-  expect(screen.queryByText('Đồng ý và tiếp tục')).toBeNull();
-  expect(screen.queryByText('Không đồng ý')).toBeNull();
+  expect(screen.getByText(/Tin nhắn chưa được gửi. Bật “Chia sẻ dữ liệu với AI” trong Cài đặt › Quyền riêng tư/)).toBeTruthy();
+  expect(mockSetConsent).not.toHaveBeenCalled();
 });
 
-test('allowing AI sharing from the inline card records the choice explicitly', async () => {
-  mockConsent.granted = false;
-  await renderEntry();
-  await act(async () => { fireEvent.press(screen.getByLabelText('Cho phép và bắt đầu')); });
-  expect(mockSetConsent).toHaveBeenCalledTimes(1);
-  expect(mockSetConsent).toHaveBeenCalledWith(true);
-});
-
-test('the hosted Preview target shows the same consent card instead of an unreachable instruction', async () => {
+test('the hosted Preview target shows no consent card either', async () => {
   mockConsent.granted = false;
   await render(<SafeAreaProvider initialMetrics={metrics}><HorizonEntry onPreviewMenu={jest.fn()}/></SafeAreaProvider>);
-  expect(screen.getByTestId('kael-consent-card')).toBeTruthy();
+  expect(screen.queryByTestId('kael-consent-card')).toBeNull();
 });
 
-test('a failed consent save keeps the card and reports the failure', async () => {
+test('the worker flow shows no consent card and still refuses to send without consent', async () => {
+  mockAccess.phase = 'worker';
   mockConsent.granted = false;
-  mockSetConsent.mockRejectedValue(new Error('offline'));
+  const requests = script([started, completed('unused')]);
   await renderEntry();
-  await act(async () => { fireEvent.press(screen.getByLabelText('Cho phép và bắt đầu')); });
-  expect(screen.getByText(/Chưa kiểm tra được trạng thái đồng ý/)).toBeTruthy();
-  expect(screen.getByTestId('kael-consent-card')).toBeTruthy();
+  expect(screen.queryByTestId('kael-consent-card')).toBeNull();
+  await say('Nhờ Kael giúp tôi');
+  expect(requests).toHaveLength(0);
+  mockAccess.phase = 'client';
 });
 
-test('once consent is granted there is no card and the message is sent', async () => {
+test('once consent is granted the message is sent', async () => {
   const requests = script([started, completed('Xin chào.')]);
   await renderEntry();
   expect(screen.queryByTestId('kael-consent-card')).toBeNull();
@@ -161,7 +155,7 @@ test('a verified submission shows the receipt banner, which can be dismissed, an
   await say('Nhờ Kael tạo yêu cầu sửa vòi nước');
   await act(async () => { fireEvent(screen.getByLabelText('Xác nhận Gửi yêu cầu dịch vụ'), 'accessibilityAction', { nativeEvent: { actionName: 'activate' } }); });
   expect(await screen.findByText('Đã gửi yêu cầu')).toBeTruthy();
-  expect(screen.getByText(/chưa có thợ, báo giá hay lịch hẹn nào được xác nhận/)).toBeTruthy();
+  expect(screen.getByText(/Chưa có thợ hay lịch hẹn nào được xác nhận/)).toBeTruthy();
   expect(screen.queryByLabelText(/^Chờ bạn xác nhận\./)).toBeNull();
   await act(async () => { fireEvent.press(screen.getByLabelText('Đóng')); });
   await waitFor(() => expect(screen.queryByText('Đã gửi yêu cầu')).toBeNull());

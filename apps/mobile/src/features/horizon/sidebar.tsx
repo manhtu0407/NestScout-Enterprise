@@ -171,7 +171,7 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
             {onSessionQuery && <View style={styles.sessionTools}>
               <View style={styles.sessionSearch}>
                 <Icon name="search" size={horizonLayout.supportScreens.searchIconSize} color={horizonColors.supportScreens.searchIcon}/>
-                <TextInput accessibilityLabel="Tìm cuộc trò chuyện theo tên" value={sessionQuery} onChangeText={onSessionQuery} placeholder="Tìm theo tên" placeholderTextColor={horizonColors.supportScreens.searchPlaceholder} autoCorrect={false} maxLength={80} style={styles.sessionSearchInput}/>
+                <TextInput accessibilityLabel="Tìm cuộc trò chuyện theo tên" value={sessionQuery} onChangeText={onSessionQuery} placeholder="Tìm theo tên" placeholderTextColor={horizonColors.supportScreens.searchPlaceholder} autoCorrect={false} maxLength={80} style={[styles.sessionSearchInput, webInputStyle]}/>
               </View>
               {onToggleArchivedView && <Pressable accessibilityRole="button" accessibilityState={{ selected: archivedView }} accessibilityLabel={archivedView ? 'Quay lại cuộc trò chuyện gần đây' : 'Xem cuộc trò chuyện đã lưu trữ'} onPress={onToggleArchivedView} style={styles.archiveToggle}><Icon name={archivedView ? 'back' : 'archive'} size={horizonLayout.supportScreens.searchIconSize} color={horizonColors.supportScreens.searchIcon}/></Pressable>}
             </View>}
@@ -211,6 +211,8 @@ export function Sidebar({ visible, onClose, onNavigate, onSelectService, mode, m
 function drawerOpacity(progress: Animated.Value): Animated.AnimatedInterpolation<number> {
   return progress.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1] });
 }
+
+const webInputStyle = { outlineStyle: 'solid', outlineWidth: 0 } as const;
 
 const styles = StyleSheet.create({
   full: { flex: 1, flexDirection: 'row' },

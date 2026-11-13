@@ -157,6 +157,82 @@ migrations are additive, so the older function keeps working. Revert the
 client by shipping the previous build. Availability is a target, not a
 guarantee: both providers can be unavailable at once.
 
+## Dispatch recovery and worker handover rollout
+
+This section is a prepared plan. Nothing in it has been applied to the hosted
+project, and each step needs the owner's authorization.
+
+A read-only observation on 2026-11-13 found the hosted history ending at
+`add_dispatch_outcome_and_recovery` (hosted version `20261112122848`), so two
+repository migrations are pending, in this order: `add_dispatch_recovery_and_budgets`
+(`20261112080000`) and `add_job_release_and_worker_capacity` (`20261113090000`).
+`pg_cron` is available in the project but not installed.
+
+1. Merge to `main` after hosted CI passes.
+2. Before applying, confirm the history by name with `list_migrations` and that no
+   request is mid-flight that the owner cares about; both migrations run in one
+   transaction each and take short table locks.
+3. Apply `add_dispatch_recovery_and_budgets`, then
+   `add_job_release_and_worker_capacity`, then `add_stage_based_job_recovery`, then
+   `add_escalation_handling`, then `add_beta_operator_and_review_recovery`. The
+   second drops and recreates `get_dispatch_summary`, `dispatch_summary` and
+   `dispatch_state` with two more columns (`can_reassign`, `reassign_at`) and the
+   third recreates them again with four more (`job_stage`, `can_escalate`,
+   `escalate_at`, `escalated_at`) and the fourth with two more
+   (`escalation_status`, `escalation_resolution`); an older client ignores columns it does not
+   read, and the older `kael` function keeps its explicit column list. The third
+   also drops `auto_dispatch_settings.reassign_idle_minutes` in favour of four
+   stage timers, adds `service_job_escalations` and the `job_escalated`
+   notification kind, and widens `service_job_releases`. The fourth adds the case
+   status columns, the operator queue, review and resolve functions, the
+   `operator` release role and the `escalation_received` and `escalation_resolved`
+   notification kinds, and narrows participants' column access on
+   `service_job_escalations`. The fifth adds `operator_grants` and its event log,
+   replaces the fixture operator check on the escalation functions with the grant
+   check, adds `operator_access`, the review timeout setting, takeover and review
+   history, and recreates `operator_escalation_queue` with three more columns and
+   `dispatch_state` so that a stale review reads as open. None of them is applied to the
+   hosted project by any task in this repository; apply them only on the owner's
+   instruction, after the mobile client that reads the new columns is built.
+4. Install `pg_cron` from the dashboard (an owner action that changes the project's
+   extensions), then run `select nestscout_private.schedule_dispatch_sweeper();`
+   as the database owner. It returns `scheduled` and registers one job named
+   `nestscout-dispatch-sweeper` that runs every minute. Without `pg_cron` the
+   migration reports `pg_cron not installed`, lapsed offers are still shown as
+   `recovering` and refused, and nothing closes them until the sweeper runs. Check
+   with `select jobname, schedule, active from cron.job` and
+   `select status, start_time from cron.job_run_details order by start_time desc limit 5`.
+5. Redeploy the `kael` function from the merged commit, since the Phase 2 and 3
+   sources changed the dispatch read and the approval-gated retry and cancel. If the
+   owner runs the Rust durable service, deploy it from the same commit.
+6. Leave `auto_dispatch_settings.enabled` false. Automatic quotes and invitations
+   remain off until the owner decides on a commercial pricing and dispatch policy;
+   the defaults for the new limits are `max_active_jobs_per_worker` 3,
+   `visit_conflict_minutes` 120, `assigned_response_minutes` 120,
+   `visit_grace_minutes` 30, `en_route_arrival_minutes` 120 and
+   `arrival_escalation_minutes` 60. They are global, not per service or region.
+7. Verify with real accounts: a customer sees `recovering` for a lapsed offer within
+   a minute of the sweeper running, a worker in `assigned` or `en_route` can release
+   and the customer is notified, a customer can replace an unreachable worker only
+   after the stage window, a customer whose worker arrived but never started can
+   report an incident after the arrival window and the worker is notified without
+   losing the job, and a worker at the cap is refused. `get_advisors` must show no
+   new security finding. Escalations are handled by beta operators. No account holds the role after the
+   migration. The owner grants it from the SQL editor, for example
+   `select nestscout_private.grant_beta_operator('<user id>', '<authorization reference>', 30);`
+   (at most 90 days, a signed-in non-anonymous account) and removes it with
+   `select nestscout_private.revoke_beta_operator('<user id>', '<reference>');`.
+   Check holders with `select user_id, reference, expires_at, revoked_at from nestscout_private.operator_grants`
+   and the audit trail in `nestscout_private.operator_grant_events`. Decide
+   `review_timeout_minutes` (default 30) and who is on call; there is no
+   assignment, service level or paging beyond the in-app notification.
+
+Rollback: unschedule the sweeper with `select cron.unschedule('nestscout-dispatch-sweeper')`.
+The migrations are additive apart from the recreated summary functions. A release moves
+its job rows to `service_job_releases`, which a code rollback does not undo, so those
+handovers stay archived and the customer's request keeps its new search. Revert the
+client by shipping the previous build.
+
 ## Git and metadata backup
 
 Run from a clean checkout after `git fetch origin --prune`. Use an absolute, new

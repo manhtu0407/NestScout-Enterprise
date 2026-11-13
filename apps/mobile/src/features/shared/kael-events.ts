@@ -138,7 +138,7 @@ export function createKaelSequence(): (event: Pick<KaelEvent, 'run_id' | 'seq'>)
   };
 }
 
-export type KaelStoredMessage = { id: string; role: 'user' | 'assistant'; text: string; incomplete: boolean };
+export type KaelStoredMessage = { id: string; role: 'user' | 'assistant'; text: string; incomplete: boolean; sentAt?: number };
 
 export type KaelConversationSnapshot = {
   conversationId: string | null;
@@ -150,9 +150,10 @@ export type KaelConversationSnapshot = {
 
 function parseStoredMessage(value: unknown): KaelStoredMessage | null {
   if (!isObject(value)) return null;
-  const { id, role, content, status } = value;
+  const { id, role, content, status, created_at: createdAt } = value;
   if (!isId(id) || (role !== 'user' && role !== 'assistant') || !isText(content) || (status !== 'complete' && status !== 'incomplete')) return null;
-  return { id, role, text: content, incomplete: status === 'incomplete' };
+  const sentAt = typeof createdAt === 'string' ? Date.parse(createdAt) : Number.NaN;
+  return { id, role, text: content, incomplete: status === 'incomplete', ...(Number.isFinite(sentAt) ? { sentAt } : {}) };
 }
 
 function parseAll<T>(value: unknown, limit: number, parse: (item: unknown) => T | null): T[] | null {

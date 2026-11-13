@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentRef } from 'react';
-import { Animated, AppState, Easing, Keyboard, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Animated, AppState, Easing, Keyboard, Platform, Share, StyleSheet, Text, View } from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent, ScrollViewInstance } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors, horizonColors as colors } from '@/theme/palette';
 import type { KaelApproval, KaelQuestion, KaelTask } from '@/features/shared';
-import { ChatComposer } from './chat-composer';
+import { ChatComposer, type ComposerAutonomy } from './chat-composer';
+import { recentQuestions } from './chat-history';
 import { ChatMessage } from './chat-message';
 import { MessageActions, type FeedbackKind, type FeedbackReason } from './message-actions';
 import { QuestionCard } from './question-card';
@@ -40,6 +41,7 @@ type Props = {
   onClearComposerError: () => void;
   draftImages?: readonly ComposerImage[];
   onDraftImagesChange?: (images: readonly ComposerImage[]) => void;
+  autonomy?: ComposerAutonomy;
   draftLocked?: boolean;
   conversationKey: number;
   kaelPhase?: KaelPhase | null;
@@ -60,15 +62,12 @@ type Props = {
   onDecide?: (approval: KaelApproval, approve: boolean) => void;
   topInset?: number;
   processingTaskId?: string | null;
-  consent?: KaelConsentCard | null;
 };
-
-export type KaelConsentCard = { lead: string; action: string; busy: boolean; onAllow: () => void };
 
 const noTasks: readonly KaelTask[] = [];
 const noApprovals: readonly KaelApproval[] = [];
 
-export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, question = null, onAnswer, onRate, onRegenerate, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, requestProgress, draftImages, onDraftImagesChange, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null, consent = null }: Props) {
+export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, question = null, onAnswer, onRate, onRegenerate, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, requestProgress, draftImages, onDraftImagesChange, autonomy, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null }: Props) {
   const speech = useKaelSpeech();
   const pendingConfirmation = approvals.some(approval => approval.kind === 'confirm');
   const reduceMotion = useReduceMotion();
@@ -181,9 +180,10 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
 
   return <View ref={rootRef} testID="kael-home-layout" style={styles.root} onLayout={event => setRootHeight(event.nativeEvent.layout.height)}>
     <Animated.View pointerEvents={chatActive ? 'box-none' : 'none'} style={[styles.layer, { bottom: footerHeight, opacity: chatOpacity, transform: [{ translateY: chatShift }] }]}>
-      <Animated.ScrollView ref={conversationRef} onContentSizeChange={followContent} onScroll={trackScroll} onScrollBeginDrag={() => { following.current = false; }} scrollEventThrottle={metrics.scrollThrottle} style={[styles.conversation, { top: Animated.add(inset, metrics.conversationTop) }]} contentContainerStyle={styles.conversationContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView ref={conversationRef} onContentSizeChange={followContent} onScroll={trackScroll} onScrollBeginDrag={() => { following.current = false; }} scrollEventThrottle={metrics.scrollThrottle} style={styles.conversation} contentContainerStyle={styles.conversationContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <Animated.View style={{ height: Animated.add(inset, metrics.navHeight + metrics.conversationTop) }}/>
         {messages.map(m => m.role === 'user'
-          ? <ChatMessage key={m.id} role="user" text={m.text}/>
+          ? <ChatMessage key={m.id} role="user" text={m.text} sentAt={m.sentAt}/>
           : <View key={m.id} style={styles.reply}>
             <KaelStreamingText text={m.text} style={styles.replyText} streaming={busy && m.id === lastMessage?.id && !m.incomplete} incomplete={m.incomplete}/>
             {m.incomplete && <KaelIncompleteNote/>}
@@ -210,13 +210,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
     <KaelIntro progress={progress} footerHeight={footerHeight} interactive={!chatActive}/>
     <KaelStage progress={progress} landing={landing} reaction={reaction} expression={expression} nod={kaelPhase === 'completed'} seatTop={seatTop} navHeight={metrics.navHeight}/>
     <View ref={footerRef} testID="kael-footer-layout" style={styles.footer} onLayout={event => setFooterHeight(event.nativeEvent.layout.height)}>
-      {consent !== null && <View testID="kael-consent-card" style={styles.consent}>
-        <Text style={styles.consentText}>{consent.lead}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={consent.action} accessibilityState={{ disabled: consent.busy, busy: consent.busy }} disabled={consent.busy} onPress={consent.onAllow} style={styles.consentAction}>
-          <Text style={styles.consentActionText}>{consent.action}</Text>
-        </Pressable>
-      </View>}
-      <ChatComposer key={conversationKey} value={input} onChange={value => { setMenuNotice(null); onInput(value); }} onSubmit={images => { enterChat(); onSubmit(images); }} error={composerError ?? menuNotice} onMediaChange={() => { setMenuNotice(null); onClearComposerError(); }} initialImages={draftImages} onImagesChange={onDraftImagesChange} mediaExternallyManaged={Boolean(onDraftImagesChange)} locked={draftLocked}/>
+      <ChatComposer key={conversationKey} value={input} onChange={value => { setMenuNotice(null); onInput(value); }} onSubmit={images => { enterChat(); onSubmit(images); }} error={composerError ?? menuNotice} onMediaChange={() => { setMenuNotice(null); onClearComposerError(); }} initialImages={draftImages} autonomy={autonomy} history={recentQuestions(messages)} onImagesChange={onDraftImagesChange} mediaExternallyManaged={Boolean(onDraftImagesChange)} locked={draftLocked}/>
       <Text style={styles.disclaimer}>Kael có thể mắc sai sót. Hãy kiểm tra thông tin quan trọng.</Text>
     </View>
     {chatActive && <KaelChatNav onMenu={onMenu} onOptions={() => setMenuOpen(open => !open)}/>}
@@ -227,15 +221,11 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg, justifyContent: 'flex-end', overflow: 'hidden' },
-  layer: { position: 'absolute', top: metrics.navHeight, left: 0, right: 0 },
-  conversation: { position: 'absolute', top: metrics.conversationTop, left: metrics.conversationSideInset, right: metrics.conversationSideInset, bottom: metrics.conversationBottomInset + metrics.plushClearance },
-  conversationContent: { gap: metrics.chatGap, paddingBottom: bubbles.chatContentPaddingBottom },
+  layer: { position: 'absolute', top: 0, left: 0, right: 0 },
+  conversation: { position: 'absolute', top: 0, left: metrics.conversationSideInset, right: metrics.conversationSideInset, bottom: 0 },
+  conversationContent: { gap: metrics.chatGap, paddingBottom: bubbles.chatContentPaddingBottom + metrics.conversationBottomInset + metrics.plushClearance },
   reply: { alignSelf: 'stretch', paddingHorizontal: bubbles.replyInset, gap: bubbles.replyGap },
   replyText: { color: colors.text, fontSize: bubbles.replyTextSize, lineHeight: bubbles.replyLineHeight },
   footer: { paddingHorizontal: metrics.composerSideInset, paddingBottom: metrics.footerBottomInset },
-  consent: { backgroundColor: bubbleColors.consentSurface, borderRadius: bubbles.consentRadius, padding: bubbles.consentPadding, gap: bubbles.consentGap, marginBottom: bubbles.consentMarginBottom },
-  consentText: { color: bubbleColors.consentText, fontSize: bubbles.consentTextSize, lineHeight: bubbles.consentLineHeight },
-  consentAction: { minHeight: bubbles.consentActionHeight, borderRadius: bubbles.consentActionRadius, paddingHorizontal: bubbles.consentActionPadding, backgroundColor: bubbleColors.consentActionSurface, alignItems: 'center', justifyContent: 'center' },
-  consentActionText: { color: bubbleColors.consentActionText, fontSize: bubbles.consentTextSize, lineHeight: bubbles.consentLineHeight, fontWeight: bubbles.consentActionWeight },
   disclaimer: { color: bubbleColors.disclaimerColor, fontSize: bubbles.disclaimerFontSize, lineHeight: bubbles.disclaimerLineHeight, textAlign: 'center', marginTop: metrics.disclaimerTop },
 });

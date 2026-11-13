@@ -77,7 +77,7 @@ test('manual intake: fill, review the summary, edit, confirm, and see a server-c
   await press('Xem lại yêu cầu');
   await press('Xác nhận gửi yêu cầu');
   expect(mockSubmit).toHaveBeenCalledTimes(1);
-  expect(mockSubmit).toHaveBeenCalledWith('customer-a', expect.stringMatching(/^[0-9a-f-]{36}$/), 'Máy lạnh — Máy lạnh phòng ngủ không mát\nLoại máy: Treo tường\nHiện tượng: Không lạnh\nSố máy (nếu biết): 2\nThời gian mong muốn (chưa phải lịch hẹn đã xác nhận): Ngày mai', expect.any(AbortSignal), 'Căn 12B, Quận 7');
+  expect(mockSubmit).toHaveBeenCalledWith('customer-a', expect.stringMatching(/^[0-9a-f-]{36}$/), 'Máy lạnh — Máy lạnh phòng ngủ không mát\nLoại máy: Treo tường\nHiện tượng: Không lạnh\nSố máy (nếu biết): 2\nThời gian mong muốn (chưa phải lịch hẹn đã xác nhận): Ngày mai', expect.any(AbortSignal), 'Căn 12B, Quận 7', 'aircon');
   expect(screen.getByText('Yêu cầu Máy lạnh đã được gửi')).toBeTruthy();
   expect(screen.getByText('Mã yêu cầu: ABCDEF12')).toBeTruthy();
   expect(screen.getByText(/Hiện chưa có thợ, giá, lịch hẹn hay thanh toán nào được xác nhận/)).toBeTruthy();
@@ -175,6 +175,6 @@ test('an unconfirmed request from an earlier visit is reconciled before a new on
   expect(screen.getByText('Yêu cầu chưa xác nhận được kết quả gửi')).toBeTruthy();
   expect(screen.queryByLabelText('Xem lại yêu cầu')).toBeNull();
   await press('Gửi lại để kiểm tra');
-  expect(mockSubmit).toHaveBeenCalledWith('customer-a', '11111111-1111-4111-8111-111111111111', 'Sửa nước — Cũ', expect.any(AbortSignal), 'Quận 5');
+  expect(mockSubmit).toHaveBeenCalledWith('customer-a', '11111111-1111-4111-8111-111111111111', 'Sửa nước — Cũ', expect.any(AbortSignal), 'Quận 5', undefined);
   expect(mockStore.size).toBe(0);
 });

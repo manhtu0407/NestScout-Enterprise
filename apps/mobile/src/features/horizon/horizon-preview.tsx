@@ -49,7 +49,7 @@ const sampleRequests: readonly ServiceRequest[] = [
     description: 'Thay 3 bóng đèn âm trần phòng khách, trần cao khoảng 3 m.', location: 'Quận 3, TP. Hồ Chí Minh', createdLabel: 'Hôm qua, 18:40', photoCount: 0,
   },
   {
-    id: 'req-3', title: 'Sơn lại tường phòng ngủ', icon: 'sofa', meta: 'Thủ Đức · Thứ Hai', status: 'Đã chấp nhận báo giá', stage: 'active',
+    id: 'req-3', title: 'Sơn lại tường phòng ngủ', icon: 'paint', meta: 'Thủ Đức · Thứ Hai', status: 'Đã chấp nhận báo giá', stage: 'active',
     step: 3, nextAction: 'Chưa cần bạn làm gì. Chưa có thợ được giao, bước ghép thợ sẽ làm sau.',
     description: 'Sơn lại 4 bức tường phòng ngủ 14 m², tường có vài vết ẩm nhẹ.', location: 'Thủ Đức, TP. Hồ Chí Minh', createdLabel: 'Thứ Hai, 14:05', photoCount: 3,
   },

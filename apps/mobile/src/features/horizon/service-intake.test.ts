@@ -1,4 +1,6 @@
-import { serviceCategories, serviceCategoryFor, unknownChoice, type ServiceCategory } from './service-catalog';
+import { dispatchServiceIds } from '@/features/shared';
+
+import { dispatchServiceFor, serviceCategories, serviceCategoryFor, unknownChoice, type ServiceCategory } from './service-catalog';
 import { activeSafetyNotice, composeSubmission, descriptionLimit, kaelIntakePrompt, summaryLines, validateIntake } from './service-intake';
 
 const category = (id: string): ServiceCategory => serviceCategoryFor(id) as ServiceCategory;
@@ -82,4 +84,9 @@ test('the open category does not promise unsupported work', () => {
   expect(category('other').intro).toMatch(/chưa đảm bảo/);
   expect(category('other').kaelOpening).toMatch(/chưa biết chọn dịch vụ nào/);
   for (const item of serviceCategories.filter(entry => entry.id !== 'other')) expect(category('other').kaelOpening.toLowerCase()).not.toContain(item.title.toLowerCase());
+});
+
+test('every catalog category maps to a service the dispatch backend accepts', () => {
+  expect(serviceCategories.map(item => dispatchServiceFor(item.id))).toEqual(['electric', 'water', 'aircon', 'other', 'sofa', 'other', 'other']);
+  for (const item of serviceCategories) expect(dispatchServiceIds).toContain(dispatchServiceFor(item.id));
 });

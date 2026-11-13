@@ -3,10 +3,11 @@ import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View 
 import type { LayoutChangeEvent } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
-import { Chip, Icon, type IconName, type JobReview, PressScale, StatusDot, useGlassAccessibility, type StatusDotColor } from '@/features/shared';
+import { Chip, type DispatchServiceId, type EscalationResolution, type EscalationStatus, Icon, type IconName, type JobReview, PressScale, StatusDot, useGlassAccessibility, type StatusDotColor } from '@/features/shared';
 import { ScreenHeader } from './support-shell';
 import { JobChangePanel, type JobChangesApi } from './job-change-panel';
 import { formatVisit, PreferredVisitPicker } from './preferred-visit-picker';
+import { RequestDispatchPanel } from './request-dispatch-panel';
 import { SubmissionDecisionPanel, type SubmissionDecision } from './submission-decision-panel';
 import { WorkerReviewPanel, type RequestWorker } from './worker-review-panel';
 
@@ -38,6 +39,8 @@ export type ServiceRequest = {
   worker?: RequestWorker;
   preferredVisitAt?: string | null;
   pendingSubmission?: { id: string; evidence: string; jobVersion: number };
+  closed?: 'cancelled';
+  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; canEscalate?: boolean; escalateAt?: string | null; escalatedAt?: string | null; escalationStatus?: EscalationStatus | null; escalationResolution?: EscalationResolution | null; nextRetryAt?: string | null; retriesLeft?: number };
 };
 
 export const workflowSteps: readonly string[] = ['Đã gửi', 'Có báo giá', 'Chấp nhận', 'Ghép thợ', 'Thực hiện', 'Nghiệm thu'];
@@ -57,13 +60,18 @@ type Props = {
   onDecideSubmission?: (request: ServiceRequest, decision: SubmissionDecision, reason: string | null) => Promise<void>;
   onToggleSaveWorker?: (worker: RequestWorker) => Promise<void>;
   onReviewWorker?: (worker: RequestWorker, review: JobReview) => Promise<void>;
+  onRetryDispatch?: (request: ServiceRequest) => Promise<void | string>;
+  onSetRequestService?: (request: ServiceRequest, serviceId: DispatchServiceId) => Promise<void>;
+  onCancelRequest?: (request: ServiceRequest) => Promise<void>;
+  onReassign?: (request: ServiceRequest) => Promise<void>;
+  onEscalate?: (request: ServiceRequest) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
   focusId?: string;
 };
 
-function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, jobChanges }: CardProps) {
+function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, onReassign, onEscalate, jobChanges }: CardProps) {
   const finished = request.step >= workflowSteps.length;
-  const caption = finished ? `Đủ ${workflowSteps.length}/${workflowSteps.length} bước` : `Bước ${request.step + 1}/${workflowSteps.length} · ${workflowSteps[request.step]}`;
+  const caption = request.closed === 'cancelled' ? 'Đã hủy' : finished ? `Đủ ${workflowSteps.length}/${workflowSteps.length} bước` : `Bước ${request.step + 1}/${workflowSteps.length} · ${workflowSteps[request.step]}`;
   const needsYou = Boolean(request.quoteCount);
   return (
     <View style={styles.card}>
@@ -109,6 +117,28 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onS
           <Text style={styles.nextText}>{request.nextAction}</Text>
         </View>
       </View>
+      {request.dispatch && !request.closed && onRetryDispatch && onCancelRequest ? (
+        <RequestDispatchPanel
+          title={request.title}
+          canRetry={request.dispatch.canRetry}
+          canCancel={request.dispatch.canCancel}
+          canReclassify={request.dispatch.canReclassify === true && onSetRequestService !== undefined}
+          canReassign={request.dispatch.canReassign === true && onReassign !== undefined}
+          reassignAt={request.dispatch.reassignAt ?? null}
+          canEscalate={request.dispatch.canEscalate === true && onEscalate !== undefined}
+          escalateAt={request.dispatch.escalateAt ?? null}
+          escalatedAt={request.dispatch.escalatedAt ?? null}
+          escalationStatus={request.dispatch.escalationStatus ?? null}
+          escalationResolution={request.dispatch.escalationResolution ?? null}
+          nextRetryAt={request.dispatch.nextRetryAt ?? null}
+          retriesLeft={request.dispatch.retriesLeft ?? null}
+          onRetry={() => onRetryDispatch(request)}
+          onSetService={serviceId => onSetRequestService ? onSetRequestService(request, serviceId) : Promise.resolve()}
+          onCancel={() => onCancelRequest(request)}
+          onReassign={() => onReassign ? onReassign(request) : Promise.resolve()}
+          onEscalate={() => onEscalate ? onEscalate(request) : Promise.resolve()}
+        />
+      ) : null}
       {expanded ? (
         <View style={styles.detail}>
           <Text style={styles.detailTitle}>Thông tin yêu cầu</Text>
@@ -131,8 +161,8 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onS
           {request.stage === 'waiting' && !request.worker && onSetPreferredVisit
             ? <PreferredVisitPicker value={request.preferredVisitAt ?? null} onSave={at => onSetPreferredVisit(request, at)} />
             : request.preferredVisitAt ? <Info label="Thời gian bạn mong muốn" value={`${formatVisit(request.preferredVisitAt)} · chưa phải lịch hẹn đã xác nhận`} /> : null}
-          <Text style={styles.detailTitle}>Tiến trình</Text>
-          <View>
+          {request.closed ? null : <Text style={styles.detailTitle}>Tiến trình</Text>}
+          {request.closed ? null : <View>
             {workflowSteps.map((label, index) => {
               const done = index < request.step;
               const current = index === request.step;
@@ -149,7 +179,7 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onS
                 </View>
               );
             })}
-          </View>
+          </View>}
           <Text style={styles.note}>Chấp nhận báo giá chưa thu tiền. Thanh toán chưa được kết nối.</Text>
         </View>
       ) : null}
@@ -157,6 +187,11 @@ function RequestCard({ request, expanded, onToggle, onViewQuotes, onAskKael, onS
         {request.quoteCount ? (
           <PressScale accessibilityRole="button" accessibilityLabel={`Xem báo giá của ${request.title}`} onPress={() => onViewQuotes?.()} style={styles.action} wrapperStyle={styles.actionWrap}>
             <Text style={styles.actionLabel}>Xem báo giá</Text>
+          </PressScale>
+        ) : null}
+        {request.pendingSubmission && onDecideSubmission && !expanded ? (
+          <PressScale accessibilityRole="button" accessibilityLabel={`Xem kết quả và nghiệm thu ${request.title}`} onPress={onToggle} style={styles.action} wrapperStyle={styles.actionWrap}>
+            <Text style={styles.actionLabel}>Xem kết quả và nghiệm thu</Text>
           </PressScale>
         ) : null}
         {onAskKael ? <PressScale accessibilityRole="button" accessibilityLabel={`Hỏi Kael về ${request.title}`} onPress={() => onAskKael(request)} style={[styles.action, styles.actionSecondary]} wrapperStyle={styles.actionWrap}>
@@ -186,10 +221,15 @@ type CardProps = {
   onDecideSubmission?: (request: ServiceRequest, decision: SubmissionDecision, reason: string | null) => Promise<void>;
   onToggleSaveWorker?: (worker: RequestWorker) => Promise<void>;
   onReviewWorker?: (worker: RequestWorker, review: JobReview) => Promise<void>;
+  onRetryDispatch?: (request: ServiceRequest) => Promise<void | string>;
+  onSetRequestService?: (request: ServiceRequest, serviceId: DispatchServiceId) => Promise<void>;
+  onCancelRequest?: (request: ServiceRequest) => Promise<void>;
+  onReassign?: (request: ServiceRequest) => Promise<void>;
+  onEscalate?: (request: ServiceRequest) => Promise<void>;
   jobChanges?: { userId: string; api: JobChangesApi };
 };
 
-export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, jobChanges, focusId }: Props) {
+export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael, onSetPreferredVisit, onDecideSubmission, onToggleSaveWorker, onReviewWorker, onRetryDispatch, onSetRequestService, onCancelRequest, onReassign, onEscalate, jobChanges, focusId }: Props) {
   const focused = requests.find(request => request.id === focusId);
   const [expandedIds, setExpandedIds] = useState<readonly string[]>(focused ? [focused.id] : []);
   const { reduceMotion } = useGlassAccessibility();
@@ -272,6 +312,11 @@ export function RequestsScreen({ requests = [], onBack, onViewQuotes, onAskKael,
               onDecideSubmission={onDecideSubmission}
               onToggleSaveWorker={onToggleSaveWorker}
               onReviewWorker={onReviewWorker}
+              onRetryDispatch={onRetryDispatch}
+              onSetRequestService={onSetRequestService}
+              onCancelRequest={onCancelRequest}
+              onReassign={onReassign}
+              onEscalate={onEscalate}
               jobChanges={jobChanges}
             />
           ))

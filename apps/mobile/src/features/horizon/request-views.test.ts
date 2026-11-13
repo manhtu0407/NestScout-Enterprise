@@ -1,4 +1,4 @@
-import type { CustomerActivity, CustomerJob, CustomerNotification, SavedWorkerRecord, ServiceQuote, ServiceRequest } from '@/features/shared';
+import type { CustomerActivity, CustomerJob, CustomerNotification, DispatchSummary, SavedWorkerRecord, ServiceQuote, ServiceRequest } from '@/features/shared';
 
 import { countActionableQuotes, countUnreadNotifications, deriveRequestProgress, relativeTimeLabel, requestIcon, requestTitle, toNotificationItems, toQuoteItems, toRequestViews, toSavedWorkers } from './request-views';
 
@@ -160,4 +160,115 @@ test('saved workers use the opaque profile id and relative labels', () => {
 
 test('a worker saved a moment ago reads as just saved', () => {
   expect(toSavedWorkers([savedRecord({ saved_at: hoursAgo(0) })], now)[0]?.savedLabel).toBe('Vừa lưu');
+});
+
+function summary(overrides: Partial<DispatchSummary> = {}): DispatchSummary {
+  return { requestId: 'r1', state: 'no_match', openInvites: 0, earliestExpiry: null, rounds: 1, canRetry: true, canCancel: true, canReclassify: false, canReassign: false, reassignAt: null, jobStage: null, canEscalate: false, escalateAt: null, escalatedAt: null, escalationStatus: null, escalationResolution: null, nextRetryAt: null, retriesLeft: 2, lastOutcome: null, ...overrides };
+}
+
+const acceptedQuote = quote({ accepted_at: hoursAgo(1) });
+
+test('an accepted request with live offers says how many workers were invited and until when', () => {
+  const searching = summary({ state: 'searching', openInvites: 2, earliestExpiry: hoursAhead(1), canRetry: false });
+  const progress = deriveRequestProgress([acceptedQuote], undefined, now, searching);
+  expect(progress).toMatchObject({ step: 3, stage: 'waiting', status: 'Đã mời 2 thợ', dispatch: { canRetry: false, canCancel: true } });
+  expect(progress.nextAction).toMatch(/^Chờ thợ nhận việc\. Lời mời hết hạn lúc \d{2}:\d{2}\.$/);
+});
+
+test('live offers without an expiry still say that workers are being waited for', () => {
+  expect(deriveRequestProgress([acceptedQuote], undefined, now, summary({ state: 'searching', openInvites: 1 })).nextAction).toBe('Chờ thợ nhận việc.');
+});
+
+test('no matching worker is reported as such with the actions that are open', () => {
+  const retryable = deriveRequestProgress([acceptedQuote], undefined, now, summary());
+  expect(retryable).toMatchObject({ step: 3, stage: 'waiting', status: 'Chưa có thợ phù hợp', dispatch: { canRetry: true, canCancel: true } });
+  expect(retryable.nextAction).toContain('Bạn có thể mời thợ lại hoặc hủy yêu cầu.');
+  const cooling = deriveRequestProgress([acceptedQuote], undefined, now, summary({ canRetry: false }));
+  expect(cooling.nextAction).toContain('sau ít phút');
+});
+
+test('every offer ending without a worker is reported as exhausted', () => {
+  expect(deriveRequestProgress([acceptedQuote], undefined, now, summary({ state: 'exhausted', rounds: 3 }))).toMatchObject({ status: 'Chưa có thợ nhận việc', dispatch: { canRetry: true, canCancel: true } });
+});
+
+test('lapsed offers awaiting the sweep read as an update in progress', () => {
+  const progress = deriveRequestProgress([acceptedQuote], undefined, now, summary({ state: 'recovering', openInvites: 1, canRetry: false }));
+  expect(progress).toMatchObject({ status: 'Đang cập nhật lời mời', dispatch: { canRetry: false, canCancel: true } });
+});
+
+test('a request without a service category asks for one and offers reclassification', () => {
+  const progress = deriveRequestProgress([acceptedQuote], undefined, now, summary({ state: 'needs_service', canRetry: false, canReclassify: true }));
+  expect(progress).toMatchObject({ status: 'Cần chọn loại dịch vụ', dispatch: { canReclassify: true } });
+});
+
+test('an exhausted retry budget and a cooldown are explained instead of hidden', () => {
+  const spent = deriveRequestProgress([acceptedQuote], undefined, now, summary({ canRetry: false, retriesLeft: 0 }));
+  expect(spent.nextAction).toContain('Đã hết lượt mời lại.');
+  const waiting = deriveRequestProgress([acceptedQuote], undefined, now, summary({ canRetry: false, nextRetryAt: hoursAhead(1) }));
+  expect(waiting.nextAction).toMatch(/Bạn có thể mời thợ lại sau \d{2}:\d{2} hoặc hủy yêu cầu\./);
+});
+
+test('an accepted request that was never dispatched can only be cancelled', () => {
+  const progress = deriveRequestProgress([acceptedQuote], undefined, now, summary({ state: 'not_dispatched', rounds: 0, canRetry: false }));
+  expect(progress).toMatchObject({ status: 'Chưa chuyển cho thợ', dispatch: { canRetry: false, canCancel: true } });
+});
+
+test('a cancelled request is closed and has no open actions', () => {
+  const progress = deriveRequestProgress([acceptedQuote], undefined, now, summary({ state: 'cancelled', canRetry: false, canCancel: false }));
+  expect(progress).toMatchObject({ step: 0, stage: 'done', closed: 'cancelled', status: 'Đã hủy yêu cầu' });
+  expect(progress.dispatch).toBeUndefined();
+});
+
+test('an assigned job wins over any dispatch summary', () => {
+  const progress = deriveRequestProgress([acceptedQuote], job('assigned'), now, summary({ state: 'assigned', canCancel: false, canRetry: false }));
+  expect(progress).toMatchObject({ step: 4, stage: 'active', status: 'Đã có thợ nhận việc' });
+  expect(progress.dispatch).toBeUndefined();
+});
+
+test('an assigned job offers a handover only once the dispatch summary allows it', () => {
+  const ready = deriveRequestProgress([acceptedQuote], job('assigned'), now, summary({ state: 'assigned', canCancel: false, canRetry: false, canReassign: true, reassignAt: '2026-11-12T10:00:00.000Z' }));
+  expect(ready.dispatch).toEqual({ canRetry: false, canCancel: false, canReassign: true, reassignAt: '2026-11-12T10:00:00.000Z', canEscalate: false, escalateAt: null, escalatedAt: null, escalationStatus: null, escalationResolution: null });
+  const waiting = deriveRequestProgress([acceptedQuote], job('assigned'), now, summary({ state: 'assigned', canCancel: false, canRetry: false, reassignAt: '2026-11-12T10:00:00.000Z' }));
+  expect(waiting.dispatch).toMatchObject({ canReassign: false, reassignAt: '2026-11-12T10:00:00.000Z' });
+  const working = deriveRequestProgress([acceptedQuote], job('working'), now, summary({ state: 'assigned', canCancel: false, canRetry: false }));
+  expect(working.dispatch).toBeUndefined();
+});
+
+test('a worker on site is never offered a handover and gets the escalation path instead', () => {
+  const open = deriveRequestProgress([acceptedQuote], job('arrived'), now, summary({ state: 'assigned', canCancel: false, canRetry: false, jobStage: 'arrived', canEscalate: true, escalateAt: '2026-11-12T10:00:00.000Z' }));
+  expect(open.dispatch).toMatchObject({ canReassign: false, canEscalate: true, escalateAt: '2026-11-12T10:00:00.000Z', escalatedAt: null });
+  const raised = deriveRequestProgress([acceptedQuote], job('arrived'), now, summary({ state: 'assigned', canCancel: false, canRetry: false, jobStage: 'arrived', escalatedAt: '2026-11-12T11:00:00.000Z' }));
+  expect(raised.dispatch).toMatchObject({ canReassign: false, canEscalate: false, escalatedAt: '2026-11-12T11:00:00.000Z' });
+});
+
+test('a request that is still awaiting its quote keeps its quote copy and can be cancelled', () => {
+  const progress = deriveRequestProgress([quote()], undefined, now, summary({ state: 'awaiting_acceptance', rounds: 0, canRetry: false }));
+  expect(progress).toMatchObject({ status: 'Có báo giá mới', quoteCount: 1, dispatch: { canRetry: false, canCancel: true } });
+});
+
+test('without a summary an accepted request keeps the generic matching copy', () => {
+  const progress = deriveRequestProgress([acceptedQuote], undefined, now);
+  expect(progress).toMatchObject({ status: 'Đang ghép thợ' });
+  expect(progress.dispatch).toBeUndefined();
+});
+
+test('request views carry the closed state and the open actions from the summary', () => {
+  const cancelled = toRequestViews({ requests: [request], quotes: [acceptedQuote], activity: emptyActivity, dispatch: new Map([['r1', summary({ state: 'cancelled', canRetry: false, canCancel: false })]]) }, now);
+  expect(cancelled[0]).toMatchObject({ closed: 'cancelled', stage: 'done', status: 'Đã hủy yêu cầu' });
+  const open = toRequestViews({ requests: [request], quotes: [acceptedQuote], activity: emptyActivity, dispatch: new Map([['r1', summary()]]) }, now);
+  expect(open[0]).toMatchObject({ status: 'Chưa có thợ phù hợp', dispatch: { canRetry: true, canCancel: true } });
+  expect(open[0]?.closed).toBeUndefined();
+});
+
+test('the exhausted dispatch notification has its own icon', () => {
+  const notification: CustomerNotification = { id: 'n1', kind: 'dispatch_exhausted', request_id: 'r1', title: 'Chưa có thợ nhận việc', body: 'Mời lại hoặc hủy', created_at: hoursAgo(1), read_at: null };
+  expect(toNotificationItems([notification], now)[0]).toMatchObject({ icon: 'clock', title: 'Chưa có thợ nhận việc', unread: true });
+});
+
+test('the operator notice opens the incident queue and customer resolution notices open the request', () => {
+  const base = { request_id: 'r1', title: 't', body: 'b', created_at: '2026-11-02T09:00:00Z', read_at: null };
+  const items = toNotificationItems([{ ...base, id: 'a', kind: 'escalation_received' }, { ...base, id: 'b', kind: 'escalation_resolved' }], now);
+  expect(items[0]).toMatchObject({ target: 'operator-escalations', requestId: 'r1', icon: 'help' });
+  expect(items[1]).toMatchObject({ requestId: 'r1', icon: 'check' });
+  expect(items[1]?.target).toBeUndefined();
 });

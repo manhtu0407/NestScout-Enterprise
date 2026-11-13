@@ -60,8 +60,6 @@ export type SettingsStrings = {
   deleteRequestedOn: (date: string) => string;
   aiShare: string;
   aiShareDetail: string;
-  consentCardLead: string;
-  consentCardAction: string;
   aiShareFailed: string;
   aiShareLoading: string;
   exportData: string;
@@ -140,8 +138,6 @@ const vi: SettingsStrings = {
   deleteRequestedOn: date => `Đã gửi yêu cầu xoá tài khoản ngày ${date}. Chúng tôi sẽ xử lý theo pháp luật và bạn có thể huỷ yêu cầu bất cứ lúc nào trước đó.`,
   aiShare: 'Chia sẻ dữ liệu với AI',
   aiShareDetail: 'Cho phép Kael gửi nội dung trò chuyện tới nhà cung cấp mô hình AI',
-  consentCardLead: 'Để trả lời, Kael gửi tin nhắn và thông tin yêu cầu liên quan của bạn tới nhà cung cấp AI. Đừng gửi số thẻ hay mật khẩu. Bạn có thể tắt bất cứ lúc nào trong Cài đặt › Quyền riêng tư.',
-  consentCardAction: 'Cho phép và bắt đầu',
   aiShareFailed: 'Chưa lưu được lựa chọn. Kiểm tra kết nối rồi thử lại.',
   aiShareLoading: 'Đang kiểm tra…',
   exportData: 'Tải dữ liệu của tôi',
@@ -160,7 +156,7 @@ const vi: SettingsStrings = {
     'Đừng gửi thông tin nhạy cảm như số thẻ hoặc mật khẩu trong tin nhắn. Bạn có thể rút lại đồng ý bất cứ lúc nào trong Cài đặt › Quyền riêng tư; khi đó Kael sẽ dừng trả lời.',
     'Chi tiết xem tại Cài đặt › Chính sách quyền riêng tư.',
   ],
-  consentNeeded: 'Tin nhắn chưa được gửi. Chọn “Cho phép và bắt đầu” nếu bạn muốn gửi dữ liệu đã mô tả tới nhà cung cấp AI.',
+  consentNeeded: 'Tin nhắn chưa được gửi. Bật “Chia sẻ dữ liệu với AI” trong Cài đặt › Quyền riêng tư nếu bạn muốn gửi dữ liệu đã mô tả tới nhà cung cấp AI.',
   consentFailed: 'Chưa kiểm tra được trạng thái đồng ý. Kiểm tra kết nối rồi thử lại.',
   consentChecking: 'Đang kiểm tra lựa chọn chia sẻ dữ liệu. Hãy thử gửi lại trong giây lát.',
 };
@@ -225,8 +221,6 @@ const en: SettingsStrings = {
   deleteRequestedOn: date => `Account deletion requested on ${date}. We will handle it in line with the law and you can cancel before then.`,
   aiShare: 'Share data with AI',
   aiShareDetail: 'Let Kael send conversation content to AI model providers',
-  consentCardLead: 'To reply, Kael sends your messages and related request details to an AI provider. Do not send card numbers or passwords. You can turn this off any time in Settings › Privacy.',
-  consentCardAction: 'Allow and start',
   aiShareFailed: 'Could not save your choice. Check your connection and try again.',
   aiShareLoading: 'Checking…',
   exportData: 'Download my data',
@@ -245,7 +239,7 @@ const en: SettingsStrings = {
     'Do not send sensitive details such as card numbers or passwords in messages. You can withdraw consent at any time in Settings › Privacy; Kael will then stop replying.',
     'See Settings › Privacy Policy for details.',
   ],
-  consentNeeded: 'Your message was not sent. Choose “Allow and start” if you want the described data sent to an AI provider.',
+  consentNeeded: 'Your message was not sent. Turn on “Share data with AI” in Settings › Privacy if you want the described data sent to an AI provider.',
   consentFailed: 'Could not check your agreement. Check your connection and try again.',
   consentChecking: 'Checking your data-sharing choice. Try sending again in a moment.',
 };

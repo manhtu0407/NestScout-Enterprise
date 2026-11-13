@@ -123,6 +123,7 @@ pub fn registry() -> Vec<Tool> {
                 ("description", json!({"type": "string", "minLength": 1, "maxLength": 4000})),
                 ("location", json!({"type": "string", "maxLength": 200})),
                 ("preferred_time", json!({"type": "string", "maxLength": 120})),
+                ("service_id", json!({"type": "string", "enum": ["electric", "water", "aircon", "paint", "sofa", "other", ""], "description": "Service category of the work: electric, water, aircon, paint, sofa or other. Empty string only when the category is genuinely unknown."})),
                 ("missing", json!({"type": "array", "maxItems": 3, "items": {"type": "string", "enum": ["description", "location", "preferred_time"]}})),
             ]),
             side_effect: "prepare", class: Class::Prepare, requires: Some("customer"), modes: CLIENT, effect: None, needs_web: false,
@@ -156,6 +157,23 @@ pub fn registry() -> Vec<Tool> {
             ]),
             side_effect: "consequential", class: Class::Confirm, requires: Some("customer"), modes: CLIENT,
             effect: Some("service_quote_decision"), needs_web: false, label: "Đang chuẩn bị bước xác nhận báo giá",
+        }),
+        tool(Spec {
+            id: "service_request_redispatch",
+            description: "Ask the customer to confirm inviting more workers for one request returned by customer_requests whose dispatch shows can_retry true, inside an open workflow_action task. Pass the dispatch rounds value returned. Nothing changes until the user confirms in the app. Inviting is not an assignment: no worker is promised.",
+            schema: schema(vec![
+                ("task_id", uuid()), ("request_id", uuid()),
+                ("rounds", json!({"type": "integer", "minimum": 0, "maximum": 1000})),
+            ]),
+            side_effect: "consequential", class: Class::Confirm, requires: Some("customer"), modes: CLIENT,
+            effect: Some("service_request_redispatch"), needs_web: false, label: "Đang chuẩn bị bước mời thêm thợ",
+        }),
+        tool(Spec {
+            id: "service_request_cancel",
+            description: "Ask the customer to confirm cancelling one request returned by customer_requests whose dispatch shows can_cancel true, inside an open workflow_action task. Nothing changes until the user confirms in the app. A request that already has an assigned worker cannot be cancelled this way.",
+            schema: schema(vec![("task_id", uuid()), ("request_id", uuid())]),
+            side_effect: "consequential", class: Class::Confirm, requires: Some("customer"), modes: CLIENT,
+            effect: Some("service_request_cancel"), needs_web: false, label: "Đang chuẩn bị bước hủy yêu cầu",
         }),
         tool(Spec {
             id: "work_submission_decision",

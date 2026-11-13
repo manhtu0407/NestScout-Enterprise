@@ -139,6 +139,7 @@ export type ApprovalRejection =
 
 export type KaelStore = {
   capabilities(signal: AbortSignal): Promise<Set<Capability>>;
+  autonomy?(mode: KaelMode, signal: AbortSignal): Promise<'ask' | 'auto'>;
   startRun(requestId: string, conversationId: string | null, mode: KaelMode, userText: string, signal: AbortSignal): Promise<RunStart>;
   finishRun(input: { runId: string; status: 'completed' | 'failed' | 'cancelled' | 'interrupted'; text: string; complete: boolean; provider: string | null; model: string | null; inputTokens: number; outputTokens: number; steps: number; error: string | null }): Promise<void>;
   loadContext(conversationId: string, mode: KaelMode, historyLimit: number, signal: AbortSignal): Promise<ConversationContext>;
@@ -173,6 +174,15 @@ export function createSupabaseStore(rest: Rest, server: ServerRpc, actorId: stri
       if (result.customer === true) capabilities.add('customer');
       if (result.worker === true) capabilities.add('worker');
       return capabilities;
+    },
+    async autonomy(mode, signal) {
+      const response = await rest(`kael_autonomy?select=mode&role=eq.${mode === 'worker' ? 'worker' : 'customer'}`, { signal });
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new StoreError('kael_autonomy', response.status);
+      }
+      const rows = await response.json() as { mode?: unknown }[];
+      return rows[0]?.mode === 'auto' ? 'auto' : 'ask';
     },
     startRun(requestId, conversationId, mode, userText, signal) {
       return internal<RunStart>('kael_start_run', { p_request_id: requestId, p_conversation_id: conversationId, p_mode: mode, p_user_text: userText }, signal);

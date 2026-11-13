@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   WorkflowError, acceptOffer, addWorkerCertificate, advanceJob, declineOffer, pauseJob, proposeScope, markNotificationsRead, readNotifications, readWorkerEarnings, readWorkerJobCards, readWorkerPayout, readWorkerProfile, readWorkerSnapshot,
-  removeWorkerCertificate, removeWorkerDocument, removeWorkerPayout, saveWorkerPayout, reportJob, requestResume, saveWorkerCoverage, saveWorkerProfile, setWorkerAccepting, submitWork, uploadWorkerDocument,
+  removeWorkerCertificate, removeWorkerDocument, removeWorkerPayout, saveWorkerPayout, releaseJob, reportJob, requestResume, saveWorkerCoverage, saveWorkerProfile, setWorkerAccepting, submitWork, uploadWorkerDocument,
   type CustomerNotification, type WorkerEarningRecord, type WorkerJobCard, type WorkerPayoutRecord, type WorkerProfileRecord,
 } from '@/features/shared';
 
@@ -109,6 +109,9 @@ export function useWorkerData(userId: string | null): WorkerDataController {
         case 'propose':
           await proposeScope(userId, id, job.version, command.key, command.scope, command.amount, command.rationale, signal);
           return 'Đã gửi đề xuất đổi phạm vi. Chờ khách quyết định.';
+        case 'release':
+          await releaseJob(userId, job, command.reason, command.key, signal);
+          return 'Đã rút khỏi việc này. Việc được mời cho thợ khác và khách đã được báo.';
         default:
           await reportJob(userId, id, job.version, command.key, command.kind, command.details, signal);
           return command.kind === 'delay' ? 'Đã ghi nhận báo chậm. Không có khoản phí hay thay đổi lịch tự động.' : 'Đã ghi nhận khách không trả lời.';

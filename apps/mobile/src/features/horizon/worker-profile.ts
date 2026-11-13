@@ -120,8 +120,16 @@ export const workerServiceOptions: readonly WorkerServiceOption[] = [
   { id: 'electric', label: 'Sửa điện', icon: 'bolt' },
   { id: 'water', label: 'Sửa nước', icon: 'drop' },
   { id: 'aircon', label: 'Vệ sinh máy lạnh', icon: 'wrench' },
-  { id: 'paint', label: 'Sơn và chống thấm', icon: 'sofa' },
+  { id: 'paint', label: 'Sơn và chống thấm', icon: 'paint' },
   { id: 'sofa', label: 'Vệ sinh sofa', icon: 'sofa' },
+  { id: 'other', label: 'Dịch vụ khác', icon: 'grid' },
+];
+
+export const otherServiceId = 'other';
+
+export const otherServiceChecks: readonly { id: 'skill' | 'flexible'; question: string }[] = [
+  { id: 'skill', question: 'Bạn có đủ tay nghề để xử lý những việc ngoài các nhóm dịch vụ chính, như lắp đặt, sửa chữa nhỏ hoặc việc khách tự mô tả không?' },
+  { id: 'flexible', question: 'Bạn có sẵn sàng linh hoạt khi việc không giống mẫu quen thuộc: xem tại chỗ, tự chuẩn bị vật tư và báo lại nếu việc vượt khả năng không?' },
 ];
 
 export function parseSkills(text: string): string[] {

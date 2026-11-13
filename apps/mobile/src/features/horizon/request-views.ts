@@ -1,6 +1,7 @@
-import type { CustomerActivity, CustomerJob, CustomerNotification, IconName, JobWorkerCard, NotificationKind, SavedWorkerRecord, ServiceQuote, ServiceRequest as RequestRecord } from '@/features/shared';
+import type { CustomerActivity, CustomerJob, CustomerNotification, DispatchSummary, EscalationResolution, EscalationStatus, IconName, JobWorkerCard, NotificationKind, SavedWorkerRecord, ServiceQuote, ServiceRequest as RequestRecord } from '@/features/shared';
 
 import type { NotificationItem, QuoteItem, QuoteStatus, SavedWorker } from './content';
+import { clockLabel } from './dispatch-copy';
 import { workflowSteps, type PhotoSource, type RequestStage, type ServiceRequest } from './requests-screen';
 
 const minuteMs = 60_000;
@@ -8,7 +9,15 @@ const hourMs = 60 * minuteMs;
 const dayMs = 24 * hourMs;
 const maxTitleLength = 48;
 
-export type RequestProgress = { step: number; stage: RequestStage; status: string; nextAction: string; quoteCount: number };
+export type RequestProgress = {
+  step: number;
+  stage: RequestStage;
+  status: string;
+  nextAction: string;
+  quoteCount: number;
+  closed?: 'cancelled';
+  dispatch?: { canRetry: boolean; canCancel: boolean; canReclassify?: boolean; canReassign?: boolean; reassignAt?: string | null; canEscalate?: boolean; escalateAt?: string | null; escalatedAt?: string | null; escalationStatus?: EscalationStatus | null; escalationResolution?: EscalationResolution | null; nextRetryAt?: string | null; retriesLeft?: number };
+};
 
 const jobStatus: Record<string, { status: string; nextAction: string }> = {
   assigned: { status: 'Đã có thợ nhận việc', nextAction: 'Thợ sẽ liên hệ và di chuyển tới chỗ bạn.' },
@@ -23,6 +32,7 @@ const jobStatus: Record<string, { status: string; nextAction: string }> = {
 const iconKeywords: readonly { pattern: RegExp; icon: IconName }[] = [
   { pattern: /điện|bóng đèn|ổ cắm|công tắc/i, icon: 'bolt' },
   { pattern: /nước|vòi|ống|bồn|toilet|bồn cầu/i, icon: 'drop' },
+  { pattern: /sơn|chống thấm/i, icon: 'paint' },
   { pattern: /sofa|ghế|nệm/i, icon: 'sofa' },
   { pattern: /vệ sinh|dọn|lau/i, icon: 'home' },
   { pattern: /lắp|sửa|thay|khoá|khóa/i, icon: 'wrench' },
@@ -66,20 +76,57 @@ function stageFor(step: number): RequestStage {
   return step >= 4 ? 'active' : 'waiting';
 }
 
-export function deriveRequestProgress(quotes: readonly ServiceQuote[], job: CustomerJob | undefined, now: Date): RequestProgress {
+function dispatchProgress(summary: DispatchSummary | undefined): Pick<RequestProgress, 'status' | 'nextAction'> {
+  const retryHint = summary?.canRetry ? 'Bạn có thể mời thợ lại hoặc hủy yêu cầu.'
+    : summary && summary.retriesLeft === 0 ? 'Đã hết lượt mời lại. Bạn có thể hủy yêu cầu.'
+    : summary?.nextRetryAt ? `Bạn có thể mời thợ lại sau ${clockLabel(summary.nextRetryAt)} hoặc hủy yêu cầu.`
+    : 'Bạn có thể mời thợ lại sau ít phút hoặc hủy yêu cầu.';
+  switch (summary?.state) {
+    case 'searching':
+      return {
+        status: `Đã mời ${summary.openInvites} thợ`,
+        nextAction: summary.earliestExpiry === null ? 'Chờ thợ nhận việc.' : `Chờ thợ nhận việc. Lời mời hết hạn lúc ${clockLabel(summary.earliestExpiry)}.`,
+      };
+    case 'no_match':
+      return { status: 'Chưa có thợ phù hợp', nextAction: `Chưa có thợ phù hợp với yêu cầu này. ${retryHint}` };
+    case 'exhausted':
+      return { status: 'Chưa có thợ nhận việc', nextAction: `Các thợ được mời chưa nhận việc. ${retryHint}` };
+    case 'recovering':
+      return { status: 'Đang cập nhật lời mời', nextAction: 'Lời mời trước đã hết hạn và hệ thống đang cập nhật. Bạn có thể hủy yêu cầu.' };
+    case 'needs_service':
+      return { status: 'Cần chọn loại dịch vụ', nextAction: 'Chọn loại dịch vụ để hệ thống mời thợ phù hợp. Bạn cũng có thể hủy yêu cầu.' };
+    case 'not_dispatched':
+      return { status: 'Chưa chuyển cho thợ', nextAction: 'Yêu cầu chưa được gửi tới thợ nào. Bạn có thể hủy yêu cầu.' };
+    default:
+      return { status: 'Đang ghép thợ', nextAction: 'Chờ thợ nhận việc. Bạn đã chấp nhận báo giá.' };
+  }
+}
+
+export function deriveRequestProgress(quotes: readonly ServiceQuote[], job: CustomerJob | undefined, now: Date, summary?: DispatchSummary): RequestProgress {
   if (job) {
     const copy = jobStatus[job.stage] ?? { status: 'Đang xử lý', nextAction: 'Hệ thống đang cập nhật tiến trình.' };
     const step = job.stage === 'completed' ? workflowSteps.length : job.stage === 'submitted' ? 5 : 4;
-    return { step, stage: stageFor(step), quoteCount: 0, ...copy };
+    const recoverable = summary !== undefined && summary.state === 'assigned'
+      && (summary.canReassign || summary.reassignAt !== null || summary.canEscalate || summary.escalateAt !== null || summary.escalatedAt !== null);
+    const dispatch = recoverable ? {
+      canRetry: false, canCancel: false, canReassign: summary.canReassign, reassignAt: summary.reassignAt,
+      canEscalate: summary.canEscalate, escalateAt: summary.escalateAt, escalatedAt: summary.escalatedAt,
+      escalationStatus: summary.escalationStatus, escalationResolution: summary.escalationResolution,
+    } : undefined;
+    return { step, stage: stageFor(step), quoteCount: 0, ...(dispatch ? { dispatch } : {}), ...copy };
   }
+  if (summary?.state === 'cancelled') {
+    return { step: 0, stage: 'done', quoteCount: 0, closed: 'cancelled', status: 'Đã hủy yêu cầu', nextAction: 'Bạn đã hủy yêu cầu này. Hỏi Kael để tạo yêu cầu mới.' };
+  }
+  const dispatch = summary ? { canRetry: summary.canRetry, canCancel: summary.canCancel, canReclassify: summary.canReclassify, canReassign: summary.canReassign, reassignAt: summary.reassignAt, nextRetryAt: summary.nextRetryAt, retriesLeft: summary.retriesLeft } : undefined;
   if (quotes.some(quote => quote.accepted_at !== null)) {
-    return { step: 3, stage: 'waiting', quoteCount: 0, status: 'Đang ghép thợ', nextAction: 'Chờ thợ nhận việc. Bạn đã chấp nhận báo giá.' };
+    return { step: 3, stage: 'waiting', quoteCount: 0, dispatch, ...dispatchProgress(summary) };
   }
   const latest = latestQuote(quotes);
-  if (!latest) return { step: 1, stage: 'waiting', quoteCount: 0, status: 'Đang chờ báo giá', nextAction: 'Báo giá sẽ hiện ở mục Báo giá khi có.' };
-  if (latest.rejected_at !== null) return { step: 1, stage: 'waiting', quoteCount: 0, status: 'Bạn đã từ chối báo giá', nextAction: 'Chờ báo giá mới.' };
-  if (isExpired(latest, now)) return { step: 1, stage: 'waiting', quoteCount: 0, status: 'Báo giá đã hết hạn', nextAction: 'Chờ báo giá mới.' };
-  return { step: 1, stage: 'waiting', quoteCount: 1, status: 'Có báo giá mới', nextAction: 'Xem báo giá và quyết định.' };
+  if (!latest) return { step: 1, stage: 'waiting', quoteCount: 0, dispatch, status: 'Đang chờ báo giá', nextAction: 'Báo giá sẽ hiện ở mục Báo giá khi có.' };
+  if (latest.rejected_at !== null) return { step: 1, stage: 'waiting', quoteCount: 0, dispatch, status: 'Bạn đã từ chối báo giá', nextAction: 'Chờ báo giá mới.' };
+  if (isExpired(latest, now)) return { step: 1, stage: 'waiting', quoteCount: 0, dispatch, status: 'Báo giá đã hết hạn', nextAction: 'Chờ báo giá mới.' };
+  return { step: 1, stage: 'waiting', quoteCount: 1, dispatch, status: 'Có báo giá mới', nextAction: 'Xem báo giá và quyết định.' };
 }
 
 function groupBy<T>(items: readonly T[], key: (item: T) => string): Map<string, T[]> {
@@ -92,12 +139,19 @@ function groupBy<T>(items: readonly T[], key: (item: T) => string): Map<string, 
   return groups;
 }
 
-type Records = { requests: readonly RequestRecord[]; quotes: readonly ServiceQuote[]; activity: CustomerActivity; workers?: readonly JobWorkerCard[]; photos?: ReadonlyMap<string, readonly PhotoSource[]> };
+type Records = {
+  requests: readonly RequestRecord[];
+  quotes: readonly ServiceQuote[];
+  activity: CustomerActivity;
+  workers?: readonly JobWorkerCard[];
+  photos?: ReadonlyMap<string, readonly PhotoSource[]>;
+  dispatch?: ReadonlyMap<string, DispatchSummary>;
+};
 
-function progressByRequest({ requests, quotes, activity }: Records, now: Date): Map<string, RequestProgress> {
+function progressByRequest({ requests, quotes, activity, dispatch }: Records, now: Date): Map<string, RequestProgress> {
   const quotesByRequest = groupBy(quotes, quote => quote.request_id);
   const jobByRequest = new Map(activity.jobs.map(job => [job.request_id, job]));
-  return new Map(requests.map(request => [request.id, deriveRequestProgress(quotesByRequest.get(request.id) ?? [], jobByRequest.get(request.id), now)]));
+  return new Map(requests.map(request => [request.id, deriveRequestProgress(quotesByRequest.get(request.id) ?? [], jobByRequest.get(request.id), now, dispatch?.get(request.id))]));
 }
 
 function pendingSubmissionFor(activity: Records['activity'], requestId: string): { id: string; evidence: string; jobVersion: number } | undefined {
@@ -123,6 +177,8 @@ export function toRequestViews(records: Records, now: Date): ServiceRequest[] {
       quoteCount: current.quoteCount > 0 ? current.quoteCount : undefined,
       step: current.step,
       nextAction: current.nextAction,
+      closed: current.closed,
+      dispatch: current.dispatch,
       description: request.description,
       location: request.location || undefined,
       photoCount: records.photos ? (records.photos.get(request.id)?.length ?? 0) : undefined,
@@ -193,7 +249,14 @@ const notificationIcons: Record<NotificationKind, IconName> = {
   work_submitted: 'check',
   job_completed: 'check',
   scope_proposed: 'receipt',
+  dispatch_exhausted: 'clock',
+  job_released: 'clock',
+  job_withdrawn: 'briefcase',
+  job_escalated: 'help',
+  escalation_received: 'help',
+  escalation_resolved: 'check',
   job_offered: 'bolt',
+  job_auto_accepted: 'bolt',
   work_approved: 'check',
   revision_requested: 'clock',
   work_disputed: 'help',
@@ -205,6 +268,8 @@ const notificationIcons: Record<NotificationKind, IconName> = {
   change_decided: 'clock',
 };
 
+const operatorEscalationsTarget = 'operator-escalations';
+
 export function toNotificationItems(notifications: readonly CustomerNotification[], now: Date): NotificationItem[] {
   return notifications.map(item => ({
     id: item.id,
@@ -215,6 +280,7 @@ export function toNotificationItems(notifications: readonly CustomerNotification
     unread: item.read_at === null,
     today: new Date(item.created_at).toDateString() === now.toDateString(),
     requestId: item.request_id,
+    ...(item.kind === 'escalation_received' ? { target: operatorEscalationsTarget } : {}),
   }));
 }
 

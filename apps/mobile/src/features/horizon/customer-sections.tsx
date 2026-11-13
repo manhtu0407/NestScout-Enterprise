@@ -19,6 +19,7 @@ import { SettingsScreen, defaultSettings } from './settings-screen';
 import { SupportEmpty, SupportShell, supportStyles } from './support-shell';
 import { useCustomerData } from './use-customer-data';
 import { quotePrompt, requestPrompt, savedWorkerPrompt } from './kael-handoff';
+import { retryMessage } from './dispatch-copy';
 import { workflowMessage } from './workflow-messages';
 
 export const customerSectionIds = ['requests', 'quotes', 'saved', 'notifications', 'help', 'settings'] as const;
@@ -38,13 +39,13 @@ const titles: Record<CustomerSectionId, string> = {
   settings: 'Cài đặt',
 };
 
-type Props = { id: CustomerSectionId; focusId?: string; onBack: () => void; onNavigate: (id: CustomerSectionId, focusId?: string) => void; onAskKael?: (prompt: string) => void };
+type Props = { id: CustomerSectionId; focusId?: string; onBack: () => void; onNavigate: (id: CustomerSectionId, focusId?: string) => void; onOpenTarget?: (target: string) => void; onAskKael?: (prompt: string) => void };
 
 function StateShell({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
   return <SupportShell title={title} onBack={onBack}>{children}</SupportShell>;
 }
 
-export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: Props) {
+export function CustomerSection({ id, focusId, onBack, onNavigate, onOpenTarget, onAskKael }: Props) {
   const access = useAccess();
   const userId = access.identity === 'verified' ? access.userId : null;
   const customer = useCustomerData(userId);
@@ -112,7 +113,7 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
 
   if (id === 'requests') {
     return <RequestsScreen
-      requests={toRequestViews({ requests: data.requests, quotes: data.quotes, activity: data.activity, workers: data.jobWorkers, photos: data.photos }, now)}
+      requests={toRequestViews({ requests: data.requests, quotes: data.quotes, activity: data.activity, workers: data.jobWorkers, photos: data.photos, dispatch: data.dispatch }, now)}
       focusId={focusId}
       jobChanges={jobChanges}
       onBack={onBack}
@@ -138,6 +139,41 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
       }}
       onToggleSaveWorker={worker => customer.setWorkerSaved(worker.profileId, !worker.saved)}
       onReviewWorker={(worker, review) => customer.reviewJob(worker.jobId, review)}
+      onRetryDispatch={async request => {
+        try {
+          return retryMessage(await customer.retryDispatch(request.id));
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+      }}
+      onSetRequestService={async (request, serviceId) => {
+        try {
+          await customer.classifyRequest(request.id, serviceId);
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+      }}
+      onReassign={async request => {
+        try {
+          await customer.reassignRequest(request.id);
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+      }}
+      onEscalate={async request => {
+        try {
+          await customer.escalateRequest(request.id);
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+      }}
+      onCancelRequest={async request => {
+        try {
+          await customer.cancelServiceRequest(request.id);
+        } catch (error) {
+          throw new Error(workflowMessage(error));
+        }
+      }}
     />;
   }
 
@@ -172,6 +208,7 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onAskKael }: 
       onBack={onBack}
       onMarkRead={customer.markRead}
       onOpenRequest={requestId => onNavigate('requests', requestId)}
+      onOpenTarget={onOpenTarget}
     />;
   }
 

@@ -21,18 +21,26 @@ export function progressForPhase(phase: KaelPhase | null): KaelProgress | null {
 }
 
 export function pickProgressRequest(requests: readonly ServiceRequest[]): ServiceRequest | null {
-  return requests.find(request => request.stage !== 'done') ?? requests[0] ?? null;
+  return requests.find(request => request.stage !== 'done') ?? requests.find(request => request.closed === undefined) ?? null;
 }
 
-export function progressForRequest(request: Pick<ServiceRequest, 'title' | 'status' | 'step'>): KaelProgress {
+export function progressForRequest(request: Pick<ServiceRequest, 'title' | 'status' | 'step' | 'dispatch'>): KaelProgress {
   const finished = request.step >= workflowSteps.length;
   return {
     hint: `${request.title} · ${request.status}`,
     steps: workflowSteps,
     current: Math.min(request.step, workflowSteps.length),
     finished,
-    spinnerLabel: finished ? 'Yêu cầu đã hoàn tất' : 'Đang tiến hành',
+    spinnerLabel: finished ? 'Yêu cầu đã hoàn tất' : requestSpinnerLabel(request.dispatch),
   };
+}
+
+function requestSpinnerLabel(dispatch: ServiceRequest['dispatch']): string {
+  if (dispatch?.escalatedAt != null && dispatch.escalationStatus !== 'resolved') {
+    return dispatch.escalationStatus === 'reviewing' ? 'Đội hỗ trợ đang xem xét sự cố' : 'Đã báo sự cố, đang chờ xử lý';
+  }
+  const waitingForCustomer = dispatch?.canRetry === true || dispatch?.canReclassify === true || dispatch?.canReassign === true || dispatch?.canEscalate === true;
+  return waitingForCustomer ? 'Đang chờ bạn xử lý' : 'Đang tiến hành';
 }
 
 const workerSteps: readonly string[] = ['Lời mời', 'Đã nhận', 'Đang làm', 'Chờ duyệt', 'Hoàn tất'];
