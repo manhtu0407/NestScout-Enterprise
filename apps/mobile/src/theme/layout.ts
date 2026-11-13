@@ -422,10 +422,6 @@ export const horizonLayout = {
       },
       sheen: { frostX: 0.27, frostY: 0.12, frostRadius: 0.88 },
     },
-    kaelMotionLab: {
-      padding: 16, gap: 24, titleSize: 13, titleWeight: '700', chipGap: 8, chipPaddingX: 12, chipPaddingY: 8, chipRadius: 16, chipSize: 13,
-      cardPadding: 16, cardRadius: 18, cardGap: 14, sheetHeight: 540, rowGap: 20,
-    },
     affectLab: {
       half: 0.5, unit: 1, reasonHalf: 4, pillRadius: 999, heading: 18, gapHalf: 8, gapTight: 12, skeletonGapHalf: 5, bodyLine: 20, bubbleMaxWidth: '85%', fullSize: '100%', tinyGap: 2, hiddenOpacity: 0.02,
       padding: 16, gap: 16, cardRadius: 18, cardPadding: 16, titleSize: 15, titleWeight: '700', bodySize: 14, captionSize: 12,
@@ -452,11 +448,6 @@ export const horizonLayout = {
       sourceLogo: 22, sourceOverlap: 8, sourceRing: 2, sourceMax: 6, sourceFont: 10, sourceStep: 28, searchGuide: 2, searchGutter: 18, searchRow: 28, searchRevealMs: 320, searchDwell: 1100, searchSourcesGap: 260,
       socialLogo: 20, socialGap: 10, socialStack: 10,
       morphSize: 56, morphIcon: 24, morphDuration: 240, morphScale: 0.5, morphPop: 1.25, morphShake: 14, morphGridGap: 10, morphTileMin: 76, historyJumpSize: 36, historyBottomGap: 24,
-    },
-    kaelWorkflowLab: {
-      sidebarWidth: 320, frameWidth: 390, frameHeight: 800, frameRadius: 36, frameBorder: 8, wideBreakpoint: 900, drawerWidth: '86%', drawerShadow: '4px 0 24px rgba(0,0,0,0.18)', gap: 16, padding: 16, rowPaddingX: 12, rowPaddingY: 10, rowRadius: 14,
-      gapHalf: 8, pillRadius: 999, rowCopyGap: 2, laneSpacing: 1, laneMargin: 4, railPad: 5, fullSize: '100%',
-      dotSize: 10, laneSize: 11, laneWeight: '700', titleSize: 14, titleWeight: '600', bodySize: 12, headingSize: 16, headingWeight: '700', logHeight: 96, logLimit: 40, logSize: 11, autoplayMs: 1800, buttonRadius: 14, buttonPaddingX: 14, buttonPaddingY: 10,
     },
     kaelMotion: {
       shimmerDuration: 2000, shimmerSpan: 0.4,
@@ -534,7 +525,7 @@ export const horizonLayout = {
       backButtonSize: 44, backIconSize: 22, backTop: 8,
       titleSize: 34, titleLineHeight: 40, titleWeight: '700', titleTracking: -0.7, subtitleSize: 16, subtitleLineHeight: 23, copyGap: 8,
       switchHeight: 52, switchPadding: 4, switchRadius: 26, switchLabelSize: 15, switchLabelWeight: '600', switchIconSize: 18, switchGap: 8, switchSpring: { damping: 21, stiffness: 280, mass: 1 },
-      fieldHeight: 64, fieldRadius: 22, fieldPadding: 10, fieldBorder: 2, fieldGap: 12,
+      fieldHeight: 64, fieldRadius: 22, fieldPadding: 10, fieldBorder: 2, fieldGap: 12, revealOffset: 14,
       prefixHeight: 44, prefixRadius: 15, prefixPadding: 14, prefixSize: 17, prefixWeight: '600',
       inputSize: 22, inputWeight: '600', inputTracking: 0.5,
       ctaHeight: 60, ctaRadius: 30, ctaSize: 17, ctaWeight: '600', ctaGap: 10, ctaIconSize: 20,

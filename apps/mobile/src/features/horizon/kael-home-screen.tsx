@@ -25,7 +25,8 @@ import { KaelProgressSheet } from './kael-progress-sheet';
 import type { KaelProgress } from './kael-progress';
 import { shareConversation, shareNotices } from './conversation-share';
 import { KaelApprovalCard, KaelIncompleteNote, KaelRunActivity, KaelTaskList } from './kael-run-panels';
-import { KaelStreamingText } from './kael-streaming-text';
+import { CitedReply } from './cited-reply';
+import type { CitationResolver } from './citation-resolver';
 import { isKaelThinking, KaelThinkingRow } from './kael-thinking-row';
 import { KaelStage } from './kael-stage';
 
@@ -42,6 +43,7 @@ type Props = {
   draftImages?: readonly ComposerImage[];
   onDraftImagesChange?: (images: readonly ComposerImage[]) => void;
   autonomy?: ComposerAutonomy;
+  resolveCitations?: CitationResolver;
   draftLocked?: boolean;
   conversationKey: number;
   kaelPhase?: KaelPhase | null;
@@ -67,7 +69,7 @@ type Props = {
 const noTasks: readonly KaelTask[] = [];
 const noApprovals: readonly KaelApproval[] = [];
 
-export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, question = null, onAnswer, onRate, onRegenerate, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, requestProgress, draftImages, onDraftImagesChange, autonomy, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null }: Props) {
+export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, question = null, onAnswer, onRate, onRegenerate, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, requestProgress, draftImages, onDraftImagesChange, autonomy, resolveCitations, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null }: Props) {
   const speech = useKaelSpeech();
   const pendingConfirmation = approvals.some(approval => approval.kind === 'confirm');
   const reduceMotion = useReduceMotion();
@@ -185,7 +187,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
         {messages.map(m => m.role === 'user'
           ? <ChatMessage key={m.id} role="user" text={m.text} sentAt={m.sentAt}/>
           : <View key={m.id} style={styles.reply}>
-            <KaelStreamingText text={m.text} style={styles.replyText} streaming={busy && m.id === lastMessage?.id && !m.incomplete} incomplete={m.incomplete}/>
+            <CitedReply text={m.text} style={styles.replyText} streaming={busy && m.id === lastMessage?.id && !m.incomplete} incomplete={m.incomplete} resolve={resolveCitations}/>
             {m.incomplete && <KaelIncompleteNote/>}
             {!m.incomplete && !(busy && m.id === lastMessage?.id) && <MessageActions
               text={m.text}

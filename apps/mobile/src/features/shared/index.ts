@@ -33,6 +33,7 @@ export { useGlassAccessibility, usePressFeedback } from './ui/glass-interaction'
 export { Icon, type IconName } from './ui/icon';
 export type { StorageSource } from '@/lib/authenticated-rest';
 export { loadKaelConversation, setKaelFeedback, streamKaelTurn, type KaelFeedbackReason, type KaelFeedbackRating, type KaelFeedbackTarget, type KaelMode, type KaelRestRequest, type KaelTurnAction, type KaelTurnOutcome, type KaelTurnRequest } from './kael-runtime-repository';
+export { fetchKaelKnowledgeSources, type KaelKnowledgeLookup, type KaelKnowledgeSource } from './kael-knowledge-repository';
 export { deleteKaelSession, KaelSessionError, listKaelSessions, openKaelConversation, renameKaelSession, setKaelSessionArchived, setKaelSessionPinned, type KaelSession, type KaelSessionFailure, type KaelSessionQuery } from './kael-sessions-repository';
 export type { KaelApproval, KaelConversationSnapshot, KaelEvent, KaelFailureCode, KaelQuestion, KaelTask, KaelTaskStatus } from './kael-events';
 export { Chip, StatusDot, chipColors, chipVariants, type ChipColor, type ChipVariant, type StatusDotColor } from './ui/chip';

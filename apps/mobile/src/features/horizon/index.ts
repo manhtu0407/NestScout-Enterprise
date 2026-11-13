@@ -1,6 +1,5 @@
 export { HorizonRoute } from './horizon-entry';
 export { DeveloperPilotPanel, developerPilotEnabled } from './developer-pilot-panel';
-export { HorizonPreview } from './horizon-preview';
 export { RequestsRoute, SectionRoute } from './horizon-sections';
 export { ServiceIntakeRoute } from './service-intake-route';
 export { KaelMatrixLoader } from './kael-matrix-loader';

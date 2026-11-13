@@ -5,8 +5,6 @@ import type { KaelEvent, KaelTurnOutcome, KaelTurnRequest } from '@/features/sha
 import { loadKaelConversation, streamKaelTurn } from '@/features/shared';
 
 import { HorizonEntry } from './horizon-entry';
-import { useCustomerData } from './use-customer-data';
-import { useWorkerData } from './use-worker-data';
 
 const mockAccess = {
   phase: 'client', identity: 'verified', userId: 'customer-a', horizonDraft: null, notice: null, pendingMode: null,
@@ -110,12 +108,6 @@ test('without AI sharing consent no card is shown and the message is not sent, p
   expect(mockSetConsent).not.toHaveBeenCalled();
 });
 
-test('the hosted Preview target shows no consent card either', async () => {
-  mockConsent.granted = false;
-  await render(<SafeAreaProvider initialMetrics={metrics}><HorizonEntry onPreviewMenu={jest.fn()}/></SafeAreaProvider>);
-  expect(screen.queryByTestId('kael-consent-card')).toBeNull();
-});
-
 test('the worker flow shows no consent card and still refuses to send without consent', async () => {
   mockAccess.phase = 'worker';
   mockConsent.granted = false;
@@ -133,20 +125,6 @@ test('once consent is granted the message is sent', async () => {
   expect(screen.queryByTestId('kael-consent-card')).toBeNull();
   await say('Nhờ Kael giúp tôi');
   expect(requests).toHaveLength(1);
-});
-
-test('hosted Preview keeps real chat and suppresses business data and approval controls', async () => {
-  const requests = script([started, task('waiting_for_approval'), approval, completed('Preview reply.')]);
-  const openAccount = jest.fn();
-  await render(<SafeAreaProvider initialMetrics={metrics}><HorizonEntry onPreviewMenu={openAccount}/></SafeAreaProvider>);
-  await say('A synthetic preview prompt');
-  expect(await screen.findByText('Preview reply.')).toBeTruthy();
-  expect(requests).toHaveLength(1);
-  expect(requests[0]?.action).toEqual({ type: 'message', text: 'A synthetic preview prompt' });
-  expect(useCustomerData).toHaveBeenLastCalledWith(null);
-  expect(useWorkerData).toHaveBeenLastCalledWith(null);
-  expect(screen.queryByLabelText('Cần xác nhận: Gửi yêu cầu dịch vụ')).toBeNull();
-  expect(screen.queryByLabelText(/^Chờ bạn xác nhận\./)).toBeNull();
 });
 
 test('a verified submission shows the receipt banner, which can be dismissed, and never claims a booking', async () => {

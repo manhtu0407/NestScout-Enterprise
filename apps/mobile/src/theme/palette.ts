@@ -136,9 +136,6 @@ export const horizonColors = {
       { offset: 1, color: '#FFFFFF', opacity: 0.95 },
     ],
   },
-  kaelMotionLab: {
-    title: '#5B6672', chip: '#F2F4F7', chipActive: '#141820', chipText: '#141820', chipTextActive: '#FFFFFF', card: '#F7F8FA',
-  },
   affectLab: {
     accent: '#2F6BFF', accentSoft: 'rgba(47,107,255,0.14)', surface: '#FFFFFF', border: '#E3E7EC', text: '#141820', muted: '#5B6672', faint: '#9AA3AF',
     error: '#D4322C', errorFill: 'rgba(212,50,44,0.08)', success: '#0E9E8E', successFill: 'rgba(14,158,142,0.12)', track: '#EEF1F4', chip: '#F2F4F7',
@@ -157,10 +154,6 @@ export const horizonColors = {
     calendarToday: '#2F6BFF', calendarOff: '#C4CAD2',
     sourceTints: ['#FFE1D6', '#DCE8FB', '#E8DFF8', '#DDF3E4', '#FFEFC9'],
     avatars: ['#FDE2E4', '#DCE8FB', '#DDF3E4', '#FFEFC9', '#E8DFF8'],
-  },
-  kaelWorkflowLab: {
-    bg: '#EEF1F4', panel: '#FFFFFF', border: '#E3E7EC', text: '#141820', muted: '#5B6672', active: '#141820', activeText: '#FFFFFF',
-    ok: '#0E9E8E', error: '#D4322C', pending: '#9AA3AF', frame: '#0B0F14', logBg: '#0B0F14', logText: '#D5D9E0', logError: '#FF8A84', laneCustomer: '#0E9E8E', laneWorker: '#B26A00', laneDesign: '#2F6BFF', laneKobra: '#7A4DFF',
   },
   kaelMotion: {
     shimmerBase: '#7C7C7C', shimmerHighlight: '#0D0D0D',

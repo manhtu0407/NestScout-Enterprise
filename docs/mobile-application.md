@@ -23,7 +23,7 @@ of the third, white-background mascot variant in the owner-supplied
 The opaque 1024-pixel PNG has SHA-256
 `23f1f799222a6c5746227a9c580e388bd1883265ea60d0487d6b97ed40c39277`.
 
-### Design foundation and development showcase
+### Design foundation
 
 The [Apple HIG accessibility guidance](https://developer.apple.com/design/human-interface-guidelines/accessibility)
 and [haptics guidance](https://developer.apple.com/design/human-interface-guidelines/playing-haptics)
@@ -63,14 +63,8 @@ No haptics module, native haptic implementation or native material is claimed.
 
 Use the public `features/shared` exports and semantic tokens for Client and Worker
 interfaces. The existing `design-governance.test.ts` checks visual literals in
-feature and showcase styles; it does not prove semantic appropriateness or resolve
+feature styles; it does not prove semantic appropriateness or resolve
 all dynamic styles. Review additions to the canonical tokens and component APIs.
-
-Set `EXPO_PUBLIC_DESIGN_SHOWCASE=1` before starting Metro to open the development
-showcase, and optionally set `EXPO_PUBLIC_DESIGN_REVISION` to label the source.
-The label is operator-supplied, not an attestation. The root requires `__DEV__`;
-the showcase does not mount application flows and cannot be selected in production.
-Remove the variables and restart Metro to return to the application.
 
 ### SDK metadata
 
@@ -379,19 +373,9 @@ Native device behavior, live Auth/OTP and real SMS delivery are separate checks.
 
 ## Horizon development preview
 
-From the repository root in PowerShell, run:
-
-```powershell
-$env:EXPO_PUBLIC_DESIGN_SHOWCASE = '1'
-$env:EXPO_PUBLIC_HORIZON_PREVIEW = '1'
-npm run start --workspace apps/mobile -- --web --localhost --port 8085
-```
-
-Open `http://localhost:8085` to view the chat screen directly. The
-sidebar account card uses a clearly labeled sample name in this preview. Its
-mode picker is a visual demonstration; it does not change an account or grant
-access. Profile editing and saved profile data are not connected; the account
-sheet states that limitation and retains access to the existing account shell.
+The offline design showcase, the Horizon sample preview and the Kael motion and workflow labs
+were removed; every design now runs in the live application. Run `npm run preview:local`
+for the local stack, or the hosted target below for the approved Supabase project.
 
 For authorized Kael-only production verification, launch the web build with
 `EXPO_PUBLIC_NESTSCOUT_TARGET=kael-hosted-preview`,
@@ -527,14 +511,12 @@ the app already knows about and never stand in for state it does not have.
 - A recent session in the sidebar shimmers its subtitle only while its phase is
   `clarifying` or `matching`.
 
-These eight phase labels remain a presentation model in the motion lab. The live
+These eight phase labels remain a presentation model. The live
 chat does not map runtime events to `kaelPhase` or its issue field; it displays the
 runtime's activity, task and approval signals instead. A dedicated Kael Work flow
 is not shipped. All durations and sizes live in
 `horizonLayout.kaelMotion` and the colours in `horizonColors.kaelMotion`. With
-Reduce Motion every animation is replaced by static text. The lab at
-`EXPO_PUBLIC_KAEL_MOTION_LAB=1` (with `EXPO_PUBLIC_DESIGN_SHOWCASE=1`) renders each
-piece with controls. On a device the motion and Reduce Motion are NOT VERIFIED:
+Reduce Motion every animation is replaced by static text. On a device the motion and Reduce Motion are NOT VERIFIED:
 only the web preview and Jest were exercised.
 
 ### App-wide motion
@@ -557,7 +539,7 @@ No two notices ever share a slot in the app today, so there is no notice stack. 
 sample figures on the earnings and quotes screens are not animated, because a
 counting animation would make sample data look like live data. Durations and sizes are
 in `horizonLayout.appMotion`, colours in `horizonColors.appMotion`, and Reduce Motion
-replaces movement with a short fade. The motion lab shows each piece. Behaviour on a
+replaces movement with a short fade. Behaviour on a
 device is NOT VERIFIED.
 
 ## Worker jobs
@@ -664,13 +646,22 @@ to Perplexity. No Kael message is sent without an `ai_sharing` record; both the 
 the backend enforce this. Users can withdraw the choice in Settings › Privacy. Turning
 on AI sharing does not accept the Terms or Privacy Policy.
 
+### Kael citations
+
+A Kael reply may carry source markers of the form `kael:SOURCE_ID@REVISION#HASH`. The reply
+view hides them and, once the reply is complete, looks each one up in
+`kael_knowledge_sources` with the caller's own session. It shows a numbered source chip
+only when a currently published row matches the id, revision and hash, and the chip opens
+the stored title and excerpt. An unmatched marker is dropped without a chip. The hosted
+project had no knowledge rows on 2026-11-14, so no chip appears there until sources are
+ingested; community-sourced citations have no data source and are not shown.
+
 ### Preview launch commands
 
 `npm run preview:local` serves the app on port 8085 against the Supabase Local stack of the
-current checkout (start it first with `npm run db:start`), and `npm run preview:design`
-serves the offline design showcase on port 8086. Both run from the checkout that contains
+current checkout (start it first with `npm run db:start`). It runs from the checkout that contains
 the script, so a Preview restarted from a worktree always serves that worktree's code,
-never another checkout's. Both clear the Metro cache on start. A Preview configuration that
+never another checkout's. It clears the Metro cache on start. A Preview configuration that
 points at a script outside the repository, or at a different checkout, can serve an older
 build that lacks the features merged since.
 

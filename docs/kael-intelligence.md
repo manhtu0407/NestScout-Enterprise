@@ -981,7 +981,7 @@ its budget. `preview` starts the real app on `http://localhost:8085/`, strips
 provider/secret environment variables and disables dotenv loading. Its small
 dev-only expandable panel uses real password Auth; it never injects an identity
 or bypasses RLS. No production email/password UI is added. Existing mascot,
-conversation layout and guest showcase remain intact.
+conversation layout remains intact.
 
 An optional `prepare ABSOLUTE_AUTHORIZATION_JSON_PATH` provisions a disabled
 budget from an explicit private record with `purpose: kael_developer_8085`,
