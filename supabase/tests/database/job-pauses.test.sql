@@ -119,14 +119,14 @@ select is((select count(*)::integer from public.service_job_events where job_id 
 select is((select category from public.service_job_pauses where job_id = '50000000-0000-4000-8000-000000000001'), 'ordinary_interruption', 'The pause records its category');
 select is((select prior_stage from public.service_job_pauses where job_id = '50000000-0000-4000-8000-000000000001'), 'working', 'The pause records the prior stage');
 select is((select paused_from_version from public.service_job_pauses where job_id = '50000000-0000-4000-8000-000000000001'), 1, 'The pause records the version it was made from');
-select throws_ok($$select public.pause_service_job('50000000-0000-4000-8000-000000000001', 1, 'safety_concern')$$, '40001', 'stale job', 'A pause with a stale version is refused');
+select throws_ok($$select public.pause_service_job('50000000-0000-4000-8000-000000000001', 1, 'safety_concern')$$, 'PGRST', nestscout_private.conflict_body('stale job'), 'A pause with a stale version is refused');
 select throws_ok($$select public.pause_service_job('50000000-0000-4000-8000-000000000001', 2, 'bogus')$$, '22023', 'invalid pause', 'An unknown pause category is refused');
 select throws_ok($$select public.pause_service_job('50000000-0000-4000-8000-000000000001', 2, null)$$, '22023', 'invalid pause', 'A pause without a category is refused');
 select throws_ok($$select public.advance_service_job('50000000-0000-4000-8000-000000000001', 2, 'paused')$$, '22023', 'invalid transition',
   'The unclassified pause path is closed');
 select throws_ok($$select public.pause_service_job('50000000-0000-4000-8000-000000000001', 2, 'ordinary_interruption')$$, '22023', 'invalid transition',
   'A paused job cannot be paused again for an ordinary reason');
-select throws_ok($$select public.request_service_resume('50000000-0000-4000-8000-000000000001', 1)$$, '40001', 'stale job', 'A resume request with a stale version is refused');
+select throws_ok($$select public.request_service_resume('50000000-0000-4000-8000-000000000001', 1)$$, 'PGRST', nestscout_private.conflict_body('stale job'), 'A resume request with a stale version is refused');
 select is(public.request_service_resume('50000000-0000-4000-8000-000000000001', 2), 3, 'The Worker asks to resume');
 select is(public.request_service_resume('50000000-0000-4000-8000-000000000001', 2), 3, 'An identical resume request returns the original version');
 select is((select count(*)::integer from public.service_job_events where job_id = '50000000-0000-4000-8000-000000000001' and event = 'resume_requested'), 1,
@@ -152,7 +152,7 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
 select throws_ok($$select public.pause_service_job('50000000-0000-4000-8000-000000000001', 3, 'safety_concern')$$, '42501', null, 'A Customer cannot pause');
 select throws_ok($$select public.request_service_resume('50000000-0000-4000-8000-000000000001', 3)$$, '42501', null, 'A Customer cannot request a resume');
-select throws_ok($$select public.consent_service_resume('50000000-0000-4000-8000-000000000001', 2)$$, '40001', 'stale job', 'Consent to a stale version is refused');
+select throws_ok($$select public.consent_service_resume('50000000-0000-4000-8000-000000000001', 2)$$, 'PGRST', nestscout_private.conflict_body('stale job'), 'Consent to a stale version is refused');
 select throws_ok($$select public.consent_service_resume('50000000-0000-4000-8000-000000000003', 1)$$, '22023', 'invalid transition', 'Consent without a paused job is refused');
 select is(public.consent_service_resume('50000000-0000-4000-8000-000000000001', 3), 4, 'The Customer agrees to the exact version and the work resumes');
 select is(public.consent_service_resume('50000000-0000-4000-8000-000000000001', 3), 4, 'A duplicate consent returns the original version');
@@ -208,7 +208,7 @@ select throws_ok($$insert into public.service_job_pauses (job_id, category, prio
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
-select throws_ok($$select public.consent_service_resume('50000000-0000-4000-8000-000000000004', 3)$$, '40001', 'stale job',
+select throws_ok($$select public.consent_service_resume('50000000-0000-4000-8000-000000000004', 3)$$, 'PGRST', nestscout_private.conflict_body('stale job'),
   'Consent given to the earlier request is stale after an escalation');
 select throws_ok($$select public.consent_service_resume('50000000-0000-4000-8000-000000000004', 4)$$, '22023', 'invalid transition',
   'Consent cannot lift a safety stop');

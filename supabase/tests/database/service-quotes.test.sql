@@ -34,9 +34,9 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
 select throws_ok($$select public.accept_service_quote('30000000-0000-4000-8000-000000000001', 1)$$,
-  '40001', 'stale quote', 'Superseded terms cannot be accepted');
+  'PGRST', nestscout_private.conflict_body('stale quote'), 'Superseded terms cannot be accepted');
 select throws_ok($$select public.accept_service_quote('30000000-0000-4000-8000-000000000002', 1)$$,
-  '40001', 'stale quote', 'Wrong expected version cannot be accepted');
+  'PGRST', nestscout_private.conflict_body('stale quote'), 'Wrong expected version cannot be accepted');
 select throws_ok($$select public.accept_service_quote('30000000-0000-4000-8000-000000000003', 1)$$,
   '22023', 'quote expired', 'Expired terms cannot be accepted');
 select lives_ok($$select public.accept_service_quote('30000000-0000-4000-8000-000000000002', 2)$$,

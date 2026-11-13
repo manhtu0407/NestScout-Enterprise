@@ -804,7 +804,7 @@ test('a classified pause is resumed only with both parties through real Auth and
       assert.equal((await command('request_service_resume', customer.token, { p_job_id: job, p_version: 2 })).status, 403);
       assert.equal((await command('request_service_resume', foreignWorker.token, { p_job_id: job, p_version: 2 })).status, 403);
       const stale = await failure(await command('request_service_resume', worker.token, { p_job_id: job, p_version: 1 }));
-      assert.deepEqual([stale[1], stale[2]], ['40001', 'stale job']);
+      assert.deepEqual(stale, [409, '40001', 'stale job']);
       const requested = await command('request_service_resume', worker.token, { p_job_id: job, p_version: 2 });
       assert.equal(requested.status, 200);
       assert.equal(await requested.json(), 3);
@@ -814,7 +814,7 @@ test('a classified pause is resumed only with both parties through real Auth and
 
       assert.equal((await command('consent_service_resume', otherCustomer.token, { p_job_id: job, p_version: 3 })).status, 403);
       const earlier = await failure(await command('consent_service_resume', customer.token, { p_job_id: job, p_version: 2 }));
-      assert.deepEqual([earlier[1], earlier[2]], ['40001', 'stale job']);
+      assert.deepEqual(earlier, [409, '40001', 'stale job']);
       assert.equal(stage(), 'paused:3');
 
       const agreed = await command('consent_service_resume', customer.token, { p_job_id: job, p_version: 3 });
@@ -1956,7 +1956,7 @@ test('Kael coordinates the authorized Customer–Worker lifecycle through confir
       const jobId = one(`select id from public.service_jobs where request_id='${requestId}' and worker_id='${workerA.id}';`);
       assert.match(jobId, uuid);
       const lateB = await rpc(workerB, 'accept_service_invitation', { p_invitation_id: invitationB, p_quote_id: quoteV2, p_quote_version: 2 });
-      assert.equal(lateB.status, 500, 'PostgREST reports SQLSTATE 40001 with HTTP 500');
+      assert.equal(lateB.status, 409, 'The REST layer reports a version conflict as HTTP 409 so the gateway does not retry it');
       assert.deepEqual(await lateB.json(), { code: '40001', details: null, hint: null, message: 'already assigned' }, 'Worker B loses the race for an assigned request');
       const lostRace = await approve(workerB, 'worker', raceApproval, raceTurn.conversation);
       assert.equal(lostRace.end.type, 'run_failed');

@@ -82,7 +82,7 @@ select throws_ok(format('select public.accept_service_quote(%L, 2)', current_set
 
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000c0a1","role":"authenticated"}', true);
 select is((select count(*)::integer from public.service_quotes where request_id = '11000000-0000-4000-8000-0000000000a1'), 2, 'Customer A reads both versions of their quote');
-select throws_ok(format('select public.accept_service_quote(%L, 1)', current_setting('test.q1')), '40001', 'stale quote', 'A superseded quote version cannot be accepted');
+select throws_ok(format('select public.accept_service_quote(%L, 1)', current_setting('test.q1')), 'PGRST', nestscout_private.conflict_body('stale quote'), 'A superseded quote version cannot be accepted');
 
 reset role;
 update public.service_quotes set expires_at = now() - interval '1 minute' where id = current_setting('test.q2')::uuid;
@@ -128,13 +128,13 @@ select set_config('test.job', public.accept_service_invitation(current_setting('
 select is((select stage from public.service_jobs where id = current_setting('test.job')::uuid), 'assigned', 'Worker A wins the assignment');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000d0b2","role":"authenticated"}', true);
 select throws_ok(format('select public.accept_service_invitation(%L, %L, 3)', current_setting('test.ib'), current_setting('test.q3')),
-  '40001', 'already assigned', 'Worker B can no longer accept once the job is assigned');
+  'PGRST', nestscout_private.conflict_body('already assigned'), 'Worker B can no longer accept once the job is assigned');
 select is((select count(*)::integer from public.worker_offers()), 0, 'Worker B no longer sees the assigned offer');
 select throws_ok(format('select public.advance_service_job(%L, 1, %L)', current_setting('test.job'), 'en_route'), '42501', 'job unavailable', 'Worker B cannot advance Worker A job');
 
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000e0a1","role":"authenticated"}', true);
 select throws_ok($$select public.invite_fixture_worker('11000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-00000000d0b2', 30)$$,
-  '40001', 'already assigned', 'No invitation is sent after assignment');
+  'PGRST', nestscout_private.conflict_body('already assigned'), 'No invitation is sent after assignment');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000c0a1","role":"authenticated"}', true);
 select throws_ok($$select public.set_request_preferred_visit('11000000-0000-4000-8000-0000000000a1', now() + interval '2 days')$$, '22023', 'step unavailable',
   'The preferred visit time is fixed once a worker is assigned');

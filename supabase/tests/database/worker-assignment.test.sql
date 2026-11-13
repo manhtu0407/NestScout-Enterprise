@@ -42,7 +42,7 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 select is((select count(*)::integer from public.service_invitations), 2, 'A worker sees only their own invitations');
 select is((select count(*)::integer from public.worker_offers()), 1, 'Offer projection includes only live terms for this worker');
 select throws_ok($$select public.accept_service_invitation('40000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 2)$$,
-  '40001', 'stale terms', 'A worker must accept the displayed quote version');
+  'PGRST', nestscout_private.conflict_body('stale terms'), 'A worker must accept the displayed quote version');
 select throws_ok($$select public.accept_service_invitation('40000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000001', 1)$$,
   '42501', 'invitation unavailable', 'A worker cannot accept another invitation');
 select throws_ok($$select public.accept_service_invitation('40000000-0000-4000-8000-000000000003', '30000000-0000-4000-8000-000000000001', 1)$$,
@@ -57,7 +57,7 @@ select throws_ok($$select public.advance_service_job((select id from public.serv
 select is(public.advance_service_job((select id from public.service_jobs), 1, 'en_route'), 2, 'Assigned worker starts travel');
 select is(public.advance_service_job((select id from public.service_jobs), 1, 'en_route'), 2, 'Identical stage retry is safe');
 select throws_ok($$select public.advance_service_job((select id from public.service_jobs), 1, 'arrived')$$,
-  '40001', 'stale job', 'A stale version cannot advance');
+  'PGRST', nestscout_private.conflict_body('stale job'), 'A stale version cannot advance');
 select is(public.pause_service_job((select id from public.service_jobs), 2, 'safety_concern'), 3, 'Safety pause is available during travel');
 select throws_ok($$select public.advance_service_job((select id from public.service_jobs), 3, 'arrived')$$,
   '22023', 'invalid transition', 'Paused work cannot progress');
@@ -70,7 +70,7 @@ select is_empty($$select 1 from public.worker_jobs()$$, 'Another worker cannot r
 select throws_ok($$select public.advance_service_job(current_setting('test.assigned_job')::uuid, 1, 'en_route')$$,
   '42501', 'job unavailable', 'Another eligible worker cannot advance the real assigned job');
 select throws_ok($$select public.accept_service_invitation('40000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000001', 1)$$,
-  '40001', 'already assigned', 'A second worker cannot win');
+  'PGRST', nestscout_private.conflict_body('already assigned'), 'A second worker cannot win');
 reset role;
 
 update public.worker_access_grants set status = 'revoked', revoked_at = now()
