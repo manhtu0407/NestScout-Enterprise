@@ -1038,7 +1038,7 @@ isOneToOne: false
 { Args: { "p_kael_messages_older_than": string,"p_read_notifications_older_than": string }; Returns: Json
                            },
 "redispatch_service_request":
-{ Args: { "p_request_id": string }; Returns: number
+{ Args: { "p_expected_round"?: number,"p_request_id": string }; Returns: number
                            },
 "register_push_token":
 { Args: { "p_platform": string,"p_token": string }; Returns: string

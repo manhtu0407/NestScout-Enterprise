@@ -361,15 +361,38 @@ as $$ select nestscout_private.retry_service_dispatch(p_request_id); $$;
 revoke all on function public.retry_service_dispatch(uuid) from public, anon, authenticated;
 grant execute on function public.retry_service_dispatch(uuid) to authenticated;
 
-create or replace function nestscout_private.redispatch_service_request(p_request_id uuid)
+drop function public.redispatch_service_request(uuid);
+drop function nestscout_private.redispatch_service_request(uuid);
+
+create function nestscout_private.redispatch_service_request(p_request_id uuid, p_expected_round integer default null)
 returns integer
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_result jsonb := nestscout_private.retry_service_dispatch(p_request_id);
+  v_owner uuid := auth.uid();
+  v_replayed integer;
+  v_result jsonb;
 begin
+  if p_expected_round is not null then
+    if v_owner is null or coalesce(auth.jwt() ->> 'is_anonymous', 'false') <> 'false' then
+      raise exception using errcode = '42501', message = 'authentication required';
+    end if;
+    if p_expected_round < 1 then
+      raise exception using errcode = '22023', message = 'invalid round';
+    end if;
+    perform 1 from public.service_requests r where r.id = p_request_id and r.owner_id = v_owner for update;
+    if not found then
+      raise exception using errcode = '42501', message = 'request unavailable';
+    end if;
+    select d.invited_count into v_replayed from public.service_dispatch_rounds d
+      where d.request_id = p_request_id and d.round = p_expected_round and d.outcome = 'invited';
+    if v_replayed is not null then
+      return v_replayed;
+    end if;
+  end if;
+  v_result := nestscout_private.retry_service_dispatch(p_request_id);
   if v_result ->> 'outcome' = 'invited' then
     return (v_result ->> 'invited')::integer;
   end if;
@@ -379,6 +402,17 @@ begin
   raise exception using errcode = '22023', message = coalesce(v_result ->> 'outcome', 'dispatch unavailable');
 end;
 $$;
+revoke all on function nestscout_private.redispatch_service_request(uuid, integer) from public, anon, authenticated;
+grant execute on function nestscout_private.redispatch_service_request(uuid, integer) to authenticated;
+
+create function public.redispatch_service_request(p_request_id uuid, p_expected_round integer default null)
+returns integer
+language sql
+security invoker
+set search_path = ''
+as $$ select nestscout_private.redispatch_service_request(p_request_id, p_expected_round); $$;
+revoke all on function public.redispatch_service_request(uuid, integer) from public, anon, authenticated;
+grant execute on function public.redispatch_service_request(uuid, integer) to authenticated;
 
 create function nestscout_private.set_request_service(p_request_id uuid, p_service_id text)
 returns text

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { WorkflowError, readOperatorCases, resolveOperatorCase, reviewOperatorCase, type OperatorCase } from '@/features/shared';
 
@@ -163,4 +163,28 @@ test('a review that timed out can be taken over and nothing else', async () => {
   expect(screen.queryByLabelText('Cho thợ tiếp tục Chập điện phòng khách')).toBeNull();
   await fireEvent.press(screen.getByLabelText('Tiếp quản sự cố Chập điện phòng khách'));
   await waitFor(() => expect(onReview).toHaveBeenCalledWith(expect.objectContaining({ escalationId: 'e1', reviewState: 'stale' })));
+});
+
+test('an empty queue still offers a manual reload that fetches new cases', async () => {
+  jest.mocked(readOperatorCases).mockResolvedValueOnce([]).mockResolvedValueOnce([openCase()]);
+  await render(<OperatorEscalationsSection onBack={() => undefined} />);
+  expect(await screen.findByText('Không có sự cố nào đang chờ')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('Tải lại hàng đợi'));
+  expect(await screen.findByText('Chập điện phòng khách')).toBeTruthy();
+  expect(readOperatorCases).toHaveBeenCalledTimes(2);
+});
+
+test('the queue refreshes by itself so a lapsed review becomes available for takeover', async () => {
+  jest.useFakeTimers();
+  try {
+    const held = openCase({ status: 'reviewing', reviewedAt: '2026-11-13T09:45:00.000Z', reviewState: 'held', reviewExpiresAt: '2026-11-13T10:15:00.000Z' });
+    const stale = openCase({ status: 'reviewing', reviewedAt: '2026-11-13T09:45:00.000Z', reviewState: 'stale', reviewExpiresAt: '2026-11-13T10:15:00.000Z' });
+    jest.mocked(readOperatorCases).mockResolvedValueOnce([held]).mockResolvedValue([stale]);
+    await render(<OperatorEscalationsSection onBack={() => undefined} />);
+    expect(await screen.findByText('Người khác đang xem xét')).toBeTruthy();
+    await act(async () => { await jest.advanceTimersByTimeAsync(60000); });
+    expect(await screen.findByText('Chờ tiếp quản')).toBeTruthy();
+  } finally {
+    jest.useRealTimers();
+  }
 });

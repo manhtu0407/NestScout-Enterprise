@@ -450,7 +450,9 @@ automatic dispatch existed, or without a service category, is recoverable by its
 owner: `retry_service_dispatch` starts the first round for an accepted quote that
 never dispatched, and `set_request_service` fills a missing service once. Nothing
 is invented for old requests. `redispatch_service_request` remains the strict
-form and raises on any outcome other than `invited`. The customer can cancel with
+form and raises on any outcome other than `invited`; its optional `p_expected_round`
+returns the original invited count when that round already exists, so a replayed
+Kael approval cannot invite twice. The customer can cancel with
 `cancel_service_request` until a worker accepts; a cancelled request withdraws
 its open invitations and refuses a later quote acceptance, offer acceptance or
 decline.

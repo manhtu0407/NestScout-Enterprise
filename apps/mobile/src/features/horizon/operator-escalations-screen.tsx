@@ -34,6 +34,7 @@ const reviewLabels: Record<OperatorCase['reviewState'], string> = {
   held: 'Người khác đang xem xét',
   stale: 'Chờ tiếp quản',
 };
+const queueRefreshMs = 60000;
 const defaultNote = 'Khách báo thợ đã đến nhưng chưa bắt đầu việc.';
 
 type CardProps = {
@@ -125,8 +126,13 @@ export function OperatorEscalationsScreen({ cases, loaded, failure, now, onBack,
         <Text style={supportStyles.primaryLabel}>Tải lại</Text>
       </PressScale>
     </> : !loaded ? <SupportEmpty icon="clock" title="Đang tải" body="Vui lòng chờ trong giây lát." />
-      : cases.length === 0 ? <SupportEmpty icon="check" title="Không có sự cố nào đang chờ" body="Khi khách báo sự cố, báo cáo sẽ hiện ở đây." />
-      : cases.map(item => <OperatorCaseCard key={item.escalationId} item={item} now={now} onReview={onReview} onResolve={onResolve} />)}
+      : <>
+        {cases.length === 0 ? <SupportEmpty icon="check" title="Không có sự cố nào đang chờ" body="Khi khách báo sự cố, báo cáo sẽ hiện ở đây." />
+          : cases.map(item => <OperatorCaseCard key={item.escalationId} item={item} now={now} onReview={onReview} onResolve={onResolve} />)}
+        <PressScale accessibilityRole="button" accessibilityLabel="Tải lại hàng đợi" onPress={onRefresh} style={supportStyles.secondary}>
+          <Text style={supportStyles.secondaryLabel}>Tải lại hàng đợi</Text>
+        </PressScale>
+      </>}
   </SupportShell>;
 }
 
@@ -143,7 +149,7 @@ function keyFor(keys: Keys, scope: string): string {
 export function OperatorEscalationsSection({ onBack }: { onBack: () => void }) {
   const access = useAccess();
   const userId = access.identity === 'verified' ? access.userId : null;
-  const [now] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date());
   const [cases, setCases] = useState<readonly OperatorCase[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -156,6 +162,7 @@ export function OperatorEscalationsSection({ onBack }: { onBack: () => void }) {
     readOperatorCases(userId, controller.signal).then(next => {
       if (controller.signal.aborted) return;
       setCases(next);
+      setNow(new Date());
       setFailure(null);
       setLoaded(true);
     }, (error: unknown) => {
@@ -168,6 +175,12 @@ export function OperatorEscalationsSection({ onBack }: { onBack: () => void }) {
     setFailure(null);
     setReads(count => count + 1);
   }, []);
+
+  useEffect(() => {
+    if (userId === null) return undefined;
+    const timer = setInterval(reload, queueRefreshMs);
+    return () => clearInterval(timer);
+  }, [reload, userId]);
 
   const review = useCallback(async (item: OperatorCase) => {
     if (userId === null) return;

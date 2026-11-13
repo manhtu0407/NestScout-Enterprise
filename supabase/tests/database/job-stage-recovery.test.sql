@@ -247,5 +247,15 @@ reset role;
 select is((select jsonb_array_length(change_requests) from public.service_job_releases where request_id = current_setting('test.r7')::uuid), 1, 'The declined change request is archived');
 select is((select count(*) from public.job_change_requests where job_id = current_setting('test.j7')::uuid)::integer, 0, 'No orphaned change request remains');
 
+select set_config('test.worker_releases', (select count(*)::text from public.service_job_releases where worker_id = '00000000-0000-4000-8000-00000000b5d1'), true);
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000b5d1","role":"authenticated"}', true);
+select is((public.export_my_data() -> 'released_jobs') #>> '{}' is not null, true, 'The worker export carries a released jobs list');
+select is(jsonb_array_length(public.export_my_data() -> 'released_jobs')::text, current_setting('test.worker_releases'), 'The worker export lists every job the worker released');
+select is((select e -> 'change_requests' -> 0 ->> 'status' from jsonb_array_elements(public.export_my_data() -> 'released_jobs') e where e ->> 'request_id' = current_setting('test.r7')), 'declined', 'The export carries the archived change request');
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000b5c1","role":"authenticated"}', true);
+select is((select count(*) from jsonb_array_elements(public.export_my_data() -> 'released_jobs') e where e ->> 'request_id' = current_setting('test.r7'))::integer, 1, 'The customer export lists the released job too');
+reset role;
+
 select * from finish();
 rollback;

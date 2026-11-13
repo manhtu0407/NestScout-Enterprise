@@ -74,6 +74,20 @@ async function loadAll(userId: string, signal: AbortSignal): Promise<CustomerDat
   return { requests, quotes, activity, pinnedIds: new Set(pinned), notifications, profile, avatar, photos, savedWorkers, settings, phone, jobWorkers, dispatch };
 }
 
+const dispatchRefreshSlackMs = 1000;
+const maxTimerMs = 2 ** 31 - 1;
+
+function nextDispatchDeadline(dispatch: ReadonlyMap<string, DispatchSummary>, now: number): number | null {
+  let earliest: number | null = null;
+  for (const summary of dispatch.values()) {
+    for (const value of [summary.earliestExpiry, summary.nextRetryAt, summary.reassignAt, summary.escalateAt]) {
+      const at = value === null ? Number.NaN : Date.parse(value);
+      if (Number.isFinite(at) && at > now && (earliest === null || at < earliest)) earliest = at;
+    }
+  }
+  return earliest;
+}
+
 type Snapshot = { owner: string | null; data: CustomerData; loaded: boolean };
 
 const emptySnapshot: Snapshot = { owner: null, data: emptyData, loaded: false };
@@ -115,6 +129,13 @@ export function useCustomerData(userId: string | null): CustomerDataController {
       controller.abort();
     };
   }, [userId, reloadKey]);
+
+  useEffect(() => {
+    const deadline = nextDispatchDeadline(data.dispatch, Date.now());
+    if (deadline === null) return undefined;
+    const timer = setTimeout(refresh, Math.min(Math.max(deadline - Date.now(), 0) + dispatchRefreshSlackMs, maxTimerMs));
+    return () => clearTimeout(timer);
+  }, [data.dispatch, refresh]);
 
   const requireOwner = useCallback((): string => {
     if (userId === null) throw new WorkflowError('forbidden');

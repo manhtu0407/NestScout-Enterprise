@@ -261,7 +261,7 @@ fn effect_call(approval_id: &str, tool: &str, args: &Value) -> Option<EffectCall
             let next_round = args["rounds"].as_i64().unwrap_or(0) + 1;
             Some(build(
                 "rpc/redispatch_service_request",
-                json!({"p_request_id": args["request_id"]}),
+                json!({"p_request_id": args["request_id"], "p_expected_round": next_round}),
                 Some(Evidence {
                     path: format!(
                         "service_dispatch_rounds?select=request_id,round,outcome&request_id=eq.{target}&round=eq.{next_round}&outcome=eq.invited"

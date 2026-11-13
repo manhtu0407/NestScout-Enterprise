@@ -501,7 +501,7 @@ function effectCall(approvalId: string, tool: string, args: Record<string, unkno
     const nextRound = Number(args.rounds) + 1;
     return { path: 'rpc/redispatch_service_request', refusals, sqlstateRefuses, resource: value => Number.isSafeInteger(value) ? String(args.request_id) : null,
       evidence: { path: `service_dispatch_rounds?select=request_id,round,outcome&request_id=eq.${encodeURIComponent(String(args.request_id))}&round=eq.${nextRound}&outcome=eq.invited`, observed: row => textId(row.request_id) },
-      body: { p_request_id: args.request_id } };
+      body: { p_request_id: args.request_id, p_expected_round: nextRound } };
   }
   if (tool === 'service_request_cancel') {
     return { path: 'rpc/cancel_service_request', refusals, sqlstateRefuses, resource: textId,
