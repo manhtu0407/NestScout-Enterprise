@@ -5,7 +5,14 @@ import { glyphMotions, hapticForTone, lookFor } from './notification-look';
 
 const label = 'Yêu cầu “Sửa vòi nước”';
 
-test('each job stage the database reports gets its own motion and progress badge', () => {
+test('each stage kind the database reports gets its own motion and progress badge', () => {
+  const kinds = (['job_en_route', 'job_arrived', 'job_working', 'job_paused'] as const).map(kind => lookFor(kind, 'b'));
+  expect(kinds.map(look => look.motion)).toEqual(['slide', 'drop', 'tap', 'settle']);
+  expect(new Set(kinds.map(look => look.badge)).size).toBe(4);
+  expect(kinds[3]).toMatchObject({ tone: 'attention', expression: 'calm' });
+});
+
+test('earlier progress rows without a stage kind still resolve from the notice wording', () => {
   const stages = ['có thợ đang trên đường tới.', 'có thợ đã đến nơi.', 'đang được thực hiện.', 'đang tạm dừng.'].map(ending => lookFor('job_progress', `${label} ${ending}`));
   expect(stages.map(stage => stage.motion)).toEqual(['slide', 'drop', 'tap', 'settle']);
   expect(new Set(stages.map(stage => stage.badge)).size).toBe(4);
@@ -43,7 +50,7 @@ test('notices of unknown kind fall back to an idle Kael', () => {
 });
 
 test('every look uses an existing Kael expression', () => {
-  const kinds = ['quote_received', 'job_assigned', 'job_progress', 'work_submitted', 'job_completed', 'scope_proposed', 'dispatch_exhausted', 'job_released', 'escalation_received', 'escalation_resolved', 'job_offered', 'work_approved', 'revision_requested', 'work_disputed', 'scope_approved', 'scope_rejected', 'resume_agreed', 'review_received', 'job_auto_accepted', 'job_withdrawn', 'job_escalated', 'change_requested', 'change_decided'] as const;
+  const kinds = ['quote_received', 'job_assigned', 'job_progress', 'job_en_route', 'job_arrived', 'job_working', 'job_paused', 'work_submitted', 'job_completed', 'scope_proposed', 'dispatch_exhausted', 'job_released', 'escalation_received', 'escalation_resolved', 'job_offered', 'work_approved', 'revision_requested', 'work_disputed', 'scope_approved', 'scope_rejected', 'resume_agreed', 'review_received', 'job_auto_accepted', 'job_withdrawn', 'job_escalated', 'change_requested', 'change_decided'] as const;
   for (const kind of kinds) expect(kaelExpressionImages[lookFor(kind, 'b').expression]).toBeDefined();
 });
 

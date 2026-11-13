@@ -6,6 +6,8 @@ import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 
 import type { NotificationItem } from './content';
+import { NotificationGlyph } from './notification-glyph';
+import { lookFor } from './notification-look';
 import { SupportCard, SupportEmpty, SupportRow, SupportSection, SupportShell } from './support-shell';
 
 const metrics = horizonLayout.supportScreens;
@@ -34,6 +36,7 @@ export function NotificationsScreen({ items = [], onBack, onMarkRead, onOpenRequ
     <SupportRow
       key={item.id}
       icon={item.icon}
+      leading={<NotificationGlyph still look={lookFor(item.kind, item.body)} />}
       title={item.title}
       detail={`${item.body}\n${item.time}`}
       highlighted={isUnread(item)}

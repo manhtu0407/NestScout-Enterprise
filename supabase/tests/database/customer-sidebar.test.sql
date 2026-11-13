@@ -112,10 +112,10 @@ update public.service_jobs set stage = 'en_route', version = version + 1 where i
 update public.service_jobs set stage = 'submitted', version = version + 1 where id = '60000000-0000-4000-8000-000000000001';
 update public.service_jobs set stage = 'completed', version = version + 1 where id = '60000000-0000-4000-8000-000000000001';
 select is((select array_agg(kind order by created_at) from public.notifications
-  where kind in ('job_progress', 'work_submitted', 'job_completed') and recipient_id = '00000000-0000-4000-8000-0000000000a1'),
-  array['job_progress', 'work_submitted', 'job_completed'], 'Stage changes notify the customer');
+  where kind in ('job_en_route', 'work_submitted', 'job_completed') and recipient_id = '00000000-0000-4000-8000-0000000000a1'),
+  array['job_en_route', 'work_submitted', 'job_completed'], 'Stage changes notify the customer');
 update public.service_jobs set version = version + 1 where id = '60000000-0000-4000-8000-000000000001';
-select is((select count(*)::integer from public.notifications where kind in ('job_progress', 'work_submitted', 'job_completed')), 3,
+select is((select count(*)::integer from public.notifications where kind in ('job_en_route', 'work_submitted', 'job_completed')), 3,
   'A change that keeps the stage does not notify');
 
 select * from finish();

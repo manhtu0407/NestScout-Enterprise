@@ -14,8 +14,9 @@ const colors = horizonColors.notificationGlyph;
 const arrive = Easing.bezier(0.23, 1, 0.32, 1);
 const faceSize = metrics.size * metrics.face.zoom;
 
-export function NotificationGlyph({ look }: { look: NotificationLook }) {
-  const { reduceMotion } = useGlassAccessibility();
+export function NotificationGlyph({ look, still = false }: { look: NotificationLook; still?: boolean }) {
+  const { reduceMotion: preferred } = useGlassAccessibility();
+  const reduceMotion = preferred || still;
   const motion = glyphMotions[look.motion];
   const tone = colors[look.tone];
   const [x] = useState(() => new Animated.Value(motion.x ?? 0));
@@ -35,6 +36,10 @@ export function NotificationGlyph({ look }: { look: NotificationLook }) {
       turn.setValue(0);
       grow.setValue(1);
       badge.setValue(1);
+      if (still) {
+        appear.setValue(1);
+        return undefined;
+      }
       const fade = Animated.timing(appear, { toValue: 1, duration: metrics.reducedDuration, useNativeDriver: true });
       fade.start();
       return () => fade.stop();
@@ -59,7 +64,7 @@ export function NotificationGlyph({ look }: { look: NotificationLook }) {
       clearTimeout(timer);
       run.stop();
     };
-  }, [appear, badge, grow, motion, reduceMotion, ring, turn, x, y]);
+  }, [appear, badge, grow, motion, reduceMotion, ring, still, turn, x, y]);
 
   const Badge = look.badge;
   const transform = [
