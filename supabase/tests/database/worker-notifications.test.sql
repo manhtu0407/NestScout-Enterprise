@@ -37,7 +37,7 @@ select results_eq(
   $$select kind from public.notifications where request_id = '10000000-0000-4000-8000-000000000001' and recipient_id = '00000000-0000-4000-8000-0000000000b2' and kind <> 'job_offered' order by kind$$,
   $$values ('resume_agreed'::text), ('revision_requested'), ('scope_approved'), ('scope_rejected'), ('work_approved'), ('work_disputed')$$,
   'Each customer decision notifies the job worker once');
-select is((select count(*)::integer from public.notifications where request_id = '10000000-0000-4000-8000-000000000001' and recipient_id = '00000000-0000-4000-8000-0000000000b2' and kind = 'job_progress'), 0, 'The worker gets no customer progress notice');
+select is((select count(*)::integer from public.notifications where request_id = '10000000-0000-4000-8000-000000000001' and recipient_id = '00000000-0000-4000-8000-0000000000b2' and kind in ('job_progress', 'job_en_route', 'job_arrived', 'job_working', 'job_paused')), 0, 'The worker gets no customer progress notice');
 select is((select count(*)::integer from public.notifications where request_id = '10000000-0000-4000-8000-000000000001' and recipient_id = '00000000-0000-4000-8000-0000000000a1' and kind in ('job_offered', 'work_approved', 'revision_requested', 'work_disputed', 'scope_approved', 'scope_rejected', 'resume_agreed', 'review_received')), 0, 'The customer never receives worker notices');
 
 insert into public.worker_public_profiles (id, worker_id, display_name, trade, area, experience_years) values

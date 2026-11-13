@@ -2,7 +2,7 @@ import { authenticatedRequest } from '@/lib/authenticated-rest';
 
 import { workflowErrorFrom } from './workflow-error';
 
-export type CustomerNotificationKind = 'quote_received' | 'job_assigned' | 'job_progress' | 'work_submitted' | 'job_completed' | 'scope_proposed' | 'dispatch_exhausted' | 'job_released' | 'escalation_received' | 'escalation_resolved';
+export type CustomerNotificationKind = 'quote_received' | 'job_assigned' | 'job_progress' | 'work_submitted' | 'job_completed' | 'scope_proposed' | 'dispatch_exhausted' | 'job_released' | 'escalation_received' | 'escalation_resolved' | 'job_en_route' | 'job_arrived' | 'job_working' | 'job_paused';
 export type WorkerNotificationKind = 'job_offered' | 'work_approved' | 'revision_requested' | 'work_disputed' | 'scope_approved' | 'scope_rejected' | 'resume_agreed' | 'review_received' | 'job_auto_accepted' | 'job_withdrawn' | 'job_escalated' | 'escalation_resolved';
 export type JobChangeNotificationKind = 'change_requested' | 'change_decided';
 export type NotificationKind = CustomerNotificationKind | WorkerNotificationKind | JobChangeNotificationKind;
@@ -34,7 +34,7 @@ export type SavedWorkerRecord = {
 };
 
 const notificationKindsByAudience: Readonly<Record<NotificationAudience, readonly NotificationKind[]>> = {
-  customer: ['quote_received', 'job_assigned', 'job_progress', 'work_submitted', 'job_completed', 'scope_proposed', 'dispatch_exhausted', 'job_released', 'escalation_received', 'escalation_resolved', 'change_requested', 'change_decided'],
+  customer: ['quote_received', 'job_assigned', 'job_progress', 'job_en_route', 'job_arrived', 'job_working', 'job_paused', 'work_submitted', 'job_completed', 'scope_proposed', 'dispatch_exhausted', 'job_released', 'escalation_received', 'escalation_resolved', 'change_requested', 'change_decided'],
   worker: ['job_offered', 'job_auto_accepted', 'job_withdrawn', 'job_escalated', 'escalation_resolved', 'work_approved', 'revision_requested', 'work_disputed', 'scope_approved', 'scope_rejected', 'resume_agreed', 'review_received', 'change_requested', 'change_decided'],
 };
 const notificationLimit = 100;

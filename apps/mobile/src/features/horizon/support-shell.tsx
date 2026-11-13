@@ -65,15 +65,18 @@ type RowProps = {
   highlighted?: boolean;
   onPress?: () => void;
   trailing?: ReactNode;
+  leading?: ReactNode;
   accessibilityState?: { expanded?: boolean };
 };
 
-export function SupportRow({ icon, title, detail, danger = false, highlighted = false, onPress, trailing, accessibilityState }: RowProps) {
+export function SupportRow({ icon, title, detail, danger = false, highlighted = false, onPress, trailing, leading, accessibilityState }: RowProps) {
   const content = (
     <>
-      <View style={[styles.tile, highlighted && styles.tileHighlighted]}>
-        <Icon name={icon} size={metrics.tileIconSize} color={danger ? colors.danger : highlighted ? colors.unreadIcon : undefined} />
-      </View>
+      {leading !== undefined ? <View style={styles.lead}>{leading}</View> : (
+        <View style={[styles.tile, highlighted && styles.tileHighlighted]}>
+          <Icon name={icon} size={metrics.tileIconSize} color={danger ? colors.danger : highlighted ? colors.unreadIcon : undefined} />
+        </View>
+      )}
       <View style={styles.copy}>
         <Text style={[styles.rowTitle, danger && styles.rowTitleDanger]}>{title}</Text>
         {detail ? <Text style={styles.rowDetail}>{detail}</Text> : null}
@@ -121,6 +124,7 @@ const styles = StyleSheet.create({
   separatorFlush: { marginLeft: metrics.optionSeparatorInset },
   row: { minHeight: metrics.rowMinHeight, flexDirection: 'row', alignItems: 'center', gap: metrics.rowGap, paddingHorizontal: metrics.rowPaddingHorizontal, paddingVertical: metrics.rowPaddingVertical },
   tile: { width: metrics.tileSize, height: metrics.tileSize, borderRadius: metrics.tileRadius, backgroundColor: colors.tileFill, alignItems: 'center', justifyContent: 'center' },
+  lead: { width: metrics.tileSize, height: metrics.tileSize, alignItems: 'center', justifyContent: 'center' },
   tileHighlighted: { backgroundColor: colors.unreadTile },
   copy: { flex: 1, minWidth: 0 },
   rowTitle: { color: horizonColors.text, fontSize: metrics.rowTitleSize, fontWeight: metrics.rowTitleWeight },
