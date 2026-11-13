@@ -54,3 +54,12 @@ test('with Reduce Motion on the glyph fades in place without any spring', async 
   expect(run.start).not.toHaveBeenCalled();
   expect(timing).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ duration: horizonLayout.notificationGlyph.reducedDuration }));
 });
+
+test('a still glyph for lists shows at rest without any motion', async () => {
+  const run = runner();
+  const timing = jest.spyOn(Animated, 'timing');
+  await render(<NotificationGlyph still look={completed} />);
+  await act(async () => { jest.advanceTimersByTime(delay * 2); });
+  expect(run.start).not.toHaveBeenCalled();
+  expect(timing).not.toHaveBeenCalled();
+});
