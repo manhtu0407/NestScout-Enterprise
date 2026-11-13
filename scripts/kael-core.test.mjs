@@ -1075,10 +1075,12 @@ const databaseError = (status, code) => () => new Response(JSON.stringify({ code
 const rows = value => () => new Response(JSON.stringify(value), { status: 200, headers: { 'content-type': 'application/json' } });
 
 test('a first attempt refused by the database is a definitive failure', async () => {
-  const { rest, calls } = effectRest(databaseError(500, '40001'), rows([]));
-  const outcome = await executeApprovedEffect('approval-1', { status: 'ok', ...acceptedQuote }, rest, new AbortController().signal);
-  assert.deepEqual(outcome, { status: 'failed', reason: 'backend_http_500' });
-  assert.deepEqual(calls.map(call => call.method), ['POST'], 'no evidence read is needed');
+  for (const status of [500, 409]) {
+    const { rest, calls } = effectRest(databaseError(status, '40001'), rows([]));
+    const outcome = await executeApprovedEffect('approval-1', { status: 'ok', ...acceptedQuote }, rest, new AbortController().signal);
+    assert.deepEqual(outcome, { status: 'failed', reason: `backend_http_${status}` }, `HTTP ${status} with SQLSTATE 40001`);
+    assert.deepEqual(calls.map(call => call.method), ['POST'], 'no evidence read is needed');
+  }
 });
 
 test('a reconciliation refused by the database reports success only when the effect is observed', async () => {

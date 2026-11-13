@@ -57,7 +57,7 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 select lives_ok($$select public.accept_service_invitation(current_setting('test.i1')::uuid, current_setting('test.q1')::uuid, 1)$$, 'The worker accepts the first job');
 select lives_ok($$select public.accept_service_invitation(current_setting('test.i2')::uuid, current_setting('test.q2')::uuid, 1)$$, 'The worker accepts the second job');
 select throws_ok($$select public.accept_service_invitation(current_setting('test.i3')::uuid, current_setting('test.q3')::uuid, 1)$$,
-  '40001', 'worker at capacity', 'A third active job is refused at the cap');
+  'PGRST', nestscout_private.conflict_body('worker at capacity'), 'A third active job is refused at the cap');
 select is((select count(*) from public.worker_offers())::integer, 1, 'The refused offer is still the worker''s only open offer');
 
 reset role;
@@ -83,7 +83,7 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 select lives_ok($$select public.accept_service_invitation(current_setting('test.i4')::uuid, current_setting('test.q4')::uuid, 1)$$, 'The second worker accepts');
 select set_config('test.j4', (select id::text from public.service_jobs where request_id = current_setting('test.r4')::uuid), true);
 select throws_ok($$select public.release_service_job(current_setting('test.j4')::uuid, 7, '45000000-0000-4000-8000-000000000001', 'unavailable', null)$$,
-  '40001', 'stale job', 'A release against a stale version is refused');
+  'PGRST', nestscout_private.conflict_body('stale job'), 'A release against a stale version is refused');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a4d3","role":"authenticated"}', true);
 select throws_ok($$select public.release_service_job(current_setting('test.j4')::uuid, 1, '45000000-0000-4000-8000-000000000002', 'unavailable', null)$$,
   '42501', 'job unavailable', 'Another worker cannot release the job');
@@ -203,7 +203,7 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a4d1","role":"authenticated"}', true);
 select lives_ok($$select public.accept_service_invitation(current_setting('test.i7')::uuid, current_setting('test.q7')::uuid, 1)$$, 'The worker accepts the first visit');
 select throws_ok($$select public.accept_service_invitation(current_setting('test.i8')::uuid, current_setting('test.q8')::uuid, 1)$$,
-  '40001', 'schedule conflict', 'A visit within two hours of another job is refused');
+  'PGRST', nestscout_private.conflict_body('schedule conflict'), 'A visit within two hours of another job is refused');
 select lives_ok($$select public.accept_service_invitation(current_setting('test.i9')::uuid, current_setting('test.q9')::uuid, 1)$$, 'A visit far enough away is accepted');
 reset role;
 select is(nestscout_private.worker_unavailable_reason('00000000-0000-4000-8000-00000000a4d1', current_setting('test.r8')::uuid), 'schedule_conflict', 'The conflict is reported as a schedule conflict');

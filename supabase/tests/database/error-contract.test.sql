@@ -50,7 +50,25 @@ select throws_ok($$select public.open_service_aftercare(gen_random_uuid(), gen_r
 select throws_ok($$select public.submit_service_request(gen_random_uuid(), '')$$,
   '22023', 'invalid request', 'A blank request is reported as invalid input');
 select throws_ok($$select public.accept_service_quote('30000000-0000-4000-8000-000000000001', 9)$$,
-  '40001', 'stale quote', 'A wrong quote version is reported as stale');
+  'PGRST', nestscout_private.conflict_body('stale quote'), 'A wrong quote version is reported as stale');
+select throws_ok($$select nestscout_private.accept_service_quote('30000000-0000-4000-8000-000000000001', 9)$$,
+  '40001', 'stale quote', 'The private operation keeps SQLSTATE 40001 for in-database callers');
+select throws_ok($$select public.accept_service_quote('30000000-0000-4000-8000-000000000002', 9)$$,
+  'PGRST', nestscout_private.conflict_body('stale quote'), 'A stale version of an open quote is reported as a conflict');
+select is(nestscout_private.conflict_body('say "hi"')::jsonb,
+  '{"code":"40001","message":"say \"hi\"","details":null,"hint":null}'::jsonb, 'The conflict body escapes the message as JSON');
+do $$
+declare v_detail text;
+begin
+  begin
+    perform nestscout_private.raise_conflict('stale quote');
+  exception when others then
+    get stacked diagnostics v_detail = pg_exception_detail;
+  end;
+  perform set_config('test.conflict_detail', v_detail, true);
+end;
+$$;
+select is(current_setting('test.conflict_detail'), '{"status":409,"headers":{}}', 'A conflict is reported to PostgREST as HTTP 409');
 reset role;
 
 select * from finish();

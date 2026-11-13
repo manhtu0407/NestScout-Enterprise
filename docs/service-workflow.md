@@ -568,11 +568,15 @@ without taking a lock and work inside PostgREST's read-only transactions; the is
 invite commands keep the locking check. Quotes and invitations are created only by the fixture operator commands above,
 for local and test use. There is no operator screen, no pricing model and no
 automatic dispatch; a commercial pricing or dispatch policy is still an owner
-decision. PostgREST reports SQLSTATE `40001` (a stale version or an
-already-assigned request) with HTTP 500 and the code in the body. Kael and the
-mobile client treat such a response as a definitive refusal, because the
-transaction rolled back, while a 5xx response without a recognised code stays an
-uncertain outcome.
+decision. The database raises SQLSTATE `40001` for a stale version or an
+already-assigned request, and in-database callers rely on it. PostgREST would turn
+that code into HTTP 500, which the hosted API gateway does not answer promptly, so
+each public RPC that can reach it translates the error through
+`nestscout_private.raise_conflict` into HTTP 409 with the body
+`{"code":"40001","message":"<reason>","details":null,"hint":null}`. Kael and the
+mobile client treat the response as a definitive refusal, because the transaction
+rolled back, while a 5xx response without a recognised code stays an uncertain
+outcome.
 
 ## Kael capability boundary
 
