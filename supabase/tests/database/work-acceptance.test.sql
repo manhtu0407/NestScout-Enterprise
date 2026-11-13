@@ -60,7 +60,7 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
 select throws_ok($$select public.decide_service_submission((select id from public.service_submissions where job_id='50000000-0000-4000-8000-000000000001'), 1, 'accepted', null)$$,
-  '40001', 'stale job', 'A stale version cannot accept');
+  'PGRST', nestscout_private.conflict_body('stale job'), 'A stale version cannot accept');
 select lives_ok($$select public.decide_service_submission((select id from public.service_submissions where job_id='50000000-0000-4000-8000-000000000001'), 2, 'accepted', null)$$,
   'Customer accepts submitted work');
 select lives_ok($$select public.decide_service_submission((select id from public.service_submissions where job_id='50000000-0000-4000-8000-000000000001'), 2, 'accepted', null)$$,

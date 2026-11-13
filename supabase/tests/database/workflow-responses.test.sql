@@ -22,14 +22,14 @@ select throws_ok($$select public.reject_service_quote('30000000-0000-4000-8000-0
 reset role;
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}',true);
-select throws_ok($$select public.reject_service_quote('30000000-0000-4000-8000-000000000001',2)$$,'40001','stale quote','Wrong version cannot be rejected');
+select throws_ok($$select public.reject_service_quote('30000000-0000-4000-8000-000000000001',2)$$,'PGRST',nestscout_private.conflict_body('stale quote'),'Wrong version cannot be rejected');
 select lives_ok($$select public.reject_service_quote('30000000-0000-4000-8000-000000000001',1)$$,'Owner rejects quote');
 select lives_ok($$select public.reject_service_quote('30000000-0000-4000-8000-000000000001',1)$$,'Reject replay is safe');
-select throws_ok($$select public.accept_service_quote('30000000-0000-4000-8000-000000000001',1)$$,'40001','stale quote','Rejected quote cannot be accepted');
+select throws_ok($$select public.accept_service_quote('30000000-0000-4000-8000-000000000001',1)$$,'PGRST',nestscout_private.conflict_body('stale quote'),'Rejected quote cannot be accepted');
 reset role;
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}',true);
-select throws_ok($$select public.decline_service_invitation('40000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000002',2)$$,'40001','stale terms','Worker cannot decline unseen terms');
+select throws_ok($$select public.decline_service_invitation('40000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000002',2)$$,'PGRST',nestscout_private.conflict_body('stale terms'),'Worker cannot decline unseen terms');
 select lives_ok($$select public.decline_service_invitation('40000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000002',1)$$,'Invited Worker declines');
 select lives_ok($$select public.decline_service_invitation('40000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000002',1)$$,'Decline replay is safe');
 select throws_ok($$select public.accept_service_invitation('40000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000002',1)$$,'22023','invitation unavailable','Declined invitation cannot be accepted');

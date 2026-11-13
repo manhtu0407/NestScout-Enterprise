@@ -29,7 +29,7 @@ select is_empty($$
       'issue_fixture_quote','invite_fixture_worker','fixture_dispatch_queue','fixture_dispatch_candidates','set_kael_autonomy',
       'set_request_preferred_visit','set_kael_feedback',
       'dispatch_summary','cancel_service_request','redispatch_service_request','retry_service_dispatch','set_request_service','release_service_job','request_service_reassignment','escalate_service_job',
-      'operator_escalation_queue','review_service_escalation','resolve_service_escalation','operator_access')
+      'operator_escalation_queue','review_service_escalation','resolve_service_escalation','operator_access','conflict_body')
 $$, 'Only reviewed private operations are callable by authenticated users');
 
 select is_empty($$

@@ -164,8 +164,8 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a3c2","role":"authenticated"}', true);
 select is((select state from public.get_dispatch_summary(array[current_setting('test.y')::uuid])), 'assigned', 'An assigned request reports assigned');
 select is(public.retry_service_dispatch(current_setting('test.y')::uuid) ->> 'outcome', 'already_assigned', 'An assigned request cannot be retried');
-select throws_ok($$select public.redispatch_service_request(current_setting('test.y')::uuid)$$, '40001', 'already assigned', 'The legacy retry entry point reports an assigned request');
-select throws_ok($$select public.cancel_service_request(current_setting('test.y')::uuid)$$, '40001', 'already assigned', 'An assigned request is not cancelled silently');
+select throws_ok($$select public.redispatch_service_request(current_setting('test.y')::uuid)$$, 'PGRST', nestscout_private.conflict_body('already assigned'), 'The legacy retry entry point reports an assigned request');
+select throws_ok($$select public.cancel_service_request(current_setting('test.y')::uuid)$$, 'PGRST', nestscout_private.conflict_body('already assigned'), 'An assigned request is not cancelled silently');
 select is((select count(*) from public.service_jobs where request_id = current_setting('test.y')::uuid and stage = 'assigned')::integer, 1, 'The assigned job is untouched by the refused cancellation');
 
 select set_config('test.z', public.submit_service_request('33000000-0000-4000-8000-000000000003', 'Hỏng ổ cắm', 'Quận 3', 'electric')::text, true);

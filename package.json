@@ -57,7 +57,7 @@
     "verify:supabase": "node scripts/run-tests.mjs scripts/supabase-local.test.mjs",
     "typecheck:db": "tsc --noEmit --strict --skipLibCheck supabase/database.types.ts",
     "typecheck:kael": "tsc --noEmit --strict --skipLibCheck --noUncheckedIndexedAccess --target es2024 --module esnext --moduleResolution bundler --allowImportingTsExtensions --verbatimModuleSyntax --erasableSyntaxOnly --lib es2024,dom,dom.iterable,dom.asynciterable supabase/functions/kael/index.ts services/kael-core/src/knowledge-sources.ts",
-    "verify:foundation": "node scripts/run-tests.mjs scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs scripts/check-skills.test.mjs scripts/test-integrity-reporter.test.mjs scripts/send-sms-hook.test.mjs scripts/kael-core.test.mjs scripts/kael-evaluation.test.mjs scripts/kael-knowledge.test.mjs scripts/kael-live-evaluation.test.mjs scripts/review-diff.test.mjs scripts/dead-code-evaluation.test.mjs",
+    "verify:foundation": "node scripts/run-tests.mjs scripts/backup.test.mjs scripts/agent-evaluation.test.mjs scripts/git-environment.test.mjs scripts/tool-workflows.test.mjs scripts/advisory-workflows.test.mjs scripts/check-skills.test.mjs scripts/test-integrity-reporter.test.mjs scripts/send-sms-hook.test.mjs scripts/kael-core.test.mjs scripts/kael-evaluation.test.mjs scripts/kael-knowledge.test.mjs scripts/kael-live-evaluation.test.mjs scripts/review-diff.test.mjs scripts/dead-code-evaluation.test.mjs scripts/preview-web.test.mjs",
     "agents:evaluate": "node scripts/agent-evaluation.mjs",
     "health:dead-code": "knip --no-exit-code --no-progress",
     "health:review-diff": "node scripts/review-diff.mjs",
@@ -67,7 +67,9 @@
     "tools:postgresql": "node scripts/postgresql-clients.mjs",
     "tools:trivy:db": "node scripts/advisory-workflows.mjs trivy",
     "tools:osv:source": "node scripts/advisory-workflows.mjs osv online",
-    "tools:linux:smoke": "node scripts/tool-workflows.mjs linux"
+    "tools:linux:smoke": "node scripts/tool-workflows.mjs linux",
+    "preview:local": "node scripts/preview-web.mjs local",
+    "preview:design": "node scripts/preview-web.mjs design"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

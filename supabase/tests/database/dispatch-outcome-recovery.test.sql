@@ -125,7 +125,7 @@ select lives_ok($$select public.accept_service_invitation(current_setting('test.
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a2c1","role":"authenticated"}', true);
 select is((select state from public.get_dispatch_summary(array[current_setting('test.c')::uuid])), 'assigned', 'An accepted offer reports assigned');
 select is((select can_cancel from public.get_dispatch_summary(array[current_setting('test.c')::uuid])), false, 'An assigned request cannot be cancelled here');
-select throws_ok($$select public.cancel_service_request(current_setting('test.c')::uuid)$$, '40001', 'already assigned', 'Cancelling an assigned request is rejected');
+select throws_ok($$select public.cancel_service_request(current_setting('test.c')::uuid)$$, 'PGRST', nestscout_private.conflict_body('already assigned'), 'Cancelling an assigned request is rejected');
 
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a2c2","role":"authenticated"}', true);
 select set_config('test.d', public.submit_service_request('32000000-0000-4000-8000-000000000004', 'Cầu dao nhảy liên tục', 'Quận 3', 'electric')::text, true);
@@ -158,7 +158,7 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 select set_config('test.e', public.submit_service_request('32000000-0000-4000-8000-000000000009', 'Máy lạnh kêu to', 'Quận 2', 'aircon')::text, true);
 select lives_ok($$select public.accept_service_quote((select id from public.service_quotes where request_id = current_setting('test.e')::uuid), 1)$$, 'A second customer accepts a price with no matching worker');
 select is((select rounds from public.get_dispatch_summary(array[current_setting('test.e')::uuid])), 1, 'The first search found nobody');
-select throws_ok($$select public.redispatch_service_request(current_setting('test.e')::uuid, 9)$$, '40001', 'stale round', 'An approval bound to a round that is not next is refused');
+select throws_ok($$select public.redispatch_service_request(current_setting('test.e')::uuid, 9)$$, 'PGRST', nestscout_private.conflict_body('stale round'), 'An approval bound to a round that is not next is refused');
 select is((select count(*) from public.service_dispatch_rounds where request_id = current_setting('test.e')::uuid)::integer, 1, 'The refused approval adds no round');
 select is(public.redispatch_service_request(current_setting('test.e')::uuid, 2), 0, 'An approved search that finds nobody reports zero instead of raising');
 select is((select count(*) from public.service_dispatch_rounds where request_id = current_setting('test.e')::uuid and round = 2 and outcome = 'no_eligible_worker' and reason = 'manual_retry')::integer, 1, 'The empty round survives as audit history');

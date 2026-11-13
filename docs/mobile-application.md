@@ -655,15 +655,24 @@ Missing operator details in the draft therefore do not block account access or w
 testing.
 
 Authorizing Kael provider requests is a separate, explicit choice. A signed-in account
-without an `ai_sharing` record sees one inline card above the Kael composer (not a dialog)
-that states what is sent and offers a single "Cho phép và bắt đầu" action; sending a message
-before that action sends nothing. The same choice can be changed with the Share data with AI
-switch in Settings › Privacy. Before the switch, the screen explains that prompts, conversation
+without an `ai_sharing` record sees no card or dialog; sending a message sends nothing and
+the composer explains that the Share data with AI switch in Settings › Privacy must be turned
+on first. The same choice can be changed at any time with that switch. Before the switch, the screen explains that prompts, conversation
 history, related request and job details, and reply preferences may be sent to the
 configured model provider. When web search is enabled, the search query may also be sent
 to Perplexity. No Kael message is sent without an `ai_sharing` record; both the app and
 the backend enforce this. Users can withdraw the choice in Settings › Privacy. Turning
 on AI sharing does not accept the Terms or Privacy Policy.
+
+### Preview launch commands
+
+`npm run preview:local` serves the app on port 8085 against the Supabase Local stack of the
+current checkout (start it first with `npm run db:start`), and `npm run preview:design`
+serves the offline design showcase on port 8086. Both run from the checkout that contains
+the script, so a Preview restarted from a worktree always serves that worktree's code,
+never another checkout's. Both clear the Metro cache on start. A Preview configuration that
+points at a script outside the repository, or at a different checkout, can serve an older
+build that lacks the features merged since.
 
 ### Local Preview verification
 
