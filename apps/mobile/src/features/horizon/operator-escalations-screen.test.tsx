@@ -22,11 +22,12 @@ const now = new Date('2026-11-13T10:00:00.000Z');
 function openCase(overrides: Partial<OperatorCase> = {}): OperatorCase {
   return {
     escalationId: 'e1', requestId: 'r1', jobId: 'j1', status: 'open', note: null, createdAt: '2026-11-13T09:00:00.000Z', reviewedAt: null,
-    description: 'Chập điện phòng khách', location: 'Quận 7', workerName: 'Thợ một', jobStage: 'arrived', ...overrides,
+    description: 'Chập điện phòng khách', location: 'Quận 7', workerName: 'Thợ một', jobStage: 'arrived',
+    reviewState: 'unclaimed', reviewExpiresAt: null, takeoverCount: 0, ...overrides,
   };
 }
 
-const reviewing = openCase({ status: 'reviewing', reviewedAt: '2026-11-13T09:30:00.000Z' });
+const reviewing = openCase({ status: 'reviewing', reviewedAt: '2026-11-13T09:30:00.000Z', reviewState: 'mine', reviewExpiresAt: '2026-11-13T10:00:00.000Z' });
 
 function screenFor(cases: readonly OperatorCase[], handlers: Partial<{ onReview: jest.Mock; onResolve: jest.Mock; onRefresh: jest.Mock }> = {}, state: { loaded?: boolean; failure?: string | null } = {}) {
   return <OperatorEscalationsScreen
@@ -75,7 +76,7 @@ test('an open case shows the report, the worker and the place, and only offers t
 test('a case in review resolves with the note the operator wrote', async () => {
   const onResolve = jest.fn().mockResolvedValue(undefined);
   await render(screenFor([reviewing], { onResolve }));
-  expect(screen.getByText('Đang xem xét')).toBeTruthy();
+  expect(screen.getByText('Bạn đang xem xét')).toBeTruthy();
   expect(screen.queryByLabelText('Nhận xem xét sự cố Chập điện phòng khách')).toBeNull();
   await fireEvent.changeText(screen.getByLabelText('Ghi chú gửi khách và thợ cho Chập điện phòng khách'), 'Thợ sẽ bắt đầu ngay');
   await fireEvent.press(screen.getByLabelText('Cho thợ tiếp tục Chập điện phòng khách'));
@@ -132,7 +133,7 @@ test('the section takes a case into review and reloads the queue', async () => {
   await render(<OperatorEscalationsSection onBack={() => undefined} />);
   await fireEvent.press(await screen.findByLabelText('Nhận xem xét sự cố Chập điện phòng khách'));
   await waitFor(() => expect(reviewOperatorCase).toHaveBeenCalledWith('operator-1', 'e1', expect.stringMatching(/^00000000-0000-4000-8000-\d{12}$/), expect.any(AbortSignal)));
-  expect(await screen.findByText('Đang xem xét')).toBeTruthy();
+  expect(await screen.findByText('Bạn đang xem xét')).toBeTruthy();
   expect(readOperatorCases).toHaveBeenCalledTimes(2);
 });
 
@@ -142,4 +143,24 @@ test('an account that is not an operator sees the refusal and no cases', async (
   expect(await screen.findByText('Không mở được hàng đợi')).toBeTruthy();
   expect(screen.getByText('Thao tác này không khả dụng cho tài khoản hoặc mục này.')).toBeTruthy();
   expect(screen.queryByText('Chập điện phòng khách')).toBeNull();
+});
+
+test('a case another operator holds offers no action and says when it can be taken over', async () => {
+  const held = openCase({ status: 'reviewing', reviewedAt: '2026-11-13T09:45:00.000Z', reviewState: 'held', reviewExpiresAt: '2026-11-13T10:15:00.000Z' });
+  await render(screenFor([held]));
+  expect(screen.getByText('Người khác đang xem xét')).toBeTruthy();
+  expect(screen.getByText(/tiếp quản sau khoảng 15 phút/)).toBeTruthy();
+  expect(screen.queryByLabelText('Cho thợ tiếp tục Chập điện phòng khách')).toBeNull();
+  expect(screen.queryByLabelText('Tiếp quản sự cố Chập điện phòng khách')).toBeNull();
+  expect(screen.queryByLabelText('Nhận xem xét sự cố Chập điện phòng khách')).toBeNull();
+});
+
+test('a review that timed out can be taken over and nothing else', async () => {
+  const onReview = jest.fn().mockResolvedValue(undefined);
+  const stale = openCase({ status: 'reviewing', reviewedAt: '2026-11-13T08:00:00.000Z', reviewState: 'stale', reviewExpiresAt: '2026-11-13T08:30:00.000Z', takeoverCount: 1 });
+  await render(screenFor([stale], { onReview }));
+  expect(screen.getByText('Chờ tiếp quản')).toBeTruthy();
+  expect(screen.queryByLabelText('Cho thợ tiếp tục Chập điện phòng khách')).toBeNull();
+  await fireEvent.press(screen.getByLabelText('Tiếp quản sự cố Chập điện phòng khách'));
+  await waitFor(() => expect(onReview).toHaveBeenCalledWith(expect.objectContaining({ escalationId: 'e1', reviewState: 'stale' })));
 });

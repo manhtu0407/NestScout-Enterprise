@@ -463,14 +463,14 @@ isOneToOne: false
                   ]
                 },"service_job_escalations": {
                   Row: {
-                    "created_at": string,"id": string,"job_id": string,"job_version": number,"kind": string,"note": string | null,"operation_key": string,"raised_by": string,"request_id": string,"resolution": string | null,"resolution_note": string | null,"resolve_key": string | null,"resolved_at": string | null,"resolved_by": string | null,"review_key": string | null,"reviewed_at": string | null,"reviewed_by": string | null,"status": string,"worker_id": string
+                    "created_at": string,"id": string,"job_id": string,"job_version": number,"kind": string,"note": string | null,"operation_key": string,"raised_by": string,"request_id": string,"resolution": string | null,"resolution_note": string | null,"resolve_key": string | null,"resolved_at": string | null,"resolved_by": string | null,"review_history": NonNullable<Json>,"review_key": string | null,"reviewed_at": string | null,"reviewed_by": string | null,"status": string,"takeover_count": number,"worker_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"id"?: string,"job_id": string,"job_version": number,"kind": string,"note"?: string | null,"operation_key": string,"raised_by": string,"request_id": string,"resolution"?: string | null,"resolution_note"?: string | null,"resolve_key"?: string | null,"resolved_at"?: string | null,"resolved_by"?: string | null,"review_key"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"status"?: string,"worker_id": string
+                    "created_at"?: string,"id"?: string,"job_id": string,"job_version": number,"kind": string,"note"?: string | null,"operation_key": string,"raised_by": string,"request_id": string,"resolution"?: string | null,"resolution_note"?: string | null,"resolve_key"?: string | null,"resolved_at"?: string | null,"resolved_by"?: string | null,"review_history"?: NonNullable<Json>,"review_key"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"status"?: string,"takeover_count"?: number,"worker_id": string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"job_id"?: string,"job_version"?: number,"kind"?: string,"note"?: string | null,"operation_key"?: string,"raised_by"?: string,"request_id"?: string,"resolution"?: string | null,"resolution_note"?: string | null,"resolve_key"?: string | null,"resolved_at"?: string | null,"resolved_by"?: string | null,"review_key"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"status"?: string,"worker_id"?: string
+                    "created_at"?: string,"id"?: string,"job_id"?: string,"job_version"?: number,"kind"?: string,"note"?: string | null,"operation_key"?: string,"raised_by"?: string,"request_id"?: string,"resolution"?: string | null,"resolution_note"?: string | null,"resolve_key"?: string | null,"resolved_at"?: string | null,"resolved_by"?: string | null,"review_history"?: NonNullable<Json>,"review_key"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"status"?: string,"takeover_count"?: number,"worker_id"?: string
                   }
                   Relationships: [
                     {
@@ -1015,9 +1015,14 @@ isOneToOne: false
 "open_service_aftercare":
 { Args: { "p_job_id": string,"p_key": string,"p_reason": string }; Returns: string
                            },
+"operator_access":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "expires_at": string,"open_cases": number
+            }[]
+                           },
 "operator_escalation_queue":
 { Args: Record<PropertyKey, never>; Returns: {
-              "created_at": string,"description": string,"escalation_id": string,"job_id": string,"job_stage": string,"kind": string,"location": string,"note": string,"request_id": string,"reviewed_at": string,"status": string,"worker_name": string
+              "created_at": string,"description": string,"escalation_id": string,"job_id": string,"job_stage": string,"kind": string,"location": string,"note": string,"request_id": string,"review_expires_at": string,"review_state": string,"reviewed_at": string,"status": string,"takeover_count": number,"worker_name": string
             }[]
                            },
 "pause_service_job":

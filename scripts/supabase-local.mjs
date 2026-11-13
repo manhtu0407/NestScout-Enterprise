@@ -109,6 +109,19 @@ export function validateLocalStatus(status, expectedRoot, branch, running = true
   return new URL('/mcp', api.url).href;
 }
 
+export function settleRunning(read, attempts = 5, pause = () => {}) {
+  let current = read();
+  for (let attempt = 1; attempt < attempts && current.lifecycle !== 'running'; attempt += 1) {
+    pause();
+    current = read();
+  }
+  return current;
+}
+
+export function liveContainers(inspected) {
+  return inspected.filter(container => container.State?.Running === true);
+}
+
 export function validateContainer(container, stackId) {
   requireLocal(container.Config.Labels['com.supabase.stack'] === stackId, 'Container belongs to another stack.');
   requireLocal(container.State.Running === true, 'Local container is not running.');
@@ -179,11 +192,18 @@ export function localRuntime() {
     }
   };
   const verify = () => {
-    const current = status();
+    const current = settleRunning(status, 5, () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000));
     const mcp = validateLocalStatus(current, realpathSync(root), branch);
     const ids = run('docker', ['ps', '--filter', `label=com.supabase.stack=${current.identity.id}`, '--format', '{{.ID}}']).trim();
     requireLocal(ids, 'Missing local containers.');
-    const containers = JSON.parse(run('docker', ['inspect', ...ids.split(/\s+/)]));
+    const containers = liveContainers(ids.split(/\s+/).flatMap(id => {
+      try {
+        return JSON.parse(run('docker', ['inspect', id]));
+      } catch (error) {
+        if (/No such (object|container)/i.test(String(error?.stderr ?? ''))) return [];
+        throw error;
+      }
+    }));
     for (const container of containers) validateContainer(container, current.identity.id);
     requireLocal(containers.some(container => container.Config.Labels['com.supabase.service'] === 'database'), 'Missing local database container.');
     return { id: current.identity.id, branch, mcp, endpoints: safeEndpoints(current.endpoints) };
@@ -212,7 +232,13 @@ export function localRuntime() {
     }
     const scoped = scopedLocalPilotEnvironment(parse(readFileSync(path.join(root, 'supabase/config.toml'), 'utf8')), settings);
     onStart();
-    runCli(['functions', 'serve', 'kael'], { ...environment, ...scoped });
+    try {
+      runCli(['functions', 'serve', 'kael'], { ...environment, ...scoped });
+    } catch (error) {
+      requireLocal(!/Standalone Functions instance \S+ is already active/.test(`${error?.stderr ?? ''}${error?.stdout ?? ''}`),
+        'A Kael Edge worker is already registered for this stack and is serving. An unauthenticated POST to /functions/v1/kael answering 401 means it is ready; stop the stack to replace it.');
+      throw error;
+    }
   };
   return { cli, status, verify, branch, stop, serveKael };
 }

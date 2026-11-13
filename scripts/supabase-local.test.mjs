@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'smol-toml';
-import { validateLocalConfig, scopedLocalPilotEnvironment, validateContainer, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock, validateLocalFiles, localEnvironment, safeDiagnostic, safeEndpoints, isMissingStack, databaseTestDiagnostic } from './supabase-local.mjs';
+import { validateLocalConfig, scopedLocalPilotEnvironment, validateContainer, liveContainers, settleRunning, validateLocalStatus, validateDockerEndpoint, redactDiagnostic, withLocalLock, validateLocalFiles, localEnvironment, safeDiagnostic, safeEndpoints, isMissingStack, databaseTestDiagnostic } from './supabase-local.mjs';
 import { localTools, safeToolResult } from './supabase-mcp.mjs';
 
 const config = parse(readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8'));
@@ -106,6 +106,14 @@ test('local pilot arming stops before opening a stack or accessing credentials',
   const result = spawnSync(process.execPath, [script, 'arm'], { encoding: 'utf8' });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /LOCAL_PILOT_OFFLINE/);
+});
+
+test('a lazy service that sleeps between listing and inspection is dropped, not reported as a failure', () => {
+  const running = { Config: { Labels: { 'com.supabase.stack': stackId, 'com.supabase.service': 'database' } }, State: { Running: true } };
+  const slept = { Config: { Labels: { 'com.supabase.stack': stackId, 'com.supabase.service': 'rest' } }, State: { Running: false } };
+  assert.deepEqual(liveContainers([running, slept]), [running]);
+  assert.deepEqual(liveContainers([slept]), []);
+  assert.deepEqual(liveContainers([{ Config: running.Config }]), []);
 });
 
 test('reject wrong container identity, stopped services and public Docker bindings', () => {
@@ -239,4 +247,18 @@ test('both clients retain identical project-scoped read-only MCP and safe local 
   assert.deepEqual(local.enabled_tools, localTools);
   assert.equal(local.default_tools_approval_mode, 'prompt');
   assert.deepEqual(claude.mcpServers.supabase_enterprise_local.args, local.args);
+});
+
+test('a stack that reports a transient lifecycle is re-read before verification fails', () => {
+  const readings = ['starting', 'starting', 'running'];
+  let reads = 0;
+  let pauses = 0;
+  const settled = settleRunning(() => ({ lifecycle: readings[reads++] }), 5, () => { pauses += 1; });
+  assert.equal(settled.lifecycle, 'running');
+  assert.equal(pauses, 2);
+  reads = 0;
+  const stuck = settleRunning(() => { reads += 1; return { lifecycle: 'stopped' }; }, 3, () => {});
+  assert.equal(stuck.lifecycle, 'stopped');
+  assert.equal(reads, 3);
+  assert.throws(() => validateLocalStatus({ ...status, lifecycle: stuck.lifecycle }, status.identity.project_root, status.identity.branch_context), /Start the local stack first/);
 });

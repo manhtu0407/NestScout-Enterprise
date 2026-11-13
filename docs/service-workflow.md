@@ -483,7 +483,7 @@ released job are archived with it. After arrival the customer never replaces the
 worker automatically. `escalate_service_job` records one report per job
 (`service_job_escalations`), notifies the worker with `job_escalated`, leaves the
 job and its stage untouched and is idempotent on a key; a second call reports
-`already_escalated`. An active `local_fixture` operator receives the report as an
+`already_escalated`. An active beta operator receives the report as an
 `escalation_received` notification and handles it (see the next section). All four timers are global settings in
 `nestscout_private.auto_dispatch_settings`. Both release paths are idempotent on
 a key and refuse a stale job version. A release keeps the
@@ -497,17 +497,34 @@ other side (`job_released` to the customer, `job_withdrawn` to the worker).
 request to another worker is a customer decision in the Requests screen, behind
 a slide to confirm.
 
-Escalation handling uses the existing fixture operator: the same
-`nestscout_private.fixture_operators` rows and `lock_fixture_operator` /
-`require_fixture_operator` checks that gate fixture quotes and invitations, so it
-is a local fixture capability and not a production staffing role. A report moves
-through `open`, `reviewing` and `resolved` on `service_job_escalations`:
+Escalation handling is done by a beta operator. The capability is a row in
+`nestscout_private.operator_grants` (basis `beta_program`): a named account, a
+reference to the owner's authorization, an expiry within 90 days of the grant and
+an optional revocation. Only the database owner can write it, through
+`nestscout_private.grant_beta_operator(user, reference, days)` and
+`revoke_beta_operator(user, reference)` run from the SQL editor; no client or
+trusted-server role can grant it, an anonymous account cannot hold it, and every
+grant or revocation is appended to `operator_grant_events`. The fixture operator
+rows that gate fixture quotes and invitations are a separate local capability
+and do not open the queue. An operator can never review or decide a case on a
+request they own or are assigned to. A report moves through `open`, `reviewing`
+and `resolved` on `service_job_escalations`:
 
 | Operation | Caller | Effect |
 | --- | --- | --- |
-| `operator_escalation_queue` | Active operator (read only) | Up to 100 unresolved reports, oldest first, with request text, location, worker name and job stage |
-| `review_service_escalation(id, key)` | Active operator | `open` becomes `reviewing` and records the reviewer; repeating it, or a second operator, gets `already_reviewing` (`already_resolved` once resolved) |
-| `resolve_service_escalation(id, resolution, note, key)` | Active operator; the case must be `reviewing` | `proceed` and `dismiss` only record the decision; `replace_worker` releases the job through `release_job` as role `operator` with reason `operator_decision`, archives its history in `service_job_releases` and opens a `worker_released` dispatch round |
+| `operator_access` | Any signed-in account | Zero rows unless the caller holds an active grant; otherwise the grant expiry and the number of unresolved cases, which drives the persistent entry. The entry is the "Xử lý sự cố" row under "Vận hành" on the "Tài khoản và đăng nhập" screen, reached from the "Hỗ trợ" group of the sidebar; accounts without a grant do not see it |
+| `operator_escalation_queue` | Active operator (read only) | Up to 100 unresolved reports, oldest first, with request text, location, worker name, job stage, `review_state` (`unclaimed`, `mine`, `held`, `stale`), review expiry and takeover count |
+| `review_service_escalation(id, key)` | Active operator | `open` becomes `reviewing` and records the reviewer. The holder repeating it with a new key renews the claim and gets `already_reviewing`; another operator gets `already_reviewing` while the claim is fresh and `taken_over` once it is stale; `already_resolved` once resolved |
+| `resolve_service_escalation(id, resolution, note, key)` | The operator who holds the review | `proceed` and `dismiss` only record the decision; `replace_worker` releases the job through `release_job` as role `operator` with reason `operator_decision`, archives its history in `service_job_releases` and opens a `worker_released` dispatch round. Another operator is refused with `review held by another operator` |
+
+A claim is stale when `auto_dispatch_settings.review_timeout_minutes` (default 30)
+has passed since it was taken or last renewed, or when its holder's grant has
+expired or been revoked. A takeover appends the previous holder, the reason
+(`timed_out` or `operator_unavailable`) and the new holder to `review_history`
+and increments `takeover_count`; the former holder can no longer resolve the case.
+While a claim is stale the participants see the case as `open` again, so the
+customer is never shown a review that nobody is doing. Nothing runs on a
+schedule: staleness is evaluated when the case is read or reviewed.
 
 The case row is locked first, then the job and the request, so concurrent
 decisions are serialised: one is recorded and the others report
@@ -516,10 +533,12 @@ stage` once the worker has started, and with `job has open changes` while a
 change request is pending; the case then stays in review. A decision notifies
 both participants once (`escalation_resolved`, with the operator note); a
 replacement tells the worker `job_withdrawn` instead. Participants read the
-case through RLS but not its reviewer, resolver or operation keys. The mobile
-app opens the queue from the operator's `escalation_received` notification
-(section `operator-escalations`); an account without an active operator row is
-refused and sees no cases.
+case through RLS but not its reviewer, resolver, history or operation keys. The
+mobile app shows an Operations entry, "Xử lý sự cố", in the account screen for
+an account with an active grant, and also opens the queue from the operator's
+`escalation_received` notification (section `operator-escalations`). An account
+without an active grant is refused and sees no cases. If the access check fails
+the entry is hidden rather than guessed.
 
 Worker capacity is enforced where a job is created. A worker's active jobs are
 those whose stage is not `submitted` or `completed`; `max_active_jobs_per_worker`

@@ -20,9 +20,11 @@ type Props = {
   onChangeMode: () => void;
   onSignOut?: () => void;
   onEditProfile?: () => void;
+  operatorCases?: number | null;
+  onOpenOperator?: () => void;
 };
 
-export function AccountScreen({ mode, profileName, avatarUri, phoneLabel, onBack, onSignIn, onChangeMode, onSignOut, onEditProfile }: Props) {
+export function AccountScreen({ mode, profileName, avatarUri, phoneLabel, onBack, onSignIn, onChangeMode, onSignOut, onEditProfile, operatorCases, onOpenOperator }: Props) {
   if (mode === 'guest') {
     return (
       <SupportShell title="Tài khoản và đăng nhập" onBack={onBack}>
@@ -69,6 +71,11 @@ export function AccountScreen({ mode, profileName, avatarUri, phoneLabel, onBack
           <SupportRow icon="user" title="Đổi vai trò" detail={modeLabel} onPress={onChangeMode} />
         </SupportCard>
       </SupportSection>
+      {operatorCases !== undefined && operatorCases !== null && onOpenOperator ? <SupportSection title="Vận hành">
+        <SupportCard>
+          <SupportRow icon="help" title="Xử lý sự cố" detail={operatorCases === 0 ? 'Không có sự cố nào đang chờ' : `${operatorCases} sự cố đang chờ`} onPress={onOpenOperator} />
+        </SupportCard>
+      </SupportSection> : null}
       <SupportSection>
         <SupportCard>
           <SupportRow icon="login" title="Đăng xuất" danger onPress={onSignOut} />

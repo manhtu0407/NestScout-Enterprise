@@ -28,7 +28,12 @@ const stageLabels: Record<JobStage, string> = {
   completed: 'Hoàn tất',
 };
 
-const statusLabels: Record<OperatorCase['status'], string> = { open: 'Chờ xem xét', reviewing: 'Đang xem xét' };
+const reviewLabels: Record<OperatorCase['reviewState'], string> = {
+  unclaimed: 'Chờ xem xét',
+  mine: 'Bạn đang xem xét',
+  held: 'Người khác đang xem xét',
+  stale: 'Chờ tiếp quản',
+};
 const defaultNote = 'Khách báo thợ đã đến nhưng chưa bắt đầu việc.';
 
 type CardProps = {
@@ -57,15 +62,17 @@ function OperatorCaseCard({ item, now, onReview, onResolve }: CardProps) {
 
   return <SupportSection title={item.description}>
     <SupportCard>
-      <SupportRow icon="help" title={statusLabels[item.status]} detail={`${item.note ?? defaultNote}\n${relativeTimeLabel(item.createdAt, now)}`} danger={item.status === 'open'} />
+      <SupportRow icon="help" title={reviewLabels[item.reviewState]} detail={`${item.note ?? defaultNote}\n${relativeTimeLabel(item.createdAt, now)}`} danger={item.reviewState === 'unclaimed' || item.reviewState === 'stale'} />
       <SupportRow icon="user" title={item.workerName ?? 'Thợ'} detail={item.jobStage === null ? undefined : stageLabels[item.jobStage]} />
       <SupportRow icon="pin" title={item.location} />
     </SupportCard>
     <View style={styles.actions}>
-      {item.status === 'open' ? (
-        <PressScale accessibilityRole="button" accessibilityLabel={`Nhận xem xét sự cố ${item.description}`} accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => run(() => onReview(item))} style={[supportStyles.primary, busy && styles.disabled]}>
-          <Text style={supportStyles.primaryLabel}>{busy ? 'Đang nhận…' : 'Nhận xem xét'}</Text>
+      {item.reviewState === 'unclaimed' || item.reviewState === 'stale' ? (
+        <PressScale accessibilityRole="button" accessibilityLabel={`${item.reviewState === 'stale' ? 'Tiếp quản' : 'Nhận xem xét'} sự cố ${item.description}`} accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => run(() => onReview(item))} style={[supportStyles.primary, busy && styles.disabled]}>
+          <Text style={supportStyles.primaryLabel}>{busy ? 'Đang nhận…' : item.reviewState === 'stale' ? 'Tiếp quản' : 'Nhận xem xét'}</Text>
         </PressScale>
+      ) : item.reviewState === 'held' ? (
+        <Text style={styles.caption}>{item.reviewExpiresAt === null ? 'Một người vận hành khác đang xử lý sự cố này.' : `Một người vận hành khác đang xử lý sự cố này. Bạn có thể tiếp quản sau khoảng ${Math.max(1, Math.ceil((Date.parse(item.reviewExpiresAt) - now.getTime()) / 60000))} phút nếu họ chưa xong.`}</Text>
       ) : replacing ? <>
         <Text style={styles.caption}>Đổi thợ khác? Thợ hiện tại sẽ được báo là không còn việc này và hệ thống mời thợ mới. Khách hàng được báo kết quả. Không thể hoàn tác.</Text>
         <SlideToConfirm key={attempt} label="Trượt để đổi thợ" accessibilityLabel={`Xác nhận đổi thợ cho ${item.description}`} disabled={busy} onConfirm={() => run(() => onResolve(item, 'replace_worker', note))} />

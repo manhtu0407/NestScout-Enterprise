@@ -35,7 +35,13 @@ and authenticated PostgreSQL knowledge RPC with synthetic identities, rolled
 back per query. It runs the same runtime with in-memory task/trace persistence;
 it does not claim real REST or persistent-runtime integration. Existing
 `db:mcp:test` supplies the separate Auth/REST and transaction regressions; start
-`npm run kael:serve` in a separate terminal before running that suite. PR #94's
+`npm run kael:serve` in a separate terminal before running that suite. The
+stack is started without an Edge worker, so the gateway answers 404 for
+`/functions/v1/kael` until `kael:serve` has run, and again after `db:stop` and
+`db:start`; an unauthenticated POST answering 401 means a worker is registered.
+Running `kael:serve` while one is registered reports that it is already serving
+and never needs a second launch. The suite fails fast with that instruction
+rather than with unrelated errors. PR #94's
 real Edge test must report `provider_unavailable`, with no provider credentials.
 Do not target a hosted database or seed an unrelated stack. `db:stop` stops only
 this branch's owned stack when finished.

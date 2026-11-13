@@ -174,7 +174,7 @@ repository migrations are pending, in this order: `add_dispatch_recovery_and_bud
    transaction each and take short table locks.
 3. Apply `add_dispatch_recovery_and_budgets`, then
    `add_job_release_and_worker_capacity`, then `add_stage_based_job_recovery`, then
-   `add_escalation_handling`. The
+   `add_escalation_handling`, then `add_beta_operator_and_review_recovery`. The
    second drops and recreates `get_dispatch_summary`, `dispatch_summary` and
    `dispatch_state` with two more columns (`can_reassign`, `reassign_at`) and the
    third recreates them again with four more (`job_stage`, `can_escalate`,
@@ -187,7 +187,11 @@ repository migrations are pending, in this order: `add_dispatch_recovery_and_bud
    status columns, the operator queue, review and resolve functions, the
    `operator` release role and the `escalation_received` and `escalation_resolved`
    notification kinds, and narrows participants' column access on
-   `service_job_escalations`. None of them is applied to the
+   `service_job_escalations`. The fifth adds `operator_grants` and its event log,
+   replaces the fixture operator check on the escalation functions with the grant
+   check, adds `operator_access`, the review timeout setting, takeover and review
+   history, and recreates `operator_escalation_queue` with three more columns and
+   `dispatch_state` so that a stale review reads as open. None of them is applied to the
    hosted project by any task in this repository; apply them only on the owner's
    instruction, after the mobile client that reads the new columns is built.
 4. Install `pg_cron` from the dashboard (an owner action that changes the project's
@@ -213,10 +217,15 @@ repository migrations are pending, in this order: `add_dispatch_recovery_and_bud
    after the stage window, a customer whose worker arrived but never started can
    report an incident after the arrival window and the worker is notified without
    losing the job, and a worker at the cap is refused. `get_advisors` must show no
-   new security finding. Escalations are handled by `local_fixture` operators in
-   `nestscout_private.fixture_operators`; no production operator basis exists. Before
-   any real launch the owner must decide who may hold that role and add the
-   authority basis, since the current check accepts only the local fixture.
+   new security finding. Escalations are handled by beta operators. No account holds the role after the
+   migration. The owner grants it from the SQL editor, for example
+   `select nestscout_private.grant_beta_operator('<user id>', '<authorization reference>', 30);`
+   (at most 90 days, a signed-in non-anonymous account) and removes it with
+   `select nestscout_private.revoke_beta_operator('<user id>', '<reference>');`.
+   Check holders with `select user_id, reference, expires_at, revoked_at from nestscout_private.operator_grants`
+   and the audit trail in `nestscout_private.operator_grant_events`. Decide
+   `review_timeout_minutes` (default 30) and who is on call; there is no
+   assignment, service level or paging beyond the in-app notification.
 
 Rollback: unschedule the sweeper with `select cron.unschedule('nestscout-dispatch-sweeper')`.
 The migrations are additive apart from the recreated summary functions. A release moves

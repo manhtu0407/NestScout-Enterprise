@@ -1111,6 +1111,8 @@ test('owned local Kael gateway uses authentic Auth sessions and real PostgreSQL;
     const serviceKey = status.env.SERVICE_ROLE_KEY;
     assert.ok(publicKey?.startsWith('sb_publishable_'));
     assert.ok(serviceKey?.startsWith('eyJ'));
+    const worker = await fetch(`${origin}/functions/v1/kael`, { method: 'POST', headers: { apikey: publicKey, 'content-type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(15000) });
+    assert.notEqual(worker.status, 404, 'No Kael Edge worker is registered for this stack. Run npm run kael:serve in a separate terminal; stopping or restarting the stack removes the worker.');
     const containers = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/);
     assert.equal(containers.length, 1);
     assert.match(containers[0], /^[a-f0-9]{12,64}$/);
@@ -2353,7 +2355,7 @@ function world(db, options) {
       const id = randomUUID();
       users.push(id);
       db.query(`insert into auth.users (id, aud, role) values ('${id}', 'authenticated', 'authenticated');
-        insert into nestscout_private.fixture_operators (user_id, basis, active) values ('${id}', 'local_fixture', true);`);
+        select nestscout_private.grant_beta_operator('${id}', 'race test operator', 30);`);
       return id;
     },
     request(customer) {
@@ -2387,7 +2389,8 @@ function world(db, options) {
             delete from public.service_requests where id in (${ids});`);
         }
         if (users.length > 0) {
-          db.query(`delete from nestscout_private.fixture_operators where user_id in (${list(users)});
+          db.query(`delete from nestscout_private.operator_grants where user_id in (${list(users)});
+            delete from nestscout_private.operator_grant_events where user_id in (${list(users)});
             delete from public.kael_autonomy where user_id in (${list(users)});
             delete from public.notifications where recipient_id in (${list(users)});
             delete from public.worker_public_profiles where worker_id in (${list(users)});
@@ -2795,27 +2798,66 @@ test('two operators reviewing the same case at once record one reviewer', { time
   });
 });
 
-test('two operators resolving the same case at once decide it exactly once and tell both participants once', { timeout: 240000 }, async () => {
+const staleSql = escalation => `update public.service_job_escalations set reviewed_at = clock_timestamp() - interval '31 minutes' where id='${escalation}';`;
+
+test('two operators racing to take over a timed out review record exactly one takeover', { timeout: 240000 }, async () => {
   await withLocalLock(async () => {
     const db = connect();
     const env = world(db, { max_invites: 1 });
     try {
       const customer = env.customer();
-      const { request, job, escalation } = stagedEscalation(db, env, customer);
+      const { escalation } = stagedEscalation(db, env, customer);
+      const holder = env.operator();
       const first = env.operator();
       const second = env.operator();
-      db.query(reviewSql(first, escalation));
-      const outcomes = await holdingEscalationLock(db, escalation, 4, [resolveSql(first, escalation, 'proceed'), resolveSql(second, escalation, 'dismiss')]);
+      db.query(reviewSql(holder, escalation));
+      db.query(staleSql(escalation));
+      const outcomes = await holdingEscalationLock(db, escalation, 4, [reviewSql(first, escalation), reviewSql(second, escalation)]);
       assert.ok(outcomes.every(outcome => outcome.code === 0));
       const results = outcomes.map(outcome => result(outcome.output)).sort();
-      assert.deepEqual(results, ['already_resolved', 'resolved'], 'One decision is recorded and the other operator is told');
-      const winner = outcomes[0] && result(outcomes[0].output) === 'resolved' ? 'proceed' : 'dismiss';
-      assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='resolved' and resolution='${winner}'`), 1, 'The recorded decision is the one that won');
-      assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='escalation_resolved'`), 2, 'The customer and the worker are each told once');
-      assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='arrived'`), 1, 'Neither decision touches the job');
-      raceOutcomes.push(`double_resolve winner=${winner}`);
+      assert.deepEqual(results, ['already_reviewing', 'taken_over'], 'One operator takes over and the other finds a fresh review');
+      assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='reviewing' and takeover_count=1 and jsonb_array_length(review_history)=1 and reviewed_by in ('${first}', '${second}')`), 1);
+      raceOutcomes.push(`double_takeover results=${results.join('+')}`);
     } finally {
       env.dispose();
+    }
+  });
+});
+
+test('the operator who lost a review and the one who took it over resolve at once and only the holder decides', { timeout: 240000 }, async () => {
+  await withLocalLock(async () => {
+    const db = connect();
+    for (const formerFirst of [true, false]) {
+      const env = world(db, { max_invites: 1 });
+      try {
+        const customer = env.customer();
+        const { request, job, escalation } = stagedEscalation(db, env, customer);
+        const former = env.operator();
+        const holder = env.operator();
+        db.query(reviewSql(former, escalation));
+        db.query(staleSql(escalation));
+        assert.equal(result(db.query(reviewSql(holder, escalation))), 'taken_over');
+        const lost = resolveSql(former, escalation, 'dismiss');
+        const kept = resolveSql(holder, escalation, 'proceed');
+        const outcomes = await holdingEscalationLock(db, escalation, 4, formerFirst ? [lost, kept] : [kept, lost]);
+        const lostOutcome = formerFirst ? outcomes[0] : outcomes[1];
+        const keptOutcome = formerFirst ? outcomes[1] : outcomes[0];
+        assert.equal(keptOutcome.code, 0, 'The holder always decides');
+        assert.equal(result(keptOutcome.output), 'resolved');
+        if (formerFirst) {
+          assert.notEqual(lostOutcome.code, 0);
+          assert.match(lostOutcome.errors, /review held by another operator/);
+        } else {
+          assert.equal(lostOutcome.code, 0);
+          assert.equal(result(lostOutcome.output), 'already_resolved');
+        }
+        assert.equal(env.count(`select 1 from public.service_job_escalations where id='${escalation}' and status='resolved' and resolution='proceed' and resolved_by='${holder}'`), 1, 'Only the holder decision is recorded');
+        assert.equal(env.count(`select 1 from public.notifications where request_id='${request.id}' and kind='escalation_resolved'`), 2, 'The customer and the worker are each told once');
+        assert.equal(env.count(`select 1 from public.service_jobs where id='${job.id}' and stage='arrived'`), 1, 'Neither decision touches the job');
+        raceOutcomes.push(`former_vs_holder first=${formerFirst ? 'former' : 'holder'} former=${lostOutcome.code === 0 ? 'already_resolved' : 'refused'}`);
+      } finally {
+        env.dispose();
+      }
     }
   });
 });
@@ -2829,10 +2871,9 @@ test('resolving with a replacement and with a continue at once end in exactly on
         const customer = env.customer();
         const { request, job, escalation } = stagedEscalation(db, env, customer);
         const first = env.operator();
-        const second = env.operator();
         db.query(reviewSql(first, escalation));
         const replace = resolveSql(first, escalation, 'replace_worker');
-        const proceed = resolveSql(second, escalation, 'proceed');
+        const proceed = resolveSql(first, escalation, 'proceed');
         const outcomes = await holdingEscalationLock(db, escalation, 4, replaceFirst ? [replace, proceed] : [proceed, replace]);
         assert.ok(outcomes.every(outcome => outcome.code === 0));
         const results = outcomes.map(outcome => result(outcome.output)).sort();
