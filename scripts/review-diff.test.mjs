@@ -187,6 +187,18 @@ test('risk classification escalates trust-boundary changes and preserves mandato
     ['Critical', 'supabase/functions/kael/index.ts'],
     ['Critical', 'services/kael-core/durable/src/tools.rs'],
     ['Critical', 'apps/mobile/src/features/access/mode/preferred-mode-store.ts'],
+    ['Critical', 'apps/mobile/src/features/access/auth/supabase-auth-gateway.ts'],
+    ['Critical', 'apps/mobile/src/lib/authenticated-rest.ts'],
+    ['Critical', 'apps/mobile/src/features/shared/account-compliance-repository.ts'],
+    ['Critical', 'apps/mobile/src/features/shared/service-request-repository.ts'],
+    ['Critical', 'apps/mobile/src/features/shared/dispatch-repository.ts'],
+    ['Critical', 'apps/mobile/src/features/shared/worker-payout-repository.ts'],
+    ['Critical', 'apps/mobile/src/features/horizon/worker-payout.ts'],
+    ['High', 'apps/mobile/src/features/client/service-requests.tsx'],
+    ['High', 'apps/mobile/src/features/horizon/service-intake-screen.tsx'],
+    ['High', 'apps/mobile/src/features/horizon/request-dispatch-panel.tsx'],
+    ['High', 'apps/mobile/src/features/horizon/worker-earnings-screen.tsx'],
+    ['High', 'apps/mobile/src/features/horizon/worker-payout-section.tsx'],
     ['Critical', '.github/workflows/ci.yml'],
     ['Critical', 'scripts/check-test-selection.mjs'],
     ['High', 'apps/mobile/eas.json'],
@@ -206,6 +218,9 @@ test('risk classification escalates trust-boundary changes and preserves mandato
     assert.ok(risk.verification.focused.length > 0, file);
   }
   assert.equal(review(defaultChange).risk.level, 'Medium');
+  const authorizationChange = review(api => api.write('apps/mobile/src/lib/format-total.ts', `${formatTotal}export const sessionPrincipal = 'customer';\n`));
+  assert.equal(authorizationChange.risk.level, 'Critical');
+  assert.deepEqual(authorizationChange.risk.triggers, ['apps/mobile/src/lib/format-total.ts']);
   const authorization = classifyRisk([{ path: 'apps/mobile/src/lib/permissions.ts' }], ['apps/mobile/src/lib/permissions.ts']);
   assert.equal(authorization.level, 'Critical');
 });

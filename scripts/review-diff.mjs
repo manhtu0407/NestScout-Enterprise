@@ -30,6 +30,7 @@ const highRisk = [
   /^docs\/operations\.md$/,
   /^apps\/mobile\/src\/app\//,
   /^apps\/mobile\/src\/features\/access\//,
+  /^apps\/mobile\/src\/features\/(?:client\/service-requests|horizon\/(?:request-dispatch-panel|requests-screen|service-intake-screen|worker-jobs-screen|worker-earnings-screen|worker-payout-section))\.tsx?$/,
   /^apps\/mobile\/src\/lib\/(?:config|chunked-storage|supabase-client|device-storage)\.ts$/,
   /(?:^|\/)(?:jest|babel|metro|eslint|knip|stryker|vitest|playwright)\.config\.[^/]+$/,
   /(?:^|\/)\.?knip\.(?:jsonc?|[cm]?[jt]s)$/,
@@ -43,6 +44,9 @@ const criticalRisk = [
   /^\.github\/workflows\//,
   /^\.githooks\//,
   /^scripts\/(?:check|verify|scan)(?:[-./]|$)/,
+  /^apps\/mobile\/src\/lib\/authenticated-rest\.ts$/,
+  /^apps\/mobile\/src\/features\/shared\/(?:account-compliance-repository|dispatch-repository|service-request-repository|worker-payout-repository)\.ts$/,
+  /^apps\/mobile\/src\/features\/horizon\/worker-payout\.ts$/,
 ];
 const behavioralRisk = /\.(?:[cm]?[jt]sx?|rs|py|go|sql|toml|ya?ml|jsonc?)$/i;
 const nonBehavioralRisk = /\.(?:md|mdx|txt|png|jpe?g|svg|gif|webp|woff2?|ttf|otf)$/i;
@@ -75,7 +79,7 @@ export function classifyRisk(files, authorizationPaths = []) {
     },
   };
 }
-const authorizationWord = /^(?:roles?|capabilit(?:y|ies)|permissions?|grants?|authori[sz]\w*|authenticat\w*|polic(?:y|ies)|rls|credentials?|secrets?)$/;
+const authorizationWord = /^(?:roles?|capabilit(?:y|ies)|permissions?|grants?|authori[sz]\w*|auth|authenticat\w*|polic(?:y|ies)|rls|credentials?|secrets?|sessions?|identit(?:y|ies)|principals?|subjects?|tenants?|memberships?|ownership|owners?|actors?|tokens?|jwt|bearer)$/;
 const authorizationTerm = text => text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).find(word => authorizationWord.test(word));
 const configurationFile = /(?:^|\/)(?:(?:jest|vitest|playwright)\.config\.[^/]+|\.mocharc[^/]*)$/;
 const guardedScript = /^(?:check|test|lint|typecheck|scan|verify)(?::|$)/;
