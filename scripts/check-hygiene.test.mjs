@@ -97,7 +97,7 @@ function checkArtifact(file, content) {
 }
 
 test('existing naming categories and exact required/generated/legal filenames pass', () => {
-  for (const file of ['AGENTS.md', 'README.md', 'LICENSE', 'AUTHORS', 'CONTRIBUTORS.md',
+  for (const file of ['AGENTS.md', 'README.md', 'ROOM.md', 'ARCHITECTURE.md', 'LICENSE', 'AUTHORS', 'CONTRIBUTORS.md',
     '.github/PULL_REQUEST_TEMPLATE.md', '.github/ISSUE_TEMPLATE/feature.yml', '.github/workflows/ci.yml',
     'scripts/check-tools.mjs', 'scripts/check-hygiene.test.mjs', 'scripts/supabase-mcp.integration.test.mjs',
     'scripts/tools.json', 'docs/claude.architecture.md', 'docs/agents.design.md', 'docs/setup-evidence.md',
@@ -148,7 +148,7 @@ test('exactly one container recipe is approved and every other Dockerfile path f
 });
 
 test('unknown architecture, case variants, scratch names, archives and unsafe paths fail', () => {
-  for (const file of ['Scripts/tool.mjs', 'scripts/CheckTools.mjs', 'scripts/check_tools.mjs', 'docs/New Guide.md',
+  for (const file of ['room.md', 'architecture.md', 'Room.md', 'Architecture.md', 'Scripts/tool.mjs', 'scripts/CheckTools.mjs', 'scripts/check_tools.mjs', 'docs/New Guide.md',
     '.github/workflows/CI.yml', 'supabase/migrations/001_example.sql', 'scripts/example.js', 'src/App.tsx',
     'docs/REPORT.md', 'docs/plan-feature.md', 'docs/notes.md', 'report.zip', 'docs/design.PDF',
     'scripts/../example.mjs', '/scripts/example.mjs', 'scripts\\example.mjs', 'docs/bad\nname.md',

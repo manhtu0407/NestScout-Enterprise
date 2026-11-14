@@ -1,111 +1,68 @@
-# NestScout Horizon
+# NestScout
 
-NestScout Horizon is a home-services product in development, starting with
-apartment residents in Ho Chi Minh City, Vietnam, who need help understanding
-a problem at home, choosing suitable professionals and agreeing on clear pricing.
+<!-- markdownlint-disable MD033 -->
+<p align="center">
+  <img src="apps/mobile/assets/horizon/kael-expression-idle.png" width="72" alt="Kael — idle">
+  <img src="apps/mobile/assets/horizon/kael-expression-thinking.png" width="72" alt="Kael — thinking">
+  <img src="apps/mobile/assets/horizon/kael-expression-focus.png" width="72" alt="Kael — focus">
+  <img src="apps/mobile/assets/horizon/kael-expression-alert.png" width="72" alt="Kael — alert">
+  <img src="apps/mobile/assets/horizon/kael-expression-calm.png" width="72" alt="Kael — calm">
+  <img src="apps/mobile/assets/horizon/kael-expression-happy.png" width="72" alt="Kael — happy">
+  <img src="apps/mobile/assets/horizon/kael-expression-heart.png" width="72" alt="Kael — heart">
+  <img src="apps/mobile/assets/horizon/kael-login-auth-state.png" width="72" alt="Kael — account sign-in">
+  <img src="apps/mobile/assets/horizon/kael-login-otp-confirm-state.png" width="72" alt="Kael — OTP confirmation">
+</p>
+<!-- markdownlint-enable MD033 -->
 
-> **Development status: engineering foundation, pre-application.** The planned
-> experience below is not yet available as a working product.
+**Clearer choices for the services that make home feel right.**
 
-## Why we exist
+Home services designed around clarity, trust and informed decisions.
 
-Something at home feels wrong, but knowing what to book is another matter.
-Rigid service categories can miss the problem. Provider information is scattered,
-trust is difficult to assess, and an unclear quote leaves people unsure what
-they are agreeing to.
+---
 
-The founder's starting point was frustration with asking for the right home
-service, finding trustworthy help and judging reasonable, transparent pricing.
-The aim is straightforward: help people understand their needs and make informed
-choices before work begins.
+## Care at home starts with clarity
 
-We are building toward an AI-assisted experience where customers describe their
-needs naturally, compare understandable options and work with suitable service
-professionals while keeping control of decisions. The intended emotional journey
-is to feel understood, informed, reassured and confident enough to return.
-That is a brand intention, not a measured customer outcome.
+The hard part is not always finding a service category. It is knowing what to ask for, who may be able to help, and what a quote actually includes.
 
-## People and planned services
+**NestScout is an AI-assisted home-services product designed for apartment residents in Ho Chi Minh City, Vietnam.** It brings Customers, Workers and Kael into one understandable journey: describe the need, explore suitable help, and agree on clear terms before work begins.
 
-The initial focus is apartment residents in Ho Chi Minh City. The experience is
-being planned around three groups:
+## One experience, three roles
 
-- Customers who need help explaining a problem and understanding their options.
-- Service professionals, or workers, who need clear requests, agreed scope and
-  a record of completed work.
-- Human service operators who would help resolve uncertainty and support cases
-  that need judgment. Operator and admin interfaces remain future direction.
+| Customer | Worker | Kael |
+| --- | --- | --- |
+| Describe a home-service need in everyday language, understand the options, and stay in control of decisions. | Receive clearer requests, set out the proposed scope, and keep service updates and completed work understandable. | Help clarify what is needed, surface relevant service context, and make uncertainty visible while people decide. |
 
-The six planned service groups are home cleaning; electrical repair; plumbing
-repair; air-conditioning; sofa, mattress, curtain and carpet care; and minor
-repair or installation. These are intended categories, not live service listings.
+Kael is NestScout’s Service Operator: an assistant for understanding and coordinating a service request. People remain responsible for decisions, and service terms should be clear to both sides.
 
-## The planned customer journey
+## Services for everyday home needs
 
-This is the intended experience, subject to detailed workflow design:
+- **Home cleaning**
+- **Electrical repair**
+- **Plumbing repair**
+- **Air-conditioning**
+- **Sofa, mattress, curtain and carpet care**
+- **Minor repair and installation**
 
-1. Describe the request in everyday language.
-2. Clarify needs with Kael, including what remains uncertain.
-3. Consider understandable service options and, where evidence supports them,
-   price estimates with a clear basis and limitations.
-4. Confirm the next step and proposed worker before an assignment proceeds.
-5. Follow understandable progress and approve explained scope or price changes
-   before additional work proceeds.
-6. Receive clear completion records and a route to human support if questions
-   or disputes remain.
+## Built around the essentials
 
-## Kael's planned role
+Expo · React Native · TypeScript · Supabase · PostgreSQL · Rust
 
-Kael Service Operator is the planned AI service operator for interpreting needs
-and supporting coordination. It is not deployed, and no Kael runtime is present
-in this repository. Detailed workflows, tools and permissions remain pending.
+## Explore NestScout
 
-The design requires Kael to acknowledge missing evidence and never invent prices
-or worker availability. Consequential actions would require human approval and
-backend authorization. These are requirements for implementation, not safeguards
-already operating in a live service.
+### Product
 
-## Trust, transparency and control
+- [Product vision and knowledge hub](ROOM.md)
+- [Service workflow](docs/service-workflow.md)
 
-The product should make uncertainty visible, explain what a quote covers and
-keep customers involved when circumstances change. It should distinguish an
-estimate from an agreed price and make consent understandable.
+### Technology
 
-Worker ratings, prices, availability and service metrics must come from real
-evidence. We do not promise that every worker is verified or every price is
-guaranteed. Accountable service history, including agreed changes and completion
-records, is an intended foundation for support and dispute resolution.
+- [Technical architecture](ARCHITECTURE.md)
+- [Mobile application](docs/mobile-application.md)
+- [Kael intelligence](docs/kael-intelligence.md)
+- [Supabase development](docs/supabase-development.md)
+- [Developer guide](docs/development-guide.md)
 
-## A sustainable service business
+### Project
 
-The proposed business model is a platform fee on successfully completed service
-work. Its value should come from reducing confusion and helping both sides reach
-a clear agreement.
-
-The longer-term ambition is to serve more of Vietnam and potentially Asia.
-Expansion would depend on earned trust and service quality in the initial market.
-
-## Current repository and technical direction
-
-The repository remains `manhtu0407/NestScout-Enterprise`. It currently contains
-Node.js 24/npm engineering tooling, local Supabase development tooling, generated
-database types and tests, repository verification, security and governance checks,
-and documentation. It does not yet include a product app, deployed mobile product,
-live bookings, production payments or a Kael runtime.
-
-Expo/React Native, TypeScript and Supabase are the confirmed technical direction,
-with iOS first. Application structure, detailed workflows and release setup are
-still pending; this is not evidence of Android or TestFlight readiness.
-
-## Explore the project
-
-- [Architecture and product direction](docs/architecture.md)
-- [Developer setup and tooling](docs/development-guide.md)
-- [Contributing and engineering questions](CONTRIBUTING.md)
-- [Private security reporting](SECURITY.md)
-- [Engineering policy for coding agents](AGENTS.md)
-
-## Visibility and licensing
-
-This repository is publicly visible, but no software license has been selected.
-Visibility alone does not grant permission to reuse or redistribute its contents.
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
