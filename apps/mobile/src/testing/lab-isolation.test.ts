@@ -21,7 +21,7 @@ test('real application code never imports or references the Kael design lab', ()
   expect(offenders).toEqual([]);
 });
 
-test('the authenticated route tree has no lab entry point and only the existing preview flags gate showcases', () => {
+test('the authenticated route tree has no lab or showcase entry point', () => {
   const layout = readFileSync(path.join(src, 'app', '_layout.tsx'), 'utf8');
   expect(layout).not.toMatch(/KAEL_AGENTIC_LAB|KaelAgenticLab/);
   const otherRoutes = sourceFiles(path.join(src, 'app')).filter(file => path.basename(file) !== '_layout.tsx');

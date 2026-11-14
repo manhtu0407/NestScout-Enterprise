@@ -136,9 +136,6 @@ export const horizonColors = {
       { offset: 1, color: '#FFFFFF', opacity: 0.95 },
     ],
   },
-  kaelMotionLab: {
-    title: '#5B6672', chip: '#F2F4F7', chipActive: '#141820', chipText: '#141820', chipTextActive: '#FFFFFF', card: '#F7F8FA',
-  },
   affectLab: {
     accent: '#2F6BFF', accentSoft: 'rgba(47,107,255,0.14)', surface: '#FFFFFF', border: '#E3E7EC', text: '#141820', muted: '#5B6672', faint: '#9AA3AF',
     error: '#D4322C', errorFill: 'rgba(212,50,44,0.08)', success: '#0E9E8E', successFill: 'rgba(14,158,142,0.12)', track: '#EEF1F4', chip: '#F2F4F7',
@@ -158,13 +155,8 @@ export const horizonColors = {
     sourceTints: ['#FFE1D6', '#DCE8FB', '#E8DFF8', '#DDF3E4', '#FFEFC9'],
     avatars: ['#FDE2E4', '#DCE8FB', '#DDF3E4', '#FFEFC9', '#E8DFF8'],
   },
-  kaelWorkflowLab: {
-    bg: '#EEF1F4', panel: '#FFFFFF', border: '#E3E7EC', text: '#141820', muted: '#5B6672', active: '#141820', activeText: '#FFFFFF',
-    ok: '#0E9E8E', error: '#D4322C', pending: '#9AA3AF', frame: '#0B0F14', logBg: '#0B0F14', logText: '#D5D9E0', logError: '#FF8A84', laneCustomer: '#0E9E8E', laneWorker: '#B26A00', laneDesign: '#2F6BFF', laneKobra: '#7A4DFF',
-  },
   kaelMotion: {
     shimmerBase: '#7C7C7C', shimmerHighlight: '#0D0D0D',
-    matrixBase: '#D5D9E0', matrixActive: '#141820',
     orbDot: '#141820', orbCore: '#141820', orbRest: '#9AA3AF',
     noteText: '#4A5260',
     spinnerTrack: '#E4E7EC', spinnerArc: '#141820', spinnerDone: '#141820', spinnerCheck: '#FFFFFF',
@@ -258,6 +250,14 @@ export const horizonColors = {
     scrim: 'rgba(0,0,0,0.06)', menuSurface: '#FFFFFF', menuBorder: 'rgba(60,60,67,0.12)', menuShadow: '0 10px 30px rgba(11,15,20,0.16)',
     rowActive: 'rgba(118,118,128,0.12)', iconSurface: '#EEEFF1', icon: '#1C2127', title: '#0B0F14', detail: '#6B7078',
     check: '#0E9E8E', triggerText: '#4A525C', accentText: '#0A7F72', askSurface: 'rgba(118,118,128,0.14)', autoSurface: 'rgba(14,158,142,0.14)', failure: '#B3261E',
+  },
+  onboarding: {
+    scrim: 'rgba(11,15,20,0.58)', ringBorder: 'rgba(255,255,255,0.94)',
+    cardSurface: '#FFFFFF', cardBorder: 'rgba(60,60,67,0.12)', cardShadow: '0 18px 48px rgba(11,15,20,0.30)',
+    label: '#6B7683', title: '#0B0F14', body: '#4A525C', skip: '#6B7683',
+    noteSurface: '#FDEEE6', noteText: '#8A3B12',
+    primaryFill: '#91E5D6', primaryText: '#0B0F14', ghostFill: 'rgba(118,118,128,0.12)', ghostText: '#0B0F14', link: '#0A6F64',
+    dot: 'rgba(60,60,67,0.18)', dotActive: '#0B0F14',
   },
   chatHistory: {
     scrim: 'rgba(0,0,0,0.06)', menuSurface: '#FFFFFF', menuBorder: 'rgba(60,60,67,0.12)', menuShadow: '0 10px 30px rgba(11,15,20,0.16)',

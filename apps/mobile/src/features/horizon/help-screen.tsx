@@ -15,9 +15,9 @@ const webInputStyle = { outlineStyle: 'solid', outlineWidth: 0 } as const;
 
 type SupportOutcome = 'idle' | 'sending' | 'sent' | 'failed';
 
-type Props = { onBack: () => void; onAskKael?: () => void; onSubmitSupport?: (key: string, subject: string, body: string) => Promise<void> };
+type Props = { onBack: () => void; onAskKael?: () => void; onReplayTour?: () => void; onSubmitSupport?: (key: string, subject: string, body: string) => Promise<void> };
 
-export function HelpScreen({ onBack, onAskKael, onSubmitSupport }: Props) {
+export function HelpScreen({ onBack, onAskKael, onReplayTour, onSubmitSupport }: Props) {
   const [query, setQuery] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
@@ -86,6 +86,13 @@ export function HelpScreen({ onBack, onAskKael, onSubmitSupport }: Props) {
           })}
         </View>
       </SupportSection>
+      {onReplayTour ? (
+        <SupportSection title="Làm quen">
+          <SupportCard>
+            <SupportRow icon="home" title="Xem lại hướng dẫn làm quen" detail="Giới thiệu nhanh cách dùng NestScout và Kael" onPress={onReplayTour} />
+          </SupportCard>
+        </SupportSection>
+      ) : null}
       {onSubmitSupport ? (
         <SupportSection title="Gửi yêu cầu hỗ trợ">
           <View style={styles.form}>

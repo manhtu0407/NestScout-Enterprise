@@ -32,3 +32,14 @@ test('regenerate and read-aloud run their handlers', async () => {
   expect(onSpeak).toHaveBeenCalledWith(true);
   expect(screen.getByText('Thiết bị chưa đọc được câu trả lời này.')).toBeTruthy();
 });
+
+test('the select-passage action appears only when it can be handled and reports its state', async () => {
+  const onSelect = jest.fn();
+  const view = await render(<MessageActions text="Trả lời" onSelect={onSelect}/>);
+  await fireEvent.press(screen.getByLabelText('Chọn đoạn để hỏi tiếp'));
+  expect(onSelect).toHaveBeenCalledTimes(1);
+  await view.rerender(<MessageActions text="Trả lời" onSelect={onSelect} selecting/>);
+  expect(screen.getByLabelText('Đóng chọn đoạn')).toBeTruthy();
+  await view.rerender(<MessageActions text="Trả lời"/>);
+  expect(screen.queryByLabelText('Chọn đoạn để hỏi tiếp')).toBeNull();
+});

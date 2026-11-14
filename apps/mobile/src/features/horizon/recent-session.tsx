@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
@@ -18,6 +18,20 @@ type Props = { session: RecentSession; active?: boolean; onPress: () => void; on
 export function RecentSessionRow({ session, active = false, onPress, onMore, onTogglePin }: Props) {
   const { reduceMotion } = useGlassAccessibility();
   const [hovered, setHovered] = useState(false);
+  const release = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelRelease = () => {
+    if (release.current !== null) clearTimeout(release.current);
+    release.current = null;
+  };
+  const hoverIn = () => {
+    cancelRelease();
+    setHovered(true);
+  };
+  const hoverOut = () => {
+    cancelRelease();
+    release.current = setTimeout(() => setHovered(false), metrics.hoverRelease);
+  };
+  useEffect(() => cancelRelease, []);
   const [focused, setFocused] = useState(false);
   const revealed = active || hovered || focused;
   const [reveal] = useState(() => new Animated.Value(revealed ? 1 : 0));
@@ -29,7 +43,7 @@ export function RecentSessionRow({ session, active = false, onPress, onMore, onT
   const busy = session.phase !== null && ['busy', 'normal'].includes(findKaelPhaseEntry(session.phase).tone);
   const thinking = session.phase !== null && isKaelThinking(session.phase);
   const subtitle = busy && session.phase ? kaelPhaseLabels[session.phase] : session.preview;
-  return <Pressable accessible={false} focusable={false} onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)} style={[styles.row, active && styles.active]}>
+  return <Pressable accessible={false} focusable={false} onHoverIn={hoverIn} onHoverOut={hoverOut} style={[styles.row, active && styles.active]}>
     <PressScale wrapperStyle={styles.mainWrap} accessibilityRole="button" accessibilityLabel={`${session.title}, ${subtitle}, ${session.timeLabel}`} accessibilityState={{ selected: active }} onPress={onPress} onLongPress={onMore} style={styles.main}>
       <Text numberOfLines={1} style={styles.title}>{session.title}</Text>
       {thinking

@@ -3,7 +3,7 @@ import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
 import { useGlassAccessibility } from '@/features/shared';
-import { matrixStops } from './kael-matrix-loader';
+import { matrixStops } from './kael-orb-stops';
 import type { KaelPhase } from './kael-phase';
 
 const metrics = horizonLayout.kaelMotion;

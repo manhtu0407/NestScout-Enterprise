@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { requestOnboardingReplay } from '@/features/onboarding';
 import { Icon } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
 import { horizonColors } from '@/theme/palette';
@@ -18,6 +19,14 @@ export function useAskKael(): (prompt: string, options?: { fresh?: boolean }) =>
   const router = useRouter();
   return (prompt, options) => {
     handOffToKael(prompt, options);
+    router.dismissTo('/');
+  };
+}
+
+function useReplayOnboarding(): () => void {
+  const router = useRouter();
+  return () => {
+    requestOnboardingReplay();
     router.dismissTo('/');
   };
 }
@@ -51,6 +60,7 @@ export function SectionRoute() {
   const navigate = useCustomerNavigation();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const askKael = useAskKael();
+  const replayTour = useReplayOnboarding();
   const title = (id && screenTitles[id]) ?? '';
   if (id === 'profile') {
     return (
@@ -64,7 +74,7 @@ export function SectionRoute() {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <StatusBar style="dark" />
-        <CustomerSection id={id} onBack={() => router.back()} onNavigate={navigate} onOpenTarget={target => router.push({ pathname: '/section', params: { id: target } })} onAskKael={askKael} />
+        <CustomerSection id={id} onBack={() => router.back()} onNavigate={navigate} onOpenTarget={target => router.push({ pathname: '/section', params: { id: target } })} onAskKael={askKael} onReplayTour={replayTour} />
       </SafeAreaView>
     );
   }

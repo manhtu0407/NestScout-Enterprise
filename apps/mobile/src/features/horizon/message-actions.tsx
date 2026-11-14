@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ChevronLeft, ChevronRight, Check, Copy, RefreshCw, ThumbsDown, ThumbsUp, Volume2 } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Check, Copy, RefreshCw, TextSelect, ThumbsDown, ThumbsUp, Volume2 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { useGlassAccessibility } from '@/features/shared';
 import { horizonLayout } from '@/theme/layout';
@@ -32,6 +32,8 @@ type Props = {
   speaking?: boolean;
   onSpeak?: (play: boolean) => void;
   speechFailed?: boolean;
+  onSelect?: () => void;
+  selecting?: boolean;
 };
 
 function useTimedFlag(duration: number): [boolean, () => void] {
@@ -99,7 +101,7 @@ function Spinning({ spinning, children }: { spinning: boolean; children: ReactNo
   return <Animated.View style={{ transform: [{ rotate: angle.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }}>{children}</Animated.View>;
 }
 
-export function MessageActions({ text, versions, version = 0, onVersionChange, onRegenerate, regenerating = false, onFeedback, onCopy, speaking = false, onSpeak, speechFailed = false }: Props) {
+export function MessageActions({ text, versions, version = 0, onVersionChange, onRegenerate, regenerating = false, onFeedback, onCopy, speaking = false, onSpeak, speechFailed = false, onSelect, selecting = false }: Props) {
   const [copied, markCopied] = useTimedFlag(1400);
   const [feedback, setFeedback] = useState<FeedbackKind | null>(null);
   const [reasonOpen, setReasonOpen] = useState(false);
@@ -149,6 +151,9 @@ export function MessageActions({ text, versions, version = 0, onVersionChange, o
       {onFeedback && <RatingButton kind="down" label="Câu trả lời chưa tốt" rating={feedback} onRate={rate} locked={false}/>}
       {onSpeak && <ActionButton label={speaking ? 'Dừng đọc' : 'Đọc to'} pressed={speaking} onPress={() => onSpeak(!speaking)}>
         {speaking ? <Equalizer/> : <Volume2 size={metrics.actionIcon} color={colors.muted}/>}
+      </ActionButton>}
+      {onSelect && <ActionButton label={selecting ? 'Đóng chọn đoạn' : 'Chọn đoạn để hỏi tiếp'} pressed={selecting} onPress={onSelect}>
+        <TextSelect size={metrics.actionIcon} color={selecting ? colors.accent : colors.muted}/>
       </ActionButton>}
     </View>
     {reasonOpen && <View style={styles.reasons}>

@@ -83,6 +83,6 @@ const styles = StyleSheet.create({
   wrap: { gap: metrics.noteGap },
   field: { height: metrics.fieldHeight, borderRadius: metrics.fieldRadius, borderWidth: metrics.fieldBorder, paddingLeft: metrics.fieldPadding + metrics.fieldGap, paddingRight: metrics.fieldPadding, flexDirection: 'row', alignItems: 'center', gap: metrics.fieldGap, backgroundColor: colors.fieldFill },
   input: { flex: 1, height: metrics.fieldHeight, fontSize: metrics.subtitleSize, fontWeight: metrics.inputWeight, color: colors.inputText },
-  reveal: { width: metrics.linkHeight, height: metrics.linkHeight, alignItems: 'center', justifyContent: 'center' },
+  reveal: { width: metrics.linkHeight, height: metrics.linkHeight, alignItems: 'center', justifyContent: 'center', marginRight: -metrics.revealOffset },
   error: { fontSize: metrics.noteSize, lineHeight: metrics.noteLineHeight, color: colors.error, paddingHorizontal: metrics.fieldGap },
 });

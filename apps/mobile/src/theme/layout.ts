@@ -422,10 +422,6 @@ export const horizonLayout = {
       },
       sheen: { frostX: 0.27, frostY: 0.12, frostRadius: 0.88 },
     },
-    kaelMotionLab: {
-      padding: 16, gap: 24, titleSize: 13, titleWeight: '700', chipGap: 8, chipPaddingX: 12, chipPaddingY: 8, chipRadius: 16, chipSize: 13,
-      cardPadding: 16, cardRadius: 18, cardGap: 14, sheetHeight: 540, rowGap: 20,
-    },
     affectLab: {
       half: 0.5, unit: 1, reasonHalf: 4, pillRadius: 999, heading: 18, gapHalf: 8, gapTight: 12, skeletonGapHalf: 5, bodyLine: 20, bubbleMaxWidth: '85%', fullSize: '100%', tinyGap: 2, hiddenOpacity: 0.02,
       padding: 16, gap: 16, cardRadius: 18, cardPadding: 16, titleSize: 15, titleWeight: '700', bodySize: 14, captionSize: 12,
@@ -453,17 +449,11 @@ export const horizonLayout = {
       socialLogo: 20, socialGap: 10, socialStack: 10,
       morphSize: 56, morphIcon: 24, morphDuration: 240, morphScale: 0.5, morphPop: 1.25, morphShake: 14, morphGridGap: 10, morphTileMin: 76, historyJumpSize: 36, historyBottomGap: 24,
     },
-    kaelWorkflowLab: {
-      sidebarWidth: 320, frameWidth: 390, frameHeight: 800, frameRadius: 36, frameBorder: 8, wideBreakpoint: 900, drawerWidth: '86%', drawerShadow: '4px 0 24px rgba(0,0,0,0.18)', gap: 16, padding: 16, rowPaddingX: 12, rowPaddingY: 10, rowRadius: 14,
-      gapHalf: 8, pillRadius: 999, rowCopyGap: 2, laneSpacing: 1, laneMargin: 4, railPad: 5, fullSize: '100%',
-      dotSize: 10, laneSize: 11, laneWeight: '700', titleSize: 14, titleWeight: '600', bodySize: 12, headingSize: 16, headingWeight: '700', logHeight: 96, logLimit: 40, logSize: 11, autoplayMs: 1800, buttonRadius: 14, buttonPaddingX: 14, buttonPaddingY: 10,
-    },
     kaelMotion: {
       shimmerDuration: 2000, shimmerSpan: 0.4,
       swapDuration: 150, swapGap: 50, swapDistance: 8, statusSize: 13, statusLineHeight: 18, statusWeight: '500',
       streamWordDuration: 350, streamWordGap: 60, streamMaxDuration: 4000, streamWordSpace: 4,
       noteTextSize: 13, noteLineHeight: 18, noteGap: 6, noteEnterDuration: 240, noteEnterOffset: 6,
-      matrixSize: 4, matrixDot: 3, matrixGap: 2, matrixSide: 18, matrixCycle: 1200,
       thinkingGap: 10, thinkingCopyGap: 6, thinkingPaddingVertical: 4,
       orbSize: 18, orbDot: 3, orbDots: 10, orbRadius: 6, orbCycle: 1800, orbSearchCycle: 1500, orbBreathe: 1.14, orbTailFloor: 0.18, orbCoreSize: 4, orbDotRadius: 1.5, orbCoreRadius: 2, orbRestOpacity: 0.55,
       spinnerSize: 28, spinnerRadius: 14, spinnerStroke: 2.5, spinnerSpinDuration: 900, spinnerArc: 0.28, spinnerCheckDuration: 320, spinnerCheckStroke: 1.8, spinnerCheckDelay: 80,
@@ -497,7 +487,7 @@ export const horizonLayout = {
       recentTitleHeight: 14, recentTitleRadius: 7, recentRows: ['78%', '56%', '68%'],
     },
     recentSession: {
-      rowMinHeight: 56, rowRadius: 14, rowPaddingHorizontal: 10, actionSize: 30, actionHitSlop: 7, actionIconSize: 17, actionStroke: 1.9, revealDuration: 150,
+      rowMinHeight: 56, rowRadius: 14, rowPaddingHorizontal: 10, actionSize: 30, actionHitSlop: 7, actionIconSize: 17, actionStroke: 1.9, revealDuration: 150, hoverRelease: 160,
       titleSize: 15, titleWeight: '500', previewSize: 13, previewGap: 2, busyWeight: '500',
     },
     composerMenu: {
@@ -510,6 +500,20 @@ export const horizonLayout = {
       menuWidth: 296, menuPadding: 6, menuGap: 2, menuRadius: 22, edgeGap: 16, fallbackBottom: 72, anchorGap: 8,
       rowGap: 12, rowPadding: 10, rowRadius: 16, iconSlot: 36, iconSlotRadius: 18, iconSize: 18, iconStroke: 2,
       copyGap: 2, titleFontSize: 15, titleFontWeight: '600', detailFontSize: 12, detailLineHeight: 16, checkSlot: 24, checkSize: 18, checkStroke: 2.4,
+    },
+    onboarding: {
+      gutter: 20, cardMaxWidth: 372, cardRadius: 28, cardPadding: 20, cardGap: 12, targetGap: 16,
+      ringPadding: 6, ringBorder: 2, ringMaxRadius: 28, ringSettle: 12, spotlightSpread: 4000,
+      labelSize: 12, labelWeight: '600', labelTracking: 0.4,
+      titleSize: 21, titleLineHeight: 27, titleWeight: '700', titleTracking: -0.3,
+      bodySize: 15, bodyLineHeight: 22, noteSize: 13, noteLineHeight: 18, notePadding: 12, noteRadius: 14,
+      skipSize: 15, skipWeight: '500', skipHit: 44,
+      buttonHeight: 48, buttonRadius: 24, buttonPadding: 22, buttonSize: 16, buttonWeight: '600',
+      backPadding: 14, linkHeight: 40, linkRadius: 20, linkGap: 8, linkSize: 15, linkWeight: '600', copyGap: 6, actionGap: 8, actionTop: 6, skipOffset: 12, hitSlop: 10,
+      footerGap: 12, dotSize: 6, dotActive: 18, dotGap: 6, dotRadius: 3, dotDuration: 220,
+      enterDuration: 240, cardDuration: 220, exitDuration: 160, moveDuration: 320, reducedDuration: 120,
+      cardOffset: 8, cardScaleFrom: 0.96, startDelay: 900, replayDelay: 350, swipeDistance: 40, swipeStart: 8, swipeBias: 1.5, layer: 10,
+      easeOut: [0.23, 1, 0.32, 1], easeInOut: [0.77, 0, 0.175, 1],
     },
     chatHistory: {
       menuWidth: 296, menuMaxHeight: 320, menuPadding: 6, menuGap: 2, menuRadius: 22, edgeGap: 16, fallbackBottom: 72, anchorGap: 8, triggerHitSlop: 6,
@@ -534,7 +538,7 @@ export const horizonLayout = {
       backButtonSize: 44, backIconSize: 22, backTop: 8,
       titleSize: 34, titleLineHeight: 40, titleWeight: '700', titleTracking: -0.7, subtitleSize: 16, subtitleLineHeight: 23, copyGap: 8,
       switchHeight: 52, switchPadding: 4, switchRadius: 26, switchLabelSize: 15, switchLabelWeight: '600', switchIconSize: 18, switchGap: 8, switchSpring: { damping: 21, stiffness: 280, mass: 1 },
-      fieldHeight: 64, fieldRadius: 22, fieldPadding: 10, fieldBorder: 2, fieldGap: 12,
+      fieldHeight: 64, fieldRadius: 22, fieldPadding: 10, fieldBorder: 2, fieldGap: 12, revealOffset: 14,
       prefixHeight: 44, prefixRadius: 15, prefixPadding: 14, prefixSize: 17, prefixWeight: '600',
       inputSize: 22, inputWeight: '600', inputTracking: 0.5,
       ctaHeight: 60, ctaRadius: 30, ctaSize: 17, ctaWeight: '600', ctaGap: 10, ctaIconSize: 20,
