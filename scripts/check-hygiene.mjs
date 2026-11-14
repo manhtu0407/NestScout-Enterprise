@@ -14,7 +14,7 @@ import { checkTestArtifacts } from './check-test-artifacts.mjs';
 import { inspectArtifact, hasArtifactSignature } from './inspect-artifact.mjs';
 
 const fixedPaths = new Set([
-  'AGENTS.md', 'README.md', 'CONTRIBUTING.md', 'SECURITY.md',
+  'AGENTS.md', 'README.md', 'ROOM.md', 'ARCHITECTURE.md', 'CONTRIBUTING.md', 'SECURITY.md',
   'LICENSE', 'LICENSE.md', 'NOTICE', 'AUTHORS', 'CONTRIBUTORS.md',
   '.editorconfig', '.gitattributes', '.gitignore', '.markdownlint-cli2.jsonc', '.mcp.json',
   'package.json', 'package-lock.json', '.env.example',

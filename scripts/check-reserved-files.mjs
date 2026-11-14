@@ -21,7 +21,12 @@ export function checkReservedFiles(repository = root) {
   }
 
   const rootNames = readdirSync(repository);
-  for (const file of ['AGENTS.md', 'README.md']) {
+  const protectedDocuments = new Map([
+    ['README.md', 'f59ad05425193eceefd6986f00d0eb5df82f99f8'],
+    ['ROOM.md', '2943538e79eec5e97bb36522738fa44f2e7bb7d1'],
+    ['ARCHITECTURE.md', 'c14d81ccea81d3fd369965eb50fadee30e1d6c88'],
+  ]);
+  for (const file of ['AGENTS.md', ...protectedDocuments.keys()]) {
     if (!rootNames.includes(file) || !lstatSync(path.join(repository, file)).isFile()) {
       throw new Error(`Required regular root file missing or incorrectly cased: ${file}`);
     }
@@ -34,24 +39,26 @@ export function checkReservedFiles(repository = root) {
   }
 
   const entries = indexEntries(repository);
-  for (const entry of entries.filter(entry => ['AGENTS.md', 'README.md'].includes(entry.file))) {
+  for (const entry of entries.filter(entry => entry.file === 'AGENTS.md' || protectedDocuments.has(entry.file))) {
     if (!['100644', '100755'].includes(entry.mode) || entry.stage !== '0') {
-      throw new Error(`Root policy/README must be a regular, resolved index entry: ${entry.file}`);
+      throw new Error(`Root policy/protected document must be a regular, resolved index entry: ${entry.file}`);
     }
     if (entry.file === 'AGENTS.md' && !git(['cat-file', 'blob', entry.blob]).trim()) {
       throw new Error('Staged AGENTS.md must not be empty.');
     }
   }
-  const approvedReadmeBlob = '0f4dfbd59bb12c49deabf0684d67478c64c83118';
-  if (git(['hash-object', '--path=README.md', 'README.md']).trim() !== approvedReadmeBlob) {
-    throw new Error('Owner-approved README.md changed. Separate owner permission is required.');
-  }
-  if (!entries.some(entry => entry.file === 'README.md' && entry.blob === approvedReadmeBlob)) {
-    throw new Error('Staged README.md differs from the owner-approved version.');
+  for (const [file, approvedBlob] of protectedDocuments) {
+    const label = file === 'README.md' ? 'Owner-approved README.md' : `Founder-approved ${file}`;
+    if (git(['hash-object', `--path=${file}`, file]).trim() !== approvedBlob) {
+      throw new Error(`${label} changed. Separate owner permission is required.`);
+    }
+    if (!entries.some(entry => entry.file === file && entry.blob === approvedBlob)) {
+      throw new Error(`Staged ${file} differs from the owner-approved version.`);
+    }
   }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   checkReservedFiles();
-  console.log('One canonical root policy; owner-approved README unchanged in index and working tree.');
+  console.log('One canonical root policy; founder-approved product documents match their pinned index and working-tree blobs.');
 }
