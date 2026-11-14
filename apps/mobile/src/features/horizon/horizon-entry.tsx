@@ -30,6 +30,7 @@ import type { BannerNotice } from './notification-banner-model';
 import { useNotificationBanner } from './use-notification-banner';
 import { toSessionRows } from './session-views';
 import { useKaelSessions } from './use-kael-sessions';
+import { useActiveSessionTitle } from './use-active-session-title';
 import type { SessionHandlers } from './sidebar';
 import { useCustomerData } from './use-customer-data';
 import { useWorkerData } from './use-worker-data';
@@ -89,7 +90,7 @@ export function HorizonEntry() {
     const timer = setInterval(() => setClock(Date.now()), horizonLayout.kaelAttention.countdownTick);
     return () => clearInterval(timer);
   }, [counting]);
-  const activeSessionTitle = kael.conversationId === null ? null : sessions.sessions.find(item => item.id === kael.conversationId)?.title ?? null;
+  const activeSessionTitle = useActiveSessionTitle(kael.conversationId, sessions.sessions);
   const recentSessions = useMemo(() => toSessionRows(sessions.sessions, now), [sessions.sessions, now]);
   const badges = useMemo(() => ({
     quotes: countActionableQuotes(data.requests, data.quotes, now),
