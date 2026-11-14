@@ -5,6 +5,7 @@ import type { ComponentRef } from 'react';
 import { Animated, Dimensions, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { composerImageLimit, useComposerMedia, type ComposerImage } from './composer-media';
 import { Icon, PressScale, useGlassAccessibility, usePressFeedback } from '@/features/shared';
+import { useOnboardingTarget } from '@/features/onboarding';
 import { AttachmentStrip } from './attachment-strip';
 import { AutonomyPicker } from './autonomy-picker';
 import { ChatHistory } from './chat-history';
@@ -41,6 +42,8 @@ const webScrollbarStyle = { outlineStyle: 'solid', outlineWidth: 0, scrollbarWid
 
 export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, initialImages, onImagesChange, mediaExternallyManaged, locked = false, onFocus, onBlur, autonomy, history }: Props) {
   const media = useComposerMedia(initialImages, onImagesChange, mediaExternallyManaged);
+  const composerTarget = useOnboardingTarget('composer');
+  const autonomyTarget = useOnboardingTarget('autonomy');
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const errorText = error || media.error || voiceNotice;
   const retainedError = useRetained(errorText);
@@ -85,7 +88,7 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
     <Presence visible={Boolean(errorText)} style={styles.errorSlot}>
       <Text accessibilityLiveRegion="polite" style={styles.error}>{retainedError}</Text>
     </Presence>
-    <View style={styles.frame}>
+    <View {...composerTarget} style={styles.frame}>
     <AttachmentStrip files={media.images.map((item, index) => ({ id: String(index), name: `Ảnh ${index + 1}`, kind: 'image', progress: undefined, uri: item.uri, removeLabel: `Xóa ảnh ${index + 1}` }))} onRemove={id => { media.remove(Number(id)); onMediaChange?.(); }}/>
     <View style={styles.controls}>
     <View style={styles.inputSlot}>
@@ -121,7 +124,9 @@ export function ChatComposer({ value, onChange, onSubmit, error, onMediaChange, 
       </PressScale>
     </View>
     {menuAnchor && <ComposerMenu anchor={menuAnchor} items={menuItems} onClose={() => setMenuAnchor(null)}/>}
-    {autonomy && <AutonomyPicker mode={autonomy.mode} value={autonomy.value} onChange={autonomy.onChange} failed={autonomy.failed} disabled={locked}/>}
+    {autonomy && <View {...autonomyTarget}>
+      <AutonomyPicker mode={autonomy.mode} value={autonomy.value} onChange={autonomy.onChange} failed={autonomy.failed} disabled={locked}/>
+    </View>}
     <View style={styles.actionSpacer}/>
     {history && <ChatHistory entries={history} onPick={onChange} disabled={locked}/>}
     <Animated.View style={{ transform: [{ scale: micFeedback.scale }] }}>

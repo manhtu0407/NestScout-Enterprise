@@ -39,13 +39,13 @@ const titles: Record<CustomerSectionId, string> = {
   settings: 'Cài đặt',
 };
 
-type Props = { id: CustomerSectionId; focusId?: string; onBack: () => void; onNavigate: (id: CustomerSectionId, focusId?: string) => void; onOpenTarget?: (target: string) => void; onAskKael?: (prompt: string) => void };
+type Props = { id: CustomerSectionId; focusId?: string; onBack: () => void; onNavigate: (id: CustomerSectionId, focusId?: string) => void; onOpenTarget?: (target: string) => void; onAskKael?: (prompt: string) => void; onReplayTour?: () => void };
 
 function StateShell({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
   return <SupportShell title={title} onBack={onBack}>{children}</SupportShell>;
 }
 
-export function CustomerSection({ id, focusId, onBack, onNavigate, onOpenTarget, onAskKael }: Props) {
+export function CustomerSection({ id, focusId, onBack, onNavigate, onOpenTarget, onAskKael, onReplayTour }: Props) {
   const access = useAccess();
   const userId = access.identity === 'verified' ? access.userId : null;
   const customer = useCustomerData(userId);
@@ -87,7 +87,7 @@ export function CustomerSection({ id, focusId, onBack, onNavigate, onOpenTarget,
 
   if (id === 'help') {
     const submitSupport = userId === null ? undefined : (key: string, subject: string, body: string) => submitSupportRequest(userId, key, subject, body, new AbortController().signal).then(() => undefined);
-    return <HelpScreen onBack={onBack} onSubmitSupport={submitSupport} />;
+    return <HelpScreen onBack={onBack} onSubmitSupport={submitSupport} onReplayTour={userId === null ? undefined : onReplayTour} />;
   }
 
   if (userId === null) {

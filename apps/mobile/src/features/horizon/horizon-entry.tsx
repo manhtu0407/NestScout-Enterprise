@@ -7,6 +7,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { EntryRedirect, useAccess } from '@/features/access';
 import { Sidebar } from './sidebar';
 import { Icon, loadPendingRequest } from '@/features/shared';
+import { OnboardingTargetsProvider, OnboardingTour, takeOnboardingReplay, useOnboarding } from '@/features/onboarding';
 import { createCitationResolver } from './citation-resolver';
 import { useKaelAutonomy } from './kael-autonomy';
 import { KaelHomeScreen } from './kael-home-screen';
@@ -69,7 +70,9 @@ export function HorizonEntry() {
   const resolveCitations = useMemo(() => kaelUserId === null ? undefined : createCitationResolver(kaelUserId), [kaelUserId]);
   const sessions = useKaelSessions(kaelUserId, kaelMode, drawerOpen && access.phase === 'client');
   const aiConsent = useAiConsent(kaelUserId);
-  const consentStrings = settingsStrings(usePreferences().language);
+  const { language } = usePreferences();
+  const consentStrings = settingsStrings(language);
+  const onboarding = useOnboarding(kaelUserId);
   const scope = kaelUserId === null ? null : `${kaelUserId}:${kaelMode}`;
   const [previousScope, setPreviousScope] = useState(scope);
   if (previousScope !== scope) {
@@ -136,6 +139,12 @@ export function HorizonEntry() {
 
   const openMenuRef = useRef(openMenu);
   useEffect(() => { openMenuRef.current = openMenu; });
+  const replayOnboardingRef = useRef(onboarding.requestReplay);
+  useEffect(() => { replayOnboardingRef.current = onboarding.requestReplay; });
+  const openSettings = useCallback(() => router.push({ pathname: '/section', params: { id: 'settings' } }), [router]);
+  const openWorkerProfile = useCallback(() => router.push({ pathname: '/section', params: { id: 'worker-profile' } }), [router]);
+  const profileIncomplete = workerProfile === null || (workerProfile !== undefined && workerProfile !== 'loading' && workerProfile.missing.length > 0);
+  const tourHidden = drawerOpen || memoryScope !== null || aiConsent.status === 'loading' || workerProfile === 'loading';
   const newConversationRef = useRef<() => void>(() => undefined);
   const adoptPromptRef = useRef<(prompt: string, fresh: boolean) => void>(() => undefined);
   useEffect(() => {
@@ -192,6 +201,11 @@ export function HorizonEntry() {
     };
   });
   useFocusEffect(useCallback(() => {
+    if (takeOnboardingReplay()) {
+      consumeSidebarReturn();
+      replayOnboardingRef.current();
+      return undefined;
+    }
     const handoff = takeKaelHandoff();
     if (handoff !== null) {
       consumeSidebarReturn();
@@ -347,7 +361,7 @@ export function HorizonEntry() {
 
   if (access.phase === 'bootstrapping' || access.phase === 'resolving') return <EntryRedirect pending={renderPending}/>;
 
-  return <>
+  return <OnboardingTargetsProvider>
     <StatusBar style="dark"/>
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -373,7 +387,8 @@ export function HorizonEntry() {
       } else access.switchMode(mode);
     }} onModeCancel={access.cancelModeRequest} onDismissModeNotice={access.dismissNotice}/>
     <NotificationBanner notice={bannerNotice} onOpen={openBanner} onDismiss={dismissBanner} onHold={holdBanner}/>
-  </>;
+    <OnboardingTour controller={onboarding} role={kaelMode} language={language} consentNeeded={aiConsent.status === 'ready' && !aiConsent.granted} profileIncomplete={profileIncomplete} hidden={tourHidden} onOpenMenu={openMenu} onOpenPrivacy={openSettings} onOpenProfile={openWorkerProfile}/>
+  </OnboardingTargetsProvider>;
 }
 
 

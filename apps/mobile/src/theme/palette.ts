@@ -251,6 +251,14 @@ export const horizonColors = {
     rowActive: 'rgba(118,118,128,0.12)', iconSurface: '#EEEFF1', icon: '#1C2127', title: '#0B0F14', detail: '#6B7078',
     check: '#0E9E8E', triggerText: '#4A525C', accentText: '#0A7F72', askSurface: 'rgba(118,118,128,0.14)', autoSurface: 'rgba(14,158,142,0.14)', failure: '#B3261E',
   },
+  onboarding: {
+    scrim: 'rgba(11,15,20,0.58)', ringBorder: 'rgba(255,255,255,0.94)',
+    cardSurface: '#FFFFFF', cardBorder: 'rgba(60,60,67,0.12)', cardShadow: '0 18px 48px rgba(11,15,20,0.30)',
+    label: '#6B7683', title: '#0B0F14', body: '#4A525C', skip: '#6B7683',
+    noteSurface: '#FDEEE6', noteText: '#8A3B12',
+    primaryFill: '#91E5D6', primaryText: '#0B0F14', ghostFill: 'rgba(118,118,128,0.12)', ghostText: '#0B0F14', link: '#0A6F64',
+    dot: 'rgba(60,60,67,0.18)', dotActive: '#0B0F14',
+  },
   chatHistory: {
     scrim: 'rgba(0,0,0,0.06)', menuSurface: '#FFFFFF', menuBorder: 'rgba(60,60,67,0.12)', menuShadow: '0 10px 30px rgba(11,15,20,0.16)',
     rowActive: 'rgba(118,118,128,0.12)', iconSurface: '#EEEFF1', icon: '#1C2127', header: '#6B7078', text: '#0B0F14', time: '#8A8A90',
