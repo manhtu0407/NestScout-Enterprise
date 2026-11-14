@@ -487,7 +487,7 @@ export const horizonLayout = {
       recentTitleHeight: 14, recentTitleRadius: 7, recentRows: ['78%', '56%', '68%'],
     },
     recentSession: {
-      rowMinHeight: 56, rowRadius: 14, rowPaddingHorizontal: 10, actionSize: 30, actionHitSlop: 7, actionIconSize: 17, actionStroke: 1.9, revealDuration: 150,
+      rowMinHeight: 56, rowRadius: 14, rowPaddingHorizontal: 10, actionSize: 30, actionHitSlop: 7, actionIconSize: 17, actionStroke: 1.9, revealDuration: 150, hoverRelease: 160,
       titleSize: 15, titleWeight: '500', previewSize: 13, previewGap: 2, busyWeight: '500',
     },
     composerMenu: {
