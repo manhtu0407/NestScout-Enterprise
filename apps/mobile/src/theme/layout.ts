@@ -169,6 +169,7 @@ export const horizonLayout = {
     kaelCompanion: {
       navHeight: 62,
       navInset: 8,
+      navTitleGap: 10, navTitlePaddingX: 16, navTitleMaxWidth: 360, navTitleFill: '100%', navTitleSize: 15, navTitleWeight: '600', navTitleSpacing: -0.2, navTitleFontScale: 1.3, navTitleDimmed: 0.35, navTitleFade: 200,
       plushAspectRatio: 1.071,
       introLabelExit: 260,
       introCopyExit: 290,

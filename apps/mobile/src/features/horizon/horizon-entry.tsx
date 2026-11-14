@@ -30,6 +30,7 @@ import type { BannerNotice } from './notification-banner-model';
 import { useNotificationBanner } from './use-notification-banner';
 import { toSessionRows } from './session-views';
 import { useKaelSessions } from './use-kael-sessions';
+import { useActiveSessionTitle } from './use-active-session-title';
 import type { SessionHandlers } from './sidebar';
 import { useCustomerData } from './use-customer-data';
 import { useWorkerData } from './use-worker-data';
@@ -89,6 +90,7 @@ export function HorizonEntry() {
     const timer = setInterval(() => setClock(Date.now()), horizonLayout.kaelAttention.countdownTick);
     return () => clearInterval(timer);
   }, [counting]);
+  const activeSessionTitle = useActiveSessionTitle(kael.conversationId, sessions.sessions);
   const recentSessions = useMemo(() => toSessionRows(sessions.sessions, now), [sessions.sessions, now]);
   const badges = useMemo(() => ({
     quotes: countActionableQuotes(data.requests, data.quotes, now),
@@ -373,7 +375,7 @@ export function HorizonEntry() {
           </View>
         </Presence>
         <KaelAttentionCard attention={attention} onAction={onAttentionAction} onHeight={setAttentionHeight}/>
-        <KaelHomeScreen resolveCitations={resolveCitations} autonomy={kaelUserId === null ? undefined : { mode: kaelMode, value: autonomy.value, onChange: autonomy.choose, failed: autonomy.failed }} requestProgress={requestProgress} input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} question={kael.question} onAnswer={sendText} onRate={kael.rate} onRegenerate={regenerate} onNew={newConversation} onMenu={openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={kael.decide} composerError={composerError ?? (kaelOpening !== null && !kaelOpening.failed ? 'Đang mở cuộc trò chuyện…' : kael.notice)} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
+        <KaelHomeScreen sessionTitle={activeSessionTitle} resolveCitations={resolveCitations} autonomy={kaelUserId === null ? undefined : { mode: kaelMode, value: autonomy.value, onChange: autonomy.choose, failed: autonomy.failed }} requestProgress={requestProgress} input={input} onInput={value => { inputRef.current = value; setInput(value); access.updateHorizonDraft(access.userId, { text: value, images: imagesRef.current }); setComposerError(null); }} onSubmit={sendMessage} question={kael.question} onAnswer={sendText} onRate={kael.rate} onRegenerate={regenerate} onNew={newConversation} onMenu={openMenu} onMemory={scope === null ? undefined : () => setMemoryScope(scope)} messages={kael.messages} activity={kael.activity} tasks={kael.tasks} approvals={kael.approvals} busy={kael.running} processingTaskId={kael.processingTaskId} topInset={attention === null ? 0 : attentionHeight} onDecide={kael.decide} composerError={composerError ?? (kaelOpening !== null && !kaelOpening.failed ? 'Đang mở cuộc trò chuyện…' : kael.notice)} onClearComposerError={() => { setComposerError(null); kael.dismissNotice(); }} conversationKey={conversationKey} draftImages={draftImages} onDraftImagesChange={images => { imagesRef.current = images; setDraftImages(images); access.updateHorizonDraft(access.userId, { text: inputRef.current, images }); }}/>
       </KeyboardAvoidingView>
     </SafeAreaView>
     {kaelUserId !== null && scope === memoryScope && <KaelMemorySettings key={scope} userId={kaelUserId} mode={kaelMode} onClose={() => setMemoryScope(null)}/>}
