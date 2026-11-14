@@ -1,4 +1,4 @@
-import { AuthSessionError, authenticatedFunctionRequest, type FunctionFetch } from './authenticated-rest';
+import { AuthSessionError, authenticatedFunctionRequest, authenticatedStorageRequest, type FunctionFetch } from './authenticated-rest';
 
 const mockGetSession = jest.fn();
 const mockRefreshSession = jest.fn();
@@ -54,4 +54,23 @@ test('a non-401 response is returned without refreshing', async () => {
   const response = await authenticatedFunctionRequest(user, 'kael', {}, new AbortController().signal, fetcher);
   expect(response.status).toBe(503);
   expect(mockRefreshSession).not.toHaveBeenCalled();
+});
+
+test('Storage removal uses the bucket endpoint and names only the requested object', async () => {
+  mockGetSession.mockResolvedValue({ data: { session: sessionOf('ok') }, error: null });
+  const previousFetch = global.fetch;
+  const fetcher = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>()
+    .mockResolvedValue(new Response(null, { status: 200 }));
+  global.fetch = fetcher;
+  try {
+    const response = await authenticatedStorageRequest(user, 'worker-payout-qr/user-1/old-qr.jpg', { method: 'DELETE' });
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledWith('http://127.0.0.1:54321/storage/v1/object/worker-payout-qr', expect.objectContaining({
+      method: 'DELETE',
+      body: JSON.stringify({ prefixes: ['user-1/old-qr.jpg'] }),
+      headers: expect.objectContaining({ apikey: 'sb_publishable_example', Authorization: 'Bearer ok', 'Content-Type': 'application/json' }),
+    }));
+  } finally {
+    global.fetch = previousFetch;
+  }
 });

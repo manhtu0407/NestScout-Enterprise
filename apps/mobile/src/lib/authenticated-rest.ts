@@ -60,12 +60,17 @@ export async function authenticatedStorageRequest(
 ): Promise<Response> {
   const { contentType, upsert, ...request } = init;
   const { session, config } = await sessionFor(userId, request.signal);
-  return fetch(`${config.supabaseUrl}/storage/v1/object/${path}`, {
+  const separator = path.indexOf('/');
+  const bucket = path.slice(0, separator);
+  const objectPath = path.slice(separator + 1);
+  const removeObject = request.method?.toUpperCase() === 'DELETE' && request.body === undefined && separator > 0 && objectPath.length > 0;
+  return fetch(`${config.supabaseUrl}/storage/v1/object/${removeObject ? bucket : path}`, {
     ...request,
+    ...(removeObject ? { body: JSON.stringify({ prefixes: [objectPath] }) } : {}),
     headers: {
       apikey: config.supabasePublishableKey,
       Authorization: `Bearer ${session.access_token}`,
-      ...(contentType ? { 'Content-Type': contentType } : {}),
+      ...(removeObject ? { 'Content-Type': 'application/json' } : contentType ? { 'Content-Type': contentType } : {}),
       ...(upsert ? { 'x-upsert': 'true' } : {}),
     },
   });

@@ -20,7 +20,7 @@ select is_empty($$
       'worker_offers','worker_jobs','accept_service_invitation','decline_service_invitation',
       'advance_service_job','submit_service_work','decide_service_submission','open_service_aftercare',
       'kael_read_context','propose_service_scope','decide_service_scope','report_service_job',
-      'pause_service_job','request_service_resume','consent_service_resume','save_worker','saved_workers','account_phone','job_worker_cards','review_job_worker','request_photo_upload_count','worker_job_cards','save_worker_profile','save_worker_coverage','set_worker_accepting','add_worker_certificate','remove_worker_certificate','my_worker_profile','worker_earnings',
+      'pause_service_job','request_service_resume','consent_service_resume','save_worker','saved_workers','account_phone','add_request_photo','job_worker_cards','review_job_worker','worker_job_cards','save_worker_profile','save_worker_coverage','set_worker_accepting','add_worker_certificate','remove_worker_certificate','my_worker_profile','worker_earnings',
       'kael_actor_capabilities','kael_context_tasks','kael_conversation_state','kael_conversation_snapshot','kael_list_conversations','kael_rename_conversation','kael_set_conversation_pinned','kael_set_conversation_archived','kael_delete_conversation','kael_pilot_status','knowledge_actor_valid',
       'clear_kael_history','accept_terms','request_account_deletion','cancel_account_deletion','set_consent','export_my_data',
       'register_push_token','unregister_push_token','job_change_participant','request_job_change','decide_job_change',

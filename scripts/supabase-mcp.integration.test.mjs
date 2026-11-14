@@ -2970,6 +2970,211 @@ test('an operator replacing the worker and the worker starting the job at once n
   });
 });
 
+test('real local Storage enforces photo and Worker ownership, quotas, concurrent requests, retries and QR replacement', { timeout: 180000 }, async () => {
+  await withLocalLock(async () => {
+    const runtime = localRuntime();
+    const stack = runtime.verify();
+    const status = runtime.status();
+    const origin = stack.endpoints['rest.http'].url.replace(/\/$/, '');
+    const publicKey = status.env.PUBLISHABLE_KEY;
+    const serviceKey = status.env.SERVICE_ROLE_KEY;
+    const containers = execFileSync('docker', ['ps', '--filter', `label=com.supabase.stack=${stack.id}`, '--filter', 'label=com.supabase.service=database', '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split(/\s+/);
+    assert.equal(containers.length, 1);
+    assert.match(containers[0], /^[a-f0-9]{12,64}$/);
+    const query = sql => execFileSync('docker', ['exec', '-i', containers[0], 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], { input: sql, encoding: 'utf8' }).trim();
+    const request = (route, token, body, admin = false, method = body === undefined ? 'GET' : 'POST') => fetch(`${origin}${route}`, {
+      method, signal: AbortSignal.timeout(30000),
+      headers: { apikey: admin ? serviceKey : publicKey, ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const accounts = [];
+    const requestIds = [];
+    const stored = new Map([['request-photos', []], ['worker-documents', []], ['worker-payout-qr', []]]);
+    const upload = async (bucket, path, token, upsert = false, admin = false) => {
+      const objectPath = path.split('/').map(encodeURIComponent).join('/');
+      const response = await fetch(origin + '/storage/v1/object/' + bucket + '/' + objectPath, {
+        method: 'POST', signal: AbortSignal.timeout(30000),
+        headers: {
+          apikey: admin ? serviceKey : publicKey,
+          ...(token ? { authorization: 'Bearer ' + token } : {}),
+          'content-type': 'image/jpeg',
+          'x-upsert': upsert ? 'true' : 'false',
+        },
+        body: Uint8Array.of(255, 216, 255, 217),
+      });
+      if (response.ok && !stored.get(bucket).includes(path)) stored.get(bucket).push(path);
+      return response;
+    };    const newUser = async label => {
+      const email = `${randomUUID()}@example.invalid`;
+      const password = randomUUID();
+      const created = await request('/auth/v1/admin/users', serviceKey, { email, password, email_confirm: true }, true);
+      assert.equal(created.status, 200, `${label} local Auth provisioning`);
+      const account = await created.json();
+      const login = await request('/auth/v1/token?grant_type=password', null, { email, password });
+      assert.equal(login.status, 200, `${label} local Auth session`);
+      const user = { id: account.id, token: (await login.json()).access_token };
+      accounts.push(user);
+      return user;
+    };
+    const submit = async user => {
+      const response = await request('/rest/v1/rpc/submit_service_request', user.token, {
+        p_submission_key: randomUUID(), p_description: 'Local Storage security fixture',
+      });
+      assert.equal(response.status, 200, 'the authenticated owner creates a local request');
+      const id = await response.json();
+      requestIds.push(id);
+      return id;
+    };
+    const rpc = async (user, name, body) => {
+      const response = await request(`/rest/v1/rpc/${name}`, user.token, body);
+      assert.equal(response.status, 200, `the authenticated ${name} operation succeeds`);
+      return response.json();
+    };
+    try {
+      const owner = await newUser('Customer');
+      const stranger = await newUser('Other customer');
+      const worker = await newUser('Worker');
+      const ownerRequest = await submit(owner);
+      const otherRequest = await submit(stranger);
+
+      const anonymous = await upload('request-photos', `${owner.id}/${ownerRequest}/anonymous.jpg`, null);
+      assert.ok(!anonymous.ok, 'anonymous Storage upload is refused');
+      const foreign = await upload('request-photos', `${owner.id}/${otherRequest}/foreign.jpg`, owner.token);
+      assert.ok(!foreign.ok, 'a customer cannot upload into another customer request');
+      const photoPath = `${owner.id}/${ownerRequest}/first.jpg`;
+      assert.ok((await upload('request-photos', photoPath, owner.token)).ok, 'the owner can upload a request photo through Storage HTTP');
+      const firstAttachment = await rpc(owner, 'add_request_photo', { p_request_id: ownerRequest, p_path: photoPath });
+      const duplicateStorage = await upload('request-photos', photoPath, owner.token);
+      assert.ok(!duplicateStorage.ok, 'Storage does not overwrite an existing photo during a retry');
+      assert.equal(await rpc(owner, 'add_request_photo', { p_request_id: ownerRequest, p_path: photoPath }), firstAttachment,
+        'an upload retry attaches the already-stored object idempotently');
+      const secondPhoto = `${owner.id}/${ownerRequest}/second.jpg`;
+      assert.ok((await upload('request-photos', secondPhoto, owner.token)).ok, 'a second existing attachment remains uploadable');
+      await rpc(owner, 'add_request_photo', { p_request_id: ownerRequest, p_path: secondPhoto });
+      assert.equal(query(`select count(*) from public.request_photos where request_id='${ownerRequest}';`), '2',
+        'adding a retry or a second file preserves the existing attachment');
+      for (const name of ['third.jpg', 'fourth.jpg', 'fifth.jpg']) {
+        const path = `${owner.id}/${ownerRequest}/${name}`;
+        assert.ok((await upload('request-photos', path, owner.token)).ok, 'another request photo remains within the raw upload quota');
+        await rpc(owner, 'add_request_photo', { p_request_id: ownerRequest, p_path: path });
+      }
+      const attachRacePaths = ['attach-race-a.jpg', 'attach-race-b.jpg'].map(name => `${owner.id}/${ownerRequest}/${name}`);
+      for (const path of attachRacePaths) assert.ok((await upload('request-photos', path, owner.token)).ok, 'the attachment race files upload within quota');
+      const attachRace = await Promise.all(attachRacePaths.map(path => request('/rest/v1/rpc/add_request_photo', owner.token, {
+        p_request_id: ownerRequest, p_path: path,
+      })));
+      assert.equal(attachRace.filter(response => response.status === 200).length, 1, 'only one concurrent photo attachment can claim the sixth row');
+      assert.equal(query(`select count(*) from public.request_photos where request_id='${ownerRequest}';`), '6',
+        'the concurrent attachment cap preserves exactly six rows');
+
+      const quotaRequest = await submit(owner);
+      for (let index = 0; index < 11; index++) {
+        assert.ok((await upload('request-photos', `${owner.id}/${quotaRequest}/q${index}.jpg`, owner.token)).ok,
+          'the request folder accepts its first eleven objects');
+      }
+      assert.equal(query(`select count(*) from storage.objects where bucket_id='request-photos' and name like '${owner.id}/${quotaRequest}/%';`), '11',
+        'the concurrency fixture begins with eleven committed objects');
+      const concurrent = await Promise.all(Array.from({ length: 8 }, (_, index) =>
+        upload('request-photos', owner.id + '/' + quotaRequest + '/race-' + index + '.jpg', owner.token)));
+      const concurrentStatuses = concurrent.map(response => response.status).join(',');
+      assert.equal(concurrent.filter(response => response.ok).length, 1, `only one concurrent upload can claim the twelfth slot (HTTP ${concurrentStatuses})`);
+      assert.equal(concurrent.filter(response => !response.ok).length, 7, 'the seven competing uploads are refused after the last quota slot is claimed');
+      assert.equal(query(`select count(*) from storage.objects where bucket_id='request-photos' and name like '${owner.id}/${quotaRequest}/%';`), '12',
+        'the concurrent request-photo quota remains exactly twelve');
+      assert.ok(!(await upload('request-photos', `${owner.id}/${quotaRequest}/over.jpg`, owner.token)).ok,
+        'an upload beyond the request-photo quota is refused');
+
+      query(`insert into public.worker_access_grants (user_id) values ('${worker.id}');
+        insert into nestscout_private.worker_dispatch_eligibility (user_id, basis, active) values ('${worker.id}', 'local_fixture', true);`);
+      for (let index = 0; index < 18; index++) {
+        assert.ok((await upload('worker-documents', `${worker.id}/doc-${index}.jpg`, worker.token)).ok,
+          'an eligible Worker can upload each of eighteen documents');
+      }
+      assert.ok(!(await upload('worker-documents', `${worker.id}/doc-over.jpg`, worker.token)).ok,
+        'the nineteenth Worker document is refused');
+      const quotaRequestUpsert = await upload('request-photos', owner.id + '/' + quotaRequest + '/q0.jpg', serviceKey, true, true);
+      assert.ok(quotaRequestUpsert.ok, 'the local Storage service-role upsert can replace an existing request photo');
+      assert.equal(query("select object_count from nestscout_private.storage_upload_counters where bucket_id='request-photos' and owner_id='" + owner.id + "' and scope='" + quotaRequest + "';"), '12',
+        'an upsert at the request-photo limit does not consume a second quota slot');
+
+      const workerDocumentUpsert = await upload('worker-documents', worker.id + '/doc-0.jpg', serviceKey, true, true);
+      assert.ok(workerDocumentUpsert.ok, 'the local Storage service-role upsert can replace an existing Worker document');
+      assert.equal(query("select object_count from nestscout_private.storage_upload_counters where bucket_id='worker-documents' and owner_id='" + worker.id + "' and scope='';"), '18',
+        'an upsert at the Worker document limit does not consume a second quota slot');
+
+      const moveSource = worker.id + '/doc-0.jpg';
+      const moveDestination = worker.id + '/doc-moved.jpg';
+      const moved = await request('/storage/v1/object/move', serviceKey, {
+        bucketId: 'worker-documents', sourceKey: moveSource, destinationKey: moveDestination,
+      }, true);
+      const moveFailure = moved.ok ? {} : await moved.clone().json().catch(() => ({}));
+      const moveText = String(moveFailure.message ?? moveFailure.error ?? '');
+      const moveCause = /quota exceeded/i.test(moveText) ? 'quota'
+        : /unauthorized|permission/i.test(moveText) ? 'authorization'
+          : /not found/i.test(moveText) ? 'not_found' : 'other';
+      assert.ok(moved.ok, 'the local Storage API can move a Worker object without changing ownership (HTTP ' + moved.status + ', ' + moveCause + ')');
+      stored.set('worker-documents', stored.get('worker-documents').map(path => path === moveSource ? moveDestination : path));
+      assert.equal(query("select object_count from nestscout_private.storage_upload_counters where bucket_id='worker-documents' and owner_id='" + worker.id + "' and scope='';"), '18',
+        'a Storage move within an owner scope preserves its quota counter');
+      const removedDocument = worker.id + '/doc-moved.jpg';
+      const documentRemoval = await request('/storage/v1/object/worker-documents', worker.token, { prefixes: [removedDocument] }, false, 'DELETE');
+      assert.ok(documentRemoval.ok, 'an eligible Worker can remove an existing document through Storage');
+      stored.set('worker-documents', stored.get('worker-documents').filter(path => path !== removedDocument));
+      assert.equal(query("select object_count from nestscout_private.storage_upload_counters where bucket_id='worker-documents' and owner_id='" + worker.id + "' and scope='';"), '17', 'Storage deletion releases one Worker document quota slot');
+      assert.ok((await upload('worker-documents', `${worker.id}/doc-retry.jpg`, worker.token)).ok,
+        'removing a document releases its quota slot');
+
+      const oldQr = `${worker.id}/old-qr.jpg`;
+      const newQr = `${worker.id}/new-qr.jpg`;
+      assert.ok((await upload('worker-payout-qr', oldQr, worker.token)).ok, 'the existing payout QR uploads');
+      assert.ok((await upload('worker-payout-qr', newQr, worker.token)).ok, 'a replacement payout QR uploads while the existing QR remains');
+      const payoutQrUpsert = await upload('worker-payout-qr', newQr, serviceKey, true, true);
+      assert.ok(payoutQrUpsert.ok, 'the local Storage service-role upsert can replace a payout QR');
+      assert.equal(query("select object_count from nestscout_private.storage_upload_counters where bucket_id='worker-payout-qr' and owner_id='" + worker.id + "' and scope='';"), '2',
+        'a payout QR upsert preserves the quota counter');
+      const previous = await rpc(worker, 'set_worker_payout_account', {
+        p_bank_code: 'ACB', p_bank_name: 'Asia Commercial Bank', p_account_number: '1234567890',
+        p_account_holder: 'NGUYEN VAN A', p_qr_path: oldQr,
+      });
+      assert.equal(previous, null, 'the first payout record does not remove an existing QR');
+      const replaced = await rpc(worker, 'set_worker_payout_account', {
+        p_bank_code: 'ACB', p_bank_name: 'Asia Commercial Bank', p_account_number: '1234567890',
+        p_account_holder: 'NGUYEN VAN A', p_qr_path: newQr,
+      });
+      assert.equal(replaced, oldQr, 'the payout RPC returns the prior QR for the established replacement flow');
+      assert.ok(!(await upload('worker-payout-qr', `${worker.id}/qr-over.jpg`, worker.token)).ok,
+        'the replacement stays within the two-object payout QR cap until the old QR is removed');
+      const removed = await request('/storage/v1/object/worker-payout-qr', worker.token, { prefixes: [oldQr] }, false, 'DELETE');
+      const removalBody = removed.ok ? {} : await removed.clone().json().catch(() => ({}));
+      const removalCode = [removalBody.code, removalBody.error, removalBody.statusCode]
+        .find(value => typeof value === 'string' || typeof value === 'number') ?? removed.status;
+      assert.ok(removed.ok, `the Worker removes the old QR returned by the replacement RPC (HTTP ${removed.status}, ${String(removalCode).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40)})`);
+      stored.set('worker-payout-qr', stored.get('worker-payout-qr').filter(path => path !== oldQr));
+      assert.equal(query("select object_count from nestscout_private.storage_upload_counters where bucket_id='worker-payout-qr' and owner_id='" + worker.id + "' and scope='';"), '1', 'Storage deletion releases the replaced payout QR quota slot');
+      assert.ok((await upload('worker-payout-qr', `${worker.id}/next-qr.jpg`, worker.token)).ok,
+        'removing the old QR releases its slot for a later replacement');
+    } finally {
+      for (const [bucket, paths] of stored) {
+        if (paths.length === 0) continue;
+        const removed = await request(`/storage/v1/object/${bucket}`, null, { prefixes: paths }, true, 'DELETE');
+        assert.ok(removed.ok, `task-owned local ${bucket} objects are removed through Storage`);
+      }
+      if (requestIds.length > 0) {
+        const ids = requestIds.map(id => `'${id}'`).join(', ');
+        query(`delete from public.notifications where request_id in (${ids});
+          delete from public.request_photos where request_id in (${ids});
+          delete from public.service_quotes where request_id in (${ids});
+          delete from public.service_requests where id in (${ids});`);
+      }
+      if (accounts.length > 0) {
+        const ids = accounts.map(user => `'${user.id}'`).join(', ');
+        query(`delete from nestscout_private.worker_dispatch_eligibility where user_id in (${ids});
+          delete from auth.users where id in (${ids});`);
+      }
+    }
+  });
+});
+
 after(() => {
   for (const line of raceOutcomes) console.log(`RACE_OBSERVED ${line}`);
 });

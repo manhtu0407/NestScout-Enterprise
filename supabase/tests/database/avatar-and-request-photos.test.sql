@@ -18,6 +18,23 @@ select ok(not has_table_privilege('authenticated', 'public.request_photos', 'upd
   and not has_table_privilege('authenticated', 'public.request_photos', 'delete'), 'Clients cannot edit or delete photo rows');
 select ok(not has_function_privilege('anon', 'public.set_customer_avatar(boolean)', 'execute'), 'Anonymous role cannot set an avatar');
 select ok(not has_function_privilege('anon', 'public.add_request_photo(uuid,text)', 'execute'), 'Anonymous role cannot attach a photo');
+select ok(not has_column_privilege('authenticated', 'public.request_photos', 'request_id', 'insert')
+  and not has_column_privilege('authenticated', 'public.request_photos', 'path', 'insert'), 'Clients cannot bypass photo attachment checks with direct inserts');
+select ok(has_function_privilege('authenticated', 'public.add_request_photo(uuid,text)', 'execute'), 'Authenticated clients retain the checked photo attachment operation');
+select ok(exists (select 1 from pg_trigger where tgrelid = 'storage.objects'::regclass and tgname = 'storage_upload_quota_reserve'
+  and (tgtype & 2) = 0 and (tgtype & 4) <> 0 and not tgisinternal)
+  and exists (select 1 from pg_trigger where tgrelid = 'storage.objects'::regclass and tgname = 'storage_upload_quota_move'
+    and (tgtype & 2) = 0 and (tgtype & 16) <> 0 and not tgisinternal)
+  and exists (select 1 from pg_trigger where tgrelid = 'storage.objects'::regclass and tgname = 'storage_upload_quota_release'
+    and (tgtype & 2) = 0 and (tgtype & 8) <> 0 and not tgisinternal),
+  'Quota counters track actual inserts, key updates and deletions after the Storage row mutation');
+select ok(exists (select 1 from pg_trigger where tgrelid = 'storage.objects'::regclass and tgname = 'storage_upload_quota_reserve' and not tgisinternal),
+  'Raw Storage inserts reserve quota through a private trigger');
+select ok(position('on conflict' in lower(pg_get_functiondef('nestscout_private.reserve_storage_upload()'::regprocedure))) > 0
+  and position('object_count <' in lower(pg_get_functiondef('nestscout_private.reserve_storage_upload()'::regprocedure))) > 0,
+  'Raw photo quotas use an atomic conditional counter increment');
+select ok(position('pg_advisory_xact_lock' in pg_get_functiondef('nestscout_private.add_request_photo(uuid,text)'::regprocedure)) > 0,
+  'Photo attachment RPC serializes the per-request row quota');
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
@@ -49,11 +66,19 @@ select throws_ok($$select public.add_request_photo('10000000-0000-4000-8000-0000
 select lives_ok($$insert into storage.objects (bucket_id, name) select 'request-photos', '00000000-0000-4000-8000-0000000000a1/10000000-0000-4000-8000-000000000001/p' || n || '.jpg' from generate_series(2, 7) n$$, 'More objects can be uploaded');
 select lives_ok($$select public.add_request_photo('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000a1/10000000-0000-4000-8000-000000000001/p' || n || '.jpg') from generate_series(2, 6) n$$, 'Up to six photos are attached');
 select throws_ok($$select public.add_request_photo('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000a1/10000000-0000-4000-8000-000000000001/p7.jpg')$$, '22023', 'too many photos', 'A seventh photo is rejected');
+select throws_ok($$insert into public.request_photos (request_id, path) values ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000a1/10000000-0000-4000-8000-000000000001/unattached.jpg')$$, '42501', null, 'A direct metadata insert cannot bypass the six-photo attachment limit');
 
 select lives_ok($$insert into storage.objects (bucket_id, name) select 'request-photos', '00000000-0000-4000-8000-0000000000a1/10000000-0000-4000-8000-000000000001/p' || n || '.jpg' from generate_series(8, 12) n$$, 'Twelve objects fit in one request folder');
 select is((select count(*)::integer from storage.objects where bucket_id = 'request-photos'), 12, 'The request folder now holds twelve objects');
+reset role;
+select is((select object_count from nestscout_private.storage_upload_counters where bucket_id = 'request-photos' and owner_id = '00000000-0000-4000-8000-0000000000a1' and scope = '10000000-0000-4000-8000-000000000001'), 12, 'The atomic photo counter matches stored objects');
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
 select throws_ok($$insert into storage.objects (bucket_id, name) values ('request-photos', '00000000-0000-4000-8000-0000000000a1/10000000-0000-4000-8000-000000000001/p13.jpg')$$, '42501', null, 'A thirteenth raw upload for one request is refused');
+reset role;
+select is((select object_count from nestscout_private.storage_upload_counters where bucket_id = 'request-photos' and owner_id = '00000000-0000-4000-8000-0000000000a1' and scope = '10000000-0000-4000-8000-000000000001'), 12, 'A refused photo upload consumes no quota');
 
+set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}', true);
 select is_empty($$select 1 from public.request_photos$$, 'Another customer does not see the photo rows');
 select is_empty($$select 1 from storage.objects where bucket_id = 'request-photos'$$, 'Another customer does not see the photo files');

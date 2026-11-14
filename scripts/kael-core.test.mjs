@@ -1155,6 +1155,18 @@ test('turns are routed to the durable service when it is configured', async () =
   assert.deepEqual(urls, ['https://durable.example.test/v1/turn']);
 });
 
+test('a saturated durable response preserves the retryable 429 response through the gateway', async () => {
+  const body = JSON.stringify({ error: { code: 'rate_limited', message: 'Kael đang quá tải.', retryable: true } });
+  const { fetcher } = routingFetcher(async () => new Response(body, {
+    status: 429,
+    headers: { 'content-type': 'application/json', 'x-kael-runtime': 'durable' },
+  }));
+  const response = await createKaelHandler({ env: durableRoutingEnv, fetcher })(durableRoutingRequest());
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('x-kael-runtime'), 'durable');
+  assert.equal(await response.text(), body);
+});
+
 test('the Edge environment loader hands the durable address to the gateway in hosted and local deployments', async () => {
   const secrets = {
     SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: 'sb_publishable_fixture' }),
