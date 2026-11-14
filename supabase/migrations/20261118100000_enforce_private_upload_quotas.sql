@@ -1,4 +1,4 @@
-create table nestscout_private.storage_upload_counters (
+create table if not exists nestscout_private.storage_upload_counters (
   bucket_id text not null check (bucket_id in ('request-photos', 'worker-documents', 'worker-payout-qr')),
   owner_id uuid not null,
   scope text not null,
@@ -12,31 +12,7 @@ create table nestscout_private.storage_upload_counters (
 
 revoke all on table nestscout_private.storage_upload_counters from public, anon, authenticated, service_role;
 
-insert into nestscout_private.storage_upload_counters (bucket_id, owner_id, scope, object_count)
-select bucket_id, owner_text::uuid, scope, object_count
-from (
-  select o.bucket_id,
-    (storage.foldername(o.name))[1] as owner_text,
-    case when o.bucket_id = 'request-photos' then (storage.foldername(o.name))[2] else '' end as scope,
-    count(*)::integer as object_count
-  from storage.objects o
-  where o.bucket_id in ('request-photos', 'worker-documents', 'worker-payout-qr')
-  group by o.bucket_id, (storage.foldername(o.name))[1],
-    case when o.bucket_id = 'request-photos' then (storage.foldername(o.name))[2] else '' end
-) existing
-where owner_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-  and (
-    (bucket_id = 'request-photos' and scope ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
-    or (bucket_id in ('worker-documents', 'worker-payout-qr') and scope = '')
-  );
-
-drop policy request_photos_insert_owner on storage.objects;
-drop policy worker_documents_insert_owner on storage.objects;
-drop policy worker_payout_qr_insert_owner on storage.objects;
-drop function if exists nestscout_private.request_photo_upload_count(text);
-drop function if exists nestscout_private.worker_upload_count(text);
-
-create function nestscout_private.reserve_storage_upload()
+create or replace function nestscout_private.reserve_storage_upload()
 returns trigger
 language plpgsql
 volatile
@@ -141,15 +117,7 @@ end;
 $$;
 revoke all on function nestscout_private.reserve_storage_upload() from public, anon, authenticated, service_role;
 
-create trigger storage_upload_quota_reserve
-  after insert on storage.objects
-  for each row execute function nestscout_private.reserve_storage_upload();
-
-create trigger storage_upload_quota_move
-  after update of bucket_id, name on storage.objects
-  for each row execute function nestscout_private.reserve_storage_upload();
-
-create function nestscout_private.release_storage_upload()
+create or replace function nestscout_private.release_storage_upload()
 returns trigger
 language plpgsql
 volatile
@@ -171,7 +139,8 @@ begin
   end if;
   v_owner := v_folders[1]::uuid;
   v_scope := case when old.bucket_id = 'request-photos' then v_folders[2] else '' end;
-  if v_scope is null then
+  if v_scope is null or (old.bucket_id = 'request-photos'
+    and v_scope !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') then
     return old;
   end if;
   update nestscout_private.storage_upload_counters
@@ -186,29 +155,61 @@ $$;
 
 revoke all on function nestscout_private.release_storage_upload() from public, anon, authenticated, service_role;
 
-create trigger storage_upload_quota_release
-  after delete on storage.objects
-  for each row execute function nestscout_private.release_storage_upload();
+do $storage_upload_quota_migration$
+begin
+  perform pg_catalog.set_config('lock_timeout', '5s', true);
+  lock table storage.objects in share row exclusive mode;
+  perform pg_catalog.set_config('lock_timeout', '0', true);
 
-create policy request_photos_insert_owner on storage.objects
-  for insert to authenticated
-  with check (bucket_id = 'request-photos' and (storage.foldername(name))[1] = (select auth.uid())::text
-    and array_length(storage.foldername(name), 1) = 2
-    and exists (select 1 from public.service_requests r
-      where r.id::text = (storage.foldername(name))[2] and r.owner_id = (select auth.uid()))
-    and coalesce((select auth.jwt()) ->> 'is_anonymous', 'false') = 'false');
+  insert into nestscout_private.storage_upload_counters (bucket_id, owner_id, scope, object_count)
+  select bucket_id,
+    case when owner_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then owner_text::uuid end,
+    scope, object_count
+  from (
+    select o.bucket_id,
+      (storage.foldername(o.name))[1] as owner_text,
+      case when o.bucket_id = 'request-photos' then (storage.foldername(o.name))[2] else '' end as scope,
+      count(*)::integer as object_count
+    from storage.objects o
+    where o.bucket_id in ('request-photos', 'worker-documents', 'worker-payout-qr')
+    group by o.bucket_id, (storage.foldername(o.name))[1],
+      case when o.bucket_id = 'request-photos' then (storage.foldername(o.name))[2] else '' end
+  ) existing
+  where owner_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    and (
+      (bucket_id = 'request-photos' and scope ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+      or (bucket_id in ('worker-documents', 'worker-payout-qr') and scope = '')
+    )
+  on conflict (bucket_id, owner_id, scope) do update set object_count = excluded.object_count;
 
-create policy worker_documents_insert_owner on storage.objects
-  for insert to authenticated
-  with check (bucket_id = 'worker-documents' and (storage.foldername(name))[1] = (select auth.uid())::text
-    and array_length(storage.foldername(name), 1) = 1
-    and (select nestscout_private.current_worker_eligible()));
+  execute 'drop trigger if exists storage_upload_quota_reserve on storage.objects';
+  execute 'drop trigger if exists storage_upload_quota_move on storage.objects';
+  execute 'drop trigger if exists storage_upload_quota_release on storage.objects';
+  execute 'drop policy if exists request_photos_insert_owner on storage.objects';
+  execute 'drop policy if exists worker_documents_insert_owner on storage.objects';
+  execute 'drop policy if exists worker_payout_qr_insert_owner on storage.objects';
+  execute 'drop function if exists nestscout_private.request_photo_upload_count(text)';
+  execute 'drop function if exists nestscout_private.worker_upload_count(text)';
+  execute 'create trigger storage_upload_quota_reserve after insert on storage.objects for each row execute function nestscout_private.reserve_storage_upload()';
+  execute 'create trigger storage_upload_quota_move after update of bucket_id, name on storage.objects for each row execute function nestscout_private.reserve_storage_upload()';
+  execute 'create trigger storage_upload_quota_release after delete on storage.objects for each row execute function nestscout_private.release_storage_upload()';
 
-create policy worker_payout_qr_insert_owner on storage.objects
-  for insert to authenticated
-  with check (bucket_id = 'worker-payout-qr' and (storage.foldername(name))[1] = (select auth.uid())::text
-    and array_length(storage.foldername(name), 1) = 1
-    and (select nestscout_private.current_worker_eligible()));
+  execute 'create policy request_photos_insert_owner on storage.objects for insert to authenticated
+    with check (bucket_id = ''request-photos'' and (storage.foldername(name))[1] = (select auth.uid())::text
+      and array_length(storage.foldername(name), 1) = 2
+      and exists (select 1 from public.service_requests r
+        where r.id::text = (storage.foldername(name))[2] and r.owner_id = (select auth.uid()))
+      and coalesce((select auth.jwt()) ->> ''is_anonymous'', ''false'') = ''false'')';
+  execute 'create policy worker_documents_insert_owner on storage.objects for insert to authenticated
+    with check (bucket_id = ''worker-documents'' and (storage.foldername(name))[1] = (select auth.uid())::text
+      and array_length(storage.foldername(name), 1) = 1
+      and (select nestscout_private.current_worker_eligible()))';
+  execute 'create policy worker_payout_qr_insert_owner on storage.objects for insert to authenticated
+    with check (bucket_id = ''worker-payout-qr'' and (storage.foldername(name))[1] = (select auth.uid())::text
+      and array_length(storage.foldername(name), 1) = 1
+      and (select nestscout_private.current_worker_eligible()))';
+end
+$storage_upload_quota_migration$;
 
 revoke insert on table public.request_photos from public, anon, authenticated;
 revoke insert (request_id, path) on table public.request_photos from public, anon, authenticated;
