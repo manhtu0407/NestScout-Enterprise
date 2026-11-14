@@ -103,6 +103,12 @@ test('server refusals surface the server message, and unreadable refusals stay h
     .resolves.toEqual(expect.objectContaining({ kind: 'refused', code: 'provider_unavailable', message: expect.stringContaining('HTTP 502') }));
 });
 
+test('a saturated durable backend remains a retryable refusal in the mobile client', async () => {
+  const saturated = streamed(['{"error":{"code":"rate_limited","message":"Kael đang quá tải.","retryable":true}}'], 429);
+  await expect(streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, saturated.fetcher))
+    .resolves.toEqual({ kind: 'refused', code: 'rate_limited', message: 'Kael đang quá tải.', retryable: true });
+});
+
 test('invalid TestFlight config and Auth are definite refusals while network failures remain recoverable', async () => {
   mockLoadConfig.mockImplementationOnce(() => { throw new ConfigError('EXPO_PUBLIC_TESTFLIGHT_SUPABASE_URL is required.'); });
   const config = await streamKaelTurn('customer-a', request, () => undefined, new AbortController().signal, jest.fn());

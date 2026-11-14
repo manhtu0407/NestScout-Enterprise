@@ -2,7 +2,7 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -17,7 +17,53 @@ use crate::util::valid_uuid;
 
 const MAX_HEADER_BYTES: usize = 32 * 1024;
 const MAX_BODY_BYTES: usize = 4 * MAX_BODY_CHARS;
+const MAX_ACTIVE_CONNECTIONS: usize = 32;
+const REQUEST_READ_LIMIT: Duration = Duration::from_secs(30);
+const SOCKET_IDLE_READ_LIMIT: Duration = Duration::from_secs(15);
 const IDLE_STREAM_LIMIT: Duration = Duration::from_secs(15 * 60);
+
+struct ConnectionPermit(Arc<AtomicUsize>);
+
+impl Drop for ConnectionPermit {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Release);
+    }
+}
+
+fn acquire_connection(active: &Arc<AtomicUsize>) -> Option<ConnectionPermit> {
+    let mut current = active.load(Ordering::Acquire);
+    loop {
+        if current >= MAX_ACTIVE_CONNECTIONS {
+            return None;
+        }
+        match active.compare_exchange_weak(current, current + 1, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return Some(ConnectionPermit(Arc::clone(active))),
+            Err(observed) => current = observed,
+        }
+    }
+}
+
+struct DeadlineReader<'a> {
+    stream: &'a mut TcpStream,
+    deadline: Instant,
+}
+
+impl Read for DeadlineReader<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let remaining = self.deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "request read deadline exceeded"));
+        }
+        self.stream.set_read_timeout(Some(remaining.min(SOCKET_IDLE_READ_LIMIT)))?;
+        self.stream.read(buffer).map_err(|error| {
+            if error.kind() == io::ErrorKind::WouldBlock {
+                io::Error::new(io::ErrorKind::TimedOut, error)
+            } else {
+                error
+            }
+        })
+    }
+}
 
 struct Parsed {
     method: String,
@@ -33,9 +79,9 @@ impl Parsed {
     }
 }
 
-fn read_request(stream: &TcpStream) -> io::Result<Option<Parsed>> {
-    stream.set_read_timeout(Some(Duration::from_secs(15)))?;
-    let mut reader = BufReader::new(stream.try_clone()?);
+fn read_request_with_limit(stream: &TcpStream, read_limit: Duration) -> io::Result<Option<Parsed>> {
+    let mut input = stream.try_clone()?;
+    let mut reader = BufReader::new(DeadlineReader { stream: &mut input, deadline: Instant::now() + read_limit });
     let mut head = String::new();
     let mut total = 0usize;
     loop {
@@ -75,6 +121,10 @@ fn read_request(stream: &TcpStream) -> io::Result<Option<Parsed>> {
     let mut body = vec![0u8; length];
     reader.read_exact(&mut body)?;
     Ok(Some(Parsed { method: method.into(), path: path.into(), query: query.into(), headers, body }))
+}
+
+fn read_request(stream: &TcpStream) -> io::Result<Option<Parsed>> {
+    read_request_with_limit(stream, REQUEST_READ_LIMIT)
 }
 
 const CORS: &str = "access-control-allow-origin: *\r\naccess-control-allow-headers: authorization, apikey, content-type, x-client-info, x-kael-readiness\r\naccess-control-allow-methods: GET, POST, OPTIONS\r\n";
@@ -299,11 +349,19 @@ fn handle(runtime: &Arc<Runtime>, mut stream: TcpStream) -> io::Result<()> {
 }
 
 pub fn serve_listener(runtime: Arc<Runtime>, listener: TcpListener) {
+    let active_connections = Arc::new(AtomicUsize::new(0));
     for incoming in listener.incoming() {
         match incoming {
             Ok(stream) => {
+                let Some(permit) = acquire_connection(&active_connections) else {
+                    let mut stream = stream;
+                    let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+                    let _ = failure(&mut stream, 429, "rate_limited");
+                    continue;
+                };
                 let runtime = Arc::clone(&runtime);
                 thread::spawn(move || {
+                    let _permit = permit;
                     if let Err(error) = handle(&runtime, stream)
                         && error.kind() != io::ErrorKind::BrokenPipe
                         && error.kind() != io::ErrorKind::ConnectionReset
@@ -314,5 +372,46 @@ pub fn serve_listener(runtime: Arc<Runtime>, listener: TcpListener) {
             }
             Err(error) => eprintln!("{}", json!({"event": "kael_accept_failed", "error": error.to_string()})),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_ACTIVE_CONNECTIONS, acquire_connection, read_request_with_limit};
+    use std::io::Write;
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn connection_permits_bound_concurrent_handlers_and_release_on_drop() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let permits: Vec<_> = (0..MAX_ACTIVE_CONNECTIONS)
+            .map(|_| acquire_connection(&active).expect("a connection slot should be available"))
+            .collect();
+
+        assert!(acquire_connection(&active).is_none());
+        drop(permits);
+        assert_eq!(active.load(Ordering::Acquire), 0);
+        assert!(acquire_connection(&active).is_some());
+    }
+
+    #[test]
+    fn request_read_deadline_is_absolute_across_slow_header_chunks() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local listener");
+        let address = listener.local_addr().expect("listener address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept local test stream");
+            read_request_with_limit(&stream, Duration::from_millis(500))
+        });
+        let mut client = TcpStream::connect(address).expect("connect local test stream");
+        client.write_all(b"GET /health ").expect("write first header fragment");
+        thread::sleep(Duration::from_millis(300));
+        client.write_all(b"HTTP/1.1\r\nHost:").expect("write second header fragment");
+
+        let result = server.join().expect("server thread");
+        assert!(matches!(result, Err(error) if error.kind() == std::io::ErrorKind::TimedOut));
     }
 }

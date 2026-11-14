@@ -540,6 +540,46 @@ fn request_headers_are_capped_at_32_kib_and_the_connection_is_dropped_without_a_
 }
 
 #[test]
+fn listener_bounds_slow_connections_rejects_overflow_and_recovers() {
+    let daemon = start_daemon("connection-limit");
+    let health_requests: Vec<_> = (0..24)
+        .map(|_| {
+            let addr = daemon.addr;
+            std::thread::spawn(move || {
+                let request = get_health("");
+                exchange(addr, request.as_bytes())
+            })
+        })
+        .collect();
+    for response in health_requests {
+        assert!(response.join().expect("health request thread").starts_with("HTTP/1.1 200"));
+    }
+
+    let mut slow_requests = Vec::with_capacity(32);
+    for _ in 0..32 {
+        let mut stream = TcpStream::connect(daemon.addr).expect("connect slow request");
+        stream.write_all(b"GET /health HTTP/1.1\r\nhost: kael\r\n").expect("write partial request");
+        slow_requests.push(stream);
+    }
+    std::thread::sleep(Duration::from_millis(250));
+
+    let overflow = exchange(daemon.addr, get_health("").as_bytes());
+    assert!(overflow.starts_with("HTTP/1.1 429"), "overflow response: {overflow}");
+    assert!(overflow.contains("\"code\":\"rate_limited\""), "overflow response: {overflow}");
+
+    drop(slow_requests);
+    let recovery_deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        let response = exchange(daemon.addr, get_health("").as_bytes());
+        if response.starts_with("HTTP/1.1 200") {
+            break;
+        }
+        assert!(Instant::now() < recovery_deadline, "the listener did not recover: {response}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
 fn a_follower_reads_complete_lines_written_by_another_log_and_never_truncates_them() {
     let dir = std::env::temp_dir().join(format!("kael-follow-{}", std::process::id()));
     fs::create_dir_all(&dir).expect("dir");

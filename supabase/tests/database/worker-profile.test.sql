@@ -11,6 +11,39 @@ insert into public.worker_access_grants (user_id) values
   ('00000000-0000-4000-8000-0000000000b2'),
   ('00000000-0000-4000-8000-0000000000c3'),
   ('00000000-0000-4000-8000-0000000000d4');
+insert into storage.objects (bucket_id, name)
+select 'worker-documents', '00000000-0000-4000-8000-0000000000b2/orphan-' || n || '.jpg'
+from generate_series(1, 16) n;
+insert into storage.objects (bucket_id, name) values ('worker-payout-qr', '00000000-0000-4000-8000-0000000000b2/old-qr.jpg');
+insert into storage.objects (bucket_id, name) values ('worker-documents', '00000000-0000-4000-8000-0000000000b2/preexisting-17.jpg');
+delete from nestscout_private.storage_upload_counters
+where owner_id = '00000000-0000-4000-8000-0000000000b2'
+  and bucket_id in ('worker-documents', 'worker-payout-qr');
+insert into nestscout_private.storage_upload_counters (bucket_id, owner_id, scope, object_count)
+select bucket_id, owner_text::uuid, scope, object_count
+from (
+  select o.bucket_id,
+    (storage.foldername(o.name))[1] as owner_text,
+    case when o.bucket_id = 'request-photos' then (storage.foldername(o.name))[2] else '' end as scope,
+    count(*)::integer as object_count
+  from storage.objects o
+  where o.bucket_id in ('request-photos', 'worker-documents', 'worker-payout-qr')
+  group by o.bucket_id, (storage.foldername(o.name))[1],
+    case when o.bucket_id = 'request-photos' then (storage.foldername(o.name))[2] else '' end
+) existing
+where owner_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  and (
+    (bucket_id = 'request-photos' and scope ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+    or (bucket_id in ('worker-documents', 'worker-payout-qr') and scope = '')
+  );
+select is((select object_count from nestscout_private.storage_upload_counters where bucket_id = 'worker-documents' and owner_id = '00000000-0000-4000-8000-0000000000b2' and scope = ''), 17, 'The backfill query reconstructs the count from existing Worker objects');
+select is((select object_count from nestscout_private.storage_upload_counters where bucket_id = 'worker-payout-qr' and owner_id = '00000000-0000-4000-8000-0000000000b2' and scope = ''), 1, 'The backfill query reconstructs the count from an existing payout QR');
+select lives_ok($$insert into storage.objects (id, bucket_id, name)
+  select id, bucket_id, name from storage.objects where bucket_id = 'worker-documents' and name = '00000000-0000-4000-8000-0000000000b2/orphan-1.jpg'
+  on conflict (id) do update set bucket_id = excluded.bucket_id, name = excluded.name, updated_at = now()$$,
+  'An ON CONFLICT update at the migration backfill count does not reserve a second quota slot');
+select is((select object_count from nestscout_private.storage_upload_counters where bucket_id = 'worker-documents' and owner_id = '00000000-0000-4000-8000-0000000000b2' and scope = ''), 17,
+  'An ON CONFLICT update leaves the Worker document counter unchanged');
 insert into nestscout_private.worker_dispatch_eligibility (user_id, basis, active) values
   ('00000000-0000-4000-8000-0000000000b2', 'local_fixture', true),
   ('00000000-0000-4000-8000-0000000000c3', 'local_fixture', true),
@@ -26,6 +59,9 @@ select ok(not has_function_privilege('anon', 'public.remove_worker_certificate(u
 select ok(not has_table_privilege('authenticated', 'public.worker_certificates', 'select'), 'Clients cannot read certificates directly');
 select ok(not has_table_privilege('authenticated', 'public.worker_certificates', 'update'), 'Clients cannot change a certificate status');
 select ok(not has_table_privilege('authenticated', 'public.worker_public_profiles', 'update'), 'Clients cannot update profiles directly');
+select ok(exists (select 1 from pg_trigger where tgrelid = 'storage.objects'::regclass and tgname = 'storage_upload_quota_reserve' and not tgisinternal)
+  and position('on conflict' in lower(pg_get_functiondef('nestscout_private.reserve_storage_upload()'::regprocedure))) > 0,
+  'Worker Storage quotas reserve slots through an atomic insert trigger');
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000d4","role":"authenticated"}', true);
@@ -48,6 +84,39 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}', true);
 
+select lives_ok($$insert into storage.objects (bucket_id, name) values ('worker-documents', '00000000-0000-4000-8000-0000000000b2/orphan-18.jpg')$$,
+  'A Worker can upload up to eighteen document objects even before metadata is attached');
+select throws_ok($$insert into storage.objects (bucket_id, name) values ('worker-documents', '00000000-0000-4000-8000-0000000000b2/orphan-19.jpg')$$,
+  '42501', null, 'A nineteenth raw document upload is refused by Storage policy');
+select lives_ok($$insert into storage.objects (bucket_id, name) values ('worker-payout-qr', '00000000-0000-4000-8000-0000000000b2/new-qr.jpg')$$,
+  'A Worker can upload a replacement payout QR while the previous image remains');
+select throws_ok($$insert into storage.objects (bucket_id, name) values ('worker-payout-qr', '00000000-0000-4000-8000-0000000000b2/extra-qr.jpg')$$,
+  '42501', null, 'A third raw payout QR upload is refused by Storage policy');
+
+reset role;
+select is((select object_count from nestscout_private.storage_upload_counters where bucket_id = 'worker-documents' and owner_id = '00000000-0000-4000-8000-0000000000b2' and scope = ''), 18, 'A refused Worker document consumes no quota');
+select is((select object_count from nestscout_private.storage_upload_counters where bucket_id = 'worker-payout-qr' and owner_id = '00000000-0000-4000-8000-0000000000b2' and scope = ''), 2, 'A refused payout QR consumes no quota');select lives_ok($$insert into storage.objects (id, bucket_id, name)
+  select id, bucket_id, name from storage.objects where bucket_id = 'worker-documents' and name = '00000000-0000-4000-8000-0000000000b2/orphan-1.jpg'
+  on conflict (id) do update set bucket_id = excluded.bucket_id, name = excluded.name, updated_at = now()$$,
+  'An ON CONFLICT update at quota does not exceed the Worker document limit');
+select is((select object_count from nestscout_private.storage_upload_counters where bucket_id = 'worker-documents' and owner_id = '00000000-0000-4000-8000-0000000000b2' and scope = ''), 18,
+  'An ON CONFLICT update at quota preserves the existing counter');
+select lives_ok($$update storage.objects set name = '00000000-0000-4000-8000-0000000000b2/moved.jpg'
+  where bucket_id = 'worker-documents' and name = '00000000-0000-4000-8000-0000000000b2/orphan-1.jpg'$$,
+  'Moving an object within one Worker quota scope succeeds');
+select is((select object_count from nestscout_private.storage_upload_counters where bucket_id = 'worker-documents' and owner_id = '00000000-0000-4000-8000-0000000000b2' and scope = ''), 18,
+  'A same-owner move does not change the quota counter');
+select lives_ok($$update storage.objects set name = '00000000-0000-4000-8000-0000000000c3/moved.jpg'
+  where bucket_id = 'worker-documents' and name = '00000000-0000-4000-8000-0000000000b2/moved.jpg'$$,
+  'Moving an object to another owner updates the quota scopes');
+select is((select object_count from nestscout_private.storage_upload_counters where bucket_id = 'worker-documents' and owner_id = '00000000-0000-4000-8000-0000000000b2' and scope = ''), 17,
+  'A cross-owner move releases one slot from the old scope');
+select is((select object_count from nestscout_private.storage_upload_counters where bucket_id = 'worker-documents' and owner_id = '00000000-0000-4000-8000-0000000000c3' and scope = ''), 1,
+  'A cross-owner move reserves one slot in the new scope');
+
+
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}', true);
 select is_empty($$select * from public.my_worker_profile()$$, 'A worker without a profile reads nothing');
 select throws_ok($$select public.set_worker_accepting(false)$$, '22023', 'profile required', 'Availability needs a profile');
 select throws_ok($$select public.save_worker_coverage(5, array['water'])$$, '22023', 'profile required', 'Coverage needs a profile');
