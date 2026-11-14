@@ -7,7 +7,7 @@
   "build": {
     "testflight": {
       "distribution": "store",
-      "environment": "preview",
+      "environment": "production",
       "env": {
         "EXPO_PUBLIC_NESTSCOUT_TARGET": "testflight",
         "EXPO_PUBLIC_TESTFLIGHT_SUPABASE_URL": "https://axpdymbusiwxfzurfclg.supabase.co"
