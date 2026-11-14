@@ -163,7 +163,7 @@ test('optional pre-commit runs test selection unconditionally before accepting s
 
 test('real pre-commit rejects unregistered tests and a disabled npm guard without creating a commit', () => fixture(({ repository, write, run, scripts, manifest }) => {
   run(['branch', '-m', 'codex/lifecycle-fixture']);
-  for (const file of ['AGENTS.md', 'README.md', '.githooks/pre-commit']) write(file, readFileSync(path.join(root, file)));
+  for (const file of ['AGENTS.md', 'README.md', 'ROOM.md', 'ARCHITECTURE.md', '.githooks/pre-commit']) write(file, readFileSync(path.join(root, file)));
   chmodSync(path.join(repository, '.githooks/pre-commit'), 0o755);
   const modules = [
     ['check-reserved-files', 'checkReservedFiles'], ['check-hygiene', 'checkHygiene'],

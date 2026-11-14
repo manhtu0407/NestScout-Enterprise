@@ -94,6 +94,8 @@ try {
   console.log('PASS: isolated exploratory tests retain success/failure status and safe evidence after task-owned cleanup; other-agent fixture survives.');
 
   const originalReadme = readFileSync(path.join(root, 'README.md'));
+  const originalRoom = readFileSync(path.join(root, 'ROOM.md'));
+  const originalArchitecture = readFileSync(path.join(root, 'ARCHITECTURE.md'));
   function reservedCase(label, change, expectedError) {
     const repository = mkdtempSync(path.join(directory, 'reserved-'));
     const git = args => execFileSync('git', args, { cwd: repository, env: gitEnvironment(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -104,8 +106,10 @@ try {
     };
     git(['init', '--quiet']);
     write('README.md', originalReadme);
+    write('ROOM.md', originalRoom);
+    write('ARCHITECTURE.md', originalArchitecture);
     write('AGENTS.md', '# Fixture policy\n');
-    git(['add', 'README.md', 'AGENTS.md']);
+    git(['add', 'README.md', 'ROOM.md', 'ARCHITECTURE.md', 'AGENTS.md']);
     git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'valid fixture baseline']);
     change({ repository, git, write });
     if (expectedError) assert.throws(() => checkReservedFiles(repository), expectedError, label);
@@ -152,13 +156,27 @@ try {
   reservedCase('reject obsolete README baseline', ({ write }) => {
     write('README.md', '# NestScout-Enterprise\nPersistency on the tenth times...!\n');
   }, /Owner-approved README.md changed/);
+  reservedCase('reject modified working ROOM.md', ({ write }) => write('ROOM.md', '# Changed\n'), /Founder-approved ROOM\.md changed/);
+  reservedCase('reject modified working ARCHITECTURE.md', ({ write }) => write('ARCHITECTURE.md', '# Changed\n'), /Founder-approved ARCHITECTURE\.md changed/);
   reservedCase('reject modified staged README with clean working copy', ({ git, write }) => {
     write('README.md', '# Changed\n');
     git(['add', 'README.md']);
     write('README.md', originalReadme);
   }, /Staged README.md differs/);
+  reservedCase('reject modified staged ROOM.md with clean working copy', ({ git, write }) => {
+    write('ROOM.md', '# Changed\n');
+    git(['add', 'ROOM.md']);
+    write('ROOM.md', originalRoom);
+  }, /Staged ROOM.md differs/);
+  reservedCase('reject modified staged ARCHITECTURE.md with clean working copy', ({ git, write }) => {
+    write('ARCHITECTURE.md', '# Changed\n');
+    git(['add', 'ARCHITECTURE.md']);
+    write('ARCHITECTURE.md', originalArchitecture);
+  }, /Staged ARCHITECTURE.md differs/);
   reservedCase('reject root README case alias', ({ git }) => git(['mv', 'README.md', 'readme.md']), /Root README filename/);
   reservedCase('reject missing working policy', ({ repository }) => rmSync(path.join(repository, 'AGENTS.md')), /Required regular root file/);
+  reservedCase('reject missing working ROOM.md', ({ repository }) => rmSync(path.join(repository, 'ROOM.md')), /Required regular root file/);
+  reservedCase('reject missing working ARCHITECTURE.md', ({ repository }) => rmSync(path.join(repository, 'ARCHITECTURE.md')), /Required regular root file/);
   reservedCase('reject empty working policy', ({ write }) => write('AGENTS.md', ' \n'), /Root AGENTS.md must not be empty/);
   reservedCase('reject empty staged policy with valid working copy', ({ git, write }) => {
     write('AGENTS.md', '');
