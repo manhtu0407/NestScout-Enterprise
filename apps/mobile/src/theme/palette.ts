@@ -263,6 +263,7 @@ export const horizonColors = {
     scrim: 'rgba(0,0,0,0.06)', menuSurface: '#FFFFFF', menuBorder: 'rgba(60,60,67,0.12)', menuShadow: '0 10px 30px rgba(11,15,20,0.16)',
     rowActive: 'rgba(118,118,128,0.12)', iconSurface: '#EEEFF1', icon: '#1C2127', header: '#6B7078', text: '#0B0F14', time: '#8A8A90',
   },
+  kaelNav: { title: '#11161C' },
   conversationMenu: {
     scrim: 'rgba(0,0,0,0.12)', pressed: 'rgba(60,60,67,0.08)', icon: '#11161C', title: '#6B7683', danger: '#D4322C',
   },
