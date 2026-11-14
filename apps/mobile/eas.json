@@ -29,7 +29,8 @@
   "submit": {
     "testflight": {
       "ios": {
-        "ascAppId": "6831422289"
+        "ascAppId": "6831422289",
+        "groups": ["Team (Expo)"]
       }
     },
     "app-store": {
