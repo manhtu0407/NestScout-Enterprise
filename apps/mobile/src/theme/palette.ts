@@ -157,7 +157,6 @@ export const horizonColors = {
   },
   kaelMotion: {
     shimmerBase: '#7C7C7C', shimmerHighlight: '#0D0D0D',
-    matrixBase: '#D5D9E0', matrixActive: '#141820',
     orbDot: '#141820', orbCore: '#141820', orbRest: '#9AA3AF',
     noteText: '#4A5260',
     spinnerTrack: '#E4E7EC', spinnerArc: '#141820', spinnerDone: '#141820', spinnerCheck: '#FFFFFF',

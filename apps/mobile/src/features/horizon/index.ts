@@ -2,8 +2,6 @@ export { HorizonRoute } from './horizon-entry';
 export { DeveloperPilotPanel, developerPilotEnabled } from './developer-pilot-panel';
 export { RequestsRoute, SectionRoute } from './horizon-sections';
 export { ServiceIntakeRoute } from './service-intake-route';
-export { KaelMatrixLoader } from './kael-matrix-loader';
-export type { KaelMatrixVariant } from './kael-matrix-loader';
 export { kaelPhaseEntries, kaelPhaseIssueNotes } from './kael-phase';
 export type { KaelPhase, KaelPhaseIssue } from './kael-phase';
 export { KaelProgressSheet } from './kael-progress-sheet';
@@ -44,6 +42,5 @@ export { WebSearchLog, rowDelay, rowsOf, type SearchRow, type SearchStep } from 
 export { MessageActions, feedbackReasons, type FeedbackKind } from './message-actions';
 export { RequestSummary, missingCount, type RequestItem } from './request-summary';
 export { Bone, ShimmerGroup, ShimmerText } from './shimmer';
-export { CaseApprovalCard, draftAnswer, missingCount as approvalMissingCount, summarize as summarizeApproval, type ApprovalAnswers, type ApprovalOption, type ApprovalStep, type SummaryLine } from './case-approval-card';
 export { RecommendationCard, confidenceLevel, filledSegments, type ConfidenceLevel, type Recommendation, type RecommendationOption } from './recommendation-card';
 export { SelectionActions, selectedText, selectionActions, selectionPrompt, type SelectionAction, type SelectionRange } from './selection-actions';

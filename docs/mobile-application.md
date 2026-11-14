@@ -656,6 +656,13 @@ the stored title and excerpt. An unmatched marker is dropped without a chip. The
 project had no knowledge rows on 2026-11-14, so no chip appears there until sources are
 ingested; community-sourced citations have no data source and are not shown.
 
+### Follow-up on a selected passage
+
+A complete Kael reply has a select-passage action. It shows the reply text, and the highlighted
+passage can be sent back to Kael with Explain, Improve, Shorten, Tone or Grammar as an ordinary
+follow-up message. Nothing is sent until an action is chosen. The recommendation card has no
+runtime event that carries options with confidence, so it is not shown in the live chat.
+
 ### Preview launch commands
 
 `npm run preview:local` serves the app on port 8085 against the Supabase Local stack of the

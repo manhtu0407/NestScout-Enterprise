@@ -454,7 +454,6 @@ export const horizonLayout = {
       swapDuration: 150, swapGap: 50, swapDistance: 8, statusSize: 13, statusLineHeight: 18, statusWeight: '500',
       streamWordDuration: 350, streamWordGap: 60, streamMaxDuration: 4000, streamWordSpace: 4,
       noteTextSize: 13, noteLineHeight: 18, noteGap: 6, noteEnterDuration: 240, noteEnterOffset: 6,
-      matrixSize: 4, matrixDot: 3, matrixGap: 2, matrixSide: 18, matrixCycle: 1200,
       thinkingGap: 10, thinkingCopyGap: 6, thinkingPaddingVertical: 4,
       orbSize: 18, orbDot: 3, orbDots: 10, orbRadius: 6, orbCycle: 1800, orbSearchCycle: 1500, orbBreathe: 1.14, orbTailFloor: 0.18, orbCoreSize: 4, orbDotRadius: 1.5, orbCoreRadius: 2, orbRestOpacity: 0.55,
       spinnerSize: 28, spinnerRadius: 14, spinnerStroke: 2.5, spinnerSpinDuration: 900, spinnerArc: 0.28, spinnerCheckDuration: 320, spinnerCheckStroke: 1.8, spinnerCheckDelay: 80,

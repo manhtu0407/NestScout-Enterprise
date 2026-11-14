@@ -9,6 +9,7 @@ import { ChatComposer, type ComposerAutonomy } from './chat-composer';
 import { recentQuestions } from './chat-history';
 import { ChatMessage } from './chat-message';
 import { MessageActions, type FeedbackKind, type FeedbackReason } from './message-actions';
+import { SelectionActions, selectionPrompt } from './selection-actions';
 import { QuestionCard } from './question-card';
 import { useKaelSpeech } from './kael-speech';
 import type { KaelChatMessage } from './use-kael-conversation';
@@ -26,6 +27,7 @@ import type { KaelProgress } from './kael-progress';
 import { shareConversation, shareNotices } from './conversation-share';
 import { KaelApprovalCard, KaelIncompleteNote, KaelRunActivity, KaelTaskList } from './kael-run-panels';
 import { CitedReply } from './cited-reply';
+import { stripCitationMarkers } from './citation-markers';
 import type { CitationResolver } from './citation-resolver';
 import { isKaelThinking, KaelThinkingRow } from './kael-thinking-row';
 import { KaelStage } from './kael-stage';
@@ -95,6 +97,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
     return () => slide.stop();
   }, [inset, reduceMotion, topInset]);
   const hasConversation = messages.length > 0;
+  const [selectingId, setSelectingId] = useState<string | null>(null);
   const [chatActive, setChatActive] = useState(() => hasConversation || kaelIntroSession.hasPlayed());
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuNotice, setMenuNotice] = useState<string | null>(null);
@@ -196,7 +199,10 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
               onRegenerate={onRegenerate && m.id === lastMessage?.id && !busy && !pendingConfirmation ? () => onRegenerate(m) : undefined}
               speaking={speech.speakingId === m.id}
               speechFailed={speech.failed && speech.speakingId === null}
-              onSpeak={speech.available ? () => speech.toggle(m.id, m.text) : undefined}/>}
+              onSpeak={speech.available ? () => speech.toggle(m.id, m.text) : undefined}
+              onSelect={onAnswer ? () => setSelectingId(current => current === m.id ? null : m.id) : undefined}
+              selecting={selectingId === m.id}/>}
+            {selectingId === m.id && onAnswer && <SelectionActions text={stripCitationMarkers(m.text)} onAction={(action, selection) => { setSelectingId(null); onAnswer(selectionPrompt(action, selection)); }}/>}
             {m.id === lastMessage?.id && !busy && question !== null && onAnswer && <QuestionCard
               key={question.id}
               question={question.prompt}
