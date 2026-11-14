@@ -32,8 +32,8 @@ export function SlideToConfirm({ label, accessibilityLabel, onConfirm, disabled 
 
   const glide = (value: Animated.Value, toValue: number, finished?: () => void) => {
     const animation = reduceMotion
-      ? Animated.timing(value, { toValue, duration: metrics.reducedDuration, useNativeDriver: true })
-      : Animated.spring(value, { toValue, ...metrics.settleSpring, useNativeDriver: true });
+      ? Animated.timing(value, { toValue, duration: metrics.reducedDuration, useNativeDriver: false })
+      : Animated.spring(value, { toValue, ...metrics.settleSpring, useNativeDriver: false });
     animation.start(() => finished?.());
   };
 
