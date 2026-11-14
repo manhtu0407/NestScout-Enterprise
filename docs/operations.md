@@ -147,6 +147,13 @@ Release order, each step authorized by the owner:
    stays configuration-only.
 5. Build iOS with `eas build --profile testflight` or `--profile app-store`.
 
+Attach release evidence to one record keyed by the full merged commit SHA and PR.
+Include the passing hosted workflow run, the migration names and post-release
+history observation, the deployed `kael` version and readiness/provider results
+with their observation time, and the EAS build identifier, profile, app version,
+build number and source commit. Record the real account/device verification result
+or mark it `NOT VERIFIED`. Keep credentials and request payloads out of the record.
+
 Failure causes are structured: `kael_provider_failure` (kind, HTTP status,
 whether fallback ran), `kael_provider_terminal` (latency), `kael_run`
 (status, latency, deployment). Client errors are the HTTP 4xx codes in the

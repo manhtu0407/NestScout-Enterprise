@@ -21,7 +21,7 @@ import { benchmarkSource, preparationDirectory } from './qa-impact-review-benchm
 
 verifySuiteGitIsolation();
 
-test('hosted repository checks retain unconditional aggregate and negative verification', () => {
+test('hosted repository checks fail fast on language ownership before the aggregate gates', () => {
   const workflow = parseDocument(readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')).toJS();
   const job = workflow.jobs['repository-checks'];
   assert.equal(job.name, 'Repository checks');
@@ -33,6 +33,13 @@ test('hosted repository checks retain unconditional aggregate and negative verif
     assert.equal(step.if, undefined, `Required CI command is conditional: ${command}`);
     assert.equal(step['continue-on-error'], undefined, `Required CI command ignores failure: ${command}`);
   }
+  const languageIndex = job.steps.findIndex(step => step.run === 'npm run check:languages');
+  const toolingIndex = job.steps.findIndex(step => step.run === 'npm run tools:install');
+  const aggregateIndex = job.steps.findIndex(step => step.run === 'npm run check');
+  assert.ok(languageIndex < toolingIndex, 'Language ownership must fail before optional tool installation.');
+  assert.ok(languageIndex < aggregateIndex, 'Language ownership must fail before the aggregate checks.');
+  const scripts = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts;
+  assert.equal(scripts.check.split(' && ').filter(command => command === 'npm run check:languages').length, 1);
 });
 
 test('native Linux optional checks preserve CI identity, triggers, read-only permissions and offline scope', () => {

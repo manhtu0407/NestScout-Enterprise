@@ -271,10 +271,11 @@ test('package scripts and hosted CI keep language enforcement mandatory', () => 
 
   const workflow = parseDocument(readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')).toJS();
   const steps = workflow.jobs['repository-checks'].steps;
-  const languageGate = steps.find(step => step.run === 'npm run check:languages');
-  assert.equal(languageGate?.name, 'Enforce language ownership');
-  assert.equal(languageGate?.if, undefined);
-  assert.equal(languageGate?.['continue-on-error'], undefined);
+  const languageGates = steps.filter(step => step.run === 'npm run check:languages');
+  assert.equal(languageGates.length, 1);
+  assert.equal(languageGates[0].name, 'Enforce language ownership');
+  assert.equal(languageGates[0].if, undefined);
+  assert.equal(languageGates[0]['continue-on-error'], undefined);
   assert.ok(steps.some(step => step.run === 'npm run check'));
   assert.ok(steps.some(step => step.run === 'npm run verify:negative'));
 });
