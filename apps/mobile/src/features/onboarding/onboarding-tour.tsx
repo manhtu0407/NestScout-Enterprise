@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Animated, BackHandler, Easing, Keyboard, PanResponder, Platform, Pressable, StyleSheet, useWindowDimensions, View, type HostInstance, type ViewStyle } from 'react-native';
+import { Animated, BackHandler, Easing, Keyboard, PanResponder, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, type HostInstance, type ViewStyle } from 'react-native';
 
 import { useGlassAccessibility } from '@/features/shared';
 import type { Language } from '@/lib/preferences';
@@ -242,9 +242,14 @@ export function OnboardingTour({ controller, role, language, consentNeeded, prof
       <Pressable accessible={false} focusable={false} onPress={() => act(ringAction)} style={StyleSheet.absoluteFill}/>
     </Animated.View>
     {active !== undefined && shown !== null && placement !== null && <Animated.View {...pan.panHandlers} style={[cardStyle(placement, cardWidth), cardMotionStyle]}>
-      <View style={placement.kind === 'center' ? { width: cardWidth } : undefined}>
+      <ScrollView
+        bounces={false}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        style={[{ maxHeight: placement.maxHeight }, placement.kind === 'center' ? { width: cardWidth } : undefined]}
+      >
         <OnboardingCard step={active} index={shown.index} total={total} chrome={chrome} onPrimary={() => act(active.primary.action)} onAction={act} onBack={back} onSkip={skip} onJump={goTo}/>
-      </View>
+      </ScrollView>
     </Animated.View>}
   </Animated.View>;
 }

@@ -5,9 +5,9 @@ export type OverlaySize = Readonly<{ width: number; height: number }>;
 export type SpotlightBox = Readonly<{ x: number; y: number; width: number; height: number; radius: number }>;
 
 export type CardPlacement =
-  | Readonly<{ kind: 'center' }>
-  | Readonly<{ kind: 'above'; left: number; bottom: number }>
-  | Readonly<{ kind: 'below'; left: number; top: number }>;
+  | Readonly<{ kind: 'center'; maxHeight: number }>
+  | Readonly<{ kind: 'above'; left: number; bottom: number; maxHeight: number }>
+  | Readonly<{ kind: 'below'; left: number; top: number; maxHeight: number }>;
 
 export function spotlightBox(rect: TargetRect, size: OverlaySize, padding: number, maxRadius: number): SpotlightBox {
   const x = Math.max(0, rect.x - padding);
@@ -22,11 +22,13 @@ export function cardWidthFor(size: OverlaySize, maxWidth: number, gutter: number
 }
 
 export function placeCard(box: SpotlightBox | null, size: OverlaySize, cardWidth: number, gap: number, gutter: number): CardPlacement {
-  if (box === null) return { kind: 'center' };
+  if (box === null) return { kind: 'center', maxHeight: Math.max(0, size.height - gutter * 2) };
   const centered = box.x + box.width / 2 - cardWidth / 2;
   const left = Math.max(gutter, Math.min(centered, size.width - gutter - cardWidth));
-  if (box.y + box.height / 2 > size.height / 2) return { kind: 'above', left, bottom: size.height - box.y + gap };
-  return { kind: 'below', left, top: box.y + box.height + gap };
+  const above = Math.max(0, box.y - gap - gutter);
+  const below = Math.max(0, size.height - (box.y + box.height) - gap - gutter);
+  if (above > below) return { kind: 'above', left, bottom: size.height - box.y + gap, maxHeight: above };
+  return { kind: 'below', left, top: box.y + box.height + gap, maxHeight: below };
 }
 
 export function clampStep(step: number, total: number): number {

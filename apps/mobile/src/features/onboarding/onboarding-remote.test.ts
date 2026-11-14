@@ -70,6 +70,15 @@ describe('onboarding remote record', () => {
     expect(auth.updateUser).toHaveBeenCalledWith({ data: { onboarding: { v: 1, outcome: 'skipped', at } } });
   });
 
+  test('refuses to write when the signed-in account is not the intended one, before any update is sent', async () => {
+    const other = fakeClient({ session: { data: { session: { user: bareUser('user-b') } }, error: null } });
+    await expect(createSupabaseOnboardingRemote(other.client, fakeRequest({})).writeMark('user-a', { outcome: 'skipped', at })).rejects.toBeInstanceOf(OnboardingUnavailableError);
+    expect(other.auth.updateUser).not.toHaveBeenCalled();
+    const signedOut = fakeClient({ session: { data: { session: null }, error: null } });
+    await expect(createSupabaseOnboardingRemote(signedOut.client, fakeRequest({})).writeMark('user-a', { outcome: 'skipped', at })).rejects.toBeInstanceOf(OnboardingUnavailableError);
+    expect(signedOut.auth.updateUser).not.toHaveBeenCalled();
+  });
+
   test('reports a write that fails or lands on another account', async () => {
     const failed = fakeClient({ update: { data: {}, error: new Error('network') } });
     await expect(createSupabaseOnboardingRemote(failed.client, fakeRequest({})).writeMark('user-a', { outcome: 'skipped', at })).rejects.toBeInstanceOf(OnboardingUnavailableError);

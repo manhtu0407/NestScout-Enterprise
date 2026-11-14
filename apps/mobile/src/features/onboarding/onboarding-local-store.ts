@@ -32,11 +32,7 @@ function parseAccounts(raw: string | null): Accounts {
 
 export function createOnboardingLocalStore(storage: AsyncStringStorage, key = onboardingStorageKey): OnboardingLocalStore {
   async function load(): Promise<Accounts> {
-    try {
-      return parseAccounts(await storage.getItem(key));
-    } catch {
-      return {};
-    }
+    return parseAccounts(await storage.getItem(key));
   }
 
   let tail: Promise<unknown> = Promise.resolve();
@@ -44,7 +40,11 @@ export function createOnboardingLocalStore(storage: AsyncStringStorage, key = on
   return {
     async read(userId) {
       await tail;
-      return (await load())[userId] ?? null;
+      try {
+        return (await load())[userId] ?? null;
+      } catch {
+        return null;
+      }
     },
 
     write(userId, entry) {

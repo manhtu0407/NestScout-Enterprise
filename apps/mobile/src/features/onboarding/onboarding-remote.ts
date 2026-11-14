@@ -37,6 +37,8 @@ export function createSupabaseOnboardingRemote(client: SupabaseClient, request: 
     },
 
     async writeMark(userId, mark) {
+      const session = await client.auth.getSession();
+      if (session.error || session.data.session?.user.id !== userId) throw new OnboardingUnavailableError('account');
       const { data, error } = await client.auth.updateUser({ data: metadataFor(mark) });
       if (error || data.user?.id !== userId) throw new OnboardingUnavailableError('write');
     },

@@ -20,24 +20,32 @@ describe('onboarding geometry', () => {
   });
 
   test('without a target the card is centred', () => {
-    expect(placeCard(null, screen, 360, 16, 20)).toEqual({ kind: 'center' });
+    expect(placeCard(null, screen, 360, 16, 20)).toEqual({ kind: 'center', maxHeight: 760 });
   });
 
   test('a target in the lower half puts the card above it', () => {
     const box = { x: 20, y: 700, width: 360, height: 80, radius: 28 };
-    expect(placeCard(box, screen, 360, 16, 20)).toEqual({ kind: 'above', left: 20, bottom: 116 });
+    expect(placeCard(box, screen, 360, 16, 20)).toEqual({ kind: 'above', left: 20, bottom: 116, maxHeight: 664 });
   });
 
   test('a target in the upper half puts the card below it', () => {
     const box = { x: 10, y: 10, width: 60, height: 60, radius: 28 };
-    expect(placeCard(box, screen, 360, 16, 20)).toEqual({ kind: 'below', left: 20, top: 86 });
+    expect(placeCard(box, screen, 360, 16, 20)).toEqual({ kind: 'below', left: 20, top: 86, maxHeight: 694 });
   });
 
   test('the card is kept inside the side gutters', () => {
     const right = placeCard({ x: 340, y: 20, width: 50, height: 50, radius: 25 }, screen, 300, 16, 20);
-    expect(right).toEqual({ kind: 'below', left: 80, top: 86 });
+    expect(right).toEqual({ kind: 'below', left: 80, top: 86, maxHeight: 694 });
     const left = placeCard({ x: 0, y: 20, width: 50, height: 50, radius: 25 }, screen, 300, 16, 20);
-    expect(left).toEqual({ kind: 'below', left: 20, top: 86 });
+    expect(left).toEqual({ kind: 'below', left: 20, top: 86, maxHeight: 694 });
+  });
+
+  test('the card is limited to the room on the side it takes', () => {
+    const short = { width: 400, height: 300 };
+    const menu = { x: 10, y: 20, width: 44, height: 44, radius: 22 };
+    expect(placeCard(menu, short, 360, 16, 20)).toEqual({ kind: 'below', left: 20, top: 80, maxHeight: 200 });
+    const composer = { x: 20, y: 230, width: 360, height: 60, radius: 28 };
+    expect(placeCard(composer, short, 360, 16, 20)).toEqual({ kind: 'above', left: 20, bottom: 86, maxHeight: 194 });
   });
 
   test('a step index is clamped into the plan', () => {

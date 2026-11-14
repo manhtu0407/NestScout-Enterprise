@@ -110,6 +110,25 @@ describe('onboarding local store', () => {
     expect(await store.read('user-a')).toEqual(done);
   });
 
+  test('a write never replaces records it could not read', async () => {
+    const { data } = memoryStorage({ [onboardingStorageKey]: JSON.stringify({ v: 1, accounts: { 'user-a': done } }) });
+    let reading = false;
+    const storage: AsyncStringStorage = {
+      getItem: async key => {
+        if (reading) throw new Error('storage offline');
+        return data.get(key) ?? null;
+      },
+      setItem: async (key, value) => { data.set(key, value); },
+      removeItem: async () => undefined,
+    };
+    const store = createOnboardingLocalStore(storage);
+    reading = true;
+    await expect(store.write('user-b', done)).rejects.toThrow('storage offline');
+    reading = false;
+    expect(await store.read('user-a')).toEqual(done);
+    expect(await store.read('user-b')).toBeNull();
+  });
+
   test('honours a custom storage key', async () => {
     const { data, storage } = memoryStorage();
     await createOnboardingLocalStore(storage, 'custom.key').write('user-a', done);
