@@ -23,15 +23,58 @@ const highRisk = [
   /^\.mcp\.json$/,
   /^package(?:-lock)?\.json$/,
   /^supabase\//,
+  /^services\/kael-core\/(?:src|durable)\//,
+  /^services\/kael-core\/durable\/Cargo\.(?:toml|lock)$/,
   /^scripts\//,
-  /^apps\/mobile\/(?:package|app)\.json$/,
+  /^apps\/mobile\/(?:package|app|eas)\.json$/,
+  /^docs\/operations\.md$/,
   /^apps\/mobile\/src\/app\//,
   /^apps\/mobile\/src\/features\/access\//,
   /^apps\/mobile\/src\/lib\/(?:config|chunked-storage|supabase-client|device-storage)\.ts$/,
   /(?:^|\/)(?:jest|babel|metro|eslint|knip|stryker|vitest|playwright)\.config\.[^/]+$/,
   /(?:^|\/)\.?knip\.(?:jsonc?|[cm]?[jt]s)$/,
   /(?:^|\/)(?:tsconfig(?:\.[^/]+)?\.json|\.npmrc|\.env(?:\.[^/]+)?|\.gitignore|\.gitattributes|\.editorconfig|\.nvmrc|\.node-version|\.markdownlint-cli2\.[^/]+)$/,
+  /(?:^|\/)(?:Dockerfile(?:\.[^/]+)?|docker-compose(?:\.[^/]+)?\.ya?ml|compose\.ya?ml)$/,
 ];
+const criticalRisk = [
+  /^supabase\/(?:migrations|functions|tests\/database)\//,
+  /^services\/kael-core\/(?:src|durable)\//,
+  /^apps\/mobile\/src\/features\/access\//,
+  /^\.github\/workflows\//,
+  /^\.githooks\//,
+  /^scripts\/(?:check|verify|scan)(?:[-./]|$)/,
+];
+const behavioralRisk = /\.(?:[cm]?[jt]sx?|rs|py|go|sql|toml|ya?ml|jsonc?)$/i;
+const nonBehavioralRisk = /\.(?:md|mdx|txt|png|jpe?g|svg|gif|webp|woff2?|ttf|otf)$/i;
+const verificationCommands = Object.freeze(requiredCommands.map(command => `npm run ${command}`));
+const focusedVerification = Object.freeze({
+  Critical: 'Run targeted tests at every affected trust boundary and verify recovery behavior.',
+  High: 'Run targeted tests for affected consumers and integrations.',
+  Medium: 'Run affected tests, typecheck and lint.',
+  Low: 'Run validation appropriate to the changed content.',
+});
+
+export function classifyRisk(files, authorizationPaths = []) {
+  const paths = [...new Set(files.flatMap(file => [file.path, file.from].filter(Boolean)))].sort();
+  const authorization = new Set(authorizationPaths);
+  const critical = paths.filter(name => authorization.has(name) || criticalRisk.some(pattern => pattern.test(name)));
+  const high = paths.filter(name => !critical.includes(name) && highRisk.some(pattern => pattern.test(name)));
+  const medium = paths.filter(name => !critical.includes(name) && !high.includes(name) && behavioralRisk.test(name));
+  const unknown = paths.filter(name => !critical.includes(name) && !high.includes(name) && !medium.includes(name) && !nonBehavioralRisk.test(name));
+  const level = critical.length ? 'Critical' : high.length ? 'High' : medium.length || unknown.length ? 'Medium' : 'Low';
+  const triggers = level === 'Critical' ? critical : level === 'High' ? high : level === 'Medium' ? [...medium, ...unknown] : [];
+  return {
+    level,
+    triggers,
+    verification: {
+      mandatoryCommands: verificationCommands,
+      focused: focusedVerification[level],
+      ownerReview: level === 'Critical' ? 'Explicit review of the affected trust, data or execution boundary.'
+        : level === 'High' ? 'Explicit review of the release, dependency, tooling or operational change.'
+          : 'Standard pull request owner review before merge.',
+    },
+  };
+}
 const authorizationWord = /^(?:roles?|capabilit(?:y|ies)|permissions?|grants?|authori[sz]\w*|authenticat\w*|polic(?:y|ies)|rls|credentials?|secrets?)$/;
 const authorizationTerm = text => text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).find(word => authorizationWord.test(word));
 const configurationFile = /(?:^|\/)(?:(?:jest|vitest|playwright)\.config\.[^/]+|\.mocharc[^/]*)$/;
@@ -733,11 +776,16 @@ export function reviewDiff({ repository = root, base = 'origin/main', head = 'HE
   const packages = files.filter(file => manifestFile.test(file.path) && file.status === 'M').map(file => packageChanges(repository, mergeBase, headSha, file.path));
   const commands = runCommands(repository, run, headSha);
   const attestation = verifyAttestation(repository, reviewer, { headSha, mergeBase, view: views.after });
+  const scopeResult = scopeDimension(repository, files, mergeBase, headSha, scope, packages);
+  const authorizationPaths = scopeResult.findings.flatMap(finding => {
+    const match = finding.match(/^(.+): changed lines mention /);
+    return match ? [match[1]] : [];
+  });
   const dimensions = {
     correctness: correctnessDimension(commands),
     codeHealth: codeHealthDimension(repository, files, mergeBase, headSha, attestation),
     deadCodeSafety: deadCodeDimension(repository, files, mergeBase, headSha, views),
-    scope: scopeDimension(repository, files, mergeBase, headSha, scope, packages),
+    scope: scopeResult,
     testIntegrity: testDimension(repository, files, mergeBase, headSha, views),
   };
   const verdicts = Object.values(dimensions).map(dimension => dimension.verdict);
@@ -745,7 +793,8 @@ export function reviewDiff({ repository = root, base = 'origin/main', head = 'HE
   return {
     base: { ref: base, sha: baseSha }, head: { ref: head, sha: headSha }, mergeBase,
     files: files.map(file => ({ status: file.status, path: file.path, ...(file.from ? { from: file.from } : {}) })),
-    commands: commands.results, reviewer: { tag: reviewer, attested: attestation.attested, signer: attestation.signer, key: attestation.key }, dimensions, verdict,
+    commands: commands.results, reviewer: { tag: reviewer, attested: attestation.attested, signer: attestation.signer, key: attestation.key },
+    risk: classifyRisk(files, authorizationPaths), dimensions, verdict,
   };
 }
 

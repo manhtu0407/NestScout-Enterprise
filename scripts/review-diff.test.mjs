@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { git } from './repository-files.mjs';
-import { exportedNames, FAIL, INSUFFICIENT, PASS, reviewDiff } from './review-diff.mjs';
+import { classifyRisk, exportedNames, FAIL, INSUFFICIENT, PASS, reviewDiff } from './review-diff.mjs';
 import { resolveModule } from './review-modules.mjs';
 import { root } from './tool-path.mjs';
 
@@ -180,6 +180,35 @@ const review = (mutate, options = {}) => {
 };
 const verdicts = packet => Object.fromEntries(Object.entries(packet.dimensions).map(([name, dimension]) => [name, dimension.verdict]));
 const change = (file, from, to) => api => api.write(file, baseFiles[file].replace(from, to));
+
+test('risk classification escalates trust-boundary changes and preserves mandatory final checks', () => {
+  const cases = [
+    ['Critical', 'supabase/migrations/20261114090000_auth_policy.sql'],
+    ['Critical', 'supabase/functions/kael/index.ts'],
+    ['Critical', 'services/kael-core/durable/src/tools.rs'],
+    ['Critical', 'apps/mobile/src/features/access/mode/preferred-mode-store.ts'],
+    ['Critical', '.github/workflows/ci.yml'],
+    ['Critical', 'scripts/check-test-selection.mjs'],
+    ['High', 'apps/mobile/eas.json'],
+    ['High', 'docs/operations.md'],
+    ['High', 'package-lock.json'],
+    ['High', 'Dockerfile'],
+    ['Medium', 'apps/mobile/src/features/catalog/search.tsx'],
+    ['Medium', 'new-unclassified-config'],
+    ['Low', 'docs/task-scope.md'],
+  ];
+  for (const [level, file] of cases) {
+    const risk = classifyRisk([{ path: file }]);
+    assert.equal(risk.level, level, file);
+    assert.deepEqual(risk.verification.mandatoryCommands, ['npm run check', 'npm run verify:negative'], file);
+    assert.ok(risk.verification.ownerReview.length > 0, file);
+    assert.equal(risk.triggers.includes(file), level !== 'Low', file);
+    assert.ok(risk.verification.focused.length > 0, file);
+  }
+  assert.equal(review(defaultChange).risk.level, 'Medium');
+  const authorization = classifyRisk([{ path: 'apps/mobile/src/lib/permissions.ts' }], ['apps/mobile/src/lib/permissions.ts']);
+  assert.equal(authorization.level, 'Critical');
+});
 
 test('a behavior-preserving refactor with passing evidence and a verified attestation passes every dimension', () => {
   const packet = attestedReview({

@@ -21,18 +21,21 @@ import { benchmarkSource, preparationDirectory } from './qa-impact-review-benchm
 
 verifySuiteGitIsolation();
 
-test('hosted repository checks retain unconditional aggregate and negative verification', () => {
+test('hosted repository checks run the full gates once without skipping language ownership', () => {
   const workflow = parseDocument(readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')).toJS();
   const job = workflow.jobs['repository-checks'];
   assert.equal(job.name, 'Repository checks');
   assert.equal(job.if, undefined);
   assert.equal(job['continue-on-error'], undefined);
-  for (const command of ['npm run check:languages', 'npm run check', 'npm run verify:negative']) {
+  for (const command of ['npm run check', 'npm run verify:negative']) {
     const step = job.steps.find(step => step.run === command);
     assert.ok(step, `Required CI command missing or masked: ${command}`);
     assert.equal(step.if, undefined, `Required CI command is conditional: ${command}`);
     assert.equal(step['continue-on-error'], undefined, `Required CI command ignores failure: ${command}`);
   }
+  const scripts = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts;
+  assert.equal(scripts.check.split(' && ').filter(command => command === 'npm run check:languages').length, 1);
+  assert.equal(job.steps.some(step => step.run === 'npm run check:languages'), false);
 });
 
 test('native Linux optional checks preserve CI identity, triggers, read-only permissions and offline scope', () => {
