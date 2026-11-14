@@ -34,6 +34,7 @@ const bubbles = horizonLayout.kaelHomeScreen;
 const bubbleColors = horizonColors.kaelHomeScreen;
 
 type Props = {
+  sessionTitle?: string | null;
   input: string;
   onInput: (value: string) => void;
   onSubmit: (images: readonly ComposerImage[]) => void;
@@ -67,7 +68,7 @@ type Props = {
 const noTasks: readonly KaelTask[] = [];
 const noApprovals: readonly KaelApproval[] = [];
 
-export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, question = null, onAnswer, onRate, onRegenerate, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, requestProgress, draftImages, onDraftImagesChange, autonomy, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null }: Props) {
+export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onNew, messages, question = null, onAnswer, onRate, onRegenerate, composerError, onClearComposerError, conversationKey, kaelPhase = null, kaelPhaseIssue = null, requestProgress, draftImages, onDraftImagesChange, autonomy, draftLocked, activity = null, tasks = noTasks, approvals = noApprovals, busy = false, onDecide, topInset = 0, processingTaskId = null, sessionTitle = null }: Props) {
   const speech = useKaelSpeech();
   const pendingConfirmation = approvals.some(approval => approval.kind === 'confirm');
   const reduceMotion = useReduceMotion();
@@ -175,6 +176,7 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
     ...(onMemory ? [{ id: 'memory', label: 'Bộ nhớ Kael', icon: 'clock' as const, onPress: () => { setMenuOpen(false); onMemory(); } }] : []),
   ];
   const firstUserMessage = messages.find(m => m.role === 'user');
+  const title = sessionTitle?.trim() || firstUserMessage?.text.trim() || 'Cuộc trò chuyện mới';
   const chatOpacity = progress.interpolate({ inputRange: [0, metrics.chatFadeStart, 1], outputRange: [0, 0, 1] });
   const chatShift = progress.interpolate({ inputRange: [0, 1], outputRange: [metrics.chatEnterOffset, 0] });
 
@@ -213,9 +215,9 @@ export function KaelHomeScreen({ input, onInput, onSubmit, onMenu, onMemory, onN
       <ChatComposer key={conversationKey} value={input} onChange={value => { setMenuNotice(null); onInput(value); }} onSubmit={images => { enterChat(); onSubmit(images); }} error={composerError ?? menuNotice} onMediaChange={() => { setMenuNotice(null); onClearComposerError(); }} initialImages={draftImages} autonomy={autonomy} history={recentQuestions(messages)} onImagesChange={onDraftImagesChange} mediaExternallyManaged={Boolean(onDraftImagesChange)} locked={draftLocked}/>
       <Text style={styles.disclaimer}>Kael có thể mắc sai sót. Hãy kiểm tra thông tin quan trọng.</Text>
     </View>
-    {chatActive && <KaelChatNav onMenu={onMenu} onOptions={() => setMenuOpen(open => !open)}/>}
+    {chatActive && <KaelChatNav title={title} onMenu={onMenu} onOptions={() => setMenuOpen(open => !open)}/>}
     <KaelProgressSheet open={timelineOpen} progress={requestProgress ?? null} bottomOffset={footerHeight + metrics.progressBottomInset} onClose={() => setTimelineOpen(false)}/>
-    {menuOpen && <ConversationMenu title={firstUserMessage?.text ?? 'Cuộc trò chuyện mới'} items={menuItems} onClose={() => setMenuOpen(false)}/>}
+    {menuOpen && <ConversationMenu title={title} items={menuItems} onClose={() => setMenuOpen(false)}/>}
   </View>;
 }
 
